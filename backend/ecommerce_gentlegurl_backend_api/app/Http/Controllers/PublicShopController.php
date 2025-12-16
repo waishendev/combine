@@ -150,7 +150,14 @@ class PublicShopController extends Controller
                 ->when($menuSlug, fn($query) => $query->where('slug', $menuSlug))
                 ->first();
 
-            $menuCategoryIds = $menu?->categories->pluck('id')->all() ?? [];
+            if (! $menu) {
+                return response()->json([
+                    'message' => 'Menu not found',
+                    'success' => false,
+                ], 404);
+            }
+
+            $menuCategoryIds = $menu->categories->pluck('id')->all();
 
             $productsQuery->whereHas('categories', function ($query) use ($menuCategoryIds) {
                 $query->whereIn('categories.id', $menuCategoryIds)
