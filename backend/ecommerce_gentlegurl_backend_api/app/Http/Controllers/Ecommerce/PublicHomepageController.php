@@ -115,8 +115,8 @@ class PublicHomepageController extends Controller
                 ->where('is_active', true);
 
             if (! empty($bestSellerProductIds)) {
-                $idsString = implode(',', $bestSellerProductIds);
-                $bestSellersQuery->orderByRaw("FIELD(id, {$idsString})");
+                $idsString = implode(',', array_map('intval', $bestSellerProductIds));
+                $bestSellersQuery->orderByRaw("array_position(ARRAY[{$idsString}]::bigint[], id)");
             }
 
             $bestSellers = $bestSellersQuery->get();
