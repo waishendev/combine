@@ -53,7 +53,7 @@ export async function getProduct(slug: string): Promise<ProductDetail | null> {
       process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
     const url = `${siteUrl}/api/proxy/public/shop/products/${slug}`;
-
+    console.log(url);
     const res = await fetch(url, {
       method: "GET",
       headers: {
