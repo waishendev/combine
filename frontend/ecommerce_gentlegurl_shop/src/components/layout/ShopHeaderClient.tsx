@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AccountOverview } from "@/lib/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
@@ -21,6 +21,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const [shopOpen, setShopOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
   const overview = customer ?? initialOverview ?? null;
   const profile = overview?.profile;
@@ -28,6 +29,8 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
 
   const avatarUrl = profile?.avatar ?? "/images/default_user_image.jpg";
   const tierName = loyalty?.current_tier?.name ?? profile?.tier ?? "-";
+  const isLoginPage = pathname === "/login";
+  const isRegisterPage = pathname === "/register";
 
   const handleLogout = async () => {
     await logout();
@@ -151,95 +154,101 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
-          {isLoading ? (
-            <div className="h-10 w-32 animate-pulse rounded-full bg-[var(--muted)]" />
-          ) : profile ? (
-            <div className="relative">
-              <button
-                onClick={() => setMenuOpen((prev) => !prev)}
-                className="flex items-center gap-2 rounded-full border px-3 py-1 text-sm hover:border-gray-400 bg-white/80"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="h-7 w-7 overflow-hidden rounded-full bg-gray-200">
-                    <Image
-                      src={avatarUrl}
-                      alt={profile?.name ?? "User avatar"}
-                      width={28}
-                      height={28}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <div className="flex flex-col leading-tight">
-                    <span className="text-[10px] uppercase tracking-wide text-gray-500">{tierName}</span>
-                    <span className="max-w-[120px] truncate text-xs text-gray-800">{profile?.name}</span>
-                  </div>
-                </div>
-
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  className="h-4 w-4 text-gray-500"
+        <div className="flex items-center gap-3">
+          <div className="relative w-[200px] min-w-[180px] max-w-[220px]">
+            {isLoading ? (
+              <div className="h-10 w-full animate-pulse rounded-full bg-[var(--muted)]" />
+            ) : profile ? (
+              <div className="relative">
+                <button
+                  onClick={() => setMenuOpen((prev) => !prev)}
+                  className="flex h-10 w-full items-center gap-2 rounded-full border border-pink-200/60 bg-white/70 px-3 text-sm text-[var(--foreground)] transition hover:shadow-sm"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
-                </svg>
-              </button>
+                  <div className="flex h-full items-center gap-2">
+                    <div className="h-7 w-7 overflow-hidden rounded-full bg-gray-100">
+                      <Image
+                        src={avatarUrl}
+                        alt={profile?.name ?? "User avatar"}
+                        width={28}
+                        height={28}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1 leading-tight">
+                      <div className="truncate text-[10px] text-[var(--foreground)]/60">{tierName}</div>
+                      <div className="truncate text-sm font-medium text-[var(--foreground)]">{profile?.name}</div>
+                    </div>
+                  </div>
 
-              {menuOpen && (
-                <div className="absolute right-0 mt-2 w-44 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="h-4 w-4 text-gray-500"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+
+                {menuOpen && (
+                  <div className="absolute right-0 mt-2 w-[230px] rounded-xl border border-[var(--muted)] bg-[var(--background)] shadow-md">
+                    <Link
+                      href="/account"
+                      className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      My Account / Profile
+                    </Link>
+                    <Link
+                      href="/orders"
+                      className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Orders
+                    </Link>
+                    <Link
+                      href="/wishlist"
+                      className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Wishlist
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="block w-full px-4 py-2 text-left text-sm text-[#c26686] transition hover:bg-[var(--muted)]/70"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex h-10 items-center gap-2 text-sm">
+                {!isLoginPage && (
                   <Link
-                    href="/account"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/80"
-                    onClick={() => setMenuOpen(false)}
+                    className="flex-1 h-10 rounded-full border border-pink-200/60 bg-white/70 px-4 text-center leading-10 text-[var(--foreground)] transition hover:shadow-sm"
+                    href="/login"
                   >
-                    My Account
+                    Login
                   </Link>
+                )}
+                {!isRegisterPage && (
                   <Link
-                    href="/orders"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/80"
-                    onClick={() => setMenuOpen(false)}
+                    className="flex-1 h-10 rounded-full bg-[var(--accent)] px-4 text-center leading-10 text-white transition hover:bg-[var(--accent-strong)]"
+                    href="/register"
                   >
-                    My Orders
+                    Register
                   </Link>
-                  <Link
-                    href="/wishlist"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/80"
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    Wishlist
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="block w-full px-4 py-2 text-left text-sm text-[#c26686] transition hover:bg-[var(--muted)]/90"
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm">
-              <Link
-                className="rounded-full border border-[var(--accent)] bg-white/70 px-4 py-2 text-[var(--foreground)] transition-colors hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/70"
-                href="/login"
-              >
-                Login
-              </Link>
-              <Link
-                className="rounded-full bg-[var(--accent)] px-4 py-2 text-white transition-colors hover:bg-[var(--accent-strong)]"
-                href="/register"
-              >
-                Register
-              </Link>
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
 
           <Link
             href="/cart"
-            className="relative flex items-center rounded-full border border-[var(--accent)] bg-white/70 px-3 py-2 text-[var(--foreground)] transition-colors hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/80"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full border border-pink-200/60 bg-white/70 text-[var(--foreground)] transition hover:shadow-sm"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
