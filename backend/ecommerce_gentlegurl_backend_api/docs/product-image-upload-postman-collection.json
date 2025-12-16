@@ -1,0 +1,557 @@
+{
+	"info": {
+		"_postman_id": "product-image-upload-api",
+		"name": "Product Image Upload API",
+		"description": "Postman collection for product image upload functionality. Supports multipart/form-data file uploads.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000/api",
+			"type": "string"
+		},
+		{
+			"key": "product_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login (Token)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.token) {",
+									"        pm.collectionVariables.set('token', jsonData.data.token);",
+									"        console.log('Token saved:', jsonData.data.token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/login/token",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"login",
+								"token"
+							]
+						},
+						"description": "Login with email and password to get Bearer token. Token will be automatically saved to collection variable."
+					},
+					"response": []
+				},
+				{
+					"name": "Login (Session)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"login"
+							]
+						},
+						"description": "Session login. Postman will automatically save cookies for subsequent requests."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Products with Images",
+			"item": [
+				{
+					"name": "Create Product with Images",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "iPhone 15",
+									"type": "text",
+									"description": "Product name"
+								},
+								{
+									"key": "slug",
+									"value": "iphone-15",
+									"type": "text",
+									"description": "URL-friendly identifier"
+								},
+								{
+									"key": "sku",
+									"value": "IP15-BLACK",
+									"type": "text",
+									"description": "Product SKU"
+								},
+								{
+									"key": "type",
+									"value": "single",
+									"type": "text",
+									"description": "Product type: 'single' or 'package'"
+								},
+								{
+									"key": "description",
+									"value": "最新款 iPhone 15，配备 A17 Pro 芯片",
+									"type": "text",
+									"description": "Product description"
+								},
+								{
+									"key": "price",
+									"value": "999.99",
+									"type": "text",
+									"description": "Product price"
+								},
+								{
+									"key": "cost_price",
+									"value": "800",
+									"type": "text",
+									"description": "Cost price"
+								},
+								{
+									"key": "stock",
+									"value": "50",
+									"type": "text",
+									"description": "Stock quantity"
+								},
+								{
+									"key": "low_stock_threshold",
+									"value": "5",
+									"type": "text",
+									"description": "Low stock threshold"
+								},
+								{
+									"key": "is_active",
+									"value": "true",
+									"type": "text",
+									"description": "Is product active"
+								},
+								{
+									"key": "is_featured",
+									"value": "false",
+									"type": "text",
+									"description": "Is product featured"
+								},
+								{
+									"key": "meta_title",
+									"value": "iPhone 15 - 最新款智能手机",
+									"type": "text",
+									"description": "SEO meta title"
+								},
+								{
+									"key": "meta_description",
+									"value": "购买最新款 iPhone 15，配备先进的 A17 Pro 芯片和出色的摄像头系统",
+									"type": "text",
+									"description": "SEO meta description"
+								},
+								{
+									"key": "meta_keywords",
+									"value": "iphone,phone,smartphone,苹果手机",
+									"type": "text",
+									"description": "SEO meta keywords"
+								},
+								{
+									"key": "meta_og_image",
+									"value": "",
+									"type": "text",
+									"description": "Open Graph image path (string URL). Optional if using meta_og_image_file."
+								},
+								{
+									"key": "meta_og_image_file",
+									"type": "file",
+									"src": [],
+									"description": "Upload Open Graph image file (optional, use instead of meta_og_image). Supported formats: jpeg, jpg, png, gif, webp. Max 5MB."
+								},
+								{
+									"key": "category_ids[]",
+									"value": "2",
+									"type": "text",
+									"description": "Category ID (can add multiple)"
+								},
+								{
+									"key": "images[]",
+									"type": "file",
+									"src": [],
+									"description": "Product images (can upload multiple files). Supported formats: jpeg, jpg, png, gif, webp. Max 5MB per image."
+								},
+								{
+									"key": "images[]",
+									"type": "file",
+									"src": [],
+									"description": "Second image (optional)"
+								},
+								{
+									"key": "main_image_index",
+									"value": "0",
+									"type": "text",
+									"description": "Index of main image (0-based). If not specified, first image becomes main."
+								}
+							],
+							"options": {}
+						},
+						"url": {
+							"raw": "{{base_url}}/ecommerce/products",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ecommerce",
+								"products"
+							]
+						},
+						"description": "Create a new product with images. Use multipart/form-data format.\n\n**Instructions:**\n1. Click on the images[] fields and select 'File' type\n2. Click 'Select Files' to choose image files\n3. You can add multiple images[] fields for multiple images\n4. Set main_image_index to specify which image is the main one (0-based index)\n5. For meta_og_image, you can either:\n   - Upload a file using meta_og_image_file (recommended)\n   - Or provide a string URL using meta_og_image\n6. Remove any fields you don't need"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product - Add Images",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.id) {",
+									"        pm.collectionVariables.set('product_id', jsonData.data.id.toString());",
+									"        console.log('Product ID saved:', jsonData.data.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "iPhone 15 Pro",
+									"type": "text",
+									"description": "Updated product name"
+								},
+								{
+									"key": "images[]",
+									"type": "file",
+									"src": [],
+									"description": "New image to upload"
+								},
+								{
+									"key": "main_image_index",
+									"value": "0",
+									"type": "text",
+									"description": "Set this new image as main image"
+								}
+							],
+							"options": {}
+						},
+						"url": {
+							"raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ecommerce",
+								"products",
+								"{{product_id}}"
+							]
+						},
+						"description": "Update product and add new images. All fields except images are optional."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product - Delete Images",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "delete_image_ids[]",
+									"value": "1",
+									"type": "text",
+									"description": "Image ID to delete (can add multiple)"
+								},
+								{
+									"key": "delete_image_ids[]",
+									"value": "2",
+									"type": "text",
+									"description": "Another image ID to delete (optional)"
+								}
+							],
+							"options": {}
+						},
+						"url": {
+							"raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ecommerce",
+								"products",
+								"{{product_id}}"
+							]
+						},
+						"description": "Delete specific product images by their IDs. Add multiple delete_image_ids[] fields to delete multiple images."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product - Delete and Add Images",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "delete_image_ids[]",
+									"value": "1",
+									"type": "text",
+									"description": "Image ID to delete"
+								},
+								{
+									"key": "images[]",
+									"type": "file",
+									"src": [],
+									"description": "New image to upload"
+								},
+								{
+									"key": "main_image_index",
+									"value": "0",
+									"type": "text",
+									"description": "Set new image as main"
+								}
+							],
+							"options": {}
+						},
+						"url": {
+							"raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ecommerce",
+								"products",
+								"{{product_id}}"
+							]
+						},
+						"description": "Delete existing images and add new ones in a single request."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product (with images)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ecommerce",
+								"products",
+								"{{product_id}}"
+							]
+						},
+						"description": "Get product details including all images."
+					},
+					"response": []
+				},
+				{
+					"name": "List Products",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/ecommerce/products?per_page=15",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ecommerce",
+								"products"
+							],
+							"query": [
+								{
+									"key": "per_page",
+									"value": "15",
+									"description": "Items per page"
+								},
+								{
+									"key": "name",
+									"value": "",
+									"description": "Filter by product name",
+									"disabled": true
+								},
+								{
+									"key": "sku",
+									"value": "",
+									"description": "Filter by SKU",
+									"disabled": true
+								},
+								{
+									"key": "category_id",
+									"value": "",
+									"description": "Filter by category ID",
+									"disabled": true
+								},
+								{
+									"key": "is_active",
+									"value": "1",
+									"description": "Filter by active status",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all products with their images. Includes filtering options."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product (text fields only)",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "iPhone 15 Pro Max",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "Updated description",
+									"type": "text"
+								},
+								{
+									"key": "price",
+									"value": "1299.99",
+									"type": "text"
+								},
+								{
+									"key": "stock",
+									"value": "100",
+									"type": "text"
+								},
+								{
+									"key": "meta_keywords",
+									"value": "iphone,phone,smartphone,pro,max",
+									"type": "text"
+								}
+							],
+							"options": {}
+						},
+						"url": {
+							"raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ecommerce",
+								"products",
+								"{{product_id}}"
+							]
+						},
+						"description": "Update product text fields without touching images. All fields are optional."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
+

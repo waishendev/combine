@@ -1,0 +1,94 @@
+<?php
+
+namespace App\Services\Voucher;
+
+use App\Models\Ecommerce\Customer;
+use App\Models\Ecommerce\Voucher;
+use App\Models\Ecommerce\VoucherUsage;
+use Carbon\Carbon;
+
+class VoucherService
+{
+    public function validateAndCalculateDiscount(
+        string $code,
+        ?Customer $customer,
+        float $orderAmount
+    ): VoucherResult {
+        $voucher = Voucher::where('code', $code)->first();
+
+        if (!$voucher) {
+            return VoucherResult::invalid('Voucher not found.');
+        }
+
+        if (!$voucher->is_active) {
+            return VoucherResult::invalid('Voucher is not active.');
+        }
+
+        $now = Carbon::now();
+
+        if ($voucher->start_at && $now->lt($voucher->start_at)) {
+            return VoucherResult::invalid('Voucher is not started yet.');
+        }
+
+        if ($voucher->end_at && $now->gt($voucher->end_at)) {
+            return VoucherResult::invalid('Voucher has expired.');
+        }
+
+        $minOrderAmount = $voucher->min_order_amount !== null ? (float) $voucher->min_order_amount : null;
+        if ($minOrderAmount && $orderAmount < $minOrderAmount) {
+            return VoucherResult::invalid('Order amount is below voucher minimum amount.');
+        }
+
+        $usageLimitTotal = $voucher->usage_limit_total ?? $voucher->max_uses;
+        if ($usageLimitTotal !== null) {
+            $totalUsed = VoucherUsage::where('voucher_id', $voucher->id)->count();
+            if ($totalUsed >= $usageLimitTotal) {
+                return VoucherResult::invalid('Voucher total usage limit reached.');
+            }
+        }
+
+        $usageLimitPerCustomer = $voucher->usage_limit_per_customer ?? $voucher->max_uses_per_customer;
+        if ($customer && $usageLimitPerCustomer !== null) {
+            $customerUsed = VoucherUsage::where('voucher_id', $voucher->id)
+                ->where('customer_id', $customer->id)
+                ->count();
+
+            if ($customerUsed >= $usageLimitPerCustomer) {
+                return VoucherResult::invalid('Voucher already used by this customer.');
+            }
+        }
+
+        $value = $voucher->value !== null ? (float) $voucher->value : (float) ($voucher->amount ?? 0);
+        $discount = 0.0;
+        if ($voucher->type === 'fixed') {
+            $discount = min($value, $orderAmount);
+        } elseif ($voucher->type === 'percent') {
+            $discount = $orderAmount * ($value / 100);
+            if ($voucher->max_discount_amount !== null) {
+                $discount = min($discount, (float) $voucher->max_discount_amount);
+            }
+        }
+
+        if ($discount <= 0) {
+            return VoucherResult::invalid('Voucher discount amount is zero.');
+        }
+
+        return VoucherResult::valid($discount, [
+            'id' => $voucher->id,
+            'code' => $voucher->code,
+            'type' => $voucher->type,
+            'value' => $value,
+            'max_discount_amount' => $voucher->max_discount_amount ? (float) $voucher->max_discount_amount : null,
+        ]);
+    }
+
+    public function recordUsage(int $voucherId, ?int $customerId, int $orderId): void
+    {
+        VoucherUsage::create([
+            'voucher_id' => $voucherId,
+            'customer_id' => $customerId,
+            'order_id' => $orderId,
+            'used_at' => Carbon::now(),
+        ]);
+    }
+}

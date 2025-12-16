@@ -1,0 +1,4227 @@
+{
+  "info": {
+    "name": "Ecommerce Backend API",
+    "description": "Ready-to-import Postman collection for ecommerce-backend_api. Use {{base_url}} (default http://localhost:8000/api). Session login keeps cookies; token login returns Bearer token.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (Session)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "Session login. Run first to store cookie in Postman."
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Token)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/login/token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login",
+                "token"
+              ]
+            },
+            "description": "Token login. Copy response data.token to {{token}}."
+          },
+          "response": []
+        },
+        {
+          "name": "Profile",
+          "request": {
+            "auth": {
+              "type": "inherit"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "profile"
+              ]
+            },
+            "description": "Verify current user, roles, permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": {
+              "type": "inherit"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "USER",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"customer@example.com\",\n  \"phone\": \"+60123456789\",\n  \"password\": \"password\",\n  \"password_confirmation\": \"password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/public/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Register a new customer. Session login automatically after registration."
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Session)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password\",\n  \"session_token\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/public/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Session login. Run first to store cookie in Postman. Optional session_token to merge guest cart."
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Token)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password\",\n  \"session_token\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/public/auth/login/token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "auth",
+                "login",
+                "token"
+              ]
+            },
+            "description": "Token login. Copy response data.token to {{token}} for Bearer auth. Optional session_token to merge guest cart."
+          },
+          "response": []
+        },
+        {
+          "name": "Profile",
+          "request": {
+            "auth": {
+              "type": "inherit"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/auth/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "auth",
+                "profile"
+              ]
+            },
+            "description": "Get current customer profile. Requires authentication (session or token)."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": {
+              "type": "inherit"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Logout current customer. Requires authentication."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "RBAC & Admin",
+      "item": [
+        {
+          "name": "Admins",
+          "item": [
+            {
+              "name": "List Admins",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admins?search=&per_page=15",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admins"
+                  ],
+                  "query": [
+                    {
+                      "key": "search",
+                      "value": ""
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Admin",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"New Admin\",\n  \"email\": \"new@example.com\",\n  \"username\": \"newadmin\",\n  \"password\": \"password\",\n  \"is_active\": true,\n  \"role_ids\": [1]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/admins",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admins"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Admin",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admins/{{admin_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admins",
+                    "{{admin_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Admin",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Admin\",\n  \"email\": \"updated@example.com\",\n  \"username\": \"updatedadmin\",\n  \"is_active\": true,\n  \"role_ids\": [1]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/admins/{{admin_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admins",
+                    "{{admin_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Admin",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admins/{{admin_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admins",
+                    "{{admin_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Roles",
+          "item": [
+            {
+              "name": "List Roles",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/roles?per_page=15",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "roles"
+                  ],
+                  "query": [
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Role",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Manager\",\n  \"description\": \"Admin manager\",\n  \"is_active\": true,\n  \"permission_ids\": [1,2]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/roles",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "roles"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Role",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/roles/{{role_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "roles",
+                    "{{role_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Role",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Manager\",\n  \"description\": \"Updated description\",\n  \"is_active\": true,\n  \"permission_ids\": [1,2,3]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/roles/{{role_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "roles",
+                    "{{role_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Role",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/roles/{{role_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "roles",
+                    "{{role_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Permissions",
+          "item": [
+            {
+              "name": "List Permissions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/permissions?per_page=50&grouped=true",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permissions"
+                  ],
+                  "query": [
+                    {
+                      "key": "per_page",
+                      "value": "50"
+                    },
+                    {
+                      "key": "grouped",
+                      "value": "true"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Permission",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"group_id\": 1,\n  \"name\": \"Users - View\",\n  \"slug\": \"users.view\",\n  \"description\": \"View admins\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/permissions",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permissions"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Permission",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/permissions/{{permission_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permissions",
+                    "{{permission_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Permission",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"group_id\": 1,\n  \"name\": \"Users - View\",\n  \"slug\": \"users.view\",\n  \"description\": \"Updated description\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/permissions/{{permission_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permissions",
+                    "{{permission_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Permission",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/permissions/{{permission_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permissions",
+                    "{{permission_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Permission Groups",
+          "item": [
+            {
+              "name": "List Permission Groups",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/permission-groups",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permission-groups"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Permission Group",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Ecommerce\",\n  \"sort_order\": 10\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/permission-groups",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permission-groups"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Permission Group",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/permission-groups/{{group_id}}?with_permissions=true",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permission-groups",
+                    "{{group_id}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "with_permissions",
+                      "value": "true"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Permission Group",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Ecommerce\",\n  \"sort_order\": 20\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/permission-groups/{{group_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permission-groups",
+                    "{{group_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Permission Group",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/permission-groups/{{group_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permission-groups",
+                    "{{group_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Move Permission Group Up",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/permission-groups/{{group_id}}/move-up",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permission-groups",
+                    "{{group_id}}",
+                    "move-up"
+                  ]
+                },
+                "description": "Move a permission group up in the sort order (swap with previous item)."
+              },
+              "response": []
+            },
+            {
+              "name": "Move Permission Group Down",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/permission-groups/{{group_id}}/move-down",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "permission-groups",
+                    "{{group_id}}",
+                    "move-down"
+                  ]
+                },
+                "description": "Move a permission group down in the sort order (swap with next item)."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Customers",
+          "item": [
+            {
+              "name": "List Customers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/customers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers"
+                  ]
+                },
+                "description": "List customers with available_points, spent_in_window, next_tier and amount_to_next_tier."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Customer",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Customer A\",\n  \"email\": \"customer@example.com\",\n  \"phone\": \"123456789\",\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/customers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Customer",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/customers/{{customer_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "{{customer_id}}"
+                  ]
+                },
+                "description": "Show customer with loyalty_summary (available_points, total_earned, total_redeemed, window, next_tier)."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Customer",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Customer A\",\n  \"email\": \"customer@example.com\",\n  \"phone\": \"987654321\",\n  \"is_active\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/customers/{{customer_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "{{customer_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Customer",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/customers/{{customer_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "{{customer_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ecommerce",
+      "item": [
+        {
+          "name": "Categories",
+          "item": [
+            {
+              "name": "List Categories",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/categories?name=&is_active=1&per_page=15",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "categories"
+                  ],
+                  "query": [
+                    {
+                      "key": "name",
+                      "value": ""
+                    },
+                    {
+                      "key": "is_active",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Category",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"parent_id\": null,\n  \"name\": \"Laptops\",\n  \"slug\": \"laptops\",\n  \"description\": \"Laptop category\",\n  \"meta_title\": \"Laptops\",\n  \"meta_description\": \"Laptop meta\",\n  \"meta_keywords\": \"laptop,computer\",\n  \"meta_og_image\": \"/uploads/seo/laptops.jpg\",\n  \"is_active\": true,\n  \"sort_order\": 10,\n  \"menu_ids\": [1, 3]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/categories",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "categories"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Category",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/categories/{{category_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "categories",
+                    "{{category_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Category",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"parent_id\": null,\n  \"name\": \"Laptops\",\n  \"slug\": \"laptops\",\n  \"description\": \"Updated description\",\n  \"meta_title\": \"Laptops\",\n  \"meta_description\": \"Updated meta\",\n  \"meta_keywords\": \"laptop,computer\",\n  \"meta_og_image\": \"/uploads/seo/laptops.jpg\",\n  \"is_active\": true,\n  \"sort_order\": 5,\n  \"menu_ids\": [1]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/categories/{{category_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "categories",
+                    "{{category_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Category",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/categories/{{category_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "categories",
+                    "{{category_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Products",
+          "item": [
+            {
+              "name": "List Products",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/products?name=&sku=&category_id=&is_active=1&per_page=15",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "products"
+                  ],
+                  "query": [
+                    {
+                      "key": "name",
+                      "value": ""
+                    },
+                    {
+                      "key": "sku",
+                      "value": ""
+                    },
+                    {
+                      "key": "category_id",
+                      "value": ""
+                    },
+                    {
+                      "key": "is_active",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Product",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "iPhone 15",
+                      "type": "text"
+                    },
+                    {
+                      "key": "slug",
+                      "value": "iphone-15",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sku",
+                      "value": "IP15-BLACK",
+                      "type": "text"
+                    },
+                    {
+                      "key": "type",
+                      "value": "single",
+                      "type": "text"
+                    },
+                    {
+                      "key": "description",
+                      "value": "...",
+                      "type": "text"
+                    },
+                    {
+                      "key": "price",
+                      "value": "999.99",
+                      "type": "text"
+                    },
+                    {
+                      "key": "cost_price",
+                      "value": "800",
+                      "type": "text"
+                    },
+                    {
+                      "key": "stock",
+                      "value": "50",
+                      "type": "text"
+                    },
+                    {
+                      "key": "low_stock_threshold",
+                      "value": "5",
+                      "type": "text"
+                    },
+                    {
+                      "key": "is_active",
+                      "value": "true",
+                      "type": "text"
+                    },
+                    {
+                      "key": "is_featured",
+                      "value": "false",
+                      "type": "text"
+                    },
+                    {
+                      "key": "meta_title",
+                      "value": "iPhone 15",
+                      "type": "text"
+                    },
+                    {
+                      "key": "meta_description",
+                      "value": "...",
+                      "type": "text"
+                    },
+                    {
+                      "key": "meta_keywords",
+                      "value": "iphone,phone",
+                      "type": "text"
+                    },
+                    {
+                      "key": "meta_og_image_file",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "category_ids[]",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "category_ids[]",
+                      "value": "2",
+                      "type": "text"
+                    },
+                    {
+                      "key": "images[]",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "images[]",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "main_image_index",
+                      "value": "0",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "products"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Product",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "products",
+                    "{{product_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Product",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "iPhone 15 Pro",
+                      "type": "text"
+                    },
+                    {
+                      "key": "slug",
+                      "value": "iphone-15-pro",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sku",
+                      "value": "IP15PRO-BLACK",
+                      "type": "text"
+                    },
+                    {
+                      "key": "type",
+                      "value": "single",
+                      "type": "text"
+                    },
+                    {
+                      "key": "description",
+                      "value": "Updated description",
+                      "type": "text"
+                    },
+                    {
+                      "key": "price",
+                      "value": "1099.99",
+                      "type": "text"
+                    },
+                    {
+                      "key": "cost_price",
+                      "value": "850",
+                      "type": "text"
+                    },
+                    {
+                      "key": "stock",
+                      "value": "60",
+                      "type": "text"
+                    },
+                    {
+                      "key": "low_stock_threshold",
+                      "value": "5",
+                      "type": "text"
+                    },
+                    {
+                      "key": "is_active",
+                      "value": "true",
+                      "type": "text"
+                    },
+                    {
+                      "key": "is_featured",
+                      "value": "true",
+                      "type": "text"
+                    },
+                    {
+                      "key": "meta_title",
+                      "value": "iPhone 15 Pro",
+                      "type": "text"
+                    },
+                    {
+                      "key": "meta_description",
+                      "value": "...",
+                      "type": "text"
+                    },
+                    {
+                      "key": "meta_keywords",
+                      "value": "iphone,phone",
+                      "type": "text"
+                    },
+                    {
+                      "key": "meta_og_image_file",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "category_ids[]",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "category_ids[]",
+                      "value": "2",
+                      "type": "text"
+                    },
+                    {
+                      "key": "images[]",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "delete_image_ids[]",
+                      "value": "3",
+                      "type": "text"
+                    },
+                    {
+                      "key": "main_image_index",
+                      "value": "0",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "products",
+                    "{{product_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Product",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "products",
+                    "{{product_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Shop Menu Items",
+          "item": [
+            {
+              "name": "List Shop Menu Items",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/shop-menu-items?is_active=1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "shop-menu-items"
+                  ],
+                  "query": [
+                    {
+                      "key": "is_active",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Shop Menu Item",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Main Category\",\n  \"slug\": \"main-category\",\n  \"sort_order\": 1,\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/shop-menu-items",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "shop-menu-items"
+                  ]
+                },
+                "description": "Create a menu item; response includes its categories list."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Shop Menu Item",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Main Category\",\n  \"slug\": \"main-category\",\n  \"sort_order\": 1,\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/shop-menu-items/{{shop_menu_item_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "shop-menu-items",
+                    "{{shop_menu_item_id}}"
+                  ]
+                },
+                "description": "Update a menu item; response includes its categories list."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Shop Menu Item",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/shop-menu-items/{{shop_menu_item_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "shop-menu-items",
+                    "{{shop_menu_item_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Store Locations",
+          "item": [
+            {
+              "name": "List Store Locations",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/store-locations?is_active=1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "store-locations"
+                  ],
+                  "query": [
+                    {
+                      "key": "is_active",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Store Location",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Flagship Store\",\n  \"code\": \"FLAG\",\n  \"address_line1\": \"123 Main St\",\n  \"address_line2\": \"Suite 1\",\n  \"city\": \"NYC\",\n  \"state\": \"NY\",\n  \"postcode\": \"10001\",\n  \"country\": \"USA\",\n  \"phone\": \"+1-555-0000\",\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/store-locations",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "store-locations"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Store Location",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/store-locations/{{store_location_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "store-locations",
+                    "{{store_location_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Store Location",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Flagship Store\",\n  \"code\": \"FLAG\",\n  \"address_line1\": \"123 Main St\",\n  \"address_line2\": \"Suite 2\",\n  \"city\": \"NYC\",\n  \"state\": \"NY\",\n  \"postcode\": \"10001\",\n  \"country\": \"USA\",\n  \"phone\": \"+1-555-1111\",\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/store-locations/{{store_location_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "store-locations",
+                    "{{store_location_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Store Location",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/store-locations/{{store_location_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "store-locations",
+                    "{{store_location_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "SEO Global",
+          "item": [
+            {
+              "name": "Show SEO Global",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/seo-global",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "seo-global"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update SEO Global",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"default_title\": \"MyShop \u5b98\u65b9\u5546\u57ce\",\n  \"default_description\": \"\u9ed8\u8ba4\u7ad9\u70b9\u63cf\u8ff0...\",\n  \"default_keywords\": \"myshop, shop, ecommerce\",\n  \"default_og_image\": \"/uploads/seo/default-og.jpg\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/seo-global",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "seo-global"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Shop Settings",
+          "item": [
+            {
+              "name": "List Shop Settings",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/shop-settings",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "shop-settings"
+                  ]
+                },
+                "description": "Get all shop settings (shop_contact_widget, homepage_products, etc.)"
+              },
+              "response": []
+            },
+            {
+              "name": "Show Shop Setting",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/shop-settings/shop_contact_widget",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "shop-settings",
+                    "shop_contact_widget"
+                  ]
+                },
+                "description": "Get a specific shop setting by key. Supported keys: shop_contact_widget, homepage_products"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Shop Contact Widget",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"whatsapp\": {\n    \"enabled\": true,\n    \"phone\": \"+60123456789\",\n    \"default_message\": \"Hi, I would like to ask about your products.\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/shop-settings/shop_contact_widget",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "shop-settings",
+                    "shop_contact_widget"
+                  ]
+                },
+                "description": "Update shop contact widget settings (WhatsApp configuration)"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Homepage Products",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"new_products_days\": 30,\n  \"best_sellers_days\": 60\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/shop-settings/homepage_products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "shop-settings",
+                    "homepage_products"
+                  ]
+                },
+                "description": "Update homepage products settings (new products days, best sellers days)"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Loyalty Settings",
+          "item": [
+            {
+              "name": "List Loyalty Settings",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty-settings",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty-settings"
+                  ]
+                },
+                "description": "Get current (active) and history records for loyalty settings."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Loyalty Setting",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"base_multiplier\": 1.0,\n  \"expiry_months\": 12,\n  \"evaluation_cycle_months\": 6,\n  \"rules_effective_at\": \"2025-01-01\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty-settings",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty-settings"
+                  ]
+                },
+                "description": "Create new loyalty settings record."
+              },
+              "response": []
+            },
+            {
+              "name": "Show Loyalty Setting",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty-settings/1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty-settings",
+                    "1"
+                  ]
+                },
+                "description": "Fetch a single loyalty setting by id."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Loyalty Setting",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"base_multiplier\": 1.5,\n  \"expiry_months\": 18,\n  \"evaluation_cycle_months\": 6,\n  \"rules_effective_at\": \"2025-02-01\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty-settings/1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty-settings",
+                    "1"
+                  ]
+                },
+                "description": "Update an existing loyalty setting."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Loyalty Setting",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty-settings/1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty-settings",
+                    "1"
+                  ]
+                },
+                "description": "Delete a loyalty setting (soft delete or hard delete depending on backend)."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Membership Tiers",
+          "item": [
+            {
+              "name": "List Membership Tiers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/membership-tiers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "membership-tiers"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Membership Tier",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"tier\": \"gold\",\n  \"display_name\": \"Gold Member\",\n  \"description\": \"Gold tier membership\",\n  \"badge_image_path\": null,\n  \"min_spent_last_x_months\": 1200,\n  \"months_window\": 6,\n  \"multiplier\": 1.5,\n  \"product_discount_percent\": 5,\n  \"is_active\": true,\n  \"sort_order\": 0\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/membership-tiers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "membership-tiers"
+                  ]
+                },
+                "description": "Create a new membership tier rule."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Membership Tier",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"min_spent_last_x_months\": 1200,\n  \"months_window\": 6,\n  \"multiplier\": 1.5,\n  \"product_discount_percent\": 5,\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/membership-tiers/{{tier}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "membership-tiers",
+                    "{{tier}}"
+                  ]
+                },
+                "description": "Update or create membership tier rule including product_discount_percent."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Membership Tier",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/membership-tiers/{{tier}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "membership-tiers",
+                    "{{tier}}"
+                  ]
+                },
+                "description": "Delete a membership tier rule."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Loyalty",
+          "item": [
+            {
+              "name": "Customer Loyalty Summary",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/customers/{{customer_id}}/loyalty-summary",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "customers",
+                    "{{customer_id}}",
+                    "loyalty-summary"
+                  ]
+                },
+                "description": "Summary of loyalty points, expiring batches and tier info for a customer."
+              },
+              "response": []
+            },
+            {
+              "name": "Customer Loyalty History",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/customers/{{customer_id}}/loyalty-history?type=redeem&per_page=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "customers",
+                    "{{customer_id}}",
+                    "loyalty-history"
+                  ],
+                  "query": [
+                    {
+                      "key": "type",
+                      "value": "redeem"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Paginated points transactions for the customer."
+              },
+              "response": []
+            },
+            {
+              "name": "List Loyalty Rewards",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty/rewards?is_active=1&type=voucher",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty",
+                    "rewards"
+                  ],
+                  "query": [
+                    {
+                      "key": "is_active",
+                      "value": "1"
+                    },
+                    {
+                      "key": "type",
+                      "value": "voucher"
+                    }
+                  ]
+                },
+                "description": "List loyalty rewards with optional filters."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Loyalty Reward",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"RM10 Discount Voucher\",\n  \"description\": \"Redeemable in store\",\n  \"type\": \"voucher\",\n  \"points_required\": 500,\n  \"voucher_id\": 1,\n  \"is_active\": true,\n  \"sort_order\": 10\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty/rewards",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty",
+                    "rewards"
+                  ]
+                },
+                "description": "Create a new loyalty reward."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Loyalty Reward",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Free Gift\",\n  \"type\": \"custom\",\n  \"points_required\": 300,\n  \"description\": \"Pick up in store\",\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty/rewards/{{reward_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty",
+                    "rewards",
+                    "{{reward_id}}"
+                  ]
+                },
+                "description": "Update an existing loyalty reward."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Loyalty Reward",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty/rewards/{{reward_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty",
+                    "rewards",
+                    "{{reward_id}}"
+                  ]
+                },
+                "description": "Delete a loyalty reward."
+              },
+              "response": []
+            },
+            {
+              "name": "List Loyalty Redemptions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty/redemptions?status=pending",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty",
+                    "redemptions"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "pending"
+                    }
+                  ]
+                },
+                "description": "List redemption records with filters."
+              },
+              "response": []
+            },
+            {
+              "name": "Show Loyalty Redemption",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty/redemptions/{{redemption_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty",
+                    "redemptions",
+                    "{{redemption_id}}"
+                  ]
+                },
+                "description": "Fetch redemption detail including meta."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Redemption Status",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"completed\",\n  \"admin_note\": \"Issued voucher at counter\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/loyalty/redemptions/{{redemption_id}}/status",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "loyalty",
+                    "redemptions",
+                    "{{redemption_id}}",
+                    "status"
+                  ]
+                },
+                "description": "Mark redemption as completed or cancelled."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Notification Templates",
+          "item": [
+            {
+              "name": "List Notification Templates",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/notification-templates",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "notification-templates"
+                  ]
+                },
+                "description": "List all notification templates."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Notification Template",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"key\": \"order_paid_email\",\n  \"channel\": \"email\",\n  \"name\": \"Order Paid Email\",\n  \"subject_template\": \"Order {{order_number}} paid\",\n  \"body_template\": \"Thanks for your order {{customer_name}}\",\n  \"variables\": {\n    \"order_number\": \"string\",\n    \"customer_name\": \"string\"\n  },\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/notification-templates",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "notification-templates"
+                  ]
+                },
+                "description": "Create a new notification template."
+              },
+              "response": []
+            },
+            {
+              "name": "Show Notification Template",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/notification-templates/1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "notification-templates",
+                    "1"
+                  ]
+                },
+                "description": "Fetch notification template by id."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Notification Template",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subject_template\": \"Low stock alert\",\n  \"body_template\": \"Stock for {{product_name}} is low.\",\n  \"variables\": {\n    \"product_name\": \"string\"\n  },\n  \"is_active\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/notification-templates/1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "notification-templates",
+                    "1"
+                  ]
+                },
+                "description": "Update an existing notification template."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Notification Template",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/notification-templates/1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "notification-templates",
+                    "1"
+                  ]
+                },
+                "description": "Delete a notification template."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Announcements",
+          "item": [
+            {
+              "name": "List Announcements",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/announcements?key=&is_active=&current_only=&page=1&per_page=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "announcements"
+                  ],
+                  "query": [
+                    {
+                      "key": "key",
+                      "value": ""
+                    },
+                    {
+                      "key": "is_active",
+                      "value": ""
+                    },
+                    {
+                      "key": "current_only",
+                      "value": ""
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "List announcements with optional filters."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Announcement",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "key",
+                      "value": "welcome_banner",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Welcome to Our Store",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subtitle",
+                      "value": "Special Offer Today",
+                      "type": "text"
+                    },
+                    {
+                      "key": "body_text",
+                      "value": "Get 20% off on all products!",
+                      "type": "text"
+                    },
+                    {
+                      "key": "image_file",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "button_label",
+                      "value": "Shop Now",
+                      "type": "text"
+                    },
+                    {
+                      "key": "button_link",
+                      "value": "/shop",
+                      "type": "text"
+                    },
+                    {
+                      "key": "is_active",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "start_at",
+                      "value": "2025-01-01",
+                      "type": "text"
+                    },
+                    {
+                      "key": "end_at",
+                      "value": "2025-12-31",
+                      "type": "text"
+                    },
+                    {
+                      "key": "show_once_per_session",
+                      "value": "0",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/announcements",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "announcements"
+                  ]
+                },
+                "description": "Create a new announcement. Upload image using image_file field. sort_order is automatically set to the next available value. You can also use image_path to provide a direct path instead of uploading."
+              },
+              "response": []
+            },
+            {
+              "name": "Show Announcement",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/announcements/{{announcement_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "announcements",
+                    "{{announcement_id}}"
+                  ]
+                },
+                "description": "Fetch announcement by id."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Announcement",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "title",
+                      "value": "Updated Welcome Banner",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subtitle",
+                      "value": "New Special Offer",
+                      "type": "text"
+                    },
+                    {
+                      "key": "body_text",
+                      "value": "Get 30% off on all products!",
+                      "type": "text"
+                    },
+                    {
+                      "key": "image_file",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "button_label",
+                      "value": "Shop Now",
+                      "type": "text"
+                    },
+                    {
+                      "key": "button_link",
+                      "value": "/shop",
+                      "type": "text"
+                    },
+                    {
+                      "key": "is_active",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "start_at",
+                      "value": "2025-01-01",
+                      "type": "text"
+                    },
+                    {
+                      "key": "end_at",
+                      "value": "2025-12-31",
+                      "type": "text"
+                    },
+                    {
+                      "key": "show_once_per_session",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_order",
+                      "value": "5",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/announcements/{{announcement_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "announcements",
+                    "{{announcement_id}}"
+                  ]
+                },
+                "description": "Update an existing announcement. Upload new image using image_file field, or use image_path to provide a direct path. Old uploaded image will be deleted if a new one is uploaded."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Announcement",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/announcements/{{announcement_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "announcements",
+                    "{{announcement_id}}"
+                  ]
+                },
+                "description": "Delete an announcement."
+              },
+              "response": []
+            },
+            {
+              "name": "Move Announcement Up",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/announcements/{{announcement_id}}/move-up",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "announcements",
+                    "{{announcement_id}}",
+                    "move-up"
+                  ]
+                },
+                "description": "Move an announcement up in the sort order (swap with previous item)."
+              },
+              "response": []
+            },
+            {
+              "name": "Move Announcement Down",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/announcements/{{announcement_id}}/move-down",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "announcements",
+                    "{{announcement_id}}",
+                    "move-down"
+                  ]
+                },
+                "description": "Move an announcement down in the sort order (swap with next item)."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Marquees",
+          "item": [
+            {
+              "name": "List Marquees",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/marquees?is_active=&current_only=&page=1&per_page=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "marquees"
+                  ],
+                  "query": [
+                    {
+                      "key": "is_active",
+                      "value": ""
+                    },
+                    {
+                      "key": "current_only",
+                      "value": ""
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "List marquees with optional filters."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Marquee",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"text\": \"Special promotion! Get 20% off on all products today!\",\n  \"start_at\": \"2025-01-01\",\n  \"end_at\": \"2025-12-31\",\n  \"is_active\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/marquees",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "marquees"
+                  ]
+                },
+                "description": "Create a new marquee. sort_order is automatically set to the next available value."
+              },
+              "response": []
+            },
+            {
+              "name": "Show Marquee",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/marquees/{{marquee_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "marquees",
+                    "{{marquee_id}}"
+                  ]
+                },
+                "description": "Fetch marquee by id."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Marquee",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"text\": \"Updated marquee text - Limited time offer!\",\n  \"start_at\": \"2025-01-01\",\n  \"end_at\": \"2025-12-31\",\n  \"is_active\": 1,\n  \"sort_order\": 5\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/marquees/{{marquee_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "marquees",
+                    "{{marquee_id}}"
+                  ]
+                },
+                "description": "Update an existing marquee."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Marquee",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/marquees/{{marquee_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "marquees",
+                    "{{marquee_id}}"
+                  ]
+                },
+                "description": "Delete a marquee."
+              },
+              "response": []
+            },
+            {
+              "name": "Move Marquee Up",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/marquees/{{marquee_id}}/move-up",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "marquees",
+                    "{{marquee_id}}",
+                    "move-up"
+                  ]
+                },
+                "description": "Move a marquee up in the sort order (swap with previous item)."
+              },
+              "response": []
+            },
+            {
+              "name": "Move Marquee Down",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/marquees/{{marquee_id}}/move-down",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "marquees",
+                    "{{marquee_id}}",
+                    "move-down"
+                  ]
+                },
+                "description": "Move a marquee down in the sort order (swap with next item)."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Home Sliders",
+          "item": [
+            {
+              "name": "List Home Sliders",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/home-sliders?is_active=&page=1&per_page=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "home-sliders"
+                  ],
+                  "query": [
+                    {
+                      "key": "is_active",
+                      "value": ""
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "List home sliders with optional filters."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Home Slider",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "title",
+                      "value": "Welcome to Our Store",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subtitle",
+                      "value": "Special Offer Today",
+                      "type": "text"
+                    },
+                    {
+                      "key": "image_file",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "mobile_image_file",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "button_label",
+                      "value": "Shop Now",
+                      "type": "text"
+                    },
+                    {
+                      "key": "button_link",
+                      "value": "/shop",
+                      "type": "text"
+                    },
+                    {
+                      "key": "start_at",
+                      "value": "2025-01-01",
+                      "type": "text"
+                    },
+                    {
+                      "key": "end_at",
+                      "value": "2025-12-31",
+                      "type": "text"
+                    },
+                    {
+                      "key": "is_active",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/home-sliders",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "home-sliders"
+                  ]
+                },
+                "description": "Create a new home slider. Upload image_file (required) and mobile_image_file (optional). sort_order is automatically set to the next available value. You can also use image_path and mobile_image_path instead of file uploads."
+              },
+              "response": []
+            },
+            {
+              "name": "Show Home Slider",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/home-sliders/{{slider_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "home-sliders",
+                    "{{slider_id}}"
+                  ]
+                },
+                "description": "Fetch home slider by id."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Home Slider",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "title",
+                      "value": "Updated Welcome Banner",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subtitle",
+                      "value": "New Special Offer",
+                      "type": "text"
+                    },
+                    {
+                      "key": "image_file",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "mobile_image_file",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "button_label",
+                      "value": "Shop Now",
+                      "type": "text"
+                    },
+                    {
+                      "key": "button_link",
+                      "value": "/shop",
+                      "type": "text"
+                    },
+                    {
+                      "key": "start_at",
+                      "value": "2025-01-01",
+                      "type": "text"
+                    },
+                    {
+                      "key": "end_at",
+                      "value": "2025-12-31",
+                      "type": "text"
+                    },
+                    {
+                      "key": "is_active",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_order",
+                      "value": "2",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/home-sliders/{{slider_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "home-sliders",
+                    "{{slider_id}}"
+                  ]
+                },
+                "description": "Update an existing home slider. Upload image_file and/or mobile_image_file to replace existing images. Old uploaded images will be automatically deleted. You can also use image_path and mobile_image_path instead of file uploads."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Home Slider",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/home-sliders/{{slider_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "home-sliders",
+                    "{{slider_id}}"
+                  ]
+                },
+                "description": "Delete a home slider."
+              },
+              "response": []
+            },
+            {
+              "name": "Move Home Slider Up",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/home-sliders/{{slider_id}}/move-up",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "home-sliders",
+                    "{{slider_id}}",
+                    "move-up"
+                  ]
+                },
+                "description": "Move a home slider up in the sort order (swap with previous item)."
+              },
+              "response": []
+            },
+            {
+              "name": "Move Home Slider Down",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/home-sliders/{{slider_id}}/move-down",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "home-sliders",
+                    "{{slider_id}}",
+                    "move-down"
+                  ]
+                },
+                "description": "Move a home slider down in the sort order (swap with next item)."
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public Shop",
+      "item": [
+        {
+          "name": "Menu",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/menu",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "menu"
+              ]
+            },
+            "description": "List active menu items with their active categories (ordered by pivot sort_order)."
+          },
+          "response": []
+        },
+        {
+          "name": "Categories",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/categories?menu_id=&menu_slug=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "categories"
+              ],
+              "query": [
+                {
+                  "key": "menu_id",
+                  "value": ""
+                },
+                {
+                  "key": "menu_slug",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "List active categories; filter by menu_id or menu_slug; response includes menu_ids array."
+          },
+          "response": []
+        },
+        {
+          "name": "Products",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/products?page=1&per_page=15&category_id=&keyword=&is_featured=&menu_id=&menu_slug=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "category_id",
+                  "value": ""
+                },
+                {
+                  "key": "keyword",
+                  "value": ""
+                },
+                {
+                  "key": "is_featured",
+                  "value": ""
+                },
+                {
+                  "key": "menu_id",
+                  "value": ""
+                },
+                {
+                  "key": "menu_slug",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Show Product By Slug",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/products/{{product_slug}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "products",
+                "{{product_slug}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Menu Detail by Slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/menu/laptops",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "menu",
+                "laptops"
+              ]
+            },
+            "description": "Get a single menu item with its categories."
+          },
+          "response": []
+        },
+        {
+          "name": "Announcements",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/announcements?key=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "announcements"
+              ],
+              "query": [
+                {
+                  "key": "key",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "List active and current announcements. Optionally filter by key."
+          },
+          "response": []
+        },
+        {
+          "name": "Show Announcement by Key",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/announcements/{{announcement_key}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "announcements",
+                "{{announcement_key}}"
+              ]
+            },
+            "description": "Get a single active and current announcement by key."
+          },
+          "response": []
+        },
+        {
+          "name": "Sliders",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/sliders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "sliders"
+              ]
+            },
+            "description": "Get active home sliders for public display."
+          },
+          "response": []
+        },
+        {
+          "name": "Homepage",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/homepage",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "homepage"
+              ]
+            },
+            "description": "Get homepage data including sliders, promotions, marquees, announcements, shop menu, and SEO settings."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ecommerce Phase 2",
+      "item": [
+        {
+          "name": "Checkout Preview",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/public/shop/checkout/preview",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "checkout",
+                "preview"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 1\n    }\n  ],\n  \"voucher_code\": \"WELCOME10\",\n  \"shipping_method\": \"pickup\",\n  \"store_location_id\": 1,\n  \"shipping_postcode\": \"11000\",\n  \"session_token\": \"c3f15e5a-...\",\n  \"customer\": {\n    \"name\": \"John Doe\",\n    \"email\": \"john@example.com\",\n    \"phone\": \"0123456789\"\n  },\n  \"billing_address\": \"123 Main Street, City\",\n  \"shipping_address\": \"456 Shipping Street, City\",\n  \"shipping_name\": \"Jane Doe\",\n  \"shipping_phone\": \"0123456789\",\n  \"shipping_address_line1\": \"456 Shipping Street\",\n  \"shipping_address_line2\": \"Apt 101\",\n  \"shipping_city\": \"Kuala Lumpur\",\n  \"shipping_state\": \"Wilayah Persekutuan\",\n  \"shipping_country\": \"Malaysia\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Preview checkout calculation including subtotal, discount, shipping fee, and grand total. Returns voucher validation result if voucher_code is provided."
+          }
+        },
+        {
+          "name": "Create Order",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"items\": [\n    { \"product_id\": 1, \"quantity\": 1 }\n  ],\n  \"voucher_code\": \"WELCOME10\",\n  \"shipping_method\": \"pickup\", \n  \"store_location_id\": 1,\n  \"shipping_postcode\": \"11000\",\n  \"shipping_name\": \"John Doe\",\n  \"shipping_phone\": \"123456789\",\n  \"shipping_address_line1\": \"...\",\n  \"shipping_city\": \"Penang\",\n  \"shipping_state\": \"Penang\",\n  \"shipping_country\": \"Malaysia\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Upload Payment Slip",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/orders/1/upload-slip",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "orders",
+                "1",
+                "upload-slip"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file_url\": \"https://example.com/payment-slip.jpg\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Cart - Get",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/cart?session_token=c3f15e5a-...&customer_id=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "cart"
+              ],
+              "query": [
+                {
+                  "key": "session_token",
+                  "value": "c3f15e5a-..."
+                },
+                {
+                  "key": "customer_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cart - Add/Update Item",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/cart/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "cart",
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_token\": \"c3f15e5a-...\",\n  \"customer_id\": 1,\n  \"product_id\": 1,\n  \"quantity\": 2\n}"
+            }
+          }
+        },
+        {
+          "name": "Cart - Remove Item",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/cart/items/{{cart_item_id}}?session_token=c3f15e5a-...",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "cart",
+                "items",
+                "{{cart_item_id}}"
+              ],
+              "query": [
+                {
+                  "key": "session_token",
+                  "value": "c3f15e5a-..."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Wishlist - List",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/wishlist?customer_id=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "wishlist"
+              ],
+              "query": [
+                {
+                  "key": "customer_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Wishlist - Toggle",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/wishlist/toggle",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "wishlist",
+                "toggle"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"product_id\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Cart Merge (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/cart/merge",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "cart",
+                "merge"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"session_token\": \"c3f15e5a-...\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Confirm Payment (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/orders/{{order_id}}/confirm-payment",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "orders",
+                "{{order_id}}",
+                "confirm-payment"
+              ]
+            }
+          }
+        },
+        {
+          "name": "VOUCHER",
+          "item": [
+            {
+              "name": "List Vouchers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/vouchers?code=&type=&is_active=&per_page=15",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "vouchers"
+                  ],
+                  "query": [
+                    {
+                      "key": "code",
+                      "value": ""
+                    },
+                    {
+                      "key": "type",
+                      "value": ""
+                    },
+                    {
+                      "key": "is_active",
+                      "value": ""
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Voucher",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"WELCOME10\",\n  \"type\": \"percent\",\n  \"amount\": 10,\n  \"min_order_amount\": 100,\n  \"max_uses\": 100,\n  \"max_uses_per_customer\": 1,\n  \"start_at\": \"2025-01-01\",\n  \"end_at\": \"2025-12-31\",\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/vouchers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "vouchers"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Voucher",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/vouchers/{{voucher_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "vouchers",
+                    "{{voucher_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Voucher",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"WELCOME15\",\n  \"type\": \"percent\",\n  \"amount\": 15,\n  \"min_order_amount\": 150,\n  \"max_uses\": 200,\n  \"max_uses_per_customer\": 2,\n  \"start_at\": \"2025-01-01\",\n  \"end_at\": \"2025-12-31\",\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/vouchers/{{voucher_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "vouchers",
+                    "{{voucher_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Voucher",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/vouchers/{{voucher_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "vouchers",
+                    "{{voucher_id}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public / Loyalty",
+      "item": [
+        {
+          "name": "Loyalty Summary",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/loyalty/summary?customer_id=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "loyalty",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "customer_id",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Loyalty History",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/loyalty/history?customer_id=1&type=redeem&page=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "loyalty",
+                "history"
+              ],
+              "query": [
+                { "key": "customer_id", "value": "1" },
+                { "key": "type", "value": "redeem" },
+                { "key": "page", "value": "1" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Loyalty Rewards (Public)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/loyalty/rewards?type=voucher",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "loyalty",
+                "rewards"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "voucher"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Redeem Loyalty Reward",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"reward_id\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/public/shop/loyalty/redeem",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "loyalty",
+                "redeem"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Public / Returns",
+      "item": [
+        {
+          "name": "Create Return Request",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"request_type\": \"return\",\n  \"reason\": \"wrong_item\",\n  \"description\": \"I received the wrong color.\",\n  \"item_ids\": [\n    { \"order_item_id\": 10, \"quantity\": 1 }\n  ],\n  \"image_urls\": [\n    \"https://cdn.example.com/uploads/returns/img1.jpg\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/public/shop/orders/{{order_id}}/returns",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "orders",
+                "{{order_id}}",
+                "returns"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Return Requests",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/returns?customer_id=1&status=&order_id=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "returns"
+              ],
+              "query": [
+                { "key": "customer_id", "value": "1" },
+                { "key": "status", "value": "" },
+                { "key": "order_id", "value": "" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Show Return Request",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/public/shop/returns/{{return_request_id}}?customer_id=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "returns",
+                "{{return_request_id}}"
+              ],
+              "query": [
+                { "key": "customer_id", "value": "1" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Tracking",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"courier_name\": \"J&T\",\n  \"tracking_no\": \"JT123456789MY\",\n  \"shipped_at\": \"2025-12-01T10:00:00\",\n  \"image_urls\": [\n    \"https://cdn.example.com/uploads/returns/shipping_label.jpg\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/public/shop/returns/{{return_request_id}}/tracking",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "shop",
+                "returns",
+                "{{return_request_id}}",
+                "tracking"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ecommerce / Returns",
+      "item": [
+        {
+          "name": "List Returns (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/returns?status=&order_no=&customer_name=&customer_email=&date_from=&date_to=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "returns"
+              ],
+              "query": [
+                { "key": "status", "value": "" },
+                { "key": "order_no", "value": "" },
+                { "key": "customer_name", "value": "" },
+                { "key": "customer_email", "value": "" },
+                { "key": "date_from", "value": "" },
+                { "key": "date_to", "value": "" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Show Return (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/returns/{{return_request_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "returns",
+                "{{return_request_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Return Status (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\",\n  \"admin_note\": \"OK to return.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/ecommerce/returns/{{return_request_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "returns",
+                "{{return_request_id}}",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Sales Overview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/reports/sales/overview",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "reports",
+                "sales",
+                "overview"
+              ]
+            },
+            "description": "Get sales overview report. Requires permission: ecommerce.reports.sales.view"
+          },
+          "response": []
+        },
+        {
+          "name": "Sales Daily",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/reports/sales/daily?date_from=&date_to=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "reports",
+                "sales",
+                "daily"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": ""
+                },
+                {
+                  "key": "date_to",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Get daily sales report. Requires permission: ecommerce.reports.sales.view"
+          },
+          "response": []
+        },
+        {
+          "name": "Sales By Category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/reports/sales/by-category?date_from=&date_to=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "reports",
+                "sales",
+                "by-category"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": ""
+                },
+                {
+                  "key": "date_to",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Get sales report grouped by category. Requires permission: ecommerce.reports.sales.view"
+          },
+          "response": []
+        },
+        {
+          "name": "Top Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/reports/sales/top-products?date_from=&date_to=&limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "reports",
+                "sales",
+                "top-products"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": ""
+                },
+                {
+                  "key": "date_to",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get top selling products report. Requires permission: ecommerce.reports.sales.view"
+          },
+          "response": []
+        },
+        {
+          "name": "Top Customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ecommerce/reports/sales/top-customers?date_from=&date_to=&limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ecommerce",
+                "reports",
+                "sales",
+                "top-customers"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": ""
+                },
+                {
+                  "key": "date_to",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get top customers report. Requires permission: ecommerce.reports.sales.view"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

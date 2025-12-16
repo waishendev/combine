@@ -1,0 +1,103 @@
+{
+  "info": {
+    "_postman_id": "0c1fa050-7d7a-4a9f-b2e9-1b3d3fae7b8c",
+    "name": "Ecommerce Update Image Uploads",
+    "description": "Update announcements, products, and home sliders with multipart uploads (uses POST + _method=PUT for reliable file parsing in Laravel).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Update Announcement",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "_method", "value": "PUT", "type": "text" },
+            { "key": "title", "value": "Updated title", "type": "text" },
+            { "key": "subtitle", "value": "Updated subtitle", "type": "text" },
+            { "key": "body_text", "value": "Optional body text", "type": "text" },
+            { "key": "image_file", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/announcements/{{announcement_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "announcements", "{{announcement_id}}"]
+        }
+      }
+    },
+    {
+      "name": "Update Product",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "_method", "value": "PUT", "type": "text" },
+            { "key": "name", "value": "Updated product name", "type": "text" },
+            { "key": "price", "value": "199", "type": "text" },
+            { "key": "is_active", "value": "1", "type": "text" },
+            { "key": "meta_og_image_file", "type": "file", "src": "" },
+            { "key": "images[]", "type": "file", "src": "" },
+            { "key": "main_image_index", "value": "0", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/products/{{product_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "products", "{{product_id}}"]
+        }
+      }
+    },
+    {
+      "name": "Update Home Slider",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "_method", "value": "PUT", "type": "text" },
+            { "key": "title", "value": "Updated slider title", "type": "text" },
+            { "key": "subtitle", "value": "Optional subtitle", "type": "text" },
+            { "key": "image_file", "type": "file", "src": "" },
+            { "key": "mobile_image_file", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/home-sliders/{{slider_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "home-sliders", "{{slider_id}}"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost" },
+    { "key": "token", "value": "" },
+    { "key": "announcement_id", "value": "1" },
+    { "key": "product_id", "value": "1" },
+    { "key": "slider_id", "value": "1" }
+  ]
+}

@@ -1,0 +1,390 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Announcement;
+use App\Models\Ecommerce\Category;
+use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\SeoGlobal;
+use App\Models\Ecommerce\ShopMenuItem;
+use App\Models\HomeSlider;
+use App\Models\Marquee;
+use App\Models\Promotion;
+use App\Services\SettingService;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+
+class PublicShopController extends Controller
+{
+    public function menu()
+    {
+        $items = ShopMenuItem::where('is_active', true)
+            ->with(['categories' => function ($query) {
+                $query->where('is_active', true)
+                    ->orderBy('category_shop_menu_items.sort_order')
+                    ->orderBy('name');
+            }])
+            ->orderBy('sort_order')
+            ->get();
+
+        return $this->respond($items);
+    }
+
+    public function menuDetail(string $slug)
+    {
+        $item = ShopMenuItem::with(['categories' => function ($query) {
+            $query->where('is_active', true)
+                ->orderBy('category_shop_menu_items.sort_order')
+                ->orderBy('name');
+        }])
+            ->where('slug', $slug)
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        return $this->respond($item);
+    }
+
+    public function categories(Request $request)
+    {
+        $query = Category::query()
+            ->where('is_active', true);
+
+        if ($menuId = $request->query('menu_id')) {
+            $query->whereHas('shopMenus', function ($q) use ($menuId) {
+                $q->where('shop_menu_items.id', $menuId);
+            });
+        }
+
+        if ($menuSlug = $request->query('menu_slug')) {
+            $query->whereHas('shopMenus', function ($q) use ($menuSlug) {
+                $q->where('slug', $menuSlug)
+                    ->where('is_active', true);
+            });
+        }
+
+        $categories = $query
+            ->with('shopMenus')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        $categories = $categories->map(function (Category $category) {
+            return [
+                'id' => $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+                'parent_id' => $category->parent_id,
+                'sort_order' => $category->sort_order,
+                'menu_ids' => $category->shopMenus->pluck('id')->all(),
+            ];
+        });
+
+        $groupedByParent = $categories->groupBy('parent_id');
+
+        $buildTree = function ($parentId) use (&$buildTree, $groupedByParent) {
+            return $groupedByParent->get($parentId, collect())->map(function ($category) use (&$buildTree) {
+                return array_merge($category, [
+                    'children' => $buildTree($category['id']),
+                ]);
+            })->values();
+        };
+
+        $tree = $buildTree(null);
+
+        return $this->respond($tree);
+    }
+
+    public function products(Request $request)
+    {
+        $productsQuery = Product::with(['categories', 'images'])
+            ->where('is_active', true)
+            ->when($request->filled('category_id'), function ($query) use ($request) {
+                $query->whereHas('categories', function ($q) use ($request) {
+                    $q->where('categories.id', $request->integer('category_id'));
+                });
+            })
+            ->when($request->filled('category_slug'), function ($query) use ($request) {
+                $query->whereHas('categories', function ($q) use ($request) {
+                    $q->where('categories.slug', $request->get('category_slug'));
+                });
+            })
+            ->when($request->filled('keyword') || $request->filled('q'), function ($query) use ($request) {
+                $keyword = $request->get('keyword') ?? $request->get('q');
+                $query->where(function ($q) use ($keyword) {
+                    $q->where('name', 'like', "%{$keyword}%")
+                        ->orWhere('sku', 'like', "%{$keyword}%");
+                });
+            })
+            ->when($request->filled('min_price'), function ($query) use ($request) {
+                $query->where('price', '>=', $request->get('min_price'));
+            })
+            ->when($request->filled('max_price'), function ($query) use ($request) {
+                $query->where('price', '<=', $request->get('max_price'));
+            });
+
+        if ($menuId = $request->query('menu_id')) {
+            $productsQuery->whereHas('categories.shopMenus', function ($query) use ($menuId) {
+                $query->where('shop_menu_items.id', $menuId);
+            });
+        }
+
+        if ($menuSlug = $request->query('menu_slug')) {
+            $productsQuery->whereHas('categories.shopMenus', function ($query) use ($menuSlug) {
+                $query->where('slug', $menuSlug)
+                    ->where('is_active', true);
+            });
+        }
+
+        $sort = $request->get('sort');
+
+        $productsQuery->when(true, function ($query) use ($sort) {
+            return match ($sort) {
+                'price_asc' => $query->orderBy('price'),
+                'price_desc' => $query->orderByDesc('price'),
+                default => $query->orderByDesc('created_at'),
+            };
+        });
+
+        $perPage = $request->integer('per_page', $request->integer('limit', 15));
+        $products = $productsQuery
+            ->paginate($perPage)
+            ->appends($request->query());
+
+        return $this->respond($products);
+    }
+
+    public function shipping()
+    {
+        $shipping = SettingService::get('shipping', [
+            'enabled' => true,
+            'flat_fee' => 0,
+            'currency' => 'MYR',
+            'label' => 'Flat Rate Shipping',
+        ]);
+
+        return $this->respond($shipping);
+    }
+
+    public function showProduct(string $slug)
+    {
+        $product = Product::with(['categories', 'images', 'packageChildren.childProduct'])
+            ->where('slug', $slug)
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        $product->images = $product->images
+            ->sortBy('id')
+            ->sortBy('sort_order')
+            ->values();
+
+        $categories = $product->categories->map(function (Category $category) {
+            return [
+                'id' => $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+            ];
+        });
+
+        $gallery = $product->images->pluck('image_path')->values();
+
+        $isInStock = $product->track_stock ? $product->stock > 0 : true;
+
+        $relatedProducts = Product::with(['images', 'categories'])
+            ->where('is_active', true)
+            ->where('id', '!=', $product->id)
+            ->whereHas('categories', function ($query) use ($product) {
+                $query->whereIn('categories.id', $product->categories->pluck('id'));
+            })
+            ->orderByDesc('created_at')
+            ->limit(4)
+            ->get();
+
+        $relatedProducts = $relatedProducts->map(function (Product $related) {
+            return [
+                'id' => $related->id,
+                'name' => $related->name,
+                'slug' => $related->slug,
+                'price' => $related->price,
+                'thumbnail' => optional($related->images
+                    ->sortBy('id')
+                    ->sortBy('sort_order')
+                    ->first())->image_path,
+            ];
+        });
+
+        $data = [
+            'id' => $product->id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'sku' => $product->sku,
+            'description' => $product->description,
+            'price' => $product->price,
+            'stock' => $product->stock,
+            'track_stock' => $product->track_stock,
+            'is_in_stock' => $isInStock,
+            'images' => $product->images,
+            'gallery' => $gallery,
+            'categories' => $categories,
+            'package_children' => $product->packageChildren,
+            'related_products' => $relatedProducts,
+        ];
+
+        return $this->respond($data);
+    }
+
+    public function homepage()
+    {
+        $now = Carbon::now();
+
+        $newProductConfig = SettingService::get('new_products', ['days' => 30]);
+        $bestSellerConfig = SettingService::get('best_sellers', ['days' => 60]);
+
+        $newProductDays = (int) ($newProductConfig['days'] ?? 30);
+        $bestSellerDays = (int) ($bestSellerConfig['days'] ?? 60);
+
+        $newProducts = Product::query()
+            ->where('is_active', true)
+            ->where('created_at', '>=', $now->copy()->subDays($newProductDays))
+            ->orderByDesc('created_at')
+            ->limit(20)
+            ->get();
+
+        $bestSellerProductIds = OrderItem::query()
+            ->where('created_at', '>=', $now->copy()->subDays($bestSellerDays))
+            ->selectRaw('product_id, SUM(quantity) AS total_qty')
+            ->groupBy('product_id')
+            ->orderByDesc('total_qty')
+            ->limit(20)
+            ->pluck('product_id')
+            ->toArray();
+
+        $bestSellersQuery = Product::query()
+            ->whereIn('id', $bestSellerProductIds)
+            ->where('is_active', true);
+
+        if (! empty($bestSellerProductIds)) {
+            $idsString = implode(',', $bestSellerProductIds);
+            $bestSellersQuery->orderByRaw("FIELD(id, {$idsString})");
+        }
+
+        $bestSellers = $bestSellersQuery->get();
+
+        $featuredProducts = Product::query()
+            ->where('is_active', true)
+            ->where('is_featured', true)
+            ->orderByDesc('created_at')
+            ->limit(20)
+            ->get();
+
+        $sliders = HomeSlider::query()
+            ->where('is_active', true)
+            ->where(function ($q) use ($now) {
+                $q->whereNull('start_at')->orWhere('start_at', '<=', $now);
+            })
+            ->where(function ($q) use ($now) {
+                $q->whereNull('end_at')->orWhere('end_at', '>=', $now);
+            })
+            ->orderBy('sort_order')
+            ->get([
+                'id',
+                'title',
+                'subtitle',
+                'image_path',
+                'mobile_image_path',
+                'button_label',
+                'button_link',
+                'sort_order',
+            ]);
+
+        $promotions = Promotion::query()
+            ->where('is_active', true)
+            ->where(function ($q) use ($now) {
+                $q->whereNull('start_at')->orWhere('start_at', '<=', $now);
+            })
+            ->where(function ($q) use ($now) {
+                $q->whereNull('end_at')->orWhere('end_at', '>=', $now);
+            })
+            ->orderBy('sort_order')
+            ->get([
+                'id',
+                'title',
+                'content_html as text',
+                'image_path',
+                'button_label',
+                'button_link',
+                'sort_order',
+            ]);
+
+        $marquees = Marquee::query()
+            ->where('is_active', true)
+            ->where(function ($q) use ($now) {
+                $q->whereNull('start_at')->orWhere('start_at', '<=', $now);
+            })
+            ->where(function ($q) use ($now) {
+                $q->whereNull('end_at')->orWhere('end_at', '>=', $now);
+            })
+            ->orderBy('sort_order')
+            ->get([
+                'id',
+                'text',
+                'sort_order',
+            ]);
+
+        $announcements = Announcement::query()
+            ->where('is_active', true)
+            ->where(function ($q) use ($now) {
+                $q->whereNull('start_at')->orWhere('start_at', '<=', $now);
+            })
+            ->where(function ($q) use ($now) {
+                $q->whereNull('end_at')->orWhere('end_at', '>=', $now);
+            })
+            ->orderByDesc('created_at')
+            ->get([
+                'id',
+                'title',
+                'body_text as content',
+                'image_path',
+                'button_label',
+                'button_link',
+            ]);
+
+        $shopMenu = ShopMenuItem::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get([
+                'id',
+                'name as label',
+                'slug',
+                'sort_order',
+            ]);
+
+        $seoGlobal = SeoGlobal::query()->first();
+
+        $seo = null;
+        if ($seoGlobal) {
+            $seo = [
+                'meta_title' => $seoGlobal->default_title,
+                'meta_description' => $seoGlobal->default_description,
+                'meta_keywords' => $seoGlobal->default_keywords,
+                'meta_og_image' => $seoGlobal->default_og_image,
+            ];
+        }
+
+        return response()->json([
+            'settings' => [
+                'new_products_days' => $newProductDays,
+                'best_sellers_days' => $bestSellerDays,
+            ],
+            'sliders' => $sliders,
+            'promotions' => $promotions,
+            'marquees' => $marquees,
+            'announcements' => $announcements,
+            'featured_products' => $featuredProducts,
+            'new_products' => $newProducts,
+            'best_sellers' => $bestSellers,
+            'shop_menu' => $shopMenu,
+            'seo' => $seo,
+        ]);
+    }
+}

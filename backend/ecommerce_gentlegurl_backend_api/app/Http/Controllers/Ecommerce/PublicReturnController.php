@@ -1,0 +1,215 @@
+<?php
+
+namespace App\Http\Controllers\Ecommerce;
+
+use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
+use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\ReturnRequest;
+use App\Models\Ecommerce\ReturnRequestItem;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class PublicReturnController extends Controller
+{
+    use ResolvesCurrentCustomer;
+
+    public function store(Request $request, Order $order)
+    {
+        $validated = $request->validate([
+            'request_type' => ['required', 'in:refund,return'],
+            'reason' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'item_ids' => ['required', 'array', 'min:1'],
+            'item_ids.*.order_item_id' => ['required', 'integer', 'exists:order_items,id'],
+            'item_ids.*.quantity' => ['required', 'integer', 'min:1'],
+            'image_urls' => ['nullable', 'array'],
+            'image_urls.*' => ['url'],
+        ]);
+
+        $customer = $this->requireCustomer();
+
+        if ($order->customer_id !== (int) $customer->id) {
+            return $this->respond(null, __('You are not allowed to access this order.'), false, 403);
+        }
+
+        if ($order->status === 'cancelled') {
+            return $this->respond(null, __('This order cannot be returned.'), false, 422);
+        }
+
+        $orderItems = OrderItem::where('order_id', $order->id)
+            ->whereIn('id', collect($validated['item_ids'])->pluck('order_item_id'))
+            ->get()
+            ->keyBy('id');
+
+        if ($orderItems->count() !== count($validated['item_ids'])) {
+            return $this->respond(null, __('One or more order items are invalid.'), false, 422);
+        }
+
+        $returnRequest = DB::transaction(function () use ($validated, $orderItems, $order, $customer) {
+            $requestModel = ReturnRequest::create([
+                'order_id' => $order->id,
+                'customer_id' => $customer->id,
+                'request_type' => $validated['request_type'],
+                'status' => 'pending_review',
+                'reason' => $validated['reason'] ?? null,
+                'description' => $validated['description'] ?? null,
+                'initial_image_urls' => $validated['image_urls'] ?? [],
+            ]);
+
+            foreach ($validated['item_ids'] as $item) {
+                ReturnRequestItem::create([
+                    'return_request_id' => $requestModel->id,
+                    'order_item_id' => $item['order_item_id'],
+                    'quantity' => $item['quantity'],
+                ]);
+            }
+
+            return $requestModel;
+        });
+
+        $returnRequest->load('items.orderItem');
+
+        return $this->respond([
+            'id' => $returnRequest->id,
+            'order_id' => $returnRequest->order_id,
+            'customer_id' => $returnRequest->customer_id,
+            'request_type' => $returnRequest->request_type,
+            'status' => $returnRequest->status,
+            'reason' => $returnRequest->reason,
+            'description' => $returnRequest->description,
+            'item_summaries' => $returnRequest->items->map(function (ReturnRequestItem $item) use ($orderItems) {
+                $orderItem = $orderItems->get($item->order_item_id);
+                return [
+                    'order_item_id' => $item->order_item_id,
+                    'product_name' => $orderItem?->product_name_snapshot,
+                    'quantity' => $item->quantity,
+                ];
+            })->values(),
+        ], __('Return request submitted.'));
+    }
+
+    public function index(Request $request)
+    {
+        $customer = $this->requireCustomer();
+
+        $validated = $request->validate([
+            'status' => ['nullable', 'string'],
+            'order_id' => ['nullable', 'integer'],
+            'page' => ['nullable', 'integer'],
+            'per_page' => ['nullable', 'integer'],
+        ]);
+
+        $query = ReturnRequest::with(['order'])
+            ->where('customer_id', $customer->id);
+
+        if (!empty($validated['status'])) {
+            $query->where('status', $validated['status']);
+        }
+
+        if (!empty($validated['order_id'])) {
+            $query->where('order_id', $validated['order_id']);
+        }
+
+        $returns = $query
+            ->withCount('items')
+            ->withSum('items as items_quantity', 'quantity')
+            ->latest()
+            ->paginate($validated['per_page'] ?? 15);
+
+        $returns->getCollection()->transform(function (ReturnRequest $request) {
+            return [
+                'id' => $request->id,
+                'order_id' => $request->order_id,
+                'order_number' => $request->order?->order_number,
+                'request_type' => $request->request_type,
+                'status' => $request->status,
+                'reason' => $request->reason,
+                'created_at' => $request->created_at,
+                'total_items' => $request->items_count,
+                'total_quantity' => $request->items_quantity,
+            ];
+        });
+
+        return $this->respond($returns);
+    }
+
+    public function show(Request $request, ReturnRequest $returnRequest)
+    {
+        $customer = $this->requireCustomer();
+
+        if ($returnRequest->customer_id !== (int) $customer->id) {
+            return $this->respond(null, __('You are not allowed to access this return request.'), false, 403);
+        }
+
+        $returnRequest->load(['items.orderItem', 'order']);
+
+        return $this->respond([
+            'id' => $returnRequest->id,
+            'order_id' => $returnRequest->order_id,
+            'order_number' => $returnRequest->order?->order_number,
+            'customer_id' => $returnRequest->customer_id,
+            'request_type' => $returnRequest->request_type,
+            'status' => $returnRequest->status,
+            'reason' => $returnRequest->reason,
+            'description' => $returnRequest->description,
+            'initial_image_urls' => $returnRequest->initial_image_urls,
+            'return_courier_name' => $returnRequest->return_courier_name,
+            'return_tracking_no' => $returnRequest->return_tracking_no,
+            'return_shipped_at' => $returnRequest->return_shipped_at,
+            'items' => $returnRequest->items->map(function (ReturnRequestItem $item) {
+                return [
+                    'order_item_id' => $item->order_item_id,
+                    'product_name' => $item->orderItem?->product_name_snapshot,
+                    'sku' => $item->orderItem?->sku_snapshot,
+                    'order_quantity' => $item->orderItem?->quantity,
+                    'requested_quantity' => $item->quantity,
+                ];
+            }),
+            'timestamps' => [
+                'created_at' => $returnRequest->created_at,
+                'reviewed_at' => $returnRequest->reviewed_at,
+                'received_at' => $returnRequest->received_at,
+                'completed_at' => $returnRequest->completed_at,
+            ],
+        ]);
+    }
+
+    public function submitTracking(Request $request, ReturnRequest $returnRequest)
+    {
+        $customer = $this->requireCustomer();
+
+        $validated = $request->validate([
+            'courier_name' => ['required', 'string', 'max:100'],
+            'tracking_no' => ['required', 'string', 'max:100'],
+            'shipped_at' => ['nullable', 'date'],
+            'image_urls' => ['nullable', 'array'],
+            'image_urls.*' => ['url'],
+        ]);
+
+        if ($returnRequest->customer_id !== (int) $customer->id) {
+            return $this->respond(null, __('You are not allowed to access this return request.'), false, 403);
+        }
+
+        if ($returnRequest->status !== 'approved_waiting_return') {
+            return $this->respond(null, __('Current status does not allow submitting tracking information.'), false, 422);
+        }
+
+        $imageUrls = $returnRequest->initial_image_urls ?? [];
+        if (!empty($validated['image_urls'])) {
+            $imageUrls = array_values(array_unique(array_merge($imageUrls, $validated['image_urls'])));
+        }
+
+        $returnRequest->update([
+            'return_courier_name' => $validated['courier_name'],
+            'return_tracking_no' => $validated['tracking_no'],
+            'return_shipped_at' => $validated['shipped_at'] ? Carbon::parse($validated['shipped_at']) : Carbon::now(),
+            'initial_image_urls' => $imageUrls,
+            'status' => 'in_transit',
+        ]);
+
+        return $this->respond($returnRequest->fresh(), __('Tracking information submitted.'));
+    }
+}

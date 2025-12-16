@@ -1,0 +1,845 @@
+{
+	"info": {
+		"_postman_id": "core-backend-laravel-api",
+		"name": "Core Backend Laravel API",
+		"description": "API Collection for Core Backend Laravel Application",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"password\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"login"
+							]
+						},
+						"description": "Login with email and password. Returns user data with roles and permissions."
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/logout",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"logout"
+							]
+						},
+						"description": "Logout the current user and invalidate session."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/profile",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"profile"
+							]
+						},
+						"description": "Get current authenticated user profile with roles and permissions. Requires authentication."
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints"
+		},
+		{
+			"name": "Admins",
+			"item": [
+				{
+					"name": "List Admins",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/admins",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"admins"
+							]
+						},
+						"description": "Get list of all admins. Requires authentication and 'users.view' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Admin Name\",\n    \"email\": \"admin@example.com\",\n    \"username\": \"admin\",\n    \"password\": \"password\",\n    \"is_active\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/admins",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"admins"
+							]
+						},
+						"description": "Create a new admin user. Requires authentication and 'users.create' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Admin",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/admins/:admin",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"admins",
+								":admin"
+							],
+							"variable": [
+								{
+									"key": "admin",
+									"value": "1",
+									"description": "Admin ID"
+								}
+							]
+						},
+						"description": "Get a specific admin by ID. Requires authentication and 'users.view' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Admin",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Admin Name\",\n    \"email\": \"updated@example.com\",\n    \"username\": \"updated_admin\",\n    \"is_active\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/admins/:admin",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"admins",
+								":admin"
+							],
+							"variable": [
+								{
+									"key": "admin",
+									"value": "1",
+									"description": "Admin ID"
+								}
+							]
+						},
+						"description": "Update an admin user. Requires authentication and 'users.update' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Admin",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/admins/:admin",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"admins",
+								":admin"
+							],
+							"variable": [
+								{
+									"key": "admin",
+									"value": "1",
+									"description": "Admin ID"
+								}
+							]
+						},
+						"description": "Delete an admin user. Requires authentication and 'users.delete' permission."
+					},
+					"response": []
+				}
+			],
+			"description": "Admin management endpoints"
+		},
+		{
+			"name": "Roles",
+			"item": [
+				{
+					"name": "List Roles",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/roles",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"roles"
+							]
+						},
+						"description": "Get list of all roles. Requires authentication and 'roles.view' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Role",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Role Name\",\n    \"permissions\": [1, 2, 3]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/roles",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"roles"
+							]
+						},
+						"description": "Create a new role. Requires authentication and 'roles.create' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Role",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/roles/:role",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"roles",
+								":role"
+							],
+							"variable": [
+								{
+									"key": "role",
+									"value": "1",
+									"description": "Role ID"
+								}
+							]
+						},
+						"description": "Get a specific role by ID. Requires authentication and 'roles.view' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Role",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Role Name\",\n    \"permissions\": [1, 2, 3, 4]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/roles/:role",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"roles",
+								":role"
+							],
+							"variable": [
+								{
+									"key": "role",
+									"value": "1",
+									"description": "Role ID"
+								}
+							]
+						},
+						"description": "Update a role. Requires authentication and 'roles.update' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Role",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/roles/:role",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"roles",
+								":role"
+							],
+							"variable": [
+								{
+									"key": "role",
+									"value": "1",
+									"description": "Role ID"
+								}
+							]
+						},
+						"description": "Delete a role. Requires authentication and 'roles.delete' permission."
+					},
+					"response": []
+				}
+			],
+			"description": "Role management endpoints"
+		},
+		{
+			"name": "Permissions",
+			"item": [
+				{
+					"name": "List Permissions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/permissions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permissions"
+							]
+						},
+						"description": "Get list of all permissions. Requires authentication and 'permissions.view' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Permission",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"permission.name\",\n    \"permission_group_id\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/permissions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permissions"
+							]
+						},
+						"description": "Create a new permission. Requires authentication and 'permissions.create' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Permission",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/permissions/:permission",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permissions",
+								":permission"
+							],
+							"variable": [
+								{
+									"key": "permission",
+									"value": "1",
+									"description": "Permission ID"
+								}
+							]
+						},
+						"description": "Get a specific permission by ID. Requires authentication and 'permissions.view' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Permission",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"updated.permission.name\",\n    \"permission_group_id\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/permissions/:permission",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permissions",
+								":permission"
+							],
+							"variable": [
+								{
+									"key": "permission",
+									"value": "1",
+									"description": "Permission ID"
+								}
+							]
+						},
+						"description": "Update a permission. Requires authentication and 'permissions.update' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Permission",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/permissions/:permission",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permissions",
+								":permission"
+							],
+							"variable": [
+								{
+									"key": "permission",
+									"value": "1",
+									"description": "Permission ID"
+								}
+							]
+						},
+						"description": "Delete a permission. Requires authentication and 'permissions.delete' permission."
+					},
+					"response": []
+				}
+			],
+			"description": "Permission management endpoints"
+		},
+		{
+			"name": "Permission Groups",
+			"item": [
+				{
+					"name": "List Permission Groups",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/permission-groups",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permission-groups"
+							]
+						},
+						"description": "Get list of all permission groups. Requires authentication and 'permission-groups.view' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Permission Group",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Group Name\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/permission-groups",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permission-groups"
+							]
+						},
+						"description": "Create a new permission group. Requires authentication and 'permission-groups.create' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Permission Group",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/permission-groups/:group",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permission-groups",
+								":group"
+							],
+							"variable": [
+								{
+									"key": "group",
+									"value": "1",
+									"description": "Permission Group ID"
+								}
+							]
+						},
+						"description": "Get a specific permission group by ID. Requires authentication and 'permission-groups.view' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Permission Group",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Group Name\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/permission-groups/:group",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permission-groups",
+								":group"
+							],
+							"variable": [
+								{
+									"key": "group",
+									"value": "1",
+									"description": "Permission Group ID"
+								}
+							]
+						},
+						"description": "Update a permission group. Requires authentication and 'permission-groups.update' permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Permission Group",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/permission-groups/:group",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"permission-groups",
+								":group"
+							],
+							"variable": [
+								{
+									"key": "group",
+									"value": "1",
+									"description": "Permission Group ID"
+								}
+							]
+						},
+						"description": "Delete a permission group. Requires authentication and 'permission-groups.delete' permission."
+					},
+					"response": []
+				}
+			],
+			"description": "Permission group management endpoints"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		}
+	]
+}
+
