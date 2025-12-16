@@ -12,6 +12,7 @@ import {
   getBankAccounts,
   getStoreLocations,
 } from "@/lib/apiClient";
+import VoucherModal from "@/components/common/VoucherModal";
 
 export default function CheckoutForm() {
   const router = useRouter();
@@ -25,10 +26,13 @@ export default function CheckoutForm() {
     setShippingMethod,
     totals,
     applyVoucher,
+    removeVoucher,
     voucherError,
     voucherMessage,
     isApplyingVoucher,
     appliedVoucher,
+    clearVoucherFeedback,
+    reloadCart,
     shippingLabel,
   } = useCart();
 
@@ -38,6 +42,7 @@ export default function CheckoutForm() {
   >("manual_transfer");
   const [error, setError] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [storeLocations, setStoreLocations] = useState<PublicStoreLocation[]>([]);
@@ -147,8 +152,16 @@ export default function CheckoutForm() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleApplyVoucher = async () => {
-    await applyVoucher(voucherCode.trim() || undefined);
+  const openVoucherModal = () => {
+    clearVoucherFeedback();
+    setShowVoucherModal(true);
+  };
+
+  const handleApplyVoucher = async (code?: string) => {
+    const finalCode = code ?? voucherCode.trim();
+    await applyVoucher(finalCode || undefined);
+    setVoucherCode(finalCode);
+    setShowVoucherModal(false);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -186,6 +199,8 @@ export default function CheckoutForm() {
       };
 
       const order = await createOrder(payload);
+
+      await reloadCart();
 
       if (order.payment_method === "billplz_fpx" && order.payment?.billplz_url) {
         window.location.href = order.payment.billplz_url!;
@@ -467,34 +482,38 @@ export default function CheckoutForm() {
             </div>
           )}
 
-          <div>
-            <div className="mb-1 text-xs font-medium text-[var(--foreground)]/70">Voucher</div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={voucherCode}
-                onChange={(e) => setVoucherCode(e.target.value)}
-                placeholder="Enter voucher"
-                className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-              />
+          <div className="flex items-center justify-between rounded border border-dashed border-[var(--muted)] px-3 py-3">
+            <div>
+              <p className="text-xs font-medium text-[var(--foreground)]/70">Voucher / Discount</p>
+              {appliedVoucher ? (
+                <p className="text-sm text-[var(--accent-strong)]">Applied: {appliedVoucher.code}</p>
+              ) : (
+                <p className="text-xs text-[var(--foreground)]/70">Add a voucher to save more.</p>
+              )}
+              {voucherMessage && !appliedVoucher && (
+                <p className="text-[11px] text-[var(--foreground)]/70">{voucherMessage}</p>
+              )}
+              {voucherError && <p className="text-[11px] text-[#c26686]">{voucherError}</p>}
+            </div>
+            <div className="flex items-center gap-2">
+              {appliedVoucher && (
+                <button
+                  type="button"
+                  onClick={removeVoucher}
+                  disabled={isApplyingVoucher}
+                  className="rounded border border-[var(--accent)] px-3 py-1 text-[11px] font-semibold text-[var(--accent)] transition hover:bg-[var(--muted)]/60 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Remove
+                </button>
+              )}
               <button
                 type="button"
-                onClick={handleApplyVoucher}
-                disabled={isApplyingVoucher || !voucherCode.trim()}
-                className="rounded bg-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={openVoucherModal}
+                className="rounded bg-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)]"
               >
-                {isApplyingVoucher ? "Applying..." : "Apply"}
+                Choose Voucher
               </button>
             </div>
-            {appliedVoucher && (
-              <p className="mt-1 text-xs text-[var(--foreground)]/70">
-                Voucher {appliedVoucher.code} applied.
-              </p>
-            )}
-            {voucherMessage && !appliedVoucher && (
-              <p className="mt-1 text-xs text-[var(--foreground)]/70">{voucherMessage}</p>
-            )}
-            {voucherError && <p className="mt-1 text-xs text-[#c26686]">{voucherError}</p>}
           </div>
 
           <div>
@@ -612,6 +631,19 @@ export default function CheckoutForm() {
           </button>
         </aside>
       </form>
+
+      <VoucherModal
+        isOpen={showVoucherModal}
+        onClose={() => setShowVoucherModal(false)}
+        onApply={handleApplyVoucher}
+        code={voucherCode}
+        onCodeChange={setVoucherCode}
+        isApplying={isApplyingVoucher}
+        voucherError={voucherError}
+        voucherMessage={voucherMessage}
+        appliedVoucher={appliedVoucher ?? null}
+        title="Apply Voucher"
+      />
 
       {showAddressModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

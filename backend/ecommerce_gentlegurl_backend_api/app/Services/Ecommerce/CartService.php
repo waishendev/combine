@@ -63,12 +63,15 @@ class CartService
                 $images->firstWhere('is_main', true) ?? $images->first()
             )->image_path;
 
+            $thumbnailUrl = $thumbnail ? url($thumbnail) : null;
+
             return [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
                 'product_name' => $item->product?->name,
                 'product_slug' => $item->product?->slug,
-                'product_image' => $thumbnail,
+                'product_image' => $thumbnailUrl ?? $thumbnail,
+                'product_image_url' => $thumbnailUrl ?? $thumbnail,
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price_snapshot,
                 'line_total' => $lineTotal,
@@ -161,5 +164,38 @@ class CartService
             'session_token' => $newToken,
             'status' => 'open',
         ]);
+    }
+
+    public function removeItemsFromCart(?Customer $customer, ?string $sessionToken, array $productIds): void
+    {
+        if (empty($productIds)) {
+            return;
+        }
+
+        $cartQuery = Cart::query()
+            ->where('status', 'open');
+
+        if ($customer?->id) {
+            $cartQuery->where('customer_id', $customer->id);
+        } elseif ($sessionToken) {
+            $cartQuery->where('session_token', $sessionToken);
+        } else {
+            return;
+        }
+
+        $cart = $cartQuery->first();
+
+        if (!$cart) {
+            return;
+        }
+
+        $cart->items()
+            ->whereIn('product_id', $productIds)
+            ->delete();
+
+        if ($cart->items()->count() === 0) {
+            $cart->status = 'converted';
+            $cart->save();
+        }
     }
 }

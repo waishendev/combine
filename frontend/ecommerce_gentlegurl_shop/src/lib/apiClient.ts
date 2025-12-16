@@ -79,6 +79,7 @@ export type CartItem = {
   name: string;
   sku?: string | null;
   product_image?: string | null;
+  product_image_url?: string | null;
   unit_price: string;
   quantity: number;
   line_total: string;

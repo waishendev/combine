@@ -16,7 +16,7 @@ type ShopHeaderClientProps = {
 
 export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHeaderClientProps) {
   const { customer, logout, isLoading } = useAuth();
-  const { totalQuantity, resetAfterLogout } = useCart();
+  const { itemCount, resetAfterLogout } = useCart();
   const [menuOpen, setMenuOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
@@ -257,9 +257,9 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
               <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25 5.647 5.272" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm12.75 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" />
             </svg>
-            {totalQuantity > 0 && (
+            {itemCount > 0 && (
               <span className="absolute -right-2 -top-1 rounded-full bg-[var(--accent-strong)] px-2 text-xs text-white shadow-sm">
-                {totalQuantity}
+                {itemCount}
               </span>
             )}
           </Link>

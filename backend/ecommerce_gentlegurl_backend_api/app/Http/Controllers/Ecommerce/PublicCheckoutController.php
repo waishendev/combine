@@ -10,11 +10,11 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\Product;
-use App\Models\Ecommerce\Cart;
 use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
 use App\Services\Voucher\VoucherService;
+use App\Services\Ecommerce\CartService;
 use App\Services\Payments\BillplzClient;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -25,7 +25,7 @@ class PublicCheckoutController extends Controller
 {
     use ResolvesCurrentCustomer;
 
-    public function __construct(protected VoucherService $voucherService)
+    public function __construct(protected VoucherService $voucherService, protected CartService $cartService)
     {
     }
 
@@ -80,7 +80,9 @@ class PublicCheckoutController extends Controller
         }
 
         $bankAccount = null;
-        if (($validated['payment_method'] ?? 'manual_transfer') === 'manual_transfer' && empty($validated['bank_account_id'])) {
+        $isManualTransfer = ($validated['payment_method'] ?? 'manual_transfer') === 'manual_transfer';
+
+        if ($isManualTransfer && empty($validated['bank_account_id'])) {
             return $this->respondError(__('bank_account_id is required for manual transfer.'), 422);
         }
 
@@ -166,19 +168,8 @@ class PublicCheckoutController extends Controller
             return $order;
         });
 
-        if (!empty($validated['session_token'])) {
-            $cart = Cart::where('session_token', $validated['session_token'])
-                ->where('status', 'open')
-                ->first();
-
-            if ($cart) {
-                $cart->customer_id = $cart->customer_id ?: $customer?->id;
-                $cart->status = 'converted';
-                $cart->save();
-
-                $cart->items()->delete();
-            }
-        }
+        $orderedProductIds = collect($validated['items'] ?? [])->pluck('product_id')->unique()->values()->all();
+        $this->cartService->removeItemsFromCart($customer, $validated['session_token'] ?? null, $orderedProductIds);
 
         $billplzUrl = null;
 

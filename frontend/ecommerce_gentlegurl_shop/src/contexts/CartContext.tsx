@@ -34,6 +34,7 @@ export type CartContextValue = {
   discountTotal: string;
   shippingFee: string;
   totalQuantity: number;
+  itemCount: number;
   isLoading: boolean;
   isApplyingVoucher: boolean;
   sessionToken: string | null;
@@ -109,6 +110,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
           ? { slug: (item as unknown as { product_slug?: string }).product_slug }
           : undefined),
       product_image:
+        item.product_image_url ??
         item.product_image ??
         (item as unknown as { product_image?: string | null }).product_image ??
         item.product?.images?.find((img) => img.is_main)?.image_path ??
@@ -222,6 +224,8 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items],
   );
+
+  const itemCount = useMemo(() => items.length, [items]);
 
   const selectedItems = useMemo(
     () => items.filter((item) => selectedItemIds.includes(item.id)),
@@ -386,6 +390,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     discountTotal,
     shippingFee,
     totalQuantity,
+    itemCount,
     isLoading,
     isApplyingVoucher,
     sessionToken,
