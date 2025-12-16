@@ -56,9 +56,6 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
     lastPage: 1,
     total: 0,
   });
-  const [selectedMenuSlug, setSelectedMenuSlug] = useState<string | null>(
-    () => menuSlug ?? null,
-  );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     () => searchParams?.get("category") ?? null,
   );
@@ -91,10 +88,6 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   );
 
   useEffect(() => {
-    setSelectedMenuSlug(menuSlug ?? null);
-  }, [menuSlug]);
-
-  useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm.trim());
     }, 400);
@@ -104,7 +97,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedCategory, debouncedSearch, sort, appliedMinPrice, appliedMaxPrice, selectedMenuSlug]);
+  }, [selectedCategory, debouncedSearch, sort, appliedMinPrice, appliedMaxPrice]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -139,21 +132,11 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       if (menuSlug) {
         setMenuNotFound(!rawMenus.some((menu) => menu.slug === menuSlug));
       }
-
-      if (!menuSlug && selectedCategory && rawMenus?.length) {
-        const hostingMenu = rawMenus.find((menu) =>
-          menu.categories.some((cat) => cat.slug === selectedCategory),
-        );
-
-        if (hostingMenu) {
-          setSelectedMenuSlug(hostingMenu.slug);
-        }
-      }
     } catch (err) {
       console.error("[ShopBrowser] Menu error", err);
       setMenus([]);
     }
-  }, [menuSlug, selectedCategory]);
+  }, [menuSlug]);
 
   const fetchProducts = useCallback(async () => {
     if (menuSlug && menuNotFound) {
@@ -167,14 +150,12 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       setIsLoading(true);
       setError(null);
 
-      const menuScope = menuSlug ?? selectedMenuSlug ?? undefined;
-
       const params = new URLSearchParams();
       params.set("page", page.toString());
       params.set("per_page", PER_PAGE.toString());
 
-      if (menuScope) {
-        params.set("menu_slug", menuScope);
+      if (menuSlug) {
+        params.set("menu_slug", menuSlug);
       }
 
       if (selectedCategory) {
@@ -230,7 +211,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [appliedMaxPrice, appliedMinPrice, debouncedSearch, menuNotFound, menuSlug, page, selectedCategory, selectedMenuSlug, sort]);
+  }, [appliedMaxPrice, appliedMinPrice, debouncedSearch, menuNotFound, menuSlug, page, selectedCategory, sort]);
 
   useEffect(() => {
     fetchMenus();
@@ -246,25 +227,16 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       return menu ? [menu] : [];
     }
 
-    if (selectedMenuSlug) {
-      const menu = menus.find((item) => item.slug === selectedMenuSlug);
-      return menu ? [menu] : [];
-    }
-
     return menus;
-  }, [menuSlug, menus, selectedMenuSlug]);
+  }, [menuSlug, menus]);
 
   const currentMenu = useMemo(() => {
     if (menuSlug) {
       return menus.find((menu) => menu.slug === menuSlug) ?? null;
     }
 
-    if (selectedMenuSlug) {
-      return menus.find((menu) => menu.slug === selectedMenuSlug) ?? null;
-    }
-
     return null;
-  }, [menuSlug, menus, selectedMenuSlug]);
+  }, [menuSlug, menus]);
 
   const findCategoryLabel = useCallback(
     (slug: string | null) => {
@@ -293,7 +265,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   }, [currentMenu?.title, findCategoryLabel, menuSlug, selectedCategory]);
 
   const showEmptyState = !isLoading && products.length === 0;
-  const isMenuScoped = Boolean(menuSlug ?? selectedMenuSlug);
+  const isMenuScoped = Boolean(menuSlug);
   const allLabel = menuSlug ? "All" : "All Products";
   const menuTitleLabel = menuSlug ? currentMenu?.title ?? "Menu" : "Shop";
   const headerLabel = menuSlug ? `Shop / ${menuTitleLabel}` : "Shop";
@@ -312,11 +284,10 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
 
   const handleSelectAll = () => {
     setSelectedCategory(null);
-    setSelectedMenuSlug(menuSlug ?? null);
   };
 
   const mobileCategoryValue = selectedCategory
-    ? `${selectedMenuSlug ?? menuSlug ?? ""}::${selectedCategory}`
+    ? `${menuSlug ?? ""}::${selectedCategory}`
     : "all";
 
   return (
@@ -363,8 +334,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                       return;
                     }
 
-                    const [menuValue, categorySlug] = value.split("::");
-                    setSelectedMenuSlug(menuSlug ?? menuValue ?? null);
+                    const [, categorySlug] = value.split("::");
                     setSelectedCategory(categorySlug ?? null);
                   }}
                   className="w-full rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
@@ -408,7 +378,6 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                             key={category.slug}
                             type="button"
                             onClick={() => {
-                              setSelectedMenuSlug(menuSlug ?? menu.slug);
                               setSelectedCategory(category.slug);
                             }}
                             className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
