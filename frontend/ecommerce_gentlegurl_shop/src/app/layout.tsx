@@ -6,6 +6,7 @@ import ShopHeader from "@/components/layout/ShopHeader";
 import WhatsappButton from "@/components/home/WhatsappButton";
 import CursorTrail from "@/components/visual/CursorTrail";
 import { ShopProviders } from "@/components/providers/ShopProviders";
+import { ShopFooter } from "@/components/layout/ShopFooter";
 import { getHomepage } from "@/lib/server/getHomepage";
 import { getUser } from "@/lib/server/getUser";
 
@@ -34,6 +35,7 @@ export default async function RootLayout({
           )}
           <ShopHeader />
           <main className="min-h-screen bg-[var(--background-soft)]/70">{children}</main>
+          <ShopFooter footer={homepage?.settings?.footer} />
           <WhatsappButton
             enabled={homepage?.contact?.whatsapp?.enabled}
             phone={homepage?.contact?.whatsapp?.phone}

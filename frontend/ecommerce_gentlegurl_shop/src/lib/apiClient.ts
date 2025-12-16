@@ -342,6 +342,30 @@ export type OrderLookupResponse = {
   uploads: { id: number; file_url: string; created_at: string }[];
 };
 
+export type OrderTrackingResponse = {
+  data: {
+    order_no: string;
+    status: string;
+    tracking_no: string | null;
+    courier: string | null;
+    shipping_method: string;
+    totals: {
+      subtotal: number | string;
+      discount_total: number | string;
+      shipping_fee: number | string;
+      grand_total: number | string;
+    };
+    items: {
+      product_name: string;
+      quantity: number;
+      unit_price: number | string;
+      line_total: number | string;
+    }[];
+  } | null;
+  success: boolean;
+  message?: string | null;
+};
+
 export async function previewCheckout(
   payload: CheckoutPreviewPayload,
 ): Promise<CheckoutPreviewResponse> {
@@ -391,6 +415,39 @@ export async function lookupOrder(orderNo: string, orderId?: number | null): Pro
   });
 
   return response.data;
+}
+
+export async function trackGuestOrder(payload: {
+  order_no: string;
+  email?: string;
+  phone?: string;
+}): Promise<OrderTrackingResponse> {
+  const res = await fetch("/api/proxy/public/shop/orders/track", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  let json: OrderTrackingResponse;
+  try {
+    json = (await res.json()) as OrderTrackingResponse;
+  } catch (error) {
+    console.error("[trackGuestOrder] Failed to parse response", error);
+    throw new Error("Unable to track order at this time.");
+  }
+
+  if (!res.ok) {
+    return {
+      data: null,
+      success: false,
+      message: json?.message ?? "Order not found or verification failed.",
+    };
+  }
+
+  return json;
 }
 
 export async function uploadPaymentSlip(orderId: number, fileUrl: string) {
