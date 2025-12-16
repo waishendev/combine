@@ -263,12 +263,7 @@ class PublicShopController extends Controller
 
     public function shipping()
     {
-        $shipping = SettingService::get('shipping', [
-            'enabled' => true,
-            'flat_fee' => 0,
-            'currency' => 'MYR',
-            'label' => 'Flat Rate Shipping',
-        ]);
+        $shipping = SettingService::get('shipping', SettingService::defaultValue('shipping'));
 
         return $this->respond($shipping);
     }
@@ -344,11 +339,11 @@ class PublicShopController extends Controller
     {
         $now = Carbon::now();
 
-        $newProductConfig = SettingService::get('new_products', ['days' => 30]);
-        $bestSellerConfig = SettingService::get('best_sellers', ['days' => 60]);
+        $homepageProductsSetting = SettingService::get('homepage_products', SettingService::defaultValue('homepage_products', []));
+        $homepageProductsDefaults = SettingService::defaultValue('homepage_products', []);
 
-        $newProductDays = (int) ($newProductConfig['days'] ?? 30);
-        $bestSellerDays = (int) ($bestSellerConfig['days'] ?? 60);
+        $newProductDays = (int) ($homepageProductsSetting['new_products_days'] ?? $homepageProductsDefaults['new_products_days'] ?? 30);
+        $bestSellerDays = (int) ($homepageProductsSetting['best_sellers_days'] ?? $homepageProductsDefaults['best_sellers_days'] ?? 60);
 
         $newProducts = Product::query()
             ->where('is_active', true)

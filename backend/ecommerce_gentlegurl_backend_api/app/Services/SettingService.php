@@ -10,7 +10,17 @@ class SettingService
     {
         $setting = Setting::where('key', $key)->first();
 
-        return $setting ? $setting->value : $default;
+        if ($setting) {
+            return $setting->value;
+        }
+
+        $defaultValue = self::defaultValue($key, $default);
+
+        if ($defaultValue !== null) {
+            return self::set($key, $defaultValue)->value;
+        }
+
+        return $defaultValue;
     }
 
     public static function set(string $key, array $value): Setting
@@ -19,5 +29,12 @@ class SettingService
             ['key' => $key],
             ['value' => $value]
         );
+    }
+
+    public static function defaultValue(string $key, $fallback = null)
+    {
+        $defaults = config('ecommerce.settings_defaults', []);
+
+        return $defaults[$key] ?? $fallback;
     }
 }

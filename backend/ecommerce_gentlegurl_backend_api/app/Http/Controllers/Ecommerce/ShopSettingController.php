@@ -18,24 +18,10 @@ class ShopSettingController extends Controller
     public function index()
     {
         $data = [
-            'shop_contact_widget' => SettingService::get('shop_contact_widget', [
-                'whatsapp' => [
-                    'enabled' => false,
-                    'phone' => null,
-                    'default_message' => null,
-                ],
-            ]),
-            'homepage_products' => SettingService::get('homepage_products', [
-                'new_products_days' => 30,
-                'best_sellers_days' => 60,
-            ]),
-            'shipping' => SettingService::get('shipping', [
-                'enabled' => true,
-                'flat_fee' => 0,
-                'currency' => 'MYR',
-                'label' => 'Flat Rate Shipping',
-            ]),
-            'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
+            'shop_contact_widget' => SettingService::get('shop_contact_widget', SettingService::defaultValue('shop_contact_widget')),
+            'homepage_products' => SettingService::get('homepage_products', SettingService::defaultValue('homepage_products')),
+            'shipping' => SettingService::get('shipping', SettingService::defaultValue('shipping')),
+            'footer' => SettingService::get('footer', SettingService::defaultValue('footer')),
         ];
 
         return response()->json([
@@ -63,28 +49,7 @@ class ShopSettingController extends Controller
             ], 404);
         }
 
-        $defaultValues = [
-            'shop_contact_widget' => [
-                'whatsapp' => [
-                    'enabled' => false,
-                    'phone' => null,
-                    'default_message' => null,
-                ],
-            ],
-            'homepage_products' => [
-                'new_products_days' => 30,
-                'best_sellers_days' => 60,
-            ],
-            'shipping' => [
-                'enabled' => true,
-                'flat_fee' => 0,
-                'currency' => 'MYR',
-                'label' => 'Flat Rate Shipping',
-            ],
-            'footer' => $this->defaultFooterSetting(),
-        ];
-
-        $value = SettingService::get($key, $defaultValues[$key]);
+        $value = SettingService::get($key, SettingService::defaultValue($key));
 
         return response()->json([
             'data' => [
@@ -239,27 +204,4 @@ class ShopSettingController extends Controller
         ];
     }
 
-    protected function defaultFooterSetting(): array
-    {
-        return [
-            'enabled' => true,
-            'about_text' => null,
-            'contact' => [
-                'whatsapp' => null,
-                'email' => null,
-                'address' => null,
-            ],
-            'social' => [
-                'instagram' => null,
-                'facebook' => null,
-                'tiktok' => null,
-            ],
-            'links' => [
-                'shipping_policy' => '/shipping-policy',
-                'return_refund' => '/return-refund',
-                'privacy' => '/privacy-policy',
-                'terms' => '/terms',
-            ],
-        ];
-    }
 }

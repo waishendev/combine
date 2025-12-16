@@ -86,11 +86,11 @@ class PublicHomepageController extends Controller
                 ]);
 
             // Get product sections
-            $newProductConfig = SettingService::get('new_products', ['days' => 30]);
-            $bestSellerConfig = SettingService::get('best_sellers', ['days' => 60]);
+            $homepageProductsSetting = SettingService::get('homepage_products', SettingService::defaultValue('homepage_products', []));
+            $homepageProductsDefaults = SettingService::defaultValue('homepage_products', []);
 
-            $newProductDays = (int) ($newProductConfig['days'] ?? 30);
-            $bestSellerDays = (int) ($bestSellerConfig['days'] ?? 60);
+            $newProductDays = (int) ($homepageProductsSetting['new_products_days'] ?? $homepageProductsDefaults['new_products_days'] ?? 30);
+            $bestSellerDays = (int) ($homepageProductsSetting['best_sellers_days'] ?? $homepageProductsDefaults['best_sellers_days'] ?? 60);
 
             $newProducts = Product::query()
                 ->with(['categories', 'images'])
@@ -141,12 +141,11 @@ class PublicHomepageController extends Controller
                 ];
             }
 
-            $settings = [
-                'shop_contact_widget' => SettingService::get('shop_contact_widget', $this->defaultShopContactWidget()),
-                'homepage_products' => SettingService::get('homepage_products', $this->defaultHomepageProducts()),
-                'shipping' => SettingService::get('shipping', $this->defaultShippingSetting()),
-                'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
-            ];
+            $settings = [];
+
+            foreach (['shop_contact_widget', 'homepage_products', 'shipping', 'footer'] as $key) {
+                $settings[$key] = SettingService::get($key, SettingService::defaultValue($key));
+            }
 
             return [
                 'sliders' => $sliders,
@@ -157,10 +156,9 @@ class PublicHomepageController extends Controller
                 'best_sellers' => $bestSellers,
                 'featured_products' => $featuredProducts,
                 'seo' => $seo,
-            'contact' => $settings['shop_contact_widget'],
-            'settings' => $settings,
-        ];
-    });
+                'settings' => $settings,
+            ];
+        });
 
         return response()->json([
             'data' => $data,
@@ -169,56 +167,4 @@ class PublicHomepageController extends Controller
         ]);
     }
 
-    protected function defaultShopContactWidget(): array
-    {
-        return [
-            'whatsapp' => [
-                'enabled' => false,
-                'phone' => null,
-                'default_message' => null,
-            ],
-        ];
-    }
-
-    protected function defaultHomepageProducts(): array
-    {
-        return [
-            'new_products_days' => 30,
-            'best_sellers_days' => 60,
-        ];
-    }
-
-    protected function defaultShippingSetting(): array
-    {
-        return [
-            'enabled' => true,
-            'flat_fee' => 0,
-            'currency' => 'MYR',
-            'label' => 'Flat Rate Shipping',
-        ];
-    }
-
-    protected function defaultFooterSetting(): array
-    {
-        return [
-            'enabled' => true,
-            'about_text' => null,
-            'contact' => [
-                'whatsapp' => null,
-                'email' => null,
-                'address' => null,
-            ],
-            'social' => [
-                'instagram' => null,
-                'facebook' => null,
-                'tiktok' => null,
-            ],
-            'links' => [
-                'shipping_policy' => '/shipping-policy',
-                'return_refund' => '/return-refund',
-                'privacy' => '/privacy-policy',
-                'terms' => '/terms',
-            ],
-        ];
-    }
 }

@@ -9,37 +9,15 @@ class SettingSeeder extends Seeder
 {
     public function run(): void
     {
-        Setting::updateOrCreate(
-            ['key' => 'shop_contact_widget'],
-            [
-                'value' => [
-                    'whatsapp' => [
-                        'enabled' => true,
-                        'phone' => '+60123456789',
-                        'default_message' => 'Hi, I would like to ask about your products.',
-                    ],
-                ],
-            ]
-        );
+        $defaults = config('ecommerce.settings_defaults', []);
 
-        // Setting::updateOrCreate(
-        //     ['key' => 'homepage_products'],
-        //     [
-        //         'value' => [
-        //             'new_products_days' => 30,
-        //             'best_sellers_days' => 60,
-        //         ],
-        //     ]
-        // );
-
-        Setting::updateOrCreate(
-            ['key' => 'new_products'],
-            ['value' => ['days' => 30]]
-        );
-
-        Setting::updateOrCreate(
-            ['key' => 'best_sellers'],
-            ['value' => ['days' => 60]]
-        );
+        foreach (['shop_contact_widget', 'homepage_products', 'shipping', 'footer'] as $key) {
+            if (array_key_exists($key, $defaults)) {
+                Setting::updateOrCreate(
+                    ['key' => $key],
+                    ['value' => $defaults[$key]]
+                );
+            }
+        }
     }
 }
