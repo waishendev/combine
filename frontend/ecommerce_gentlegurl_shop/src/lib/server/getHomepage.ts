@@ -77,6 +77,7 @@ export type HomepageSettings = {
     currency?: string;
     label?: string;
   };
+  footer?: HomepageFooter;
 };
 
 export type HomepageData = {
@@ -90,6 +91,27 @@ export type HomepageData = {
   seo: HomepageSeo | null;
   contact?: HomepageContact | null;
   settings?: HomepageSettings | null;
+};
+
+export type HomepageFooter = {
+  enabled?: boolean;
+  about_text?: string | null;
+  contact?: {
+    whatsapp?: string | null;
+    email?: string | null;
+    address?: string | null;
+  } | null;
+  social?: {
+    instagram?: string | null;
+    facebook?: string | null;
+    tiktok?: string | null;
+  } | null;
+  links?: {
+    shipping_policy?: string | null;
+    return_refund?: string | null;
+    privacy?: string | null;
+    terms?: string | null;
+  } | null;
 };
 
 export async function getHomepage(): Promise<HomepageData | null> {

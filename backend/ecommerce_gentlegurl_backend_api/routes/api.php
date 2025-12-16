@@ -18,6 +18,7 @@ use App\Http\Controllers\Ecommerce\PublicCheckoutController;
 use App\Http\Controllers\Ecommerce\PublicCustomerAuthController;
 use App\Http\Controllers\Ecommerce\PublicLoyaltyController;
 use App\Http\Controllers\Ecommerce\PublicMarqueeController;
+use App\Http\Controllers\Ecommerce\PublicOrderTrackingController;
 use App\Http\Controllers\Ecommerce\PublicPaymentMethodController;
 use App\Http\Controllers\Ecommerce\PublicPromotionController;
 use App\Http\Controllers\Ecommerce\PublicHomeSliderController;
@@ -86,6 +87,7 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/store-locations', [PublicStoreLocationController::class, 'index']);
     Route::get('/bank-accounts', [PublicBankAccountController::class, 'index']);
     Route::get('/payment-methods', [PublicPaymentMethodController::class, 'index']);
+    Route::post('/orders/track', [PublicOrderTrackingController::class, 'track']);
 
     Route::post('/checkout/preview', [PublicCheckoutController::class, 'preview']);
     Route::post('/orders', [PublicCheckoutController::class, 'createOrder']);

@@ -35,6 +35,7 @@ class ShopSettingController extends Controller
                 'currency' => 'MYR',
                 'label' => 'Flat Rate Shipping',
             ]),
+            'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
         ];
 
         return response()->json([
@@ -54,7 +55,7 @@ class ShopSettingController extends Controller
      */
     public function show(string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -80,6 +81,7 @@ class ShopSettingController extends Controller
                 'currency' => 'MYR',
                 'label' => 'Flat Rate Shipping',
             ],
+            'footer' => $this->defaultFooterSetting(),
         ];
 
         $value = SettingService::get($key, $defaultValues[$key]);
@@ -102,7 +104,7 @@ class ShopSettingController extends Controller
      */
     public function update(Request $request, string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -121,6 +123,10 @@ class ShopSettingController extends Controller
 
             case 'shipping':
                 $data = $this->validateShipping($request);
+                break;
+
+            case 'footer':
+                $data = $this->validateFooter($request);
                 break;
 
             default:
@@ -191,6 +197,69 @@ class ShopSettingController extends Controller
             'flat_fee' => (float) $validated['flat_fee'],
             'currency' => $validated['currency'],
             'label' => $validated['label'],
+        ];
+    }
+
+    protected function validateFooter(Request $request): array
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'about_text' => ['nullable', 'string'],
+            'contact.whatsapp' => ['nullable', 'string', 'max:50'],
+            'contact.email' => ['nullable', 'email', 'max:255'],
+            'contact.address' => ['nullable', 'string'],
+            'social.instagram' => ['nullable', 'url'],
+            'social.facebook' => ['nullable', 'url'],
+            'social.tiktok' => ['nullable', 'url'],
+            'links.shipping_policy' => ['nullable', 'string', 'max:255'],
+            'links.return_refund' => ['nullable', 'string', 'max:255'],
+            'links.privacy' => ['nullable', 'string', 'max:255'],
+            'links.terms' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        return [
+            'enabled' => (bool) $validated['enabled'],
+            'about_text' => $validated['about_text'] ?? null,
+            'contact' => [
+                'whatsapp' => data_get($validated, 'contact.whatsapp'),
+                'email' => data_get($validated, 'contact.email'),
+                'address' => data_get($validated, 'contact.address'),
+            ],
+            'social' => [
+                'instagram' => data_get($validated, 'social.instagram'),
+                'facebook' => data_get($validated, 'social.facebook'),
+                'tiktok' => data_get($validated, 'social.tiktok'),
+            ],
+            'links' => [
+                'shipping_policy' => data_get($validated, 'links.shipping_policy'),
+                'return_refund' => data_get($validated, 'links.return_refund'),
+                'privacy' => data_get($validated, 'links.privacy'),
+                'terms' => data_get($validated, 'links.terms'),
+            ],
+        ];
+    }
+
+    protected function defaultFooterSetting(): array
+    {
+        return [
+            'enabled' => true,
+            'about_text' => null,
+            'contact' => [
+                'whatsapp' => null,
+                'email' => null,
+                'address' => null,
+            ],
+            'social' => [
+                'instagram' => null,
+                'facebook' => null,
+                'tiktok' => null,
+            ],
+            'links' => [
+                'shipping_policy' => '/shipping-policy',
+                'return_refund' => '/return-refund',
+                'privacy' => '/privacy-policy',
+                'terms' => '/terms',
+            ],
         ];
     }
 }
