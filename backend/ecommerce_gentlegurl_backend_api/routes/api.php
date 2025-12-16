@@ -12,6 +12,7 @@ use App\Http\Controllers\Ecommerce\CartMergeController;
 use App\Http\Controllers\Ecommerce\MarqueeController;
 use App\Http\Controllers\Ecommerce\HomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicAnnouncementController;
+use App\Http\Controllers\Ecommerce\PublicBankAccountController;
 use App\Http\Controllers\Ecommerce\PublicCartController;
 use App\Http\Controllers\Ecommerce\PublicCheckoutController;
 use App\Http\Controllers\Ecommerce\PublicCustomerAuthController;
@@ -81,6 +82,7 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/sliders', [PublicHomeSliderController::class, 'index']);
     Route::get('/homepage', [PublicHomepageController::class, 'show']);
     Route::get('/shipping', [PublicShopController::class, 'shipping']);
+    Route::get('/bank-accounts', [PublicBankAccountController::class, 'index']);
     Route::get('/payment-methods', [PublicPaymentMethodController::class, 'index']);
 
     Route::post('/checkout/preview', [PublicCheckoutController::class, 'preview']);
@@ -93,6 +95,7 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/cart', [PublicCartController::class, 'show']);
         Route::post('/cart/items', [PublicCartController::class, 'addOrUpdateItem']);
         Route::delete('/cart/items/{item}', [PublicCartController::class, 'removeItem']);
+        Route::post('/cart/reset', [PublicCartController::class, 'reset']);
     });
 
     Route::post('/cart/merge', [PublicCartController::class, 'merge'])

@@ -70,6 +70,15 @@ export type HomepageContact = {
   };
 };
 
+export type HomepageSettings = {
+  shipping?: {
+    enabled?: boolean;
+    flat_fee?: number;
+    currency?: string;
+    label?: string;
+  };
+};
+
 export type HomepageData = {
   sliders: HomepageSlider[];
   marquees: HomepageMarquee[];
@@ -80,6 +89,7 @@ export type HomepageData = {
   featured_products: HomepageProduct[];
   seo: HomepageSeo | null;
   contact?: HomepageContact | null;
+  settings?: HomepageSettings | null;
 };
 
 export async function getHomepage(): Promise<HomepageData | null> {

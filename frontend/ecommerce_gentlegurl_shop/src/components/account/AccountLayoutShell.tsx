@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReactNode } from "react";
 import { AccountOverview } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCart } from "@/contexts/CartContext";
 
 const navItems = [
   { label: "My Account", href: "/account" },
@@ -22,6 +23,7 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
   const pathname = usePathname();
   const router = useRouter();
   const { logout, customer } = useAuth();
+  const { resetAfterLogout } = useCart();
 
   const overview = customer ?? user;
   const profile = overview?.profile;
@@ -30,6 +32,7 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
 
   const handleLogout = async () => {
     await logout();
+    await resetAfterLogout();
     router.push("/");
     router.refresh();
   };

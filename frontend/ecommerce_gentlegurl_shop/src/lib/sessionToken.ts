@@ -26,3 +26,20 @@ export function getOrCreateSessionToken(): string {
   window.localStorage.setItem(STORAGE_KEY, newToken);
   return newToken;
 }
+
+export function setSessionToken(token: string | null) {
+  if (typeof window === "undefined") return;
+
+  if (!token) {
+    window.localStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(STORAGE_KEY, token);
+}
+
+export function clearSessionToken() {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.removeItem(STORAGE_KEY);
+}

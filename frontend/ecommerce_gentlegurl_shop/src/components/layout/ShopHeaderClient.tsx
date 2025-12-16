@@ -16,7 +16,7 @@ type ShopHeaderClientProps = {
 
 export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHeaderClientProps) {
   const { customer, logout, isLoading } = useAuth();
-  const { totalQuantity } = useCart();
+  const { totalQuantity, resetAfterLogout } = useCart();
   const [menuOpen, setMenuOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
@@ -31,6 +31,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
 
   const handleLogout = async () => {
     await logout();
+    await resetAfterLogout();
     setMenuOpen(false);
     router.push("/");
     router.refresh();
