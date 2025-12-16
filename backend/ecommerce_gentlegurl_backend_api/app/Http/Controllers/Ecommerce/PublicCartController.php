@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
-use App\Models\Ecommerce\Cart;
 use App\Models\Ecommerce\CartItem;
 use App\Models\Ecommerce\Product;
 use App\Services\Ecommerce\CartService;
@@ -89,7 +88,7 @@ class PublicCartController extends Controller
 
     public function merge(Request $request)
     {
-        $sessionToken = $request->input('session_token');
+        $sessionToken = $request->input('session_token') ?? $request->query('session_token');
 
         if (!$sessionToken) {
             return $this->respondError('session_token is required.');
@@ -101,46 +100,11 @@ class PublicCartController extends Controller
             return $this->respondError('Login required to merge cart.', 401);
         }
 
-        $guestCart = Cart::where('session_token', $sessionToken)
-            ->where('status', 'open')
-            ->first();
-
-        if (!$guestCart || $guestCart->items->isEmpty()) {
-            return $this->respond([
-                'message' => 'Nothing to merge.',
-                'merged_items' => [],
-            ]);
-        }
-
-        $customerCart = Cart::firstOrCreate(
-            ['customer_id' => $customer->id, 'status' => 'open'],
-            ['session_token' => null]
-        );
-
-        foreach ($guestCart->items as $item) {
-            $existing = $customerCart->items()
-                ->where('product_id', $item->product_id)
-                ->first();
-
-            if ($existing) {
-                $existing->quantity += $item->quantity;
-                $existing->save();
-            } else {
-                $customerCart->items()->create([
-                    'product_id' => $item->product_id,
-                    'quantity' => $item->quantity,
-                ]);
-            }
-        }
-
-        $guestCart->status = 'merged';
-        $guestCart->save();
-
-        $guestCart->items()->delete();
+        $mergedCart = $this->cartService->mergeGuestCartIntoCustomer($sessionToken, $customer);
 
         return $this->respond([
             'message' => 'Cart merged successfully',
-            'customer_cart_id' => $customerCart->id,
+            'customer_cart_id' => $mergedCart?->id,
         ]);
     }
 

@@ -55,11 +55,21 @@ class PublicCheckoutController extends Controller
 
     public function createOrder(Request $request)
     {
+        // Example manual transfer payload:
+        // {
+        //     "items": [{"product_id": 1, "quantity": 2}],
+        //     "payment_method": "manual_transfer",
+        //     "bank_account_id": 3,
+        //     "shipping_method": "pickup",
+        //     "shipping_name": "John Doe",
+        //     "shipping_phone": "0123456789",
+        //     "shipping_address_line1": "123 Street",
+        //     "shipping_city": "City",
+        //     "shipping_state": "State",
+        //     "shipping_country": "Country",
+        //     "shipping_postcode": "12345"
+        // }
         $validated = $this->validateOrderRequest($request, true);
-
-        if (($validated['payment_method'] ?? 'manual_transfer') === 'manual_transfer' && empty($validated['bank_account_id'])) {
-            return $this->respondError(__('bank_account_id is required for manual transfer.'), 422);
-        }
 
         $customer = $this->currentCustomer();
 
@@ -70,6 +80,10 @@ class PublicCheckoutController extends Controller
         }
 
         $bankAccount = null;
+        if (($validated['payment_method'] ?? 'manual_transfer') === 'manual_transfer' && empty($validated['bank_account_id'])) {
+            return $this->respondError(__('bank_account_id is required for manual transfer.'), 422);
+        }
+
         if (!empty($validated['bank_account_id'])) {
             $bankAccount = BankAccount::where('is_active', true)
                 ->find($validated['bank_account_id']);
@@ -96,7 +110,7 @@ class PublicCheckoutController extends Controller
         $shippingPhone = $validated['shipping_phone'] ?? data_get($validated, 'customer.phone') ?? $customer?->phone;
         $shippingAddressLine1 = $validated['shipping_address_line1'] ?? ($validated['shipping_address'] ?? null);
 
-        $order = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $shippingAddressLine1, $shippingName, $shippingPhone) {
+        $order = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount) {
             $order = Order::create([
                 'order_number' => $this->generateOrderNumber(),
                 'customer_id' => $customer?->id,
@@ -333,7 +347,12 @@ class PublicCheckoutController extends Controller
             'shipping_country' => ['nullable', 'string'],
             'session_token' => ['nullable', 'string', 'max:100'],
             'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx'],
-            'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
+            'bank_account_id' => [
+                $requirePaymentMethod ? 'required_if:payment_method,manual_transfer' : 'nullable',
+                'nullable',
+                'integer',
+                'exists:bank_accounts,id',
+            ],
         ]);
     }
 
