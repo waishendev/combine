@@ -8,6 +8,7 @@ use App\Http\Controllers\Ecommerce\AnnouncementController;
 use App\Http\Controllers\Ecommerce\BankAccountController;
 use App\Http\Controllers\Ecommerce\CustomerController as EcommerceCustomerController;
 use App\Http\Controllers\Ecommerce\OrderController;
+use App\Http\Controllers\Ecommerce\PublicCustomerAddressController;
 use App\Http\Controllers\Ecommerce\CartMergeController;
 use App\Http\Controllers\Ecommerce\MarqueeController;
 use App\Http\Controllers\Ecommerce\HomeSliderController;
@@ -62,6 +63,14 @@ Route::prefix('/public/auth')->middleware('api.session')->group(function () {
 
     Route::put('/profile', [PublicCustomerAuthController::class, 'updateProfile'])
         ->middleware('auth:customer,sanctum');
+
+    Route::middleware('auth:customer,sanctum')->group(function () {
+        Route::get('/addresses', [PublicCustomerAddressController::class, 'index']);
+        Route::post('/addresses', [PublicCustomerAddressController::class, 'store']);
+        Route::put('/addresses/{id}', [PublicCustomerAddressController::class, 'update']);
+        Route::delete('/addresses/{id}', [PublicCustomerAddressController::class, 'destroy']);
+        Route::put('/addresses/{id}/default', [PublicCustomerAddressController::class, 'makeDefault']);
+    });
 });
 
 Route::post('/public/auth/login/token', [PublicCustomerAuthController::class, 'loginWithToken']);
