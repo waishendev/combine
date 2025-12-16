@@ -64,7 +64,15 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
 
         <nav className="space-y-1 text-sm">
           {navItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            // Only highlight exact match, or if pathname starts with this href but no other nav item is a better match
+            const isExactMatch = pathname === item.href;
+            const isPrefixMatch = pathname.startsWith(`${item.href}/`);
+            const hasBetterMatch = navItems.some(other => 
+              other.href !== item.href && 
+              other.href.length > item.href.length &&
+              (pathname === other.href || pathname.startsWith(`${other.href}/`))
+            );
+            const isActive = isExactMatch || (isPrefixMatch && !hasBetterMatch);
             return (
               <Link
                 key={item.href}

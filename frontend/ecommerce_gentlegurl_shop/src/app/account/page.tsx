@@ -54,9 +54,19 @@ function Modal({ open, title, onClose, children, footer }: ModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full px-3 py-1 text-sm text-pink-600 transition hover:bg-pink-50"
+            className="rounded-full p-1 text-pink-600 transition hover:bg-pink-50"
+            aria-label="Close"
           >
-            Close
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth="2"
+              stroke="currentColor"
+              className="h-5 w-5"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-6 py-4">{children}</div>
@@ -116,6 +126,7 @@ export default function AccountPage() {
   const [savingAddress, setSavingAddress] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const avatarUrl = useMemo(
     () => profile?.avatar || "/images/default_user_image.jpg",
@@ -193,6 +204,7 @@ export default function AccountPage() {
       setProfileModalOpen(false);
       setFeedback("Profile updated successfully.");
       setProfileForm((prev) => ({ ...prev, photo: null }));
+      setPhotoPreview(null);
     } catch (err) {
       setError(extractError(err));
     } finally {
@@ -387,9 +399,9 @@ export default function AccountPage() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2">
                 <h2 className="text-lg font-semibold text-pink-900">{profile.name}</h2>
-                <span className="rounded-full bg-pink-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-pink-700">
+                {/* <span className="rounded-full bg-pink-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-pink-700">
                   {profile.tier}
-                </span>
+                </span> */}
               </div>
               <p className="text-sm text-gray-700">{profile.email}</p>
               {profile.phone && <p className="text-sm text-gray-700">{profile.phone}</p>}
@@ -502,9 +514,9 @@ export default function AccountPage() {
                 <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <div className="font-medium text-pink-900">{addr.label || "Address"}</div>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-pink-700">
+                    {/* <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-pink-700">
                       {addr.type}
-                    </span>
+                    </span> */}
                     {addr.is_default && (
                       <span className="rounded-full bg-pink-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
                         Default
@@ -557,12 +569,18 @@ export default function AccountPage() {
       <Modal
         open={profileModalOpen}
         title="Edit Profile"
-        onClose={() => setProfileModalOpen(false)}
+        onClose={() => {
+          setProfileModalOpen(false);
+          setPhotoPreview(null);
+        }}
         footer={(
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => setProfileModalOpen(false)}
+              onClick={() => {
+                setProfileModalOpen(false);
+                setPhotoPreview(null);
+              }}
               className="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
             >
               Cancel
@@ -578,9 +596,48 @@ export default function AccountPage() {
           </div>
         )}
       >
-        <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-1 text-sm">
+        <div className="flex gap-6">
+          <div className="flex-shrink-0">
+            <div className="space-y-3">
+              <div className="h-48 w-48 overflow-hidden rounded-lg border border-pink-200 bg-pink-50">
+                <Image
+                  src={photoPreview || profile?.avatar || "/images/default_user_image.jpg"}
+                  alt="Profile preview"
+                  width={192}
+                  height={192}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <label className="block cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setProfileForm({ ...profileForm, photo: file });
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setPhotoPreview(reader.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      setPhotoPreview(null);
+                    }
+                  }}
+                  className="hidden"
+                />
+                <div className="rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-center text-sm font-semibold text-pink-700 transition hover:bg-pink-100">
+                  Upload Photo
+                </div>
+              </label>
+              <p className="text-xs text-gray-600 text-center">
+                Upload a new photo to update your avatar.
+              </p>
+            </div>
+          </div>
+          <div className="flex-1 space-y-4">
+            <label className="block space-y-1 text-sm">
               <span className="text-pink-800">Name</span>
               <input
                 type="text"
@@ -589,7 +646,7 @@ export default function AccountPage() {
                 className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
               />
             </label>
-            <label className="space-y-1 text-sm">
+            <label className="block space-y-1 text-sm">
               <span className="text-pink-800">Phone</span>
               <input
                 type="text"
@@ -599,20 +656,6 @@ export default function AccountPage() {
               />
             </label>
           </div>
-          <label className="space-y-1 text-sm">
-            <span className="text-pink-800">Photo</span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) =>
-                setProfileForm({ ...profileForm, photo: e.target.files?.[0] ?? null })
-              }
-              className="w-full cursor-pointer rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm file:mr-4 file:cursor-pointer file:rounded-md file:border-0 file:bg-pink-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-pink-700 hover:file:bg-pink-200 focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
-            />
-            <p className="text-xs text-gray-600">
-              Upload a new photo to update your avatar.
-            </p>
-          </label>
         </div>
       </Modal>
 
@@ -661,81 +704,73 @@ export default function AccountPage() {
         )}
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-700">
-            Enter your current password and choose a new one. Use the eye icon to show or hide each field.
-          </p>
-          <div className="grid gap-4 md:grid-cols-3">
-            <label className="space-y-1 text-sm">
-              <span className="text-pink-800">Current Password</span>
-              <div className="relative">
-                <input
-                  type={changePasswordForm.showCurrent ? "text" : "password"}
-                  value={changePasswordForm.currentPassword}
-                  onChange={(e) =>
-                    setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 pr-10 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
-                  placeholder="Current password"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    setChangePasswordForm((prev) => ({ ...prev, showCurrent: !prev.showCurrent }))
-                  }
-                  className="absolute inset-y-0 right-2 flex items-center text-lg text-pink-600"
-                  aria-label={changePasswordForm.showCurrent ? "Hide current password" : "Show current password"}
-                >
-                  {changePasswordForm.showCurrent ? "🙈" : "👁"}
-                </button>
-              </div>
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-pink-800">New Password</span>
-              <div className="relative">
-                <input
-                  type={changePasswordForm.showNew ? "text" : "password"}
-                  value={changePasswordForm.newPassword}
-                  onChange={(e) =>
-                    setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 pr-10 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
-                  placeholder="New password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setChangePasswordForm((prev) => ({ ...prev, showNew: !prev.showNew }))}
-                  className="absolute inset-y-0 right-2 flex items-center text-lg text-pink-600"
-                  aria-label={changePasswordForm.showNew ? "Hide new password" : "Show new password"}
-                >
-                  {changePasswordForm.showNew ? "🙈" : "👁"}
-                </button>
-              </div>
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-pink-800">Confirm Password</span>
-              <div className="relative">
-                <input
-                  type={changePasswordForm.showConfirm ? "text" : "password"}
-                  value={changePasswordForm.confirmPassword}
-                  onChange={(e) =>
-                    setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 pr-10 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
-                  placeholder="Confirm new password"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    setChangePasswordForm((prev) => ({ ...prev, showConfirm: !prev.showConfirm }))
-                  }
-                  className="absolute inset-y-0 right-2 flex items-center text-lg text-pink-600"
-                  aria-label={changePasswordForm.showConfirm ? "Hide confirm password" : "Show confirm password"}
-                >
-                  {changePasswordForm.showConfirm ? "🙈" : "👁"}
-                </button>
-              </div>
-            </label>
-          </div>
+          <label className="block space-y-1 text-sm">
+            <span className="text-pink-800">Current Password</span>
+            <div className="flex gap-2">
+              <input
+                type={changePasswordForm.showCurrent ? "text" : "password"}
+                value={changePasswordForm.currentPassword}
+                onChange={(e) =>
+                  setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })
+                }
+                className="flex-1 rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                placeholder="Current password"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setChangePasswordForm((prev) => ({ ...prev, showCurrent: !prev.showCurrent }))
+                }
+                className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-pink-600 transition hover:bg-pink-50"
+              >
+                {changePasswordForm.showCurrent ? "Hide" : "Show"}
+              </button>
+            </div>
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="text-pink-800">New Password</span>
+            <div className="flex gap-2">
+              <input
+                type={changePasswordForm.showNew ? "text" : "password"}
+                value={changePasswordForm.newPassword}
+                onChange={(e) =>
+                  setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })
+                }
+                className="flex-1 rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                placeholder="New password"
+              />
+              <button
+                type="button"
+                onClick={() => setChangePasswordForm((prev) => ({ ...prev, showNew: !prev.showNew }))}
+                className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-pink-600 transition hover:bg-pink-50"
+              >
+                {changePasswordForm.showNew ? "Hide" : "Show"}
+              </button>
+            </div>
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="text-pink-800">Confirm Password</span>
+            <div className="flex gap-2">
+              <input
+                type={changePasswordForm.showConfirm ? "text" : "password"}
+                value={changePasswordForm.confirmPassword}
+                onChange={(e) =>
+                  setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })
+                }
+                className="flex-1 rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                placeholder="Confirm new password"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setChangePasswordForm((prev) => ({ ...prev, showConfirm: !prev.showConfirm }))
+                }
+                className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-pink-600 transition hover:bg-pink-50"
+              >
+                {changePasswordForm.showConfirm ? "Hide" : "Show"}
+              </button>
+            </div>
+          </label>
         </div>
       </Modal>
 
@@ -783,7 +818,7 @@ export default function AccountPage() {
                 className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
               >
                 <option value="shipping">Shipping</option>
-                <option value="billing">Billing</option>
+                {/* <option value="billing">Billing</option> */}
               </select>
             </label>
           </div>
@@ -808,6 +843,7 @@ export default function AccountPage() {
               />
             </label>
           </div>
+          <div className="grid gap-4 md:grid-cols-2">
 
           <label className="space-y-1 text-sm">
             <span className="text-pink-800">Address Line 1</span>
@@ -828,6 +864,7 @@ export default function AccountPage() {
               className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
             />
           </label>
+          </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <label className="space-y-1 text-sm">
