@@ -1,8 +1,9 @@
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
 import { getProduct } from "@/lib/server/getProduct";
+import { normalizeImageUrl } from "@/lib/imageUrl";
+import { ProductGallery } from "@/components/product/ProductGallery";
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>;
@@ -14,51 +15,35 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   if (!product) return notFound();
 
+  const normalizedImages = (product.images ?? []).map((img) => ({
+    ...img,
+    image_path: normalizeImageUrl(img.image_path),
+  }));
+
+  const gallerySources = product.gallery?.length
+    ? product.gallery
+    : normalizedImages;
+
+  const galleryImages = gallerySources
+    .map((image) => normalizeImageUrl(typeof image === "string" ? image : image.image_path))
+    .filter(Boolean);
+
   const mainImage =
-    product.images?.find((img) => img.is_main) ?? product.images?.[0];
+    normalizedImages.find((img) => img.is_main) ?? normalizedImages.find((img) => !!img.image_path);
+
+  const initialIndex = mainImage
+    ? galleryImages.findIndex((image) => image === mainImage.image_path)
+    : 0;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
       <div className="grid gap-8 md:grid-cols-2">
         {/* 左边图片 */}
-        <div>
-          {mainImage ? (
-            <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-gray-100">
-              <Image
-                src={mainImage.image_path}
-                alt={product.name}
-                fill
-                className="object-cover"
-              />
-            </div>
-          ) : (
-            <div className="flex aspect-square items-center justify-center rounded-lg bg-gray-100 text-gray-400">
-              No Image
-            </div>
-          )}
-
-          {product.images?.length > 1 && (
-            <div className="mt-4 flex gap-2">
-              {product.images.map((img) => (
-                <div
-                  key={img.id}
-                  className={`relative h-16 w-16 overflow-hidden rounded border ${
-                    img.id === mainImage?.id
-                      ? "border-black"
-                      : "border-gray-200"
-                  }`}
-                >
-                  <Image
-                    src={img.image_path}
-                    alt={product.name}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <ProductGallery
+          images={galleryImages}
+          initialIndex={initialIndex >= 0 ? initialIndex : 0}
+          alt={product.name}
+        />
 
         {/* 右边信息 */}
         <div className="space-y-4">

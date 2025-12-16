@@ -4,6 +4,13 @@ import { AccountOverview } from "../apiClient";
 export async function getAccountOverview(): Promise<AccountOverview | null> {
   try {
     const cookieStore = await cookies();
+    const hasSession =
+      Boolean(cookieStore.get("laravel_session")) || Boolean(cookieStore.get("XSRF-TOKEN"));
+
+    if (!hasSession) {
+      return null;
+    }
+
     const cookieHeader = cookieStore
       .getAll()
       .map((cookie) => `${cookie.name}=${cookie.value}`)
@@ -20,6 +27,10 @@ export async function getAccountOverview(): Promise<AccountOverview | null> {
     });
 
     if (!res.ok) {
+      if (res.status === 401 || res.status === 419) {
+        return null;
+      }
+
       console.error("[getAccountOverview] Failed:", res.status);
       return null;
     }

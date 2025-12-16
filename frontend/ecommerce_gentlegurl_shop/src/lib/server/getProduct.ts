@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { normalizeImageUrl } from "../imageUrl";
 
 export type ProductImage = {
   id: number;
@@ -17,25 +18,17 @@ export type ProductDetail = {
   stock?: number | null;
   low_stock_threshold?: number | null;
   images?: ProductImage[];
+  gallery?: (ProductImage | string)[];
   is_in_wishlist?: boolean;
   [key: string]: unknown;
 };
-
-function buildImageUrl(path: string): string {
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
-
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-  return `${apiBaseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
-}
 
 function normalizeProductImages(product: ProductDetail): ProductDetail {
   if (!product.images?.length) return product;
 
   const images = product.images.map((image) => ({
     ...image,
-    image_path: buildImageUrl(image.image_path),
+    image_path: normalizeImageUrl(image.image_path),
   }));
 
   return { ...product, images };
