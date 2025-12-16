@@ -47,6 +47,8 @@ class PublicCheckoutController extends Controller
             'grand_total' => $calculation['grand_total'],
             'voucher' => $calculation['voucher'],
             'voucher_error' => $calculation['voucher_error'],
+            'voucher_valid' => $calculation['voucher_valid'],
+            'voucher_message' => $calculation['voucher_error'],
         ]);
     }
 
@@ -264,9 +266,7 @@ class PublicCheckoutController extends Controller
         if ($shippingMethod === 'shipping') {
             $shippingSetting = Setting::where('key', 'shipping')->first();
 
-            if ($shippingSetting && data_get($shippingSetting->value, 'enabled')) {
-                $shippingFee = (float) data_get($shippingSetting->value, 'flat_fee', 0);
-            }
+            $shippingFee = (float) data_get($shippingSetting?->value, 'flat_fee', 0);
         }
         $discountTotal = 0;
         $voucherData = null;
@@ -301,6 +301,7 @@ class PublicCheckoutController extends Controller
             'voucher' => $voucherData,
             'voucher_error' => $voucherError,
             'voucher_result' => $voucherResult,
+            'voucher_valid' => $voucherResult?->valid ?? false,
         ];
     }
 

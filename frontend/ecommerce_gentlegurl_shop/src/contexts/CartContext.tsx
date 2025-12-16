@@ -10,14 +10,21 @@ import {
   mergeCart,
   previewCheckout,
   removeCartItem,
+  resetCartSession,
 } from "../lib/apiClient";
-import { getOrCreateSessionToken } from "../lib/sessionToken";
+import { clearSessionToken, getOrCreateSessionToken, setSessionToken as persistSessionToken } from "../lib/sessionToken";
 
 type Totals = {
   subtotal: string;
   discount_total: string;
   shipping_fee: string;
   grand_total: string;
+};
+
+type ShippingSetting = {
+  flat_fee?: number;
+  label?: string;
+  currency?: string;
 };
 
 export type CartContextValue = {
@@ -49,16 +56,22 @@ export type CartContextValue = {
   toggleSelectItem: (itemId: number) => void;
   selectAll: () => void;
   clearSelection: () => void;
+  shippingMethod: "shipping" | "pickup";
+  setShippingMethod: (method: "shipping" | "pickup") => void;
+  shippingFlatFee: number;
+  shippingLabel?: string;
+  resetAfterLogout: () => Promise<void>;
 };
 
 type CartProviderProps = {
   children: ReactNode;
   setOnCustomerLogin?: (handler?: () => Promise<void>) => void;
+  shippingSetting?: ShippingSetting;
 };
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 
-export function CartProvider({ children, setOnCustomerLogin }: CartProviderProps) {
+export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: CartProviderProps) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [subtotal, setSubtotal] = useState<string>("0");
   const [grandTotal, setGrandTotal] = useState<string>("0");
@@ -77,35 +90,30 @@ export function CartProvider({ children, setOnCustomerLogin }: CartProviderProps
   const [appliedVoucher, setAppliedVoucher] = useState<CheckoutPreviewResponse["voucher"] | null>(null);
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [voucherMessage, setVoucherMessage] = useState<string | null>(null);
+  const [shippingMethod, setShippingMethod] = useState<"shipping" | "pickup">("shipping");
+  const [shippingFlatFee, setShippingFlatFee] = useState<number>(Number(shippingSetting?.flat_fee ?? 0));
+  const [shippingLabel] = useState<string | undefined>(shippingSetting?.label);
+  const [voucherDiscount, setVoucherDiscount] = useState<number>(0);
 
   useEffect(() => {
     const token = getOrCreateSessionToken();
     setSessionToken(token || null);
   }, []);
 
-  const applyTotals = useCallback((data?: Partial<Totals>) => {
-    const updatedTotals: Totals = {
-      subtotal: data?.subtotal ?? "0",
-      discount_total: data?.discount_total ?? "0",
-      shipping_fee: data?.shipping_fee ?? "0",
-      grand_total: data?.grand_total ?? "0",
-    };
+  const applyCartResponse = useCallback((cart?: CartResponse) => {
+    setItems(cart?.items ?? []);
+    setVoucherError(null);
+    setVoucherMessage(null);
+    setAppliedVoucher(null);
+    setVoucherDiscount(0);
 
-    setTotals(updatedTotals);
-    setSubtotal(updatedTotals.subtotal);
-    setGrandTotal(updatedTotals.grand_total);
-    setDiscountTotal(updatedTotals.discount_total);
-    setShippingFee(updatedTotals.shipping_fee);
+    if (cart?.session_token) {
+      setSessionToken(cart.session_token);
+      persistSessionToken(cart.session_token);
+    }
+
+    setSelectedItemIds(cart?.items?.map((item) => item.id) ?? []);
   }, []);
-
-  const applyCartResponse = useCallback(
-    (cart?: CartResponse) => {
-      setItems(cart?.items ?? []);
-      applyTotals(cart);
-      setVoucherError(null);
-    },
-    [applyTotals],
-  );
 
   useEffect(() => {
     setSelectedItemIds((prev) => prev.filter((id) => items.some((item) => item.id === id)));
@@ -116,7 +124,6 @@ export function CartProvider({ children, setOnCustomerLogin }: CartProviderProps
     try {
       const response = await getCart();
       applyCartResponse(response);
-      setSelectedItemIds([]);
     } catch {
       applyCartResponse();
     } finally {
@@ -215,7 +222,56 @@ export function CartProvider({ children, setOnCustomerLogin }: CartProviderProps
     [selectedItems],
   );
 
-  const selectedGrandTotal = selectedSubtotal;
+  const subtotalValue = useMemo(
+    () => Number(selectedItems.reduce((sum, item) => sum + Number(item.line_total), 0)),
+    [selectedItems],
+  );
+
+  const shippingFeeValue = useMemo(
+    () =>
+      selectedItems.length === 0
+        ? 0
+        : shippingMethod === "shipping"
+          ? Number(shippingFlatFee)
+          : 0,
+    [selectedItems.length, shippingFlatFee, shippingMethod],
+  );
+
+  const discountValue = useMemo(
+    () => Math.min(voucherDiscount, subtotalValue),
+    [subtotalValue, voucherDiscount],
+  );
+
+  const grandTotalValue = useMemo(
+    () => Math.max(subtotalValue - discountValue + shippingFeeValue, 0),
+    [discountValue, shippingFeeValue, subtotalValue],
+  );
+
+  const selectedGrandTotal = grandTotalValue.toFixed(2);
+
+  useEffect(() => {
+    const updatedTotals: Totals = {
+      subtotal: subtotalValue.toFixed(2),
+      discount_total: discountValue.toFixed(2),
+      shipping_fee: shippingFeeValue.toFixed(2),
+      grand_total: grandTotalValue.toFixed(2),
+    };
+
+    setTotals(updatedTotals);
+    setSubtotal(updatedTotals.subtotal);
+    setGrandTotal(updatedTotals.grand_total);
+    setDiscountTotal(updatedTotals.discount_total);
+    setShippingFee(updatedTotals.shipping_fee);
+  }, [discountValue, grandTotalValue, shippingFeeValue, subtotalValue]);
+
+  useEffect(() => {
+    if (selectedItems.length === 0) {
+      setAppliedVoucher(null);
+      setVoucherDiscount(0);
+      setVoucherMessage(null);
+      setVoucherError(null);
+    }
+  }, [selectedItems.length]);
 
   const toggleSelectItem = useCallback((itemId: number) => {
     setSelectedItemIds((prev) =>
@@ -240,53 +296,74 @@ export function CartProvider({ children, setOnCustomerLogin }: CartProviderProps
       setVoucherMessage(null);
 
       try {
-        if (!items.length) {
-          setVoucherError("No items in cart to apply voucher.");
+        if (selectedItems.length === 0) {
+          setVoucherError("Select items to apply voucher.");
           return;
         }
 
         const response = await previewCheckout({
-          items: items.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
+          items: selectedItems.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
           voucher_code: voucherCode || undefined,
-          shipping_method: "shipping",
-          // store_location_id: null,
-          // shipping_postcode: null,
+          shipping_method: shippingMethod,
         });
 
-        applyTotals({
-          subtotal: String(response.subtotal),
-          discount_total: String(response.discount_total),
-          shipping_fee: String(response.shipping_fee),
-          grand_total: String(response.grand_total),
-        });
+        if (shippingMethod === "shipping") {
+          setShippingFlatFee(Number(response.shipping_fee ?? shippingFlatFee));
+        }
 
-        const hasVoucher = !!response.voucher && !response.voucher_error;
+        const hasVoucher = !!response.voucher_valid && !!response.voucher && !response.voucher_error;
+        const discountAmount = hasVoucher ? Number(response.discount_total ?? 0) : 0;
+
+        setVoucherDiscount(discountAmount);
         setVoucherError(response.voucher_error ?? null);
         setAppliedVoucher(hasVoucher ? response.voucher : null);
-        setVoucherMessage(hasVoucher ? `Voucher ${response.voucher?.code} applied.` : null);
+        setVoucherMessage(
+          hasVoucher
+            ? `Voucher ${response.voucher?.code} applied.`
+            : response.voucher_message ?? response.voucher_error ?? null,
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to apply voucher.";
         setVoucherError(message);
         setAppliedVoucher(null);
+        setVoucherDiscount(0);
         setVoucherMessage(null);
       } finally {
         setIsApplyingVoucher(false);
       }
     },
-    [applyTotals, items],
+    [selectedItems, shippingMethod, shippingFlatFee],
   );
 
   const removeVoucher = useCallback(async () => {
     setAppliedVoucher(null);
+    setVoucherDiscount(0);
     setVoucherError(null);
     setVoucherMessage(null);
-    await applyVoucher();
-  }, [applyVoucher]);
+  }, []);
 
   const clearVoucherFeedback = useCallback(() => {
     setVoucherError(null);
     setVoucherMessage(null);
   }, []);
+
+  const resetAfterLogout = useCallback(async () => {
+    try {
+      const response = await resetCartSession();
+      applyCartResponse(response);
+      setSessionToken(response.session_token ?? null);
+      persistSessionToken(response.session_token ?? null);
+    } catch {
+      setItems([]);
+      setSelectedItemIds([]);
+      setAppliedVoucher(null);
+      setVoucherDiscount(0);
+      setVoucherError(null);
+      setVoucherMessage(null);
+      setSessionToken(null);
+      clearSessionToken();
+    }
+  }, [applyCartResponse]);
 
   const value: CartContextValue = {
     items,
@@ -317,6 +394,11 @@ export function CartProvider({ children, setOnCustomerLogin }: CartProviderProps
     toggleSelectItem,
     selectAll,
     clearSelection,
+    shippingMethod,
+    setShippingMethod,
+    shippingFlatFee,
+    shippingLabel,
+    resetAfterLogout,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

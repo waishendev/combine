@@ -18,18 +18,6 @@ class CartService
                 ->where('status', 'open')
                 ->first();
 
-            if (!$cart && $sessionToken) {
-                $cart = Cart::where('session_token', $sessionToken)
-                    ->whereNull('customer_id')
-                    ->where('status', 'open')
-                    ->first();
-
-                if ($cart) {
-                    $cart->customer_id = $customer->id;
-                    $cart->save();
-                }
-            }
-
             if (!$cart) {
                 $cart = Cart::create([
                     'customer_id' => $customer->id,
@@ -37,7 +25,7 @@ class CartService
                 ]);
             }
 
-            return ['cart' => $cart, 'session_token' => $cart->session_token];
+            return ['cart' => $cart, 'session_token' => null];
         }
 
         if ($sessionToken) {
@@ -139,5 +127,28 @@ class CartService
         $guestCart->items()->delete();
 
         return $customerCart->fresh();
+    }
+
+    public function resetGuestCart(?string $sessionToken): Cart
+    {
+        if ($sessionToken) {
+            $cart = Cart::where('session_token', $sessionToken)
+                ->whereNull('customer_id')
+                ->where('status', 'open')
+                ->first();
+
+            if ($cart) {
+                $cart->items()->delete();
+                $cart->status = 'reset';
+                $cart->save();
+            }
+        }
+
+        $newToken = (string) Str::uuid();
+
+        return Cart::create([
+            'session_token' => $newToken,
+            'status' => 'open',
+        ]);
     }
 }

@@ -93,6 +93,7 @@ export type CartResponse = {
   discount_total: string;
   shipping_fee: string;
   grand_total: string;
+  session_token?: string | null;
 };
 
 export type CheckoutPreviewVoucher = {
@@ -118,6 +119,20 @@ export type CheckoutPreviewResponse = {
   grand_total: number | string;
   voucher?: CheckoutPreviewVoucher | null;
   voucher_error?: string | null;
+  voucher_valid?: boolean;
+  voucher_message?: string | null;
+};
+
+export type PublicBankAccount = {
+  id: number;
+  bank_name: string;
+  account_name: string;
+  account_no: string;
+  branch: string | null;
+  logo_url: string | null;
+  qr_image_url: string | null;
+  label?: string | null;
+  swift_code?: string | null;
 };
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -246,6 +261,16 @@ export async function removeCartItem(itemId: number): Promise<CartResponse> {
   return response.data;
 }
 
+export async function resetCartSession(): Promise<CartResponse> {
+  const response = await post<{ data: CartResponse }>(
+    "/public/shop/cart/reset",
+    undefined,
+    { includeSessionToken: true, headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
+}
+
 export async function mergeCart(payload?: { session_token?: string }) {
   return post<{ success: boolean }>("/public/shop/cart/merge", payload, { includeSessionToken: payload?.session_token === undefined });
 }
@@ -306,6 +331,14 @@ export async function createOrder(payload: CheckoutPayload): Promise<CreateOrder
     payload,
     { includeSessionToken: payload.session_token === undefined, headers: { Accept: "application/json" } },
   );
+
+  return response.data;
+}
+
+export async function getBankAccounts(): Promise<PublicBankAccount[]> {
+  const response = await get<{ data: PublicBankAccount[] }>("/public/shop/bank-accounts", {
+    headers: { Accept: "application/json" },
+  });
 
   return response.data;
 }

@@ -21,7 +21,7 @@ class PublicCartController extends Controller
     public function show(Request $request)
     {
         $customer = $this->currentCustomer();
-        $sessionToken = $request->query('session_token');
+        $sessionToken = $customer ? null : $request->query('session_token');
 
         $result = $this->cartService->findOrCreateCart($customer, $sessionToken);
 
@@ -37,7 +37,7 @@ class PublicCartController extends Controller
         ]);
 
         $customer = $this->currentCustomer();
-        $sessionToken = $validated['session_token'] ?? $request->query('session_token');
+        $sessionToken = $customer ? null : ($validated['session_token'] ?? $request->query('session_token'));
 
         $result = $this->cartService->findOrCreateCart($customer, $sessionToken);
         $cart = $result['cart'];
@@ -73,7 +73,7 @@ class PublicCartController extends Controller
     public function removeItem(Request $request, CartItem $item)
     {
         $customer = $this->currentCustomer();
-        $sessionToken = $request->query('session_token');
+        $sessionToken = $customer ? null : $request->query('session_token');
 
         $result = $this->cartService->findOrCreateCart($customer, $sessionToken);
         $cart = $result['cart'];
@@ -142,5 +142,14 @@ class PublicCartController extends Controller
             'message' => 'Cart merged successfully',
             'customer_cart_id' => $customerCart->id,
         ]);
+    }
+
+    public function reset(Request $request)
+    {
+        $sessionToken = $request->input('session_token') ?? $request->query('session_token');
+
+        $cart = $this->cartService->resetGuestCart($sessionToken);
+
+        return $this->respond($this->cartService->formatCart($cart));
     }
 }
