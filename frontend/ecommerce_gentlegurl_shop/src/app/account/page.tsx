@@ -13,6 +13,7 @@ import type {
 import {
   createCustomerAddress,
   deleteCustomerAddress,
+  changeCustomerPassword,
   getAccountOverview,
   getCustomerProfile,
   makeDefaultCustomerAddress,
@@ -68,10 +69,16 @@ function Modal({ open, title, onClose, children, footer }: ModalProps) {
 type ProfileFormState = {
   name: string;
   phone: string;
-  avatar: string;
+  photo: File | null;
+};
+
+type ChangePasswordFormState = {
   currentPassword: string;
-  password: string;
+  newPassword: string;
   confirmPassword: string;
+  showCurrent: boolean;
+  showNew: boolean;
+  showConfirm: boolean;
 };
 
 type AddressFormState = AddressPayload;
@@ -87,15 +94,22 @@ export default function AccountPage() {
   const [loyalty, setLoyalty] = useState<LoyaltySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [changePasswordModalOpen, setChangePasswordModalOpen] = useState(false);
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<CustomerAddress | null>(null);
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
     name: "",
     phone: "",
-    avatar: "",
+    photo: null,
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [changePasswordForm, setChangePasswordForm] = useState<ChangePasswordFormState>({
     currentPassword: "",
-    password: "",
+    newPassword: "",
     confirmPassword: "",
+    showCurrent: false,
+    showNew: false,
+    showConfirm: false,
   });
   const [addressForm, setAddressForm] = useState<AddressFormState>({ ...emptyAddress });
   const [savingProfile, setSavingProfile] = useState(false);
@@ -121,7 +135,7 @@ export default function AccountPage() {
           ...prev,
           name: profileResponse.data.name ?? "",
           phone: profileResponse.data.phone ?? "",
-          avatar: profileResponse.data.avatar ?? "",
+          photo: null,
         }));
         setLoyalty(overview?.loyalty ?? null);
       } catch (err) {
@@ -147,10 +161,7 @@ export default function AccountPage() {
         ...prev,
         name: response.data.name ?? "",
         phone: response.data.phone ?? "",
-        avatar: response.data.avatar ?? "",
-        currentPassword: "",
-        password: "",
-        confirmPassword: "",
+        photo: null,
       }));
     } catch (err) {
       const status = (err as { status?: number })?.status;
@@ -174,35 +185,53 @@ export default function AccountPage() {
 
     if (profileForm.name.trim()) updatePayload.name = profileForm.name.trim();
     updatePayload.phone = profileForm.phone.trim() ? profileForm.phone.trim() : null;
-    updatePayload.avatar = profileForm.avatar.trim() ? profileForm.avatar.trim() : null;
-
-    if (profileForm.password) {
-      if (!profileForm.currentPassword) {
-        setSavingProfile(false);
-        setError("Current password is required to change your password.");
-        return;
-      }
-
-      updatePayload.current_password = profileForm.currentPassword;
-      updatePayload.password = profileForm.password;
-      updatePayload.password_confirmation = profileForm.confirmPassword;
-    }
+    if (profileForm.photo) updatePayload.photo = profileForm.photo;
 
     try {
       const response = await updateCustomerProfile(updatePayload);
       setProfile(response.data);
       setProfileModalOpen(false);
       setFeedback("Profile updated successfully.");
-      setProfileForm((prev) => ({
-        ...prev,
-        currentPassword: "",
-        password: "",
-        confirmPassword: "",
-      }));
+      setProfileForm((prev) => ({ ...prev, photo: null }));
     } catch (err) {
       setError(extractError(err));
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    setChangingPassword(true);
+    setFeedback(null);
+    setError(null);
+
+    if (changePasswordForm.newPassword !== changePasswordForm.confirmPassword) {
+      setChangingPassword(false);
+      setError("Password confirmation does not match.");
+      return;
+    }
+
+    try {
+      await changeCustomerPassword({
+        current_password: changePasswordForm.currentPassword,
+        password: changePasswordForm.newPassword,
+        password_confirmation: changePasswordForm.confirmPassword,
+      });
+
+      setFeedback("Password updated successfully.");
+      setChangePasswordModalOpen(false);
+      setChangePasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+        showCurrent: false,
+        showNew: false,
+        showConfirm: false,
+      });
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -310,13 +339,26 @@ export default function AccountPage() {
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-pink-800">My Account</h1>
-        <button
-          type="button"
-          onClick={() => setProfileModalOpen(true)}
-          className="rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600"
-        >
-          Edit Profile
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setFeedback(null);
+              setError(null);
+              setChangePasswordModalOpen(true);
+            }}
+            className="rounded-lg border border-pink-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-sm transition hover:bg-pink-50"
+          >
+            Change Password
+          </button>
+          <button
+            type="button"
+            onClick={() => setProfileModalOpen(true)}
+            className="rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600"
+          >
+            Edit Profile
+          </button>
+        </div>
       </div>
 
       {feedback && (
@@ -558,48 +600,141 @@ export default function AccountPage() {
             </label>
           </div>
           <label className="space-y-1 text-sm">
-            <span className="text-pink-800">Avatar URL</span>
+            <span className="text-pink-800">Photo</span>
             <input
-              type="text"
-              value={profileForm.avatar}
-              onChange={(e) => setProfileForm({ ...profileForm, avatar: e.target.value })}
-              className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+              type="file"
+              accept="image/*"
+              onChange={(e) =>
+                setProfileForm({ ...profileForm, photo: e.target.files?.[0] ?? null })
+              }
+              className="w-full cursor-pointer rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm file:mr-4 file:cursor-pointer file:rounded-md file:border-0 file:bg-pink-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-pink-700 hover:file:bg-pink-200 focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
             />
+            <p className="text-xs text-gray-600">
+              Upload a new photo to update your avatar.
+            </p>
           </label>
+        </div>
+      </Modal>
 
-          <div className="rounded-lg border border-pink-100 bg-pink-50 p-4">
-            <h4 className="text-sm font-semibold text-pink-800">Change Password (optional)</h4>
-            <p className="text-xs text-pink-700">Leave blank if you do not want to change your password.</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <label className="space-y-1 text-sm">
-                <span className="text-pink-800">Current Password</span>
+      <Modal
+        open={changePasswordModalOpen}
+        title="Change Password"
+        onClose={() => {
+          setChangePasswordModalOpen(false);
+          setChangePasswordForm({
+            currentPassword: "",
+            newPassword: "",
+            confirmPassword: "",
+            showCurrent: false,
+            showNew: false,
+            showConfirm: false,
+          });
+        }}
+        footer={(
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setChangePasswordModalOpen(false);
+                setChangePasswordForm({
+                  currentPassword: "",
+                  newPassword: "",
+                  confirmPassword: "",
+                  showCurrent: false,
+                  showNew: false,
+                  showConfirm: false,
+                });
+              }}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handlePasswordChange}
+              disabled={changingPassword}
+              className="rounded-md bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {changingPassword ? "Updating..." : "Update Password"}
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            Enter your current password and choose a new one. Use the eye icon to show or hide each field.
+          </p>
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="space-y-1 text-sm">
+              <span className="text-pink-800">Current Password</span>
+              <div className="relative">
                 <input
-                  type="password"
-                  value={profileForm.currentPassword}
-                  onChange={(e) => setProfileForm({ ...profileForm, currentPassword: e.target.value })}
-                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
-                  placeholder="Required if changing password"
+                  type={changePasswordForm.showCurrent ? "text" : "password"}
+                  value={changePasswordForm.currentPassword}
+                  onChange={(e) =>
+                    setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 pr-10 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                  placeholder="Current password"
                 />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-pink-800">New Password</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setChangePasswordForm((prev) => ({ ...prev, showCurrent: !prev.showCurrent }))
+                  }
+                  className="absolute inset-y-0 right-2 flex items-center text-lg text-pink-600"
+                  aria-label={changePasswordForm.showCurrent ? "Hide current password" : "Show current password"}
+                >
+                  {changePasswordForm.showCurrent ? "🙈" : "👁"}
+                </button>
+              </div>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-pink-800">New Password</span>
+              <div className="relative">
                 <input
-                  type="password"
-                  value={profileForm.password}
-                  onChange={(e) => setProfileForm({ ...profileForm, password: e.target.value })}
-                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                  type={changePasswordForm.showNew ? "text" : "password"}
+                  value={changePasswordForm.newPassword}
+                  onChange={(e) =>
+                    setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 pr-10 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                  placeholder="New password"
                 />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-pink-800">Confirm Password</span>
+                <button
+                  type="button"
+                  onClick={() => setChangePasswordForm((prev) => ({ ...prev, showNew: !prev.showNew }))}
+                  className="absolute inset-y-0 right-2 flex items-center text-lg text-pink-600"
+                  aria-label={changePasswordForm.showNew ? "Hide new password" : "Show new password"}
+                >
+                  {changePasswordForm.showNew ? "🙈" : "👁"}
+                </button>
+              </div>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-pink-800">Confirm Password</span>
+              <div className="relative">
                 <input
-                  type="password"
-                  value={profileForm.confirmPassword}
-                  onChange={(e) => setProfileForm({ ...profileForm, confirmPassword: e.target.value })}
-                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                  type={changePasswordForm.showConfirm ? "text" : "password"}
+                  value={changePasswordForm.confirmPassword}
+                  onChange={(e) =>
+                    setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 pr-10 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                  placeholder="Confirm new password"
                 />
-              </label>
-            </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setChangePasswordForm((prev) => ({ ...prev, showConfirm: !prev.showConfirm }))
+                  }
+                  className="absolute inset-y-0 right-2 flex items-center text-lg text-pink-600"
+                  aria-label={changePasswordForm.showConfirm ? "Hide confirm password" : "Show confirm password"}
+                >
+                  {changePasswordForm.showConfirm ? "🙈" : "👁"}
+                </button>
+              </div>
+            </label>
           </div>
         </div>
       </Modal>
