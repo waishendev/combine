@@ -48,7 +48,7 @@ function Modal({ open, title, onClose, children, footer }: ModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-xl border border-pink-200 bg-white shadow-xl">
+      <div className="w-full max-w-xl rounded-xl border border-pink-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-pink-100 px-6 py-4">
           <h3 className="text-lg font-semibold text-pink-700">{title}</h3>
           <button
@@ -596,10 +596,10 @@ export default function AccountPage() {
           </div>
         )}
       >
-        <div className="flex gap-6">
-          <div className="flex-shrink-0">
+        <div className="flex flex-col gap-6 md:flex-row">
+          <div className="w-full max-w-xs md:w-auto">
             <div className="space-y-3">
-              <div className="h-48 w-48 overflow-hidden rounded-lg border border-pink-200 bg-pink-50">
+              <div className="h-48 w-full overflow-hidden rounded-lg border border-pink-200 bg-pink-50">
                 <Image
                   src={photoPreview || profile?.avatar || "/images/default_user_image.jpg"}
                   alt="Profile preview"
@@ -627,7 +627,7 @@ export default function AccountPage() {
                   }}
                   className="hidden"
                 />
-                <div className="rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-center text-sm font-semibold text-pink-700 transition hover:bg-pink-100">
+                <div className="w-full rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-center text-sm font-semibold text-pink-700 transition hover:bg-pink-100">
                   Upload Photo
                 </div>
               </label>
@@ -721,7 +721,7 @@ export default function AccountPage() {
                 onClick={() =>
                   setChangePasswordForm((prev) => ({ ...prev, showCurrent: !prev.showCurrent }))
                 }
-                className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-pink-600 transition hover:bg-pink-50"
+                className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
               >
                 {changePasswordForm.showCurrent ? "Hide" : "Show"}
               </button>
@@ -742,7 +742,7 @@ export default function AccountPage() {
               <button
                 type="button"
                 onClick={() => setChangePasswordForm((prev) => ({ ...prev, showNew: !prev.showNew }))}
-                className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-pink-600 transition hover:bg-pink-50"
+                className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
               >
                 {changePasswordForm.showNew ? "Hide" : "Show"}
               </button>
@@ -765,7 +765,7 @@ export default function AccountPage() {
                 onClick={() =>
                   setChangePasswordForm((prev) => ({ ...prev, showConfirm: !prev.showConfirm }))
                 }
-                className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-pink-600 transition hover:bg-pink-50"
+                className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
               >
                 {changePasswordForm.showConfirm ? "Hide" : "Show"}
               </button>
