@@ -28,7 +28,22 @@ class PublicShopController extends Controller
             ->orderBy('sort_order')
             ->get();
 
-        return $this->respond($items);
+        $data = $items->map(function (ShopMenuItem $menu) {
+            return [
+                'id' => $menu->id,
+                'title' => $menu->name,
+                'slug' => $menu->slug,
+                'categories' => $menu->categories->map(function (Category $category) {
+                    return [
+                        'id' => $category->id,
+                        'name' => $category->name,
+                        'slug' => $category->slug,
+                    ];
+                })->values(),
+            ];
+        });
+
+        return $this->respond($data);
     }
 
     public function menuDetail(string $slug)
@@ -42,7 +57,20 @@ class PublicShopController extends Controller
             ->where('is_active', true)
             ->firstOrFail();
 
-        return $this->respond($item);
+        $data = [
+            'id' => $item->id,
+            'title' => $item->name,
+            'slug' => $item->slug,
+            'categories' => $item->categories->map(function (Category $category) {
+                return [
+                    'id' => $category->id,
+                    'name' => $category->name,
+                    'slug' => $category->slug,
+                ];
+            })->values(),
+        ];
+
+        return $this->respond($data);
     }
 
     public function categories(Request $request)
@@ -97,43 +125,91 @@ class PublicShopController extends Controller
 
     public function products(Request $request)
     {
-        $productsQuery = Product::with(['categories', 'images'])
-            ->where('is_active', true)
-            ->when($request->filled('category_id'), function ($query) use ($request) {
-                $query->whereHas('categories', function ($q) use ($request) {
-                    $q->where('categories.id', $request->integer('category_id'));
-                });
-            })
-            ->when($request->filled('category_slug'), function ($query) use ($request) {
-                $query->whereHas('categories', function ($q) use ($request) {
-                    $q->where('categories.slug', $request->get('category_slug'));
-                });
-            })
-            ->when($request->filled('keyword') || $request->filled('q'), function ($query) use ($request) {
-                $keyword = $request->get('keyword') ?? $request->get('q');
-                $query->where(function ($q) use ($keyword) {
-                    $q->where('name', 'like', "%{$keyword}%")
-                        ->orWhere('sku', 'like', "%{$keyword}%");
-                });
-            })
-            ->when($request->filled('min_price'), function ($query) use ($request) {
-                $query->where('price', '>=', $request->get('min_price'));
-            })
-            ->when($request->filled('max_price'), function ($query) use ($request) {
-                $query->where('price', '<=', $request->get('max_price'));
-            });
+        $productsQuery = Product::with([
+            'categories' => function ($query) {
+                $query->select('categories.id', 'categories.name', 'categories.slug');
+            },
+            'images' => function ($query) {
+                $query->orderBy('sort_order')->orderBy('id');
+            },
+        ])
+            ->where('is_active', true);
 
-        if ($menuId = $request->query('menu_id')) {
-            $productsQuery->whereHas('categories.shopMenus', function ($query) use ($menuId) {
-                $query->where('shop_menu_items.id', $menuId);
+        $menuId = $request->query('menu_id');
+        $menuSlug = $request->query('menu_slug');
+        $categoryId = $request->query('category_id');
+        $categorySlug = $request->query('category_slug') ?? $request->query('category');
+        $keyword = $request->get('keyword') ?? $request->get('q') ?? $request->get('search');
+
+        if ($categoryId) {
+            $productsQuery->whereHas('categories', function ($query) use ($categoryId, $menuId, $menuSlug) {
+                $query->where('categories.id', $categoryId)
+                    ->where('categories.is_active', true);
+
+                if ($menuId) {
+                    $query->whereHas('shopMenus', function ($menuQuery) use ($menuId) {
+                        $menuQuery->where('shop_menu_items.id', $menuId)
+                            ->where('shop_menu_items.is_active', true);
+                    });
+                }
+
+                if ($menuSlug) {
+                    $query->whereHas('shopMenus', function ($menuQuery) use ($menuSlug) {
+                        $menuQuery->where('slug', $menuSlug)
+                            ->where('is_active', true);
+                    });
+                }
             });
         }
 
-        if ($menuSlug = $request->query('menu_slug')) {
+        if ($categorySlug) {
+            $productsQuery->whereHas('categories', function ($query) use ($categorySlug, $menuId, $menuSlug) {
+                $query->where('categories.slug', $categorySlug)
+                    ->where('categories.is_active', true);
+
+                if ($menuId) {
+                    $query->whereHas('shopMenus', function ($menuQuery) use ($menuId) {
+                        $menuQuery->where('shop_menu_items.id', $menuId)
+                            ->where('shop_menu_items.is_active', true);
+                    });
+                }
+
+                if ($menuSlug) {
+                    $query->whereHas('shopMenus', function ($menuQuery) use ($menuSlug) {
+                        $menuQuery->where('slug', $menuSlug)
+                            ->where('is_active', true);
+                    });
+                }
+            });
+        }
+
+        if ($menuId) {
+            $productsQuery->whereHas('categories.shopMenus', function ($query) use ($menuId) {
+                $query->where('shop_menu_items.id', $menuId)
+                    ->where('shop_menu_items.is_active', true);
+            });
+        }
+
+        if ($menuSlug) {
             $productsQuery->whereHas('categories.shopMenus', function ($query) use ($menuSlug) {
                 $query->where('slug', $menuSlug)
                     ->where('is_active', true);
             });
+        }
+
+        if ($keyword) {
+            $productsQuery->where(function ($query) use ($keyword) {
+                $query->where('name', 'like', "%{$keyword}%")
+                    ->orWhere('sku', 'like', "%{$keyword}%");
+            });
+        }
+
+        if ($request->filled('min_price')) {
+            $productsQuery->where('price', '>=', $request->get('min_price'));
+        }
+
+        if ($request->filled('max_price')) {
+            $productsQuery->where('price', '<=', $request->get('max_price'));
         }
 
         $sort = $request->get('sort');
@@ -151,7 +227,51 @@ class PublicShopController extends Controller
             ->paginate($perPage)
             ->appends($request->query());
 
-        return $this->respond($products);
+        $products->setCollection(
+            $products->getCollection()->map(function (Product $product) {
+                $sortedImages = $product->images
+                    ->sortBy('sort_order')
+                    ->sortBy('id')
+                    ->values()
+                    ->map(function ($image) {
+                        return [
+                            'image_path' => $image->image_path,
+                            'sort_order' => $image->sort_order,
+                        ];
+                    });
+
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'slug' => $product->slug,
+                    'sku' => $product->sku,
+                    'price' => $product->price,
+                    'is_in_wishlist' => $product->is_in_wishlist ?? false,
+                    'images' => $sortedImages,
+                ];
+            })
+        );
+
+        return response()->json([
+            'data' => $products->items(),
+            'meta' => [
+                'current_page' => $products->currentPage(),
+                'from' => $products->firstItem(),
+                'last_page' => $products->lastPage(),
+                'path' => $products->path(),
+                'per_page' => $products->perPage(),
+                'to' => $products->lastItem(),
+                'total' => $products->total(),
+            ],
+            'links' => [
+                'first' => $products->url(1),
+                'last' => $products->url($products->lastPage()),
+                'prev' => $products->previousPageUrl(),
+                'next' => $products->nextPageUrl(),
+            ],
+            'success' => true,
+            'message' => null,
+        ]);
     }
 
     public function shipping()
