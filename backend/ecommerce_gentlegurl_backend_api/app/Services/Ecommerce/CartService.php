@@ -48,16 +48,27 @@ class CartService
 
     public function formatCart(Cart $cart): array
     {
-        $cart->load(['items.product']);
+        $cart->load(['items.product.images']);
 
         $items = $cart->items->map(function ($item) {
             $lineTotal = (float) $item->unit_price_snapshot * (int) $item->quantity;
+
+            $images = $item->product?->images
+                ? $item->product->images
+                    ->sortBy('id')
+                    ->sortBy('sort_order')
+                : collect();
+
+            $thumbnail = optional(
+                $images->firstWhere('is_main', true) ?? $images->first()
+            )->image_path;
 
             return [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
                 'product_name' => $item->product?->name,
                 'product_slug' => $item->product?->slug,
+                'product_image' => $thumbnail,
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price_snapshot,
                 'line_total' => $lineTotal,

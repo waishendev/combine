@@ -101,7 +101,21 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
   }, []);
 
   const applyCartResponse = useCallback((cart?: CartResponse) => {
-    setItems(cart?.items ?? []);
+    const normalizedItems = (cart?.items ?? []).map((item) => ({
+      ...item,
+      name: item.name ?? (item as unknown as { product_name?: string }).product_name ?? "",
+      product: item.product ??
+        ((item as unknown as { product_slug?: string }).product_slug
+          ? { slug: (item as unknown as { product_slug?: string }).product_slug }
+          : undefined),
+      product_image:
+        item.product_image ??
+        (item as unknown as { product_image?: string | null }).product_image ??
+        item.product?.images?.find((img) => img.is_main)?.image_path ??
+        item.product?.images?.[0]?.image_path,
+    }));
+
+    setItems(normalizedItems);
     setVoucherError(null);
     setVoucherMessage(null);
     setAppliedVoucher(null);
@@ -112,7 +126,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
       persistSessionToken(cart.session_token);
     }
 
-    setSelectedItemIds(cart?.items?.map((item) => item.id) ?? []);
+    setSelectedItemIds(normalizedItems.map((item) => item.id));
   }, []);
 
   useEffect(() => {

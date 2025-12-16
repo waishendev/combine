@@ -24,6 +24,7 @@ use App\Http\Controllers\Ecommerce\PublicHomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicOrderHistoryController;
 use App\Http\Controllers\Ecommerce\PublicReturnController;
 use App\Http\Controllers\Ecommerce\PublicWishlistController;
+use App\Http\Controllers\Ecommerce\PublicStoreLocationController;
 use App\Http\Controllers\Ecommerce\PromotionController;
 use App\Http\Controllers\Ecommerce\ReturnRequestController;
 use App\Http\Controllers\Ecommerce\PublicAccountController;
@@ -82,11 +83,13 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/sliders', [PublicHomeSliderController::class, 'index']);
     Route::get('/homepage', [PublicHomepageController::class, 'show']);
     Route::get('/shipping', [PublicShopController::class, 'shipping']);
+    Route::get('/store-locations', [PublicStoreLocationController::class, 'index']);
     Route::get('/bank-accounts', [PublicBankAccountController::class, 'index']);
     Route::get('/payment-methods', [PublicPaymentMethodController::class, 'index']);
 
     Route::post('/checkout/preview', [PublicCheckoutController::class, 'preview']);
     Route::post('/orders', [PublicCheckoutController::class, 'createOrder']);
+    Route::get('/orders/lookup', [PublicCheckoutController::class, 'lookup']);
     Route::post('/orders/{order}/upload-slip', [PublicCheckoutController::class, 'uploadSlip']);
     Route::post('/orders/{order}/returns', [PublicReturnController::class, 'store']);
 

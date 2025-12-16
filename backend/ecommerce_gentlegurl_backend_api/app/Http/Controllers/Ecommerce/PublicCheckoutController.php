@@ -11,6 +11,7 @@ use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\Cart;
+use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
 use App\Services\Voucher\VoucherService;
@@ -56,12 +57,26 @@ class PublicCheckoutController extends Controller
     {
         $validated = $this->validateOrderRequest($request, true);
 
+        if (($validated['payment_method'] ?? 'manual_transfer') === 'manual_transfer' && empty($validated['bank_account_id'])) {
+            return $this->respondError(__('bank_account_id is required for manual transfer.'), 422);
+        }
+
         $customer = $this->currentCustomer();
 
         $calculation = $this->calculateTotals($validated['items'], $validated['voucher_code'] ?? null, $customer, $validated['shipping_method']);
 
         if (!empty($validated['voucher_code']) && (!$calculation['voucher_result'] || !$calculation['voucher_result']->valid)) {
             return $this->respond(null, $calculation['voucher_error'] ?? __('Invalid voucher'), false, 422);
+        }
+
+        $bankAccount = null;
+        if (!empty($validated['bank_account_id'])) {
+            $bankAccount = BankAccount::where('is_active', true)
+                ->find($validated['bank_account_id']);
+
+            if (!$bankAccount) {
+                return $this->respondError(__('Selected bank account is not available.'), 422);
+            }
         }
 
         if (!$customer && !empty($validated['customer'])) {
@@ -89,6 +104,7 @@ class PublicCheckoutController extends Controller
                 'payment_status' => 'unpaid',
                 'payment_method' => $paymentMethod,
                 'payment_gateway_id' => null,
+                'bank_account_id' => $bankAccount?->id,
                 'pickup_or_shipping' => $validated['shipping_method'],
                 'pickup_store_id' => $validated['store_location_id'] ?? null,
                 'subtotal' => $calculation['subtotal'],
@@ -191,10 +207,89 @@ class PublicCheckoutController extends Controller
                 'provider' => $paymentMethod === 'billplz_fpx' ? 'billplz' : 'manual',
                 'billplz_url' => $billplzUrl,
             ],
+            'bank_account' => $bankAccount ? [
+                'id' => $bankAccount->id,
+                'bank_name' => $bankAccount->bank_name,
+                'account_name' => $bankAccount->account_name,
+                'account_number' => $bankAccount->account_number,
+                'account_no' => $bankAccount->account_number,
+                'branch' => $bankAccount->branch,
+                'logo_url' => $bankAccount->logo_url,
+                'qr_image_url' => $bankAccount->qr_image_url,
+                'label' => $bankAccount->label,
+                'swift_code' => $bankAccount->swift_code,
+                'instructions' => $bankAccount->instructions,
+            ] : null,
             'voucher' => $calculation['voucher_result'] && $calculation['voucher_result']->valid ? [
                 'code' => $calculation['voucher']['code'] ?? null,
                 'discount_amount' => $calculation['voucher']['discount_amount'] ?? 0,
             ] : null,
+        ]);
+    }
+
+    public function lookup(Request $request)
+    {
+        $validated = $request->validate([
+            'order_no' => ['required', 'string'],
+            'order_id' => ['nullable', 'integer'],
+        ]);
+
+        $orderQuery = Order::with(['bankAccount', 'uploads', 'pickupStore'])
+            ->where('order_number', $validated['order_no']);
+
+        if (!empty($validated['order_id'])) {
+            $orderQuery->where('id', $validated['order_id']);
+        }
+
+        $order = $orderQuery->first();
+
+        if (!$order) {
+            return $this->respondError(__('Order not found.'), 404);
+        }
+
+        $bankAccount = $order->bankAccount ? [
+            'id' => $order->bankAccount->id,
+            'bank_name' => $order->bankAccount->bank_name,
+            'account_name' => $order->bankAccount->account_name,
+            'account_number' => $order->bankAccount->account_number,
+            'account_no' => $order->bankAccount->account_number,
+            'branch' => $order->bankAccount->branch,
+            'logo_url' => $order->bankAccount->logo_url,
+            'qr_image_url' => $order->bankAccount->qr_image_url,
+            'label' => $order->bankAccount->label,
+            'swift_code' => $order->bankAccount->swift_code,
+            'instructions' => $order->bankAccount->instructions,
+        ] : null;
+
+        $uploads = $order->uploads
+            ->where('type', 'payment_slip')
+            ->values()
+            ->map(fn($upload) => [
+                'id' => $upload->id,
+                'file_url' => $upload->file_url,
+                'created_at' => $upload->created_at,
+            ]);
+
+        return $this->respond([
+            'order_id' => $order->id,
+            'order_no' => $order->order_number,
+            'grand_total' => $order->grand_total,
+            'payment_method' => $order->payment_method,
+            'payment_status' => $order->payment_status,
+            'status' => $order->status,
+            'bank_account' => $bankAccount,
+            'pickup_store' => $order->pickupStore ? [
+                'id' => $order->pickupStore->id,
+                'name' => $order->pickupStore->name,
+                'address_line1' => $order->pickupStore->address_line1,
+                'address_line2' => $order->pickupStore->address_line2,
+                'city' => $order->pickupStore->city,
+                'state' => $order->pickupStore->state,
+                'postcode' => $order->pickupStore->postcode,
+                'country' => $order->pickupStore->country,
+                'phone' => $order->pickupStore->phone,
+            ] : null,
+            'uploads' => $uploads,
         ]);
     }
 
@@ -238,6 +333,7 @@ class PublicCheckoutController extends Controller
             'shipping_country' => ['nullable', 'string'],
             'session_token' => ['nullable', 'string', 'max:100'],
             'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx'],
+            'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
         ]);
     }
 

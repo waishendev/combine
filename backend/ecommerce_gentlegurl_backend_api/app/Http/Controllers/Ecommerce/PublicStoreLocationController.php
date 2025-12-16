@@ -1,0 +1,31 @@
+<?php
+
+namespace App\Http\Controllers\Ecommerce;
+
+use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\StoreLocation;
+use Illuminate\Http\JsonResponse;
+
+class PublicStoreLocationController extends Controller
+{
+    public function index(): JsonResponse
+    {
+        $locations = StoreLocation::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->orderBy('id')
+            ->get([
+                'id',
+                'name',
+                'address_line1',
+                'address_line2',
+                'city',
+                'state',
+                'postcode',
+                'country',
+                'phone',
+            ]);
+
+        return $this->respond($locations);
+    }
+}

@@ -2,6 +2,7 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Models\BankAccount;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -16,6 +17,7 @@ class Order extends Model
         'payment_status',
         'payment_method',
         'payment_gateway_id',
+        'bank_account_id',
         'subtotal',
         'discount_total',
         'shipping_fee',
@@ -87,6 +89,11 @@ class Order extends Model
     public function paymentGateway()
     {
         return $this->belongsTo(PaymentGateway::class);
+    }
+
+    public function bankAccount()
+    {
+        return $this->belongsTo(BankAccount::class);
     }
 
     public function pickupStore()
