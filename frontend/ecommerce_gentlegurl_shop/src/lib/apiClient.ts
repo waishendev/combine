@@ -237,14 +237,45 @@ export async function getCustomerProfile() {
 export type UpdateCustomerProfilePayload = Partial<{
   name: string;
   phone: string | null;
-  avatar: string | null;
-  current_password: string;
-  password: string;
-  password_confirmation: string;
+  gender: string | null;
+  date_of_birth: string | null;
+  photo: File | null;
 }>;
 
 export async function updateCustomerProfile(payload: UpdateCustomerProfilePayload) {
-  return put<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", payload);
+  const formData = new FormData();
+
+  if (payload.name !== undefined) {
+    formData.append("name", payload.name);
+  }
+
+  if (payload.phone !== undefined) {
+    formData.append("phone", payload.phone ?? "");
+  }
+
+  if (payload.gender !== undefined) {
+    formData.append("gender", payload.gender ?? "");
+  }
+
+  if (payload.date_of_birth !== undefined) {
+    formData.append("date_of_birth", payload.date_of_birth ?? "");
+  }
+
+  if (payload.photo !== undefined && payload.photo !== null) {
+    formData.append("photo", payload.photo);
+  }
+
+  return put<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", undefined, {
+    body: formData,
+  });
+}
+
+export async function changeCustomerPassword(payload: {
+  current_password: string;
+  password: string;
+  password_confirmation: string;
+}) {
+  return put<{ data: CustomerProfileWithAddresses }>("/public/auth/password", payload);
 }
 
 export type AddressPayload = {

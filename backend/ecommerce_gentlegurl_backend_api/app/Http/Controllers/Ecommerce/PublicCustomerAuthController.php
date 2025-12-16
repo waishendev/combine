@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 
@@ -157,24 +158,20 @@ class PublicCustomerAuthController extends Controller
             'gender' => ['sometimes', 'nullable', 'in:male,female,other'],
             'date_of_birth' => ['sometimes', 'nullable', 'date'],
             'avatar' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'current_password' => ['required_with:password', 'string'],
-            'password' => ['sometimes', 'required', 'string', 'min:6', 'confirmed'],
-            'password_confirmation' => ['sometimes', 'required_with:password', 'string'],
+            'photo' => ['sometimes', 'nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
         ]);
 
-        if (array_key_exists('password', $data)) {
-            if (!Hash::check($data['current_password'] ?? '', $customer->password)) {
-                throw ValidationException::withMessages([
-                    'current_password' => __('The current password is incorrect.'),
-                ]);
-            }
-        }
-
-        DB::transaction(function () use (&$customer, $data) {
+        DB::transaction(function () use (&$customer, $data, $request) {
             $customer->fill(collect($data)->only(['name', 'phone', 'gender', 'date_of_birth', 'avatar'])->toArray());
 
-            if (array_key_exists('password', $data)) {
-                $customer->password = $data['password'];
+            if ($request->hasFile('photo')) {
+                if ($customer->avatar && str_starts_with($customer->avatar, 'avatars/') && Storage::disk('public')->exists($customer->avatar)) {
+                    Storage::disk('public')->delete($customer->avatar);
+                }
+
+                $file = $request->file('photo');
+                $filename = 'avatars/' . uniqid() . '.' . $file->getClientOriginalExtension();
+                $customer->avatar = $file->storeAs('', $filename, 'public');
             }
 
             $customer->save();
@@ -186,6 +183,29 @@ class PublicCustomerAuthController extends Controller
         }]);
 
         return $this->respond($this->transformCustomer($customer), 'Profile updated successfully.');
+    }
+
+    public function changePassword(Request $request): JsonResponse
+    {
+        /** @var Customer $customer */
+        $customer = $request->user('customer') ?? $request->user();
+
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:6', 'confirmed'],
+            'password_confirmation' => ['required', 'string'],
+        ]);
+
+        if (!Hash::check($data['current_password'], $customer->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => __('The current password is incorrect.'),
+            ]);
+        }
+
+        $customer->password = $data['password'];
+        $customer->save();
+
+        return $this->respond($this->transformCustomer($customer), 'Password updated successfully.');
     }
 
     private function transformCustomer(Customer $customer, ?string $token = null): array

@@ -64,6 +64,9 @@ Route::prefix('/public/auth')->middleware('api.session')->group(function () {
     Route::put('/profile', [PublicCustomerAuthController::class, 'updateProfile'])
         ->middleware('auth:customer,sanctum');
 
+    Route::put('/password', [PublicCustomerAuthController::class, 'changePassword'])
+        ->middleware('auth:customer,sanctum');
+
     Route::middleware('auth:customer,sanctum')->group(function () {
         Route::get('/addresses', [PublicCustomerAddressController::class, 'index']);
         Route::post('/addresses', [PublicCustomerAddressController::class, 'store']);
