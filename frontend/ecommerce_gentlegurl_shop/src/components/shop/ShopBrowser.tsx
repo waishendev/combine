@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ProductGrid from "@/components/products/ProductGrid";
 
 const SORT_OPTIONS = [
@@ -20,11 +21,17 @@ type Product = {
   is_in_wishlist?: boolean;
 };
 
-type Category = {
+type ShopMenuCategory = {
   id: number | string;
   slug: string;
-  name?: string;
-  label?: string;
+  name: string;
+};
+
+type ShopMenu = {
+  id: number | string;
+  title: string;
+  slug: string;
+  categories: ShopMenuCategory[];
 };
 
 type ProductsMeta = {
@@ -34,78 +41,148 @@ type ProductsMeta = {
 };
 
 type ShopBrowserProps = {
-  initialCategorySlug?: string;
+  menuSlug?: string;
 };
 
-export function ShopBrowser({ initialCategorySlug }: ShopBrowserProps) {
-  const [categories, setCategories] = useState<Category[]>([]);
+export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const [menus, setMenus] = useState<ShopMenu[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [meta, setMeta] = useState<ProductsMeta>({
-    currentPage: 1,
+    currentPage: Number(searchParams?.get("page")) || 1,
     lastPage: 1,
     total: 0,
   });
-  const [selectedCategory, setSelectedCategory] = useState<string | "all">(
-    initialCategorySlug ?? "all",
+  const [selectedMenuSlug, setSelectedMenuSlug] = useState<string | null>(
+    () => menuSlug ?? null,
   );
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [sort, setSort] = useState<string>(SORT_OPTIONS[0]?.value ?? "latest");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(
+    () => searchParams?.get("category") ?? null,
+  );
+  const [searchTerm, setSearchTerm] = useState<string>(
+    () => searchParams?.get("q") ?? "",
+  );
+  const [debouncedSearch, setDebouncedSearch] = useState<string>(
+    () => searchParams?.get("q") ?? "",
+  );
+  const [sort, setSort] = useState<string>(
+    () => searchParams?.get("sort") ?? SORT_OPTIONS[0].value,
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState<number>(
+    () => Number(searchParams?.get("page")) || 1,
+  );
+  const [minPriceInput, setMinPriceInput] = useState<string>(
+    () => searchParams?.get("min_price") ?? "",
+  );
+  const [maxPriceInput, setMaxPriceInput] = useState<string>(
+    () => searchParams?.get("max_price") ?? "",
+  );
+  const [appliedMinPrice, setAppliedMinPrice] = useState<string>(
+    () => searchParams?.get("min_price") ?? "",
+  );
+  const [appliedMaxPrice, setAppliedMaxPrice] = useState<string>(
+    () => searchParams?.get("max_price") ?? "",
+  );
+
+  useEffect(() => {
+    setSelectedMenuSlug(menuSlug ?? null);
+  }, [menuSlug]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm.trim());
-    }, 350);
+    }, 400);
 
     return () => clearTimeout(handler);
   }, [searchTerm]);
 
   useEffect(() => {
     setPage(1);
-  }, [selectedCategory, debouncedSearch, sort]);
+  }, [selectedCategory, debouncedSearch, sort, appliedMinPrice, appliedMaxPrice, selectedMenuSlug]);
 
-  const fetchCategories = useCallback(async () => {
+  useEffect(() => {
+    const params = new URLSearchParams();
+
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (sort && sort !== SORT_OPTIONS[0].value) params.set("sort", sort);
+    if (selectedCategory) params.set("category", selectedCategory);
+    if (appliedMinPrice) params.set("min_price", appliedMinPrice);
+    if (appliedMaxPrice) params.set("max_price", appliedMaxPrice);
+    if (page > 1) params.set("page", page.toString());
+
+    const queryString = params.toString();
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
+      scroll: false,
+    });
+  }, [debouncedSearch, sort, selectedCategory, appliedMinPrice, appliedMaxPrice, page, pathname, router]);
+
+  const fetchMenus = useCallback(async () => {
     try {
-      const res = await fetch("/api/proxy/public/shop/categories", {
+      const res = await fetch("/api/proxy/public/shop/menu", {
         cache: "no-store",
       });
 
       if (!res.ok) {
-        throw new Error(`Failed to load categories (${res.status})`);
+        throw new Error(`Failed to load menu (${res.status})`);
       }
 
       const json = await res.json();
-      const rawCategories: Category[] = (json.data ?? json) as Category[];
+      const rawMenus: ShopMenu[] = (json.data ?? json) as ShopMenu[];
+      setMenus(rawMenus ?? []);
 
-      setCategories(rawCategories);
+      if (!menuSlug && selectedCategory && rawMenus?.length) {
+        const hostingMenu = rawMenus.find((menu) =>
+          menu.categories.some((cat) => cat.slug === selectedCategory),
+        );
+
+        if (hostingMenu) {
+          setSelectedMenuSlug(hostingMenu.slug);
+        }
+      }
     } catch (err) {
-      console.error("[ShopBrowser] Categories error", err);
-      setCategories([]);
+      console.error("[ShopBrowser] Menu error", err);
+      setMenus([]);
     }
-  }, []);
+  }, [menuSlug, selectedCategory]);
 
   const fetchProducts = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
+      const menuScope = menuSlug ?? selectedMenuSlug ?? undefined;
+
       const params = new URLSearchParams();
       params.set("page", page.toString());
       params.set("per_page", PER_PAGE.toString());
 
-      if (selectedCategory !== "all") {
+      if (menuScope) {
+        params.set("menu_slug", menuScope);
+      }
+
+      if (selectedCategory) {
         params.set("category_slug", selectedCategory);
       }
 
       if (debouncedSearch) {
-        params.set("search", debouncedSearch);
+        params.set("q", debouncedSearch);
       }
 
       if (sort) {
         params.set("sort", sort);
+      }
+
+      if (appliedMinPrice) {
+        params.set("min_price", appliedMinPrice);
+      }
+
+      if (appliedMaxPrice) {
+        params.set("max_price", appliedMaxPrice);
       }
 
       const res = await fetch(
@@ -125,7 +202,7 @@ export function ShopBrowser({ initialCategorySlug }: ShopBrowserProps) {
         ? payload
         : payload.data ?? payload.items ?? [];
 
-      const metaPayload = payload.meta ?? json.meta ?? {};
+      const metaPayload = json.meta ?? payload.meta ?? {};
       const resolvedMeta: ProductsMeta = {
         currentPage: metaPayload.current_page ?? metaPayload.currentPage ?? page,
         lastPage: metaPayload.last_page ?? metaPayload.lastPage ?? page,
@@ -141,23 +218,75 @@ export function ShopBrowser({ initialCategorySlug }: ShopBrowserProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [debouncedSearch, page, selectedCategory, sort]);
+  }, [appliedMaxPrice, appliedMinPrice, debouncedSearch, menuSlug, page, selectedCategory, selectedMenuSlug, sort]);
 
   useEffect(() => {
-    fetchCategories();
-  }, [fetchCategories]);
+    fetchMenus();
+  }, [fetchMenus]);
 
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
 
+  const sidebarMenus = useMemo(() => {
+    if (menuSlug) {
+      return menus.filter((menu) => menu.slug === menuSlug);
+    }
+
+    return menus;
+  }, [menuSlug, menus]);
+
+  const findCategoryLabel = useCallback(
+    (slug: string | null) => {
+      if (!slug) return null;
+      const fromMenu = menus
+        .flatMap((menu) => menu.categories.map((category) => ({
+          menuSlug: menu.slug,
+          name: category.name,
+          slug: category.slug,
+        })))
+        .find((category) => category.slug === slug);
+
+      return fromMenu?.name ?? slug;
+    },
+    [menus],
+  );
+
   const activeCategoryLabel = useMemo(() => {
-    if (selectedCategory === "all") return "All";
-    const active = categories.find((cat) => cat.slug === selectedCategory);
-    return active?.name || active?.label || "Category";
-  }, [categories, selectedCategory]);
+    if (selectedCategory) return findCategoryLabel(selectedCategory);
+
+    if (menuSlug) {
+      const menu = menus.find((item) => item.slug === menuSlug);
+      return menu?.title ?? "Menu";
+    }
+
+    return "All Products";
+  }, [findCategoryLabel, menuSlug, menus, selectedCategory]);
 
   const showEmptyState = !isLoading && products.length === 0;
+  const isMenuScoped = Boolean(menuSlug ?? selectedMenuSlug);
+  const allLabel = menuSlug ? "All" : "All Products";
+
+  const handleApplyPrice = () => {
+    setAppliedMinPrice(minPriceInput.trim());
+    setAppliedMaxPrice(maxPriceInput.trim());
+  };
+
+  const handleClearPrice = () => {
+    setMinPriceInput("");
+    setMaxPriceInput("");
+    setAppliedMinPrice("");
+    setAppliedMaxPrice("");
+  };
+
+  const handleSelectAll = () => {
+    setSelectedCategory(null);
+    setSelectedMenuSlug(menuSlug ?? null);
+  };
+
+  const mobileCategoryValue = selectedCategory
+    ? `${selectedMenuSlug ?? menuSlug ?? ""}::${selectedCategory}`
+    : "all";
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
@@ -167,18 +296,16 @@ export function ShopBrowser({ initialCategorySlug }: ShopBrowserProps) {
           <h1 className="text-2xl font-semibold text-gray-900">Thoughtfully curated finds</h1>
         </div>
         <div className="text-sm text-gray-500">
-          {activeCategoryLabel === "All"
-            ? "Browse everything"
-            : `Browsing ${activeCategoryLabel}`}
+          {isMenuScoped ? `Browsing ${activeCategoryLabel ?? "menu"}` : "Browse everything"}
         </div>
       </header>
 
-      <div className="grid gap-6 md:grid-cols-[220px_1fr]">
+      <div className="grid gap-6 md:grid-cols-[260px_1fr]">
         <aside className="rounded-2xl border border-pink-50 bg-white/80 p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-gray-900">Categories</h2>
             <span className="rounded-full bg-pink-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#ec4899]">
-              {categories.length || "All"}
+              {sidebarMenus.reduce((count, menu) => count + menu.categories.length, 0) || "All"}
             </span>
           </div>
 
@@ -188,45 +315,124 @@ export function ShopBrowser({ initialCategorySlug }: ShopBrowserProps) {
             </label>
             <select
               id="category-mobile"
-              value={selectedCategory}
-              onChange={(event) => setSelectedCategory(event.target.value)}
+              value={mobileCategoryValue}
+              onChange={(event) => {
+                const value = event.target.value;
+
+                if (value === "all") {
+                  handleSelectAll();
+                  return;
+                }
+
+                const [menuValue, categorySlug] = value.split("::");
+                setSelectedMenuSlug(menuSlug ?? menuValue ?? null);
+                setSelectedCategory(categorySlug ?? null);
+              }}
               className="w-full rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
             >
-              <option value="all">All</option>
-              {categories.map((category) => (
-                <option key={category.slug} value={category.slug}>
-                  {category.name || category.label || category.slug}
-                </option>
+              <option value="all">{allLabel}</option>
+              {sidebarMenus.map((menu) => (
+                <optgroup key={menu.slug} label={menu.title}>
+                  {menu.categories.map((category) => (
+                    <option key={category.slug} value={`${menu.slug}::${category.slug}`}>
+                      {category.name}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
 
-          <div className="mt-4 hidden flex-col gap-2 md:flex">
+          <div className="mt-4 hidden flex-col gap-4 md:flex">
             <button
               type="button"
-              onClick={() => setSelectedCategory("all")}
+              onClick={handleSelectAll}
               className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
-                selectedCategory === "all"
+                selectedCategory === null
                   ? "bg-gradient-to-r from-pink-50 to-white text-[#ec4899] shadow-sm"
                   : "text-gray-700 hover:bg-pink-50"
               }`}
             >
-              All
+              {allLabel}
             </button>
-            {categories.map((category) => (
-              <button
-                key={category.slug}
-                type="button"
-                onClick={() => setSelectedCategory(category.slug)}
-                className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
-                  selectedCategory === category.slug
-                    ? "bg-gradient-to-r from-pink-50 to-white text-[#ec4899] shadow-sm"
-                    : "text-gray-700 hover:bg-pink-50"
-                }`}
-              >
-                {category.name || category.label || category.slug}
-              </button>
+
+            {sidebarMenus.map((menu) => (
+              <div key={menu.slug} className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">
+                  {menu.title}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {menu.categories.map((category) => {
+                    const isActive = selectedCategory === category.slug;
+                    return (
+                      <button
+                        key={category.slug}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMenuSlug(menuSlug ?? menu.slug);
+                          setSelectedCategory(category.slug);
+                        }}
+                        className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                          isActive
+                            ? "bg-gradient-to-r from-pink-50 to-white text-[#ec4899] shadow-sm"
+                            : "text-gray-700 hover:bg-pink-50"
+                        }`}
+                      >
+                        {category.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
+          </div>
+
+          <div className="mt-6 rounded-xl border border-pink-100 bg-white/70 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Price Range</p>
+            <div className="mt-3 grid grid-cols-1 gap-3">
+              <div>
+                <label htmlFor="min-price" className="text-[11px] uppercase tracking-[0.12em] text-gray-500">
+                  Min (RM)
+                </label>
+                <input
+                  id="min-price"
+                  type="number"
+                  inputMode="decimal"
+                  value={minPriceInput}
+                  onChange={(event) => setMinPriceInput(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
+                />
+              </div>
+              <div>
+                <label htmlFor="max-price" className="text-[11px] uppercase tracking-[0.12em] text-gray-500">
+                  Max (RM)
+                </label>
+                <input
+                  id="max-price"
+                  type="number"
+                  inputMode="decimal"
+                  value={maxPriceInput}
+                  onChange={(event) => setMaxPriceInput(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleApplyPrice}
+                  className="flex-1 rounded-xl bg-[#ec4899] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#db2777]"
+                >
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearPrice}
+                  className="flex-1 rounded-xl border border-pink-100 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-[#ec4899] hover:text-[#ec4899]"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
           </div>
         </aside>
 
@@ -272,9 +478,7 @@ export function ShopBrowser({ initialCategorySlug }: ShopBrowserProps) {
                 Loading products...
               </div>
             ) : error ? (
-              <div className="rounded-xl bg-pink-50 px-4 py-3 text-sm text-[#be185d]">
-                {error}
-              </div>
+              <div className="rounded-xl bg-pink-50 px-4 py-3 text-sm text-[#be185d]">{error}</div>
             ) : showEmptyState ? (
               <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-sm text-gray-600">
                 <p className="font-semibold text-gray-800">No products found</p>
