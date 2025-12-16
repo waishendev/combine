@@ -40,18 +40,18 @@ export function RegisterForm() {
   };
 
   const inputClass =
-    "w-full rounded border border-[var(--muted)] bg-white/70 px-3 py-2 text-sm focus:border-[var(--accent)] focus:outline-none";
+    "w-full rounded-xl border border-white/70 bg-white/80 px-4 py-3 text-sm shadow-[0_8px_24px_rgba(0,0,0,0.05)] transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[var(--accent)]";
 
   return (
-    <form className="space-y-4 text-[var(--foreground)]" onSubmit={handleSubmit}>
+    <form className="space-y-5 text-[var(--foreground)]" onSubmit={handleSubmit}>
       {error && (
         <div className="rounded bg-[var(--muted)] px-3 py-2 text-sm text-[#b8527a]">
           {error}
         </div>
       )}
 
-      <div className="space-y-1">
-        <label className="text-sm text-[var(--foreground)]/80" htmlFor="name">
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="name">
           Name
         </label>
         <input
@@ -64,8 +64,8 @@ export function RegisterForm() {
         />
       </div>
 
-      <div className="space-y-1">
-        <label className="text-sm text-[var(--foreground)]/80" htmlFor="email">
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="email">
           Email
         </label>
         <input
@@ -78,8 +78,8 @@ export function RegisterForm() {
         />
       </div>
 
-      <div className="space-y-1">
-        <label className="text-sm text-[var(--foreground)]/80" htmlFor="phone">
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="phone">
           Phone
         </label>
         <input
@@ -92,8 +92,8 @@ export function RegisterForm() {
         />
       </div>
 
-      <div className="space-y-1">
-        <label className="text-sm text-[var(--foreground)]/80" htmlFor="password">
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="password">
           Password
         </label>
         <input
@@ -106,8 +106,8 @@ export function RegisterForm() {
         />
       </div>
 
-      <div className="space-y-1">
-        <label className="text-sm text-[var(--foreground)]/80" htmlFor="password_confirmation">
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="password_confirmation">
           Confirm Password
         </label>
         <input
@@ -123,7 +123,7 @@ export function RegisterForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="w-full rounded bg-[var(--accent)] px-4 py-2 text-white transition hover:bg-[var(--accent-strong)] disabled:opacity-60"
+        className="w-full rounded-xl bg-gradient-to-r from-[var(--accent)] via-[#d0699d] to-[var(--accent-strong)] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_32px_rgba(191,82,122,0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_42px_rgba(191,82,122,0.55)] disabled:translate-y-0 disabled:opacity-60 disabled:shadow-none"
       >
         {submitting ? "Creating account..." : "Register"}
       </button>

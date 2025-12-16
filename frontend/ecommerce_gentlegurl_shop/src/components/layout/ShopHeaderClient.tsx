@@ -41,7 +41,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   };
 
   return (
-    <header className="border-b border-[var(--muted)] bg-[var(--background)]/80 backdrop-blur">
+    <header className="bg-[var(--background)]/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <Link href="/" className="text-lg font-semibold text-[var(--foreground)]">
@@ -162,7 +162,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
               <div className="relative">
                 <button
                   onClick={() => setMenuOpen((prev) => !prev)}
-                  className="flex h-10 w-full items-center gap-2 rounded-full border border-pink-200/60 bg-white/70 px-3 text-sm text-[var(--foreground)] transition hover:shadow-sm"
+                  className="flex h-10 w-full items-center gap-2 rounded-full bg-white/70 px-3 text-sm text-[var(--foreground)] shadow-[0_4px_20px_rgba(0,0,0,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(0,0,0,0.08)]"
                 >
                   <div className="flex h-full items-center gap-2">
                     <div className="h-7 w-7 overflow-hidden rounded-full bg-gray-100">
@@ -228,7 +228,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
               <div className="flex h-10 items-center gap-2 text-sm">
                 {!isLoginPage && (
                   <Link
-                    className="flex-1 h-10 rounded-full border border-pink-200/60 bg-white/70 px-4 text-center leading-10 text-[var(--foreground)] transition hover:shadow-sm"
+                    className="flex-1 h-10 rounded-full bg-white/70 px-4 text-center font-medium leading-10 text-[var(--foreground)] shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_35px_rgba(0,0,0,0.08)]"
                     href="/login"
                   >
                     Login
@@ -236,7 +236,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                 )}
                 {!isRegisterPage && (
                   <Link
-                    className="flex-1 h-10 rounded-full bg-[var(--accent)] px-4 text-center leading-10 text-white transition hover:bg-[var(--accent-strong)]"
+                    className="flex-1 h-10 rounded-full bg-gradient-to-r from-[var(--accent)] via-[#d0699d] to-[var(--accent-strong)] px-4 text-center font-medium leading-10 text-white shadow-[0_10px_30px_rgba(191,82,122,0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_38px_rgba(191,82,122,0.55)]"
                     href="/register"
                   >
                     Register
@@ -248,7 +248,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
 
           <Link
             href="/cart"
-            className="relative flex h-10 w-10 items-center justify-center rounded-full border border-pink-200/60 bg-white/70 text-[var(--foreground)] transition hover:shadow-sm"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-[var(--foreground)] shadow-[0_4px_20px_rgba(0,0,0,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.1)]"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
