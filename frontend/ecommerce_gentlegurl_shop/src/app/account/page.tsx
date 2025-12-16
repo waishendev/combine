@@ -704,73 +704,109 @@ export default function AccountPage() {
         )}
       >
         <div className="space-y-4">
-          <label className="block space-y-1 text-sm">
-            <span className="text-pink-800">Current Password</span>
-            <div className="flex gap-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="currentPassword">
+              Current Password
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--foreground)]/45">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                  <path d="M6 11h12v10H6z" />
+                </svg>
+              </div>
               <input
+                id="currentPassword"
                 type={changePasswordForm.showCurrent ? "text" : "password"}
                 value={changePasswordForm.currentPassword}
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })
                 }
-                className="flex-1 rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-pink-100/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-pink-200/25"
                 placeholder="Current password"
               />
-              <button
-                type="button"
-                onClick={() =>
-                  setChangePasswordForm((prev) => ({ ...prev, showCurrent: !prev.showCurrent }))
-                }
-                className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
-              >
-                {changePasswordForm.showCurrent ? "Hide" : "Show"}
-              </button>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setChangePasswordForm((prev) => ({ ...prev, showCurrent: !prev.showCurrent }))
+                  }
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
+                  aria-label={changePasswordForm.showCurrent ? "Hide current password" : "Show current password"}
+                >
+                  {changePasswordForm.showCurrent ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
-          </label>
-          <label className="block space-y-1 text-sm">
-            <span className="text-pink-800">New Password</span>
-            <div className="flex gap-2">
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="newPassword">
+              New Password
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--foreground)]/45">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                  <path d="M6 11h12v10H6z" />
+                </svg>
+              </div>
               <input
+                id="newPassword"
                 type={changePasswordForm.showNew ? "text" : "password"}
                 value={changePasswordForm.newPassword}
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })
                 }
-                className="flex-1 rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-pink-100/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-pink-200/25"
                 placeholder="New password"
               />
-              <button
-                type="button"
-                onClick={() => setChangePasswordForm((prev) => ({ ...prev, showNew: !prev.showNew }))}
-                className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
-              >
-                {changePasswordForm.showNew ? "Hide" : "Show"}
-              </button>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <button
+                  type="button"
+                  onClick={() => setChangePasswordForm((prev) => ({ ...prev, showNew: !prev.showNew }))}
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
+                  aria-label={changePasswordForm.showNew ? "Hide new password" : "Show new password"}
+                >
+                  {changePasswordForm.showNew ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
-          </label>
-          <label className="block space-y-1 text-sm">
-            <span className="text-pink-800">Confirm Password</span>
-            <div className="flex gap-2">
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="confirmPassword">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--foreground)]/45">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                  <path d="M6 11h12v10H6z" />
+                </svg>
+              </div>
               <input
+                id="confirmPassword"
                 type={changePasswordForm.showConfirm ? "text" : "password"}
                 value={changePasswordForm.confirmPassword}
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })
                 }
-                className="flex-1 rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-pink-100/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-pink-200/25"
                 placeholder="Confirm new password"
               />
-              <button
-                type="button"
-                onClick={() =>
-                  setChangePasswordForm((prev) => ({ ...prev, showConfirm: !prev.showConfirm }))
-                }
-                className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
-              >
-                {changePasswordForm.showConfirm ? "Hide" : "Show"}
-              </button>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setChangePasswordForm((prev) => ({ ...prev, showConfirm: !prev.showConfirm }))
+                  }
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
+                  aria-label={changePasswordForm.showConfirm ? "Hide confirm password" : "Show confirm password"}
+                >
+                  {changePasswordForm.showConfirm ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
-          </label>
+          </div>
         </div>
       </Modal>
 
