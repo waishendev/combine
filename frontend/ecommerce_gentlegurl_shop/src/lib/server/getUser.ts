@@ -1,4 +1,4 @@
-import { getAccountOverview } from "../apiClient";
+import { getAccountOverview } from "./getAccountOverview";
 
 export async function getUser() {
   try {

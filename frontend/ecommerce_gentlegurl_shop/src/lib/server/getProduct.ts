@@ -21,6 +21,26 @@ export type ProductDetail = {
   [key: string]: unknown;
 };
 
+function buildImageUrl(path: string): string {
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  return `${apiBaseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+function normalizeProductImages(product: ProductDetail): ProductDetail {
+  if (!product.images?.length) return product;
+
+  const images = product.images.map((image) => ({
+    ...image,
+    image_path: buildImageUrl(image.image_path),
+  }));
+
+  return { ...product, images };
+}
+
 export async function getProduct(slug: string): Promise<ProductDetail | null> {
   try {
     const cookieStore = await cookies();
@@ -49,7 +69,11 @@ export async function getProduct(slug: string): Promise<ProductDetail | null> {
     }
 
     const json = await res.json();
-    return (json.data as ProductDetail) ?? null;
+    const product = (json.data as ProductDetail) ?? null;
+
+    if (!product) return null;
+
+    return normalizeProductImages(product);
   } catch (error) {
     console.error("[getProduct] Error:", error);
     return null;
