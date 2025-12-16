@@ -1,5 +1,7 @@
 import { ShopBrowser } from "@/components/shop/ShopBrowser";
 
+export const dynamic = "force-dynamic";
+
 type CategoryPageProps = {
   params: { menu_slug: string };
 };
