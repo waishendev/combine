@@ -50,6 +50,10 @@ export type CustomerProfile = {
   tier: string;
 };
 
+export type CustomerProfileWithAddresses = CustomerProfile & {
+  addresses: CustomerAddress[];
+};
+
 export type CustomerAddress = {
   id: number;
   label: string | null;
@@ -145,6 +149,8 @@ type ApiRequestOptions = RequestInit & {
   includeSessionToken?: boolean;
 };
 
+type ApiError = Error & { status?: number; data?: unknown };
+
 async function apiRequest<T>(path: string, method: HttpMethod, options: ApiRequestOptions = {}): Promise<T> {
   const url = new URL(
     `/api/proxy${path.startsWith("/") ? "" : "/"}${path}`,
@@ -190,7 +196,19 @@ async function apiRequest<T>(path: string, method: HttpMethod, options: ApiReque
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`API error ${response.status}: ${text}`);
+    let parsed: unknown = text;
+
+    try {
+      parsed = text ? JSON.parse(text) : text;
+    } catch {
+      // keep original text
+    }
+
+    const error: ApiError = new Error(`API error ${response.status}`);
+    error.status = response.status;
+    error.data = parsed;
+
+    throw error;
   }
 
   return response.json() as Promise<T>;
@@ -213,7 +231,54 @@ export function del<T>(path: string, options?: ApiRequestOptions) {
 }
 
 export async function getCustomerProfile() {
-  return get<{ data: CustomerProfile }>("/public/auth/profile");
+  return get<{ data: CustomerProfileWithAddresses }>("/public/auth/profile");
+}
+
+export type UpdateCustomerProfilePayload = Partial<{
+  name: string;
+  phone: string | null;
+  avatar: string | null;
+  current_password: string;
+  password: string;
+  password_confirmation: string;
+}>;
+
+export async function updateCustomerProfile(payload: UpdateCustomerProfilePayload) {
+  return put<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", payload);
+}
+
+export type AddressPayload = {
+  label?: string | null;
+  type: "billing" | "shipping";
+  name: string;
+  phone: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state?: string | null;
+  postcode?: string | null;
+  country: string;
+  is_default?: boolean;
+};
+
+export async function getCustomerAddresses() {
+  return get<{ data: CustomerAddress[] }>("/public/auth/addresses");
+}
+
+export async function createCustomerAddress(payload: AddressPayload) {
+  return post<{ data: CustomerAddress }>("/public/auth/addresses", payload);
+}
+
+export async function updateCustomerAddress(id: number, payload: AddressPayload) {
+  return put<{ data: CustomerAddress }>(`/public/auth/addresses/${id}`, payload);
+}
+
+export async function deleteCustomerAddress(id: number) {
+  return del<{ data: null }>(`/public/auth/addresses/${id}`);
+}
+
+export async function makeDefaultCustomerAddress(id: number) {
+  return put<{ data: CustomerAddress }>(`/public/auth/addresses/${id}/default`);
 }
 
 export async function loginCustomer(payload: { email: string; password: string }) {
@@ -461,20 +526,11 @@ export async function uploadPaymentSlip(orderId: number, fileUrl: string) {
 }
 
 export async function getAccountOverview() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-  const res = await fetch(`${siteUrl}/api/proxy/public/shop/account/overview`, {
-    method: "GET",
+  const response = await get<{ data: AccountOverview }>("/public/shop/account/overview", {
     headers: { Accept: "application/json" },
-    cache: "no-store",
-    credentials: "include",
   });
 
-  if (!res.ok) {
-    throw new Error("Failed to load account overview");
-  }
-
-  const json = await res.json();
-  return json.data as AccountOverview;
+  return response.data;
 }
 
 export async function toggleWishlist(productId: number) {

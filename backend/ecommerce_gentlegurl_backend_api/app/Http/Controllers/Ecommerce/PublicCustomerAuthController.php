@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Customer;
 use App\Services\Ecommerce\CartService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Hash;
@@ -156,25 +157,35 @@ class PublicCustomerAuthController extends Controller
             'gender' => ['sometimes', 'nullable', 'in:male,female,other'],
             'date_of_birth' => ['sometimes', 'nullable', 'date'],
             'avatar' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'current_password' => ['required_with:password', 'string'],
+            'password' => ['sometimes', 'required', 'string', 'min:6', 'confirmed'],
+            'password_confirmation' => ['sometimes', 'required_with:password', 'string'],
         ]);
 
-        $customer->fill($data);
-        $customer->save();
+        if (array_key_exists('password', $data)) {
+            if (!Hash::check($data['current_password'] ?? '', $customer->password)) {
+                throw ValidationException::withMessages([
+                    'current_password' => __('The current password is incorrect.'),
+                ]);
+            }
+        }
 
-        return response()->json([
-            'data' => [
-                'id' => $customer->id,
-                'name' => $customer->name,
-                'email' => $customer->email,
-                'phone' => $customer->phone,
-                'avatar' => $customer->avatar,
-                'gender' => $customer->gender,
-                'date_of_birth' => optional($customer->date_of_birth)->toDateString(),
-                'tier' => $customer->tier,
-            ],
-            'success' => true,
-            'message' => 'Profile updated successfully.',
-        ]);
+        DB::transaction(function () use (&$customer, $data) {
+            $customer->fill(collect($data)->only(['name', 'phone', 'gender', 'date_of_birth', 'avatar'])->toArray());
+
+            if (array_key_exists('password', $data)) {
+                $customer->password = $data['password'];
+            }
+
+            $customer->save();
+        });
+
+        $customer->load(['addresses' => function ($query) {
+            $query->orderByDesc('is_default')
+                ->orderBy('id');
+        }]);
+
+        return $this->respond($this->transformCustomer($customer), 'Profile updated successfully.');
     }
 
     private function transformCustomer(Customer $customer, ?string $token = null): array
