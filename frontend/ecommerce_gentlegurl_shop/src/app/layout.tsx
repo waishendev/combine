@@ -3,6 +3,7 @@ import "./globals.css";
 
 import Marquee from "@/components/home/Marquee";
 import ShopHeader from "@/components/layout/ShopHeader";
+import WhatsappButton from "@/components/home/WhatsappButton";
 import CursorTrail from "@/components/visual/CursorTrail";
 import { ShopProviders } from "@/components/providers/ShopProviders";
 import { getHomepage } from "@/lib/server/getHomepage";
@@ -33,6 +34,11 @@ export default async function RootLayout({
           )}
           <ShopHeader />
           <main className="min-h-screen bg-[var(--background-soft)]/70">{children}</main>
+          <WhatsappButton
+            enabled={homepage?.contact?.whatsapp?.enabled}
+            phone={homepage?.contact?.whatsapp?.phone}
+            defaultMessage={homepage?.contact?.whatsapp?.default_message}
+          />
         </ShopProviders>
       </body>
     </html>

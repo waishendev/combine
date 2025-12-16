@@ -1,6 +1,5 @@
 import AnnouncementModal from "@/components/home/AnnouncementModal";
 import Slider from "@/components/home/Slider";
-import WhatsappButton from "@/components/home/WhatsappButton";
 import ProductGrid from "@/components/products/ProductGrid";
 import { getHomepage } from "@/lib/server/getHomepage";
 
@@ -78,12 +77,6 @@ export default async function HomePage() {
           </div>
         </section>
       </div>
-
-      <WhatsappButton
-        enabled={data.contact?.whatsapp?.enabled}
-        phone={data.contact?.whatsapp?.phone}
-        defaultMessage={data.contact?.whatsapp?.default_message}
-      />
     </main>
   );
 }

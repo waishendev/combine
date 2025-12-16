@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 interface WhatsappButtonProps {
   phone?: string | null;
@@ -19,14 +20,16 @@ export default function WhatsappButton({ phone, defaultMessage, enabled = true }
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="group inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-[#25D366] to-[#128C7E] px-4 py-3 text-white shadow-xl shadow-[#25D366]/35 transition hover:-translate-y-0.5 hover:shadow-2xl"
+        className="block transition-transform hover:scale-110"
         aria-label="Chat with us on WhatsApp"
       >
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-2xl font-semibold leading-none shadow-inner shadow-black/10">💬</span>
-        <div className="flex flex-col text-left text-sm leading-tight">
-          <span className="text-xs uppercase tracking-[0.18em] text-white/80">WhatsApp</span>
-          <span className="font-semibold">Chat with us</span>
-        </div>
+        <Image
+          src="/images/whatapps-icon.webp"
+          alt="WhatsApp"
+          width={60}
+          height={60}
+          className="rounded-full shadow-lg"
+        />
       </Link>
     </div>
   );

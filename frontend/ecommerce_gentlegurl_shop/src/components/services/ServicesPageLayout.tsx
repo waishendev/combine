@@ -59,10 +59,6 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
                 >
                   Book an Appointment
                 </button>
-                <div className="flex items-center gap-2 rounded-full border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2 text-xs text-[var(--foreground)]/70">
-                  <span className="h-2 w-2 rounded-full bg-[var(--accent-strong)]" />
-                  Soft pink, calm service vibe
-                </div>
               </div>
             </div>
 
