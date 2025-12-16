@@ -178,6 +178,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         params.set("max_price", appliedMaxPrice);
       }
 
+      console.log("[ShopBrowser] products params:", params.toString());
+      
       const res = await fetch(
         `/api/proxy/public/shop/products?${params.toString()}`,
         {
@@ -305,9 +307,6 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
               <p className="text-xs uppercase tracking-[0.2em] text-[#ec4899]">{headerLabel}</p>
               <h1 className="text-2xl font-semibold text-gray-900">Thoughtfully curated finds</h1>
             </div>
-            <div className="text-sm text-gray-500">
-              {isMenuScoped ? `Browsing ${activeCategoryLabel ?? "menu"}` : "Browse everything"}
-            </div>
           </header>
 
           <div className="grid gap-6 md:grid-cols-[260px_1fr]">
@@ -340,15 +339,23 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                   className="w-full rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
                 >
                   <option value="all">{allLabel}</option>
-                  {sidebarMenus.map((menu) => (
-                    <optgroup key={menu.slug} label={menu.title}>
-                      {menu.categories.map((category) => (
+                  {sidebarMenus.map((menu) =>
+                    menuSlug ? (
+                      menu.categories.map((category) => (
                         <option key={category.slug} value={`${menu.slug}::${category.slug}`}>
                           {category.name}
                         </option>
-                      ))}
-                    </optgroup>
-                  ))}
+                      ))
+                    ) : (
+                      <optgroup key={menu.slug} label={menu.title}>
+                        {menu.categories.map((category) => (
+                          <option key={category.slug} value={`${menu.slug}::${category.slug}`}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ),
+                  )}
                 </select>
               </div>
 
@@ -367,9 +374,11 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
 
                 {sidebarMenus.map((menu) => (
                   <div key={menu.slug} className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">
-                      {menu.title}
-                    </p>
+                    {!menuSlug && (
+                      <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">
+                        {menu.title}
+                      </p>
+                    )}
                     <div className="flex flex-col gap-2">
                       {menu.categories.map((category) => {
                         const isActive = selectedCategory === category.slug;

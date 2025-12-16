@@ -1,11 +1,10 @@
 import { ShopBrowser } from "@/components/shop/ShopBrowser";
 
 type CategoryPageProps = {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 };
 
-export default function CategoryPage({ params }: CategoryPageProps) {
-  const { slug } = params;
-
+export default async function CategoryPage({ params }: CategoryPageProps) {
+  const { slug } = await params;
   return <ShopBrowser menuSlug={slug} />;
 }
