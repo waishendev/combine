@@ -1,11 +1,11 @@
 import { ShopBrowser } from "@/components/shop/ShopBrowser";
 
 type CategoryPageProps = {
-  params: { slug: string };
+  params: { menu_slug: string };
 };
 
 export default function CategoryPage({ params }: CategoryPageProps) {
-  const { slug } = params;
+  const { menu_slug } = params;
 
-  return <ShopBrowser menuSlug={slug} />;
+  return <ShopBrowser menuSlug={menu_slug} />;
 }
