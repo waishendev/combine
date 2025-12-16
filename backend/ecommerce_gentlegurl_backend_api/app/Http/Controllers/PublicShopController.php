@@ -137,63 +137,50 @@ class PublicShopController extends Controller
 
         $menuId = $request->query('menu_id');
         $menuSlug = $request->query('menu_slug');
+        $menuCategoryIds = null;
+
+        if ($menuId || $menuSlug) {
+            $menu = ShopMenuItem::with(['categories' => function ($query) {
+                $query->where('categories.is_active', true)
+                    ->orderBy('category_shop_menu_items.sort_order')
+                    ->orderBy('name');
+            }])
+                ->where('is_active', true)
+                ->when($menuId, fn($query) => $query->where('id', $menuId))
+                ->when($menuSlug, fn($query) => $query->where('slug', $menuSlug))
+                ->first();
+
+            $menuCategoryIds = $menu?->categories->pluck('id')->all() ?? [];
+
+            $productsQuery->whereHas('categories', function ($query) use ($menuCategoryIds) {
+                $query->whereIn('categories.id', $menuCategoryIds)
+                    ->where('categories.is_active', true);
+            });
+        }
+
         $categoryId = $request->query('category_id');
         $categorySlug = $request->query('category_slug') ?? $request->query('category');
         $keyword = $request->get('keyword') ?? $request->get('q') ?? $request->get('search');
 
         if ($categoryId) {
-            $productsQuery->whereHas('categories', function ($query) use ($categoryId, $menuId, $menuSlug) {
+            $productsQuery->whereHas('categories', function ($query) use ($categoryId, $menuCategoryIds) {
                 $query->where('categories.id', $categoryId)
                     ->where('categories.is_active', true);
 
-                if ($menuId) {
-                    $query->whereHas('shopMenus', function ($menuQuery) use ($menuId) {
-                        $menuQuery->where('shop_menu_items.id', $menuId)
-                            ->where('shop_menu_items.is_active', true);
-                    });
-                }
-
-                if ($menuSlug) {
-                    $query->whereHas('shopMenus', function ($menuQuery) use ($menuSlug) {
-                        $menuQuery->where('slug', $menuSlug)
-                            ->where('is_active', true);
-                    });
+                if (is_array($menuCategoryIds)) {
+                    $query->whereIn('categories.id', $menuCategoryIds);
                 }
             });
         }
 
         if ($categorySlug) {
-            $productsQuery->whereHas('categories', function ($query) use ($categorySlug, $menuId, $menuSlug) {
+            $productsQuery->whereHas('categories', function ($query) use ($categorySlug, $menuCategoryIds) {
                 $query->where('categories.slug', $categorySlug)
                     ->where('categories.is_active', true);
 
-                if ($menuId) {
-                    $query->whereHas('shopMenus', function ($menuQuery) use ($menuId) {
-                        $menuQuery->where('shop_menu_items.id', $menuId)
-                            ->where('shop_menu_items.is_active', true);
-                    });
+                if (is_array($menuCategoryIds)) {
+                    $query->whereIn('categories.id', $menuCategoryIds);
                 }
-
-                if ($menuSlug) {
-                    $query->whereHas('shopMenus', function ($menuQuery) use ($menuSlug) {
-                        $menuQuery->where('slug', $menuSlug)
-                            ->where('is_active', true);
-                    });
-                }
-            });
-        }
-
-        if ($menuId) {
-            $productsQuery->whereHas('categories.shopMenus', function ($query) use ($menuId) {
-                $query->where('shop_menu_items.id', $menuId)
-                    ->where('shop_menu_items.is_active', true);
-            });
-        }
-
-        if ($menuSlug) {
-            $productsQuery->whereHas('categories.shopMenus', function ($query) use ($menuSlug) {
-                $query->where('slug', $menuSlug)
-                    ->where('is_active', true);
             });
         }
 
