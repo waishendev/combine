@@ -311,10 +311,12 @@ export async function createOrder(payload: CheckoutPayload): Promise<CreateOrder
 }
 
 export async function getAccountOverview() {
-  const res = await fetch("/api/proxy/public/shop/account/overview", {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const res = await fetch(`${siteUrl}/api/proxy/public/shop/account/overview`, {
     method: "GET",
     headers: { Accept: "application/json" },
     cache: "no-store",
+    credentials: "include",
   });
 
   if (!res.ok) {

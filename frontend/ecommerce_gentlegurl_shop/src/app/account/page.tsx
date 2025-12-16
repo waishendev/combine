@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
-import { getAccountOverview, type AccountOverview } from "@/lib/apiClient";
+import type { AccountOverview } from "@/lib/apiClient";
+import { getAccountOverview } from "@/lib/server/getAccountOverview";
 
 export default async function AccountPage() {
   let overview: AccountOverview | null = null;
