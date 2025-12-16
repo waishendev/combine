@@ -1,8 +1,68 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+
+function Field({
+  label,
+  id,
+  type,
+  value,
+  onChange,
+  placeholder,
+  autoComplete,
+  rightSlot,
+  icon,
+}: {
+  label: string;
+  id: string;
+  type: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoComplete?: string;
+  rightSlot?: React.ReactNode;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor={id}>
+        {label}
+      </label>
+
+      <div className="relative">
+        {icon ? (
+          <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--foreground)]/45">
+            {icon}
+          </div>
+        ) : null}
+
+        <input
+          id={id}
+          type={type}
+          className={[
+            "w-full rounded-xl border bg-white/90 px-3 py-2.5 text-sm text-[var(--foreground)]",
+            "border-pink-100/70",
+            "focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-pink-200/25",
+            icon ? "pl-10" : "",
+            rightSlot ? "pr-12" : "",
+          ].join(" ")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          required
+        />
+
+        {rightSlot ? (
+          <div className="absolute right-2 top-1/2 -translate-y-1/2">{rightSlot}</div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 export function LoginForm() {
   const { login } = useAuth();
@@ -10,8 +70,13 @@ export function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const canSubmit = useMemo(() => {
+    return email.trim().length > 0 && password.trim().length > 0 && !submitting;
+  }, [email, password, submitting]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -31,48 +96,73 @@ export function LoginForm() {
   };
 
   return (
-    <form className="space-y-4 text-[var(--foreground)]" onSubmit={handleSubmit}>
+    <form className="space-y-4" onSubmit={handleSubmit}>
       {error && (
-        <div className="rounded bg-[var(--muted)] px-3 py-2 text-sm text-[#b8527a]">
+        <div className="rounded-xl border border-pink-200/50 bg-white/90 px-3 py-2 text-sm text-[#b8527a]">
           {error}
         </div>
       )}
 
-      <div className="space-y-1">
-        <label className="text-sm text-[var(--foreground)]/80" htmlFor="email">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          className="w-full rounded border border-[var(--muted)] bg-white/70 px-3 py-2 text-sm focus:border-[var(--accent)] focus:outline-none"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-      </div>
+      <Field
+        label="Email"
+        id="email"
+        type="email"
+        value={email}
+        onChange={setEmail}
+        placeholder="you@example.com"
+        autoComplete="email"
+        icon={
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M4 6h16v12H4z" />
+            <path d="m4 7 8 6 8-6" />
+          </svg>
+        }
+      />
 
-      <div className="space-y-1">
-        <label className="text-sm text-[var(--foreground)]/80" htmlFor="password">
-          Password
-        </label>
-        <input
-          id="password"
-          type="password"
-          className="w-full rounded border border-[var(--muted)] bg-white/70 px-3 py-2 text-sm focus:border-[var(--accent)] focus:outline-none"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-      </div>
+      <Field
+        label="Password"
+        id="password"
+        type={showPw ? "text" : "password"}
+        value={password}
+        onChange={setPassword}
+        placeholder="••••••••"
+        autoComplete="current-password"
+        icon={
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+            <path d="M6 11h12v10H6z" />
+          </svg>
+        }
+        rightSlot={
+          <button
+            type="button"
+            onClick={() => setShowPw((v) => !v)}
+            className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
+            aria-label={showPw ? "Hide password" : "Show password"}
+          >
+            {showPw ? "Hide" : "Show"}
+          </button>
+        }
+      />
 
       <button
         type="submit"
-        disabled={submitting}
-        className="w-full rounded bg-[var(--accent)] px-4 py-2 text-white transition hover:bg-[var(--accent-strong)] disabled:opacity-60"
+        disabled={!canSubmit}
+        className={[
+          "mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-medium text-white transition",
+          "bg-[var(--accent)] hover:bg-[var(--accent-strong)]",
+          "disabled:cursor-not-allowed disabled:opacity-60",
+        ].join(" ")}
       >
-        {submitting ? "Signing in..." : "Login"}
+        {submitting ? "Signing in..." : "Sign in"}
       </button>
+
+      <div className="flex items-center justify-between pt-1 text-xs text-[var(--foreground)]/60">
+        <span>New here?</span>
+        <Link href="/register" className="font-medium text-[var(--accent-strong)] hover:opacity-80">
+          Create account
+        </Link>
+      </div>
     </form>
   );
 }
