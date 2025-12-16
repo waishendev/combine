@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
 
 export default function CartPageClient() {
@@ -30,9 +30,17 @@ export default function CartPageClient() {
   } = useCart();
 
   const [voucherCode, setVoucherCode] = useState("");
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
+
+  useEffect(() => {
+    setVoucherCode(appliedVoucher?.code ?? "");
+  }, [appliedVoucher]);
 
   const handleApplyVoucher = async () => {
-    await applyVoucher(voucherCode.trim() || undefined);
+    const applied = await applyVoucher(voucherCode.trim() || undefined);
+    if (applied) {
+      setShowVoucherModal(false);
+    }
   };
 
   const handleVoucherChange = (value: string) => {
@@ -209,39 +217,38 @@ export default function CartPageClient() {
               <p className="mt-1 text-[var(--foreground)]/70">{shippingLabel ?? "Flat Rate Shipping"}</p>
             </div>
 
-            <div>
-              <label className="text-xs text-[var(--foreground)]/70">Voucher Code</label>
-              <div className="mt-1 flex gap-2">
-                <input
-                  type="text"
-                  value={voucherCode}
-                  onChange={(e) => handleVoucherChange(e.target.value)}
-                  placeholder="Enter voucher"
-                  className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-                />
-                <button
-                  type="button"
-                  onClick={handleApplyVoucher}
-                  disabled={isApplyingVoucher || !voucherCode.trim()}
-                  className="rounded bg-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isApplyingVoucher ? "Applying..." : "Apply"}
-                </button>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-medium text-[var(--foreground)]/70">Voucher / Discount</div>
+                {appliedVoucher && (
+                  <p className="text-xs text-[var(--foreground)]/70">Applied: {appliedVoucher.code}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
                 {appliedVoucher && (
                   <button
                     type="button"
-                    onClick={removeVoucher}
-                    disabled={isApplyingVoucher}
-                    className="rounded border border-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-[var(--foreground)] transition hover:bg-[var(--muted)]/70 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => {
+                      removeVoucher();
+                      setVoucherCode("");
+                    }}
+                    className="rounded border border-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--muted)]/70"
                   >
                     Remove
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearVoucherFeedback();
+                    setVoucherCode(appliedVoucher?.code ?? "");
+                    setShowVoucherModal(true);
+                  }}
+                  className="rounded bg-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)]"
+                >
+                  Voucher / Discount
+                </button>
               </div>
-              {voucherMessage && (
-                <p className="mt-1 text-xs text-[var(--foreground)]/70">{voucherMessage}</p>
-              )}
-              {voucherError && <p className="mt-1 text-xs text-[#c26686]">{voucherError}</p>}
             </div>
           </div>
 
@@ -277,6 +284,45 @@ export default function CartPageClient() {
           </button>
         </aside>
       </div>
+
+      {showVoucherModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-4 text-[var(--foreground)] shadow-lg">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Apply Voucher</h3>
+              <button
+                type="button"
+                onClick={() => setShowVoucherModal(false)}
+                className="text-sm text-[var(--foreground)]/70 hover:text-[var(--accent)]"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={voucherCode}
+                onChange={(e) => handleVoucherChange(e.target.value)}
+                placeholder="Enter voucher code"
+                className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                type="button"
+                onClick={handleApplyVoucher}
+                disabled={isApplyingVoucher || !voucherCode.trim()}
+                className="w-full rounded bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isApplyingVoucher ? "Applying..." : "Apply"}
+              </button>
+              {voucherError && <p className="text-xs text-[#c26686]">{voucherError}</p>}
+              {voucherMessage && !appliedVoucher && (
+                <p className="text-xs text-[var(--foreground)]/70">{voucherMessage}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

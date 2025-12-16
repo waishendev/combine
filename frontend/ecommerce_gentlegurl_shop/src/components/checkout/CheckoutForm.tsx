@@ -30,6 +30,10 @@ export default function CheckoutForm() {
     isApplyingVoucher,
     appliedVoucher,
     shippingLabel,
+    reloadCart,
+    clearSelection,
+    removeVoucher,
+    clearVoucherFeedback,
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,6 +48,7 @@ export default function CheckoutForm() {
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<number | "custom" | null>(null);
   const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
   const [modalAddress, setModalAddress] = useState({
     name: customer?.profile.name ?? "",
     phone: customer?.profile.phone ?? "",
@@ -143,12 +148,19 @@ export default function CheckoutForm() {
     }
   }, [addresses.length, customer]);
 
+  useEffect(() => {
+    setVoucherCode(appliedVoucher?.code ?? "");
+  }, [appliedVoucher]);
+
   const handleChange = (field: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleApplyVoucher = async () => {
-    await applyVoucher(voucherCode.trim() || undefined);
+    const applied = await applyVoucher(voucherCode.trim() || undefined);
+    if (applied) {
+      setShowVoucherModal(false);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -186,6 +198,11 @@ export default function CheckoutForm() {
       };
 
       const order = await createOrder(payload);
+
+      await reloadCart();
+      clearSelection();
+      removeVoucher();
+      setVoucherCode("");
 
       if (order.payment_method === "billplz_fpx" && order.payment?.billplz_url) {
         window.location.href = order.payment.billplz_url!;
@@ -467,34 +484,38 @@ export default function CheckoutForm() {
             </div>
           )}
 
-          <div>
-            <div className="mb-1 text-xs font-medium text-[var(--foreground)]/70">Voucher</div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={voucherCode}
-                onChange={(e) => setVoucherCode(e.target.value)}
-                placeholder="Enter voucher"
-                className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-              />
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-medium text-[var(--foreground)]/70">Voucher / Discount</div>
+              {appliedVoucher && (
+                <p className="text-xs text-[var(--foreground)]/70">Applied: {appliedVoucher.code}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {appliedVoucher && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeVoucher();
+                    setVoucherCode("");
+                  }}
+                  className="rounded border border-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--muted)]/70"
+                >
+                  Remove
+                </button>
+              )}
               <button
                 type="button"
-                onClick={handleApplyVoucher}
-                disabled={isApplyingVoucher || !voucherCode.trim()}
-                className="rounded bg-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => {
+                  clearVoucherFeedback();
+                  setVoucherCode(appliedVoucher?.code ?? "");
+                  setShowVoucherModal(true);
+                }}
+                className="rounded bg-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)]"
               >
-                {isApplyingVoucher ? "Applying..." : "Apply"}
+                Voucher / Discount
               </button>
             </div>
-            {appliedVoucher && (
-              <p className="mt-1 text-xs text-[var(--foreground)]/70">
-                Voucher {appliedVoucher.code} applied.
-              </p>
-            )}
-            {voucherMessage && !appliedVoucher && (
-              <p className="mt-1 text-xs text-[var(--foreground)]/70">{voucherMessage}</p>
-            )}
-            {voucherError && <p className="mt-1 text-xs text-[#c26686]">{voucherError}</p>}
           </div>
 
           <div>
@@ -612,6 +633,45 @@ export default function CheckoutForm() {
           </button>
         </aside>
       </form>
+
+      {showVoucherModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-4 text-[var(--foreground)] shadow-lg">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Apply Voucher</h3>
+              <button
+                type="button"
+                onClick={() => setShowVoucherModal(false)}
+                className="text-sm text-[var(--foreground)]/70 hover:text-[var(--accent)]"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={voucherCode}
+                onChange={(e) => setVoucherCode(e.target.value)}
+                placeholder="Enter voucher code"
+                className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                type="button"
+                onClick={handleApplyVoucher}
+                disabled={isApplyingVoucher || !voucherCode.trim()}
+                className="w-full rounded bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isApplyingVoucher ? "Applying..." : "Apply"}
+              </button>
+              {voucherError && <p className="text-xs text-[#c26686]">{voucherError}</p>}
+              {voucherMessage && !appliedVoucher && (
+                <p className="text-xs text-[var(--foreground)]/70">{voucherMessage}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAddressModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
