@@ -50,7 +50,7 @@ export type CartContextValue = {
   updateItemQuantity: (itemId: number, quantity: number) => Promise<void>;
   removeItem: (itemId: number) => Promise<void>;
   onCustomerLogin: () => Promise<void>;
-  applyVoucher: (voucherCode?: string | null) => Promise<void>;
+  applyVoucher: (voucherCode?: string | null) => Promise<boolean>;
   removeVoucher: () => Promise<void>;
   clearVoucherFeedback: () => void;
   toggleSelectItem: (itemId: number) => void;
@@ -312,13 +312,14 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
       try {
         if (selectedItems.length === 0) {
           setVoucherError("Select items to apply voucher.");
-          return;
+          return false;
         }
 
         const response = await previewCheckout({
           items: selectedItems.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
           voucher_code: voucherCode || undefined,
           shipping_method: shippingMethod,
+          session_token: sessionToken ?? undefined,
         });
 
         if (shippingMethod === "shipping") {
@@ -336,17 +337,20 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
             ? `Voucher ${response.voucher?.code} applied.`
             : response.voucher_message ?? response.voucher_error ?? null,
         );
+
+        return hasVoucher;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to apply voucher.";
         setVoucherError(message);
         setAppliedVoucher(null);
         setVoucherDiscount(0);
         setVoucherMessage(null);
+        return false;
       } finally {
         setIsApplyingVoucher(false);
       }
     },
-    [selectedItems, shippingMethod, shippingFlatFee],
+    [selectedItems, sessionToken, shippingMethod, shippingFlatFee],
   );
 
   const removeVoucher = useCallback(async () => {

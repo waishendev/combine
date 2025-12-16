@@ -166,19 +166,7 @@ class PublicCheckoutController extends Controller
             return $order;
         });
 
-        if (!empty($validated['session_token'])) {
-            $cart = Cart::where('session_token', $validated['session_token'])
-                ->where('status', 'open')
-                ->first();
-
-            if ($cart) {
-                $cart->customer_id = $cart->customer_id ?: $customer?->id;
-                $cart->status = 'converted';
-                $cart->save();
-
-                $cart->items()->delete();
-            }
-        }
+        $this->removeOrderedCartItems($customer, $validated['session_token'] ?? null, $validated['items']);
 
         $billplzUrl = null;
 
@@ -418,6 +406,49 @@ class PublicCheckoutController extends Controller
             'voucher_result' => $voucherResult,
             'voucher_valid' => $voucherResult?->valid ?? false,
         ];
+    }
+
+    protected function removeOrderedCartItems(?Customer $customer, ?string $sessionToken, array $items): void
+    {
+        $productIds = collect($items)
+            ->pluck('product_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            return;
+        }
+
+        $cart = null;
+
+        if ($sessionToken) {
+            $cart = Cart::where('session_token', $sessionToken)
+                ->where('status', 'open')
+                ->first();
+        }
+
+        if (!$cart && $customer?->id) {
+            $cart = Cart::where('customer_id', $customer->id)
+                ->where('status', 'open')
+                ->first();
+        }
+
+        if (!$cart) {
+            return;
+        }
+
+        $cart->items()
+            ->whereIn('product_id', $productIds)
+            ->delete();
+
+        $cart->customer_id = $cart->customer_id ?: $customer?->id;
+
+        if ($cart->items()->count() === 0) {
+            $cart->status = 'converted';
+        }
+
+        $cart->save();
     }
 
     protected function generateOrderNumber(): string
