@@ -117,6 +117,35 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
 
   const fetchMenus = useCallback(async () => {
     try {
+      if (menuSlug) {
+        const res = await fetch(`/api/proxy/public/shop/menu/${menuSlug}`, {
+          cache: "no-store",
+        });
+
+        if (res.status === 404) {
+          setMenuNotFound(true);
+          setMenus([]);
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error(`Failed to load menu (${res.status})`);
+        }
+
+        const json = await res.json();
+        const menu: ShopMenu | null = (json.data ?? json) as ShopMenu;
+
+        if (menu) {
+          setMenus([menu]);
+          setMenuNotFound(false);
+        } else {
+          setMenus([]);
+          setMenuNotFound(true);
+        }
+
+        return;
+      }
+
       const res = await fetch("/api/proxy/public/shop/menu", {
         cache: "no-store",
       });
@@ -128,10 +157,6 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       const json = await res.json();
       const rawMenus: ShopMenu[] = (json.data ?? json) as ShopMenu[];
       setMenus(rawMenus ?? []);
-
-      if (menuSlug) {
-        setMenuNotFound(!rawMenus.some((menu) => menu.slug === menuSlug));
-      }
     } catch (err) {
       console.error("[ShopBrowser] Menu error", err);
       setMenus([]);

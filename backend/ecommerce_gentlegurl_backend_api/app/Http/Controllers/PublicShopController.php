@@ -140,17 +140,19 @@ class PublicShopController extends Controller
         $menuCategoryIds = null;
 
         if ($menuId || $menuSlug) {
-            $menu = ShopMenuItem::with(['categories' => function ($query) {
-                $query->where('categories.is_active', true)
-                    ->orderBy('category_shop_menu_items.sort_order')
-                    ->orderBy('name');
-            }])
+            $menu = ShopMenuItem::query()
                 ->where('is_active', true)
                 ->when($menuId, fn($query) => $query->where('id', $menuId))
                 ->when($menuSlug, fn($query) => $query->where('slug', $menuSlug))
-                ->first();
+                ->firstOrFail();
 
-            $menuCategoryIds = $menu?->categories->pluck('id')->all() ?? [];
+            $menuCategoryIds = Category::query()
+                ->where('is_active', true)
+                ->whereHas('shopMenus', function ($query) use ($menu) {
+                    $query->where('shop_menu_items.id', $menu->id);
+                })
+                ->pluck('categories.id')
+                ->all();
 
             $productsQuery->whereHas('categories', function ($query) use ($menuCategoryIds) {
                 $query->whereIn('categories.id', $menuCategoryIds)
