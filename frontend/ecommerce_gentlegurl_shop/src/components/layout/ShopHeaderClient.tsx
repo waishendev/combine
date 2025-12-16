@@ -28,6 +28,12 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
+      
+      // Don't close if clicking on a link (let the link navigate)
+      if (target.closest('a')) {
+        return;
+      }
+      
       if (!target.closest('[data-menu]')) {
         setShopOpen(false);
         setServicesOpen(false);
@@ -38,8 +44,9 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    // Use click instead of mousedown to allow links to work properly
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
   // Prevent body scroll when mobile menu is open
@@ -93,7 +100,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
             <Link href="/">Home</Link>
 
             {/* SHOP + Dropdown */}
-            <div className="relative">
+            <div className="relative" data-menu>
               <button
                 type="button"
                 onClick={() => {
@@ -145,7 +152,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
             </div>
 
             {/* Services & Courses Dropdown */}
-            <div className="relative">
+            <div className="relative" data-menu>
               <button
                 type="button"
                 onClick={() => {
