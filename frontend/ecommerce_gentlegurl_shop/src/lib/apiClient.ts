@@ -78,6 +78,7 @@ export type CartItem = {
   product_id: number;
   name: string;
   sku?: string | null;
+  product_image?: string | null;
   unit_price: string;
   quantity: number;
   line_total: string;
@@ -128,11 +129,13 @@ export type PublicBankAccount = {
   bank_name: string;
   account_name: string;
   account_no: string;
+  account_number?: string;
   branch: string | null;
   logo_url: string | null;
   qr_image_url: string | null;
   label?: string | null;
   swift_code?: string | null;
+  is_default?: boolean;
 };
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -298,6 +301,7 @@ export type CheckoutPayload = {
   shipping_country: string;
   shipping_postcode: string;
   store_location_id?: number | null;
+  bank_account_id?: number | null;
 };
 
 export type CreateOrderResponse = {
@@ -311,6 +315,31 @@ export type CreateOrderResponse = {
     provider: "billplz" | "manual";
     billplz_url?: string | null;
   };
+  bank_account?: PublicBankAccount | null;
+};
+
+export type PublicStoreLocation = {
+  id: number;
+  name: string;
+  address_line1: string;
+  address_line2?: string | null;
+  city: string;
+  state: string | null;
+  postcode: string | null;
+  country: string;
+  phone: string | null;
+};
+
+export type OrderLookupResponse = {
+  order_id: number;
+  order_no: string;
+  grand_total: number | string;
+  payment_method: string;
+  payment_status: string;
+  status: string;
+  bank_account?: PublicBankAccount | null;
+  pickup_store?: PublicStoreLocation | null;
+  uploads: { id: number; file_url: string; created_at: string }[];
 };
 
 export async function previewCheckout(
@@ -341,6 +370,37 @@ export async function getBankAccounts(): Promise<PublicBankAccount[]> {
   });
 
   return response.data;
+}
+
+export async function getStoreLocations(): Promise<PublicStoreLocation[]> {
+  const response = await get<{ data: PublicStoreLocation[] }>("/public/shop/store-locations", {
+    headers: { Accept: "application/json" },
+  });
+
+  return response.data;
+}
+
+export async function lookupOrder(orderNo: string, orderId?: number | null): Promise<OrderLookupResponse> {
+  const search = new URLSearchParams({ order_no: orderNo });
+  if (orderId) {
+    search.set("order_id", String(orderId));
+  }
+
+  const response = await get<{ data: OrderLookupResponse }>(`/public/shop/orders/lookup?${search.toString()}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  return response.data;
+}
+
+export async function uploadPaymentSlip(orderId: number, fileUrl: string) {
+  const response = await post<{ success: boolean }>(
+    `/public/shop/orders/${orderId}/upload-slip`,
+    { file_url: fileUrl },
+    { headers: { Accept: "application/json" } },
+  );
+
+  return response;
 }
 
 export async function getAccountOverview() {

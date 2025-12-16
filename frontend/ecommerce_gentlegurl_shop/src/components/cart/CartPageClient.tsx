@@ -26,8 +26,6 @@ export default function CartPageClient() {
     toggleSelectItem,
     selectAll,
     clearSelection,
-    shippingMethod,
-    setShippingMethod,
     shippingLabel,
   } = useCart();
 
@@ -101,7 +99,9 @@ export default function CartPageClient() {
           {items.map((item) => {
             const product = item.product ?? {};
             const mainImage =
-              product.images?.find((img) => img.is_main) ?? product.images?.[0];
+              item.product_image ||
+              product.images?.find((img) => img.is_main)?.image_path ||
+              product.images?.[0]?.image_path;
 
             return (
               <div
@@ -120,7 +120,7 @@ export default function CartPageClient() {
                 <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded bg-[var(--muted)]">
                   {mainImage ? (
                     <Image
-                      src={mainImage.image_path}
+                      src={mainImage}
                       alt={item.name}
                       fill
                       className="object-cover"
@@ -203,32 +203,10 @@ export default function CartPageClient() {
         <aside className="rounded-lg border border-[var(--muted)] bg-white/85 p-4 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold">Order Summary</h2>
           <div className="space-y-2 text-sm">
-            <div>
-              <div className="mb-1 text-xs font-medium text-[var(--foreground)]/70">Shipping Method</div>
-              <div className="space-y-1 text-sm">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="shipping_method"
-                    value="shipping"
-                    checked={shippingMethod === "shipping"}
-                    onChange={() => setShippingMethod("shipping")}
-                  />
-                  <span>Shipping</span>
-                  <span className="text-xs text-[var(--foreground)]/60">{shippingLabel ?? "Flat Rate"}</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="shipping_method"
-                    value="pickup"
-                    checked={shippingMethod === "pickup"}
-                    onChange={() => setShippingMethod("pickup")}
-                  />
-                  <span>Self Pickup</span>
-                  <span className="text-xs text-[var(--foreground)]/60">No shipping fee</span>
-                </label>
-              </div>
+            <div className="rounded border border-[var(--muted)]/60 bg-[var(--muted)]/20 p-3 text-xs text-[var(--foreground)]/80">
+              <p className="font-semibold text-[var(--foreground)]">Shipping</p>
+              <p className="mt-1">Default shipping applies. Choose Shipping or Self Pickup during checkout.</p>
+              <p className="mt-1 text-[var(--foreground)]/70">{shippingLabel ?? "Flat Rate Shipping"}</p>
             </div>
 
             <div>
@@ -277,7 +255,7 @@ export default function CartPageClient() {
               <span>- RM {Number(totals.discount_total).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
-              <span>{shippingMethod === "shipping" ? shippingLabel ?? "Shipping" : "Self Pickup"}</span>
+              <span>{shippingLabel ?? "Shipping"}</span>
               <span>RM {Number(totals.shipping_fee).toFixed(2)}</span>
             </div>
           </div>

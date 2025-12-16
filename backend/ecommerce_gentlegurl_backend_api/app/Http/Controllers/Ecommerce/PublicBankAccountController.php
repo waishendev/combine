@@ -24,6 +24,7 @@ class PublicBankAccountController extends Controller
                 'qr_image_url',
                 'label',
                 'swift_code',
+                'is_default',
             ]);
 
         return response()->json([
