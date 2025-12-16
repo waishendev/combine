@@ -59,120 +59,149 @@ function SocialIcon({
   );
 }
 
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-pink-100 bg-white/70 px-3 py-1 text-xs text-[var(--foreground)]/80 shadow-sm">
+      <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
+      {children}
+    </span>
+  );
+}
+
 export function ShopFooter({ footer }: { footer?: HomepageFooter | null }) {
-  if (!footer || footer.enabled === false) {
-    return null;
-  }
+  if (!footer || footer.enabled === false) return null;
+
+  const year = new Date().getFullYear();
 
   const hasContact =
     !!footer.contact?.whatsapp ||
     !!footer.contact?.email ||
     !!footer.contact?.address;
 
-  const year = new Date().getFullYear();
+  const hasSocial =
+    !!footer.social?.instagram || !!footer.social?.facebook || !!footer.social?.tiktok;
+
+  // ✅ Payment 作为低调信任信息：可选显示（你要关掉也很简单）
+  const showPaymentBadges = true;
 
   return (
     <footer className="bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-14 md:flex-row md:justify-between">
-        <div className="max-w-md space-y-4">
-          <div>
+      <div className="mx-auto w-full max-w-6xl px-6 pt-14">
+        {/* Top */}
+        <div className="grid gap-12 md:grid-cols-12">
+          {/* Brand */}
+          <div className="md:col-span-4">
             <h2 className="text-2xl font-semibold text-[var(--accent-strong)]">
               Gentlegurl Shop
             </h2>
-            {footer.about_text && (
-              <p className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/80">
+
+            {footer.about_text ? (
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-[var(--foreground)]/80">
                 {footer.about_text}
               </p>
+            ) : (
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-[var(--foreground)]/70">
+                Curated beauty & lifestyle picks — soft, minimal, and made to feel good.
+              </p>
+            )}
+
+            {showPaymentBadges && (
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Badge>Billplz FPX</Badge>
+                <Badge>Manual Transfer</Badge>
+              </div>
             )}
           </div>
 
-          {hasContact && (
-            <div className="space-y-2 text-sm text-[var(--foreground)]/80">
-              {footer.contact?.whatsapp && (
-                <p className="flex items-center gap-2">
-                  <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent)]" />
-                  {footer.contact.whatsapp}
-                </p>
-              )}
-              {footer.contact?.email && (
-                <p className="flex items-center gap-2">
-                  <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent)]" />
-                  {footer.contact.email}
-                </p>
-              )}
-              {footer.contact?.address && (
-                <p className="flex items-start gap-2">
-                  <span className="mt-1 inline-block h-2 w-2 rounded-full bg-[var(--accent)]" />
-                  <span>{footer.contact.address}</span>
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="grid flex-1 grid-cols-1 gap-10 sm:grid-cols-2 md:grid-cols-3">
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-[var(--foreground)]">Customer Care</h3>
-            <ul className="space-y-2 text-sm text-[var(--foreground)]/80">
+          {/* Links */}
+          <div className="md:col-span-5">
+            <h3 className="text-sm font-semibold tracking-wide text-[var(--foreground)]">
+              Customer Care
+            </h3>
+            <ul className="mt-4 space-y-2 text-sm text-[var(--foreground)]/80">
               <li>
-                <Link className="hover:text-[var(--accent-strong)]" href={footer.links?.shipping_policy ?? "/shipping-policy"}>
+                <Link
+                  className="transition hover:text-[var(--accent-strong)]"
+                  href={footer.links?.shipping_policy ?? "/shipping-policy"}
+                >
                   Shipping Policy
                 </Link>
               </li>
               <li>
-                <Link className="hover:text-[var(--accent-strong)]" href={footer.links?.return_refund ?? "/return-refund"}>
+                <Link
+                  className="transition hover:text-[var(--accent-strong)]"
+                  href={footer.links?.return_refund ?? "/return-refund"}
+                >
                   Return &amp; Refund
                 </Link>
               </li>
               <li>
-                <Link className="hover:text-[var(--accent-strong)]" href={footer.links?.privacy ?? "/privacy-policy"}>
+                <Link
+                  className="transition hover:text-[var(--accent-strong)]"
+                  href={footer.links?.privacy ?? "/privacy-policy"}
+                >
                   Privacy Policy
-                </Link>
-              </li>
-              <li>
-                <Link className="hover:text-[var(--accent-strong)]" href={footer.links?.terms ?? "/terms"}>
-                  Terms
                 </Link>
               </li>
             </ul>
           </div>
 
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-[var(--foreground)]">Follow Us</h3>
-            <div className="flex gap-3">
-              {footer.social?.instagram && (
-                <SocialIcon type="instagram" href={footer.social.instagram} />
-              )}
-              {footer.social?.facebook && (
-                <SocialIcon type="facebook" href={footer.social.facebook} />
-              )}
-              {footer.social?.tiktok && (
-                <SocialIcon type="tiktok" href={footer.social.tiktok} />
-              )}
-            </div>
-            <p className="text-xs text-[var(--foreground)]/60">
-              Stay close to our pink universe.
-            </p>
-          </div>
+          {/* Social + Contact */}
+          <div className="md:col-span-3">
+            <h3 className="text-sm font-semibold tracking-wide text-[var(--foreground)]">
+              Follow Us
+            </h3>
 
-          <div className="space-y-3 rounded-2xl bg-white/70 p-4 shadow-sm">
-            <h3 className="text-lg font-semibold text-[var(--foreground)]">Payment</h3>
-            <div className="space-y-2 text-sm text-[var(--foreground)]/80">
-              <div className="flex items-center gap-2 rounded-full bg-[var(--muted)] px-3 py-1 text-[var(--foreground)]">
-                <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
-                Billplz FPX
+            {hasSocial ? (
+              <div className="mt-4 flex gap-3">
+                {footer.social?.instagram && (
+                  <SocialIcon type="instagram" href={footer.social.instagram} />
+                )}
+                {footer.social?.facebook && (
+                  <SocialIcon type="facebook" href={footer.social.facebook} />
+                )}
+                {footer.social?.tiktok && (
+                  <SocialIcon type="tiktok" href={footer.social.tiktok} />
+                )}
               </div>
-              <div className="flex items-center gap-2 rounded-full bg-[var(--muted)] px-3 py-1 text-[var(--foreground)]">
-                <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
-                Manual Transfer
+            ) : (
+              <p className="mt-4 text-sm text-[var(--foreground)]/60">
+                Coming soon.
+              </p>
+            )}
+
+
+            {hasContact && (
+              <div className="mt-6 space-y-2 text-sm text-[var(--foreground)]/75">
+                {footer.contact?.whatsapp && (
+                  <p className="flex items-center gap-2">
+                    <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent)]" />
+                    {footer.contact.whatsapp}
+                  </p>
+                )}
+                {footer.contact?.email && (
+                  <p className="flex items-center gap-2">
+                    <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent)]" />
+                    {footer.contact.email}
+                  </p>
+                )}
+                {footer.contact?.address && (
+                  <p className="flex items-start gap-2">
+                    <span className="mt-1 inline-block h-2 w-2 rounded-full bg-[var(--accent)]" />
+                    <span>{footer.contact.address}</span>
+                  </p>
+                )}
               </div>
-            </div>
+            )}
           </div>
         </div>
-      </div>
 
-      <div className="border-t border-pink-100 bg-[var(--background-soft)]/60 py-4 text-center text-xs text-[var(--foreground)]/70">
-        © {year} Gentlegurl Shop. All rights reserved.
+        {/* Bottom */}
+        <div className="mt-12 border-t border-pink-100 py-5">
+          <div className="flex flex-col gap-2 text-center text-xs text-[var(--foreground)]/65 md:flex-row md:items-center md:justify-between md:text-left">
+            <p>© {year} Gentlegurl Shop. All rights reserved.</p>
+          </div>
+        </div>
       </div>
     </footer>
   );
