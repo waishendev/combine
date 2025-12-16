@@ -90,12 +90,12 @@ export default function CartPageClient() {
     <main className="mx-auto max-w-6xl px-4 py-8 text-[var(--foreground)] pb-24 md:pb-8">
       <h1 className="mb-4 text-2xl font-semibold">Shopping Cart</h1>
 
-      <div className="grid gap-8 md:grid-cols-[2fr,1fr]">
+      <div className="grid gap-6 md:grid-cols-[2fr,1fr]">
         {/* Left */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Header row (Shopee-like) */}
           <div className="rounded-lg border border-[var(--muted)] bg-white/80 px-4 py-3 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3 md:grid md:grid-cols-[24px,64px,minmax(240px,1fr),112px,128px,128px,64px] md:items-center">
               <label className="flex items-center gap-2 text-sm text-[var(--foreground)]/80">
                 <input
                   type="checkbox"
@@ -103,16 +103,15 @@ export default function CartPageClient() {
                   checked={allSelected}
                   onChange={(e) => (e.target.checked ? selectAll() : clearSelection())}
                 />
-                <span className="font-medium">
-                  Select All ({selectedItemIds.length}/{items.length})
-                </span>
+                <span className="font-medium">Select All ({selectedItemIds.length}/{items.length})</span>
               </label>
 
-              <div className="hidden md:grid md:grid-cols-3 md:gap-6 text-xs text-[var(--foreground)]/60">
-                <div className="text-right">Unit Price</div>
-                <div className="text-center">Qty</div>
-                <div className="text-right">Subtotal</div>
-              </div>
+              <div className="hidden md:block" />
+              <div className="hidden text-xs font-medium text-[var(--foreground)]/70 md:block">Product</div>
+              <div className="hidden text-right text-xs font-medium text-[var(--foreground)]/70 md:block">Unit Price</div>
+              <div className="hidden text-right text-xs font-medium text-[var(--foreground)]/70 md:block">Qty</div>
+              <div className="hidden text-right text-xs font-medium text-[var(--foreground)]/70 md:block">Subtotal</div>
+              <div className="hidden text-right text-xs font-medium text-[var(--foreground)]/70 md:block">Actions</div>
             </div>
 
             {selectedItemIds.length === 0 && items.length > 0 && (
@@ -121,29 +120,29 @@ export default function CartPageClient() {
           </div>
 
           {/* Items */}
-          <div className="space-y-3">
-            {items.map((item) => {
-              const product = (item as any).product ?? {};
-              const slug = (item as any).product_slug ?? product.slug;
-              const name = (item as any).product_name ?? item.name;
-              const sku = (item as any).sku;
-              const unitPrice = Number((item as any).unit_price ?? 0);
-              const lineTotal = Number((item as any).line_total ?? unitPrice * Number(item.quantity ?? 1));
+          <div className="overflow-hidden rounded-lg border border-[var(--muted)] bg-white/85 shadow-[0_6px_18px_rgba(0,0,0,0.04)]">
+            <div className="divide-y divide-[var(--muted)]/60">
+              {items.map((item) => {
+                const product = (item as any).product ?? {};
+                const slug = (item as any).product_slug ?? product.slug;
+                const name = (item as any).product_name ?? item.name ?? "Unnamed Product";
+                const sku = (item as any).sku ?? (product as any).sku ?? (product as any).sku_code;
+                const unitPrice = Number((item as any).unit_price ?? 0);
+                const lineTotal = Number((item as any).line_total ?? unitPrice * Number(item.quantity ?? 1));
 
-              const mainImage =
-                (item as any).product_image ||
-                (item as any).product_image_path ||
-                product.images?.find((img: any) => img.is_main)?.image_path ||
-                product.images?.[0]?.image_path;
+                const mainImage =
+                  (item as any).product_image ||
+                  (item as any).product_image_path ||
+                  product.images?.find((img: any) => img.is_main)?.image_path ||
+                  product.images?.[0]?.image_path;
 
-              const checked = selectedItemIds.includes(item.id);
+                const checked = selectedItemIds.includes(item.id);
 
-              return (
-                <div
-                  key={item.id}
-                  className="rounded-lg border border-[var(--muted)] bg-white/85 shadow-sm"
-                >
-                  <div className="flex gap-3 p-4">
+                return (
+                  <div
+                    key={item.id}
+                    className="grid grid-cols-[auto,1fr] gap-3 p-3 md:grid-cols-[24px,64px,minmax(240px,1fr),112px,128px,128px,64px] md:items-center"
+                  >
                     {/* checkbox */}
                     <div className="pt-1">
                       <input
@@ -155,7 +154,7 @@ export default function CartPageClient() {
                     </div>
 
                     {/* image */}
-                    <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded bg-[var(--muted)]">
+                    <div className="relative h-16 w-16 overflow-hidden rounded bg-[var(--muted)] md:justify-self-start">
                       {mainImage ? (
                         <Image src={mainImage} alt={name} fill className="object-cover" />
                       ) : (
@@ -165,106 +164,88 @@ export default function CartPageClient() {
                       )}
                     </div>
 
-                    {/* info + pricing columns */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        {/* left info */}
-                        <div className="min-w-0">
-                          {slug ? (
-                            <Link
-                              href={`/product/${slug}`}
-                              className="block truncate text-sm font-semibold text-[var(--foreground)] hover:underline"
-                            >
-                              {name}
-                            </Link>
-                          ) : (
-                            <div className="truncate text-sm font-semibold">{name}</div>
-                          )}
+                    {/* info */}
+                    <div className="min-w-0 md:col-span-1">
+                      {slug ? (
+                        <Link
+                          href={`/product/${slug}`}
+                          className="block truncate text-base font-semibold text-[var(--foreground)] hover:underline"
+                        >
+                          {name}
+                        </Link>
+                      ) : (
+                        <div className="truncate text-base font-semibold">{name}</div>
+                      )}
 
-                          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--foreground)]/60">
-                            {sku && <span>SKU: {sku}</span>}
-                            {/* Placeholder variant line (if you have variant data later) */}
-                            {(item as any).variant_label && <span>{(item as any).variant_label}</span>}
-                          </div>
-
-                        </div>
-
-                        {/* right: pricing */}
-                        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-6 md:min-w-[340px]">
-                          {/* unit */}
-                          <div className="text-right">
-                            <div className="text-[11px] text-[var(--foreground)]/60 md:hidden">
-                              Unit
-                            </div>
-                            <div className="text-sm font-medium">
-                              RM {unitPrice.toFixed(2)}
-                            </div>
-                          </div>
-
-                          {/* qty */}
-                          <div className="flex justify-end md:justify-center">
-                            <div className="flex items-center rounded border border-[var(--muted)] bg-white/70">
-                              <button
-                                type="button"
-                                className="px-3 py-1 text-sm"
-                                onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
-                              >
-                                -
-                              </button>
-                              <input
-                                type="number"
-                                min={1}
-                                className="w-12 border-x border-[var(--muted)] px-2 py-1 text-center text-sm outline-none"
-                                value={item.quantity}
-                                onChange={(e) =>
-                                  updateItemQuantity(item.id, Math.max(1, Number(e.target.value) || 1))
-                                }
-                              />
-                              <button
-                                type="button"
-                                className="px-3 py-1 text-sm"
-                                onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* subtotal */}
-                          <div className="text-right">
-                            <div className="text-[11px] text-[var(--foreground)]/60 md:hidden">
-                              Subtotal
-                            </div>
-                            <div className="text-sm font-semibold">
-                              RM {lineTotal.toFixed(2)}
-                            </div>
-                          </div>
-                        </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
+                        {sku && <span>SKU: {sku}</span>}
+                        {(item as any).variant_label && <span>{(item as any).variant_label}</span>}
                       </div>
+                    </div>
 
-                      {/* remove row */}
-                      <div className="mt-3 flex items-center justify-between border-t border-[var(--muted)]/60 pt-3">
+                    {/* unit */}
+                    <div className="col-span-2 flex items-start justify-between text-right text-sm font-medium md:col-span-1 md:block">
+                      <span className="text-[11px] text-[var(--foreground)]/60 md:hidden">Unit</span>
+                      <span className="md:block">RM {unitPrice.toFixed(2)}</span>
+                    </div>
 
+                    {/* qty */}
+                    <div className="flex items-center justify-end md:justify-end">
+                      <div className="flex items-center rounded border border-[var(--muted)] bg-white/70">
                         <button
                           type="button"
-                          onClick={() => removeItem(item.id)}
-                          className="text-xs font-semibold text-[#c26686] transition hover:text-[var(--accent-strong)]"
+                          className="px-3 py-1 text-sm"
+                          onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
                         >
-                          Remove
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          className="w-12 border-x border-[var(--muted)] px-2 py-1 text-center text-sm outline-none"
+                          value={item.quantity}
+                          onChange={(e) =>
+                            updateItemQuantity(item.id, Math.max(1, Number(e.target.value) || 1))
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="px-3 py-1 text-sm"
+                          onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                        >
+                          +
                         </button>
                       </div>
                     </div>
+
+                    {/* subtotal */}
+                    <div className="col-span-2 flex items-start justify-between text-right md:col-span-1 md:block">
+                      <span className="text-[11px] text-[var(--foreground)]/60 md:hidden">Subtotal</span>
+                      <span className="text-sm font-semibold md:block">RM {lineTotal.toFixed(2)}</span>
+                    </div>
+
+                    {/* actions */}
+                    <div className="flex justify-end md:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        className="flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-[#c26686] transition hover:text-[var(--accent-strong)]"
+                      >
+                        <span aria-hidden>✕</span>
+                        <span className="hidden md:inline">Remove</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
 
         {/* Right summary (Desktop sticky) */}
         <aside className="hidden md:block">
-          <div className="sticky top-24 rounded-lg border border-[var(--muted)] bg-white/85 p-4 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold">Order Summary</h2>
+          <div className="sticky top-24 space-y-3 rounded-lg border border-[var(--muted)] bg-white/90 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.05)]">
+            <h2 className="text-lg font-semibold">Order Summary</h2>
 
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between gap-2">
@@ -304,7 +285,14 @@ export default function CartPageClient() {
               </div>
             </div>
 
-            <div className="mt-4 space-y-2 text-sm">
+            {shippingLabel && (
+              <div className="flex items-start justify-between text-xs text-[var(--foreground)]/70">
+                <span>Shipping</span>
+                <span className="text-right">{shippingLabel}</span>
+              </div>
+            )}
+
+            <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Subtotal (Selected)</span>
                 <span>RM {safeTotals.subtotal.toFixed(2)}</span>
@@ -319,7 +307,7 @@ export default function CartPageClient() {
               </div>
             </div>
 
-            <div className="mt-4 flex justify-between border-t pt-4 text-sm font-semibold">
+            <div className="flex justify-between border-t pt-3 text-lg font-bold">
               <span>To Pay</span>
               <span>RM {safeTotals.grand.toFixed(2)}</span>
             </div>
@@ -328,7 +316,7 @@ export default function CartPageClient() {
               type="button"
               onClick={() => router.push("/checkout")}
               disabled={selectedCount === 0}
-              className="mt-6 w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded bg-[var(--accent)] px-4 py-3 text-base font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {selectedCount === 0 ? "Select items to checkout" : `Proceed to Checkout (${selectedCount})`}
             </button>
