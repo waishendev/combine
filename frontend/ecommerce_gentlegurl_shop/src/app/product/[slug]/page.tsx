@@ -39,11 +39,19 @@ export default async function ProductPage({ params }: ProductPageProps) {
     <main className="mx-auto max-w-5xl px-4 py-8">
       <div className="grid gap-8 md:grid-cols-2">
         {/* 左边图片 */}
-        <ProductGallery
-          images={galleryImages}
-          initialIndex={initialIndex >= 0 ? initialIndex : 0}
-          alt={product.name}
-        />
+        <div className="relative">
+          <ProductGallery
+            images={galleryImages}
+            initialIndex={initialIndex >= 0 ? initialIndex : 0}
+            alt={product.name}
+          />
+          <div className="absolute right-3 top-3 z-10">
+            <WishlistToggleButton
+              productId={product.id}
+              initialIsWishlisted={product.is_in_wishlist ?? false}
+            />
+          </div>
+        </div>
 
         {/* 右边信息 */}
         <div className="space-y-4">
@@ -68,11 +76,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
           )}
           <div className="flex flex-wrap items-center gap-3">
             <AddToCartButton productId={product.id} />
-            <WishlistToggleButton
-              productId={product.id}
-              initialIsWishlisted={product.is_in_wishlist ?? false}
-              variant="button"
-            />
           </div>
         </div>
       </div>
