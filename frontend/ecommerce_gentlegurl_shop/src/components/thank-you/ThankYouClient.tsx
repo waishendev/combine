@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { lookupOrder, uploadPaymentSlip, OrderLookupResponse } from "@/lib/apiClient";
 
 type Props = {
@@ -16,7 +18,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const [slipUrl, setSlipUrl] = useState("");
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
-  const loadOrder = async () => {
+  const loadOrder = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -28,11 +30,11 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [orderId, orderNo]);
 
   useEffect(() => {
     void loadOrder();
-  }, [orderNo, orderId]);
+  }, [loadOrder]);
 
   const handleUpload = async () => {
     if (!order) return;
@@ -101,11 +103,15 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                     <p className="whitespace-pre-wrap text-[var(--foreground)]/70">{order.bank_account.instructions}</p>
                   )}
                   {order.bank_account.qr_image_url && (
-                    <img
-                      src={order.bank_account.qr_image_url}
-                      alt="Bank QR"
-                      className="mt-3 h-32 w-32 rounded border border-[var(--muted)] object-contain"
-                    />
+                    <div className="mt-3 h-32 w-32 overflow-hidden rounded border border-[var(--muted)] bg-white">
+                      <Image
+                        src={order.bank_account.qr_image_url}
+                        alt="Bank QR"
+                        width={128}
+                        height={128}
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
                   )}
                 </div>
               ) : (
@@ -146,20 +152,20 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
         </div>
       )}
 
-      <div className="mt-8 flex justify-center gap-3 text-sm">
-        <a
-          href="/shop"
-          className="rounded border border-[var(--accent)] bg-white/70 px-4 py-2 text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
-        >
-          Continue Shopping
-        </a>
-        <a
-          href="/orders"
-          className="rounded bg-[var(--accent)] px-4 py-2 text-white transition-colors hover:bg-[var(--accent-strong)]"
-        >
-          View My Orders
-        </a>
-      </div>
+        <div className="mt-8 flex justify-center gap-3 text-sm">
+          <Link
+            href="/shop"
+            className="rounded border border-[var(--accent)] bg-white/70 px-4 py-2 text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
+          >
+            Continue Shopping
+          </Link>
+          <Link
+            href="/orders"
+            className="rounded bg-[var(--accent)] px-4 py-2 text-white transition-colors hover:bg-[var(--accent-strong)]"
+          >
+            View My Orders
+          </Link>
+        </div>
     </main>
   );
 }

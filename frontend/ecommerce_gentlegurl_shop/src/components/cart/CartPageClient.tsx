@@ -8,9 +8,9 @@ import { useCart } from "@/contexts/CartContext";
 
 export default function CartPageClient() {
   const router = useRouter();
-  const {
-    items,
-    totals,
+    const {
+      items,
+      totals,
     isLoading,
     isApplyingVoucher,
     updateItemQuantity,
@@ -22,19 +22,20 @@ export default function CartPageClient() {
     appliedVoucher,
     voucherError,
     voucherMessage,
-    clearVoucherFeedback,
-    toggleSelectItem,
-    selectAll,
-    clearSelection,
-    shippingLabel,
-  } = useCart();
+      clearVoucherFeedback,
+      toggleSelectItem,
+      selectAll,
+      clearSelection,
+    } = useCart();
 
   const [voucherCode, setVoucherCode] = useState("");
   const [showVoucherModal, setShowVoucherModal] = useState(false);
 
-  useEffect(() => {
-    setVoucherCode(appliedVoucher?.code ?? "");
-  }, [appliedVoucher]);
+    useEffect(() => {
+      // Sync voucher input with applied voucher code
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVoucherCode(appliedVoucher?.code ?? "");
+    }, [appliedVoucher]);
 
   const handleApplyVoucher = async () => {
     const applied = await applyVoucher(voucherCode.trim() || undefined);
@@ -47,14 +48,14 @@ export default function CartPageClient() {
   };
 
   // ✅ 如果你的 totals 里面有 discount/shipping/grand_total 就用；没有就 fallback
-  const safeTotals = useMemo(() => {
-    const subtotal = Number(totals?.subtotal ?? 0);
-    const discount = Number((totals as any)?.discount_total ?? 0);
-    const shipping = Number((totals as any)?.shipping_fee ?? 0);
-    const grand = Number((totals as any)?.grand_total ?? subtotal - discount + shipping);
+    const safeTotals = useMemo(() => {
+      const subtotal = Number(totals?.subtotal ?? 0);
+      const discount = Number(totals?.discount_total ?? 0);
+      const shipping = Number(totals?.shipping_fee ?? 0);
+      const grand = Number(totals?.grand_total ?? subtotal - discount + shipping);
 
-    return { subtotal, discount, shipping, grand };
-  }, [totals]);
+      return { subtotal, discount, shipping, grand };
+    }, [totals]);
 
   if (isLoading) {
     return (
@@ -132,8 +133,9 @@ export default function CartPageClient() {
                 const lineTotal = unitPrice * item.quantity;
                 const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
                 const name = item.name ?? item.product?.name ?? "Unnamed Product";
-                const sku = (item as any).sku ?? item.product?.sku;
-                const productSlug = (item as any).product_slug ?? item.product?.slug;
+                const sku = item.sku ?? item.product?.sku;
+                const productSlug = item.product?.slug ?? (item as { product_slug?: string }).product_slug;
+                const variantLabel = (item as { variant_label?: string }).variant_label;
 
                 return (
                   <div key={item.id} className="bg-white/70 px-3 py-2 lg:px-4 lg:py-4">
@@ -170,10 +172,10 @@ export default function CartPageClient() {
                             <div className="line-clamp-2 text-sm font-semibold lg:line-clamp-none">{name}</div>
                           )}
 
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
-                            {sku && <span>SKU: {sku}</span>}
-                            {(item as any).variant_label && <span>{(item as any).variant_label}</span>}
-                          </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
+                              {sku && <span>SKU: {sku}</span>}
+                              {variantLabel && <span>{variantLabel}</span>}
+                            </div>
                         </div>
                       </div>
 
@@ -235,11 +237,11 @@ export default function CartPageClient() {
           <div className="space-y-3 md:hidden">
             {items.map((item) => {
               const unitPrice = item.unit_price ?? item.price ?? 0;
-              const lineTotal = unitPrice * item.quantity;
               const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
               const name = item.name ?? item.product?.name ?? "Unnamed Product";
-              const sku = (item as any).sku ?? item.product?.sku;
-              const productSlug = (item as any).product_slug ?? item.product?.slug;
+              const sku = item.sku ?? item.product?.sku;
+              const productSlug = item.product?.slug ?? (item as { product_slug?: string }).product_slug;
+              const variantLabel = (item as { variant_label?: string }).variant_label;
 
               return (
                 <div key={item.id} className="rounded-xl border border-[var(--muted)] bg-white/90 p-3 shadow-sm">
@@ -274,7 +276,7 @@ export default function CartPageClient() {
 
                         <div className="text-xs text-[var(--foreground)]/60">
                           {sku && <span>SKU: {sku}</span>}
-                          {(item as any).variant_label && <span className="ml-2">{(item as any).variant_label}</span>}
+                          {variantLabel && <span className="ml-2">{variantLabel}</span>}
                         </div>
 
                         <div className="text-sm font-medium text-[var(--foreground)]">RM {unitPrice.toFixed(2)}</div>

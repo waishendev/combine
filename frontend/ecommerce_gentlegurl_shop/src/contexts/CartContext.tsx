@@ -56,8 +56,8 @@ export type CartContextValue = {
   toggleSelectItem: (itemId: number) => void;
   selectAll: () => void;
   clearSelection: () => void;
-  shippingMethod: "shipping" | "pickup";
-  setShippingMethod: (method: "shipping" | "pickup") => void;
+  shippingMethod: "shipping" | "self_pickup";
+  setShippingMethod: (method: "shipping" | "self_pickup") => void;
   shippingFlatFee: number;
   shippingLabel?: string;
   resetAfterLogout: () => Promise<void>;
@@ -90,7 +90,9 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
   const [appliedVoucher, setAppliedVoucher] = useState<CheckoutPreviewResponse["voucher"] | null>(null);
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [voucherMessage, setVoucherMessage] = useState<string | null>(null);
-  const [shippingMethod, setShippingMethod] = useState<"shipping" | "pickup">("shipping");
+  const [shippingMethod, setShippingMethod] = useState<"shipping" | "self_pickup">(
+    "shipping",
+  );
   const [shippingFlatFee, setShippingFlatFee] = useState<number>(Number(shippingSetting?.flat_fee ?? 0));
   const [shippingLabel] = useState<string | undefined>(shippingSetting?.label);
   const [voucherDiscount, setVoucherDiscount] = useState<number>(0);
