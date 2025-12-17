@@ -44,6 +44,7 @@ export default function WaxingHairRemovalPage() {
       pricing={pricing}
       faqs={faqs}
       notes={notes}
+      heroImage="/images/remove.jpg"
     />
   );
 }

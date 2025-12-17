@@ -50,8 +50,12 @@ export default function Slider({ items }: SliderProps) {
       <div className="relative h-[380px] sm:h-[420px] lg:h-[480px]">
         {slides.map((item, index) => {
           const isActive = index === activeIndex;
-          const desktopImage = item.image_url ?? item.image_path ?? "/images/placeholder-hero.jpg";
-          const mobileImage = item.mobile_image_url ?? item.mobile_image_path ?? desktopImage;
+          // const desktopImage = item.image_url ?? item.image_path ?? "/images/slideshow_placeholder.jpg";
+          const desktopImage =  "/images/slideshow_placeholder.jpg";
+          // const mobileImage = item.mobile_image_url ?? item.mobile_image_path ?? desktopImage;
+
+          const mobileImage = desktopImage;
+
 
           return (
             <article

@@ -43,9 +43,6 @@ export default function ProductGrid({ items }: ProductGridProps) {
                     fill
                     className="object-cover transition duration-500 ease-out group-hover:scale-105"
                   />
-                  <div className="absolute inset-x-3 bottom-3 rounded-full bg-white/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-600 shadow-sm">
-                    Fresh edit
-                  </div>
                 </div>
               )}
               <div className="space-y-2 p-4">

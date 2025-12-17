@@ -42,6 +42,7 @@ export default function NailServicesPage() {
       pricing={pricing}
       faqs={faqs}
       notes={notes}
+      heroImage="/images/slideshow_placeholder.jpg"
     />
   );
 }

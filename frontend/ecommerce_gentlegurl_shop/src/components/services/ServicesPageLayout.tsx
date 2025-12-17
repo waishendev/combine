@@ -25,9 +25,10 @@ type ServicesPageLayoutProps = {
   pricing: PricingItem[];
   faqs: FAQItem[];
   notes: string[];
+  heroImage?: string;
 };
 
-export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, notes }: ServicesPageLayoutProps) {
+export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, notes, heroImage }: ServicesPageLayoutProps) {
   const pricingRef = useRef<HTMLDivElement | null>(null);
 
   const handleBook = () => {
@@ -65,7 +66,7 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
             <div className="flex justify-center lg:justify-end">
               <div className="relative h-64 w-full max-w-md overflow-hidden rounded-2xl border border-[var(--muted)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)]">
                 <Image
-                  src="/images/placeHolder.jpg"
+                  src={heroImage || "/images/slideshow_placeholder.jpg"}
                   alt={`${title} hero visual`}
                   fill
                   className="object-cover"

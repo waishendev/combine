@@ -311,11 +311,7 @@ export default function CartPageClient() {
                             </button>
                           </div>
 
-                          <div className="ml-auto text-right text-sm font-semibold">RM {lineTotal.toFixed(2)}</div>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-2">
-                          <div className="text-[11px] text-[var(--foreground)]/60">Line total</div>
+                          <div className="ml-auto text-right text-sm font-semibold">                          
                           <button
                             type="button"
                             onClick={() => removeItem(item.id)}
@@ -323,7 +319,9 @@ export default function CartPageClient() {
                           >
                             Remove
                           </button>
+                          </div>
                         </div>
+
                       </div>
                     </div>
                   </div>
