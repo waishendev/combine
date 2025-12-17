@@ -120,7 +120,9 @@ export default function TrackingPage() {
           <div className="grid gap-3 text-sm text-[var(--foreground)]/80 sm:grid-cols-2">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[var(--foreground)]">Shipping Method:</span>
-              <span className="capitalize">{result.shipping_method === "pickup" ? "Self Pickup" : "Shipping"}</span>
+              <span className="capitalize">
+                {result.shipping_method === "self_pickup" ? "Self Pickup" : "Shipping"}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[var(--foreground)]">Shipping Fee:</span>
