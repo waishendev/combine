@@ -435,7 +435,7 @@ export type OrderLookupResponse = {
   status: string;
   bank_account?: PublicBankAccount | null;
   pickup_store?: PublicStoreLocation | null;
-  uploads: { id: number; file_url: string; created_at: string }[];
+  uploads: { id: number; file_url: string | null; status?: string; note?: string | null; created_at: string }[];
 };
 
 export type OrderTrackingResponse = {
@@ -546,14 +546,19 @@ export async function trackGuestOrder(payload: {
   return json;
 }
 
-export async function uploadPaymentSlip(orderId: number, fileUrl: string) {
-  const response = await post<{ success: boolean }>(
-    `/public/shop/orders/${orderId}/upload-slip`,
-    { file_url: fileUrl },
-    { headers: { Accept: "application/json" } },
-  );
+export async function uploadPaymentSlip(orderId: number, slip: File, note?: string) {
+  const formData = new FormData();
+  formData.append("slip", slip);
 
-  return response;
+  if (note) {
+    formData.append("note", note);
+  }
+
+  return post<{ success: boolean }>(
+    `/public/shop/orders/${orderId}/upload-slip`,
+    undefined,
+    { body: formData, includeSessionToken: true, headers: { Accept: "application/json" } },
+  );
 }
 
 export async function getAccountOverview() {
