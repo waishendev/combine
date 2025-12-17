@@ -38,7 +38,8 @@ export default function ProductGrid({ items }: ProductGridProps) {
               {image && (
                 <div className="relative h-44 w-full overflow-hidden bg-gradient-to-b from-[#f5f0ff] to-white">
                   <Image
-                    src={image}
+                    // src={image}
+                    src={"/images/placeholder.png"}
                     alt={product.name}
                     fill
                     className="object-cover transition duration-500 ease-out group-hover:scale-105"

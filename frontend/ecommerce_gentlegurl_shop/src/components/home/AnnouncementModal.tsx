@@ -50,7 +50,8 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
         {item.image_path && (
           <div className="relative mt-5 h-56 w-full overflow-hidden rounded-2xl border border-[var(--muted)] bg-[var(--muted)]">
             <Image
-              src={item.image_path}
+              // src={item.image_path}
+              src={"/images/placeholder.png"}
               alt={item.title ?? "announcement"}
               fill
               className="object-cover"

@@ -22,7 +22,12 @@ interface SliderProps {
 
 export default function Slider({ items }: SliderProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const slides = useMemo(() => items ?? [], [items]);
+  
+  // Minimum swipe distance (in px)
+  const minSwipeDistance = 50;
 
   useEffect(() => {
     if (!slides.length) return;
@@ -42,12 +47,97 @@ export default function Slider({ items }: SliderProps) {
     setActiveIndex(nextIndex);
   };
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe || isRightSwipe) {
+      setHasSwiped(true);
+      if (isLeftSwipe) {
+        // Swipe left = next slide
+        goTo(activeIndex + 1);
+      } else {
+        // Swipe right = previous slide
+        goTo(activeIndex - 1);
+      }
+      // Prevent link clicks after swipe
+      setTimeout(() => setHasSwiped(false), 100);
+    }
+  };
+
+  // Mouse drag handlers for desktop
+  const [mouseStart, setMouseStart] = useState<number | null>(null);
+  const [mouseEnd, setMouseEnd] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [hasSwiped, setHasSwiped] = useState(false);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setMouseStart(e.clientX);
+    setMouseEnd(null);
+    setHasSwiped(false);
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setMouseEnd(e.clientX);
+  };
+
+  const onMouseUp = () => {
+    if (!isDragging || !mouseStart) {
+      setIsDragging(false);
+      return;
+    }
+    
+    if (mouseEnd !== null) {
+      const distance = mouseStart - mouseEnd;
+      const isLeftSwipe = distance > minSwipeDistance;
+      const isRightSwipe = distance < -minSwipeDistance;
+
+      if (isLeftSwipe || isRightSwipe) {
+        setHasSwiped(true);
+        if (isLeftSwipe) {
+          goTo(activeIndex + 1);
+        } else {
+          goTo(activeIndex - 1);
+        }
+        // Prevent link clicks after swipe
+        setTimeout(() => setHasSwiped(false), 100);
+      }
+    }
+
+    setIsDragging(false);
+    setMouseStart(null);
+    setMouseEnd(null);
+  };
+
   return (
     <div className="relative overflow-hidden rounded-[28px] border border-white/70 bg-gradient-to-br from-[#fdf2f8] via-white to-[#f5f3ff] shadow-[0_24px_80px_-42px_rgba(109,40,217,0.4)]">
       <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32 rounded-full bg-[#fce7f3]/70 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 rounded-full bg-[#ede9fe]/70 blur-3xl" />
 
-      <div className="relative h-[380px] sm:h-[420px] lg:h-[480px]">
+      <div
+        className="relative h-[380px] sm:h-[420px] lg:h-[480px] cursor-grab active:cursor-grabbing"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+      >
         {slides.map((item, index) => {
           const isActive = index === activeIndex;
           // const desktopImage = item.image_url ?? item.image_path ?? "/images/slideshow_placeholder.jpg";
@@ -107,6 +197,11 @@ export default function Slider({ items }: SliderProps) {
                   {item.button_link && item.button_label && (
                     <Link
                       href={item.button_link}
+                      onClick={(e) => {
+                        if (hasSwiped) {
+                          e.preventDefault();
+                        }
+                      }}
                       className="inline-flex items-center gap-2 rounded-full bg-white/90 px-5 py-3 text-sm font-semibold text-gray-900 shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-white"
                     >
                       {item.button_label}
@@ -122,28 +217,7 @@ export default function Slider({ items }: SliderProps) {
         })}
 
         {slides.length > 1 && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-3">
-            <button
-              type="button"
-              onClick={() => goTo(activeIndex - 1)}
-              className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/30 text-white shadow-lg backdrop-blur transition hover:scale-105 hover:bg-white/40"
-              aria-label="Previous slide"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => goTo(activeIndex + 1)}
-              className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/30 text-white shadow-lg backdrop-blur transition hover:scale-105 hover:bg-white/40"
-              aria-label="Next slide"
-            >
-              ›
-            </button>
-          </div>
-        )}
-
-        {slides.length > 1 && (
-          <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-2 rounded-full bg-black/30 px-3 py-2 text-white backdrop-blur">
+          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2 rounded-full bg-black/30 px-3 py-2 text-white backdrop-blur">
             {slides.map((item, index) => (
               <button
                 key={item.id}

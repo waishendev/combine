@@ -102,9 +102,9 @@ export function WishlistToggleButton({
       } ${loading ? "opacity-50" : ""} ${className ?? ""}`}
     >
       <HeartIcon filled={isWishlisted} />
-      {isWishlisted && (
+      {/* {isWishlisted && (
         <span className="absolute inset-0 animate-ping rounded-full bg-[#ec4899]/20 opacity-75" />
-      )}
+      )} */}
     </button>
   );
 }

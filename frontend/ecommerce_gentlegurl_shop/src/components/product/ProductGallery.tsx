@@ -28,7 +28,10 @@ export function ProductGallery({ images, initialIndex = 0, alt }: ProductGallery
   return (
     <div>
       <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-gray-100">
-        <Image src={activeImage} alt={alt} fill className="object-cover" />
+        <Image 
+        // src={activeImage} 
+        src={"/images/placeholder.png"}
+        alt={alt} fill className="object-cover" />
       </div>
 
       {safeImages.length > 1 && (
@@ -42,7 +45,10 @@ export function ProductGallery({ images, initialIndex = 0, alt }: ProductGallery
                 index === activeIndex ? "border-black" : "border-gray-200 hover:border-gray-300"
               }`}
             >
-              <Image src={img} alt={`${alt} thumbnail ${index + 1}`} fill className="object-cover" />
+              <Image 
+              // src={img}
+              src={"/images/placeholder.png"}
+              alt={`${alt} thumbnail ${index + 1}`} fill className="object-cover" />
             </button>
           ))}
         </div>
