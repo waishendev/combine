@@ -209,15 +209,15 @@ class PublicHomepageController extends Controller
                 'address' => null,
             ],
             'social' => [
-                'instagram' => null,
-                'facebook' => null,
-                'tiktok' => null,
+                'instagram' => 'https://www.instagram.com/',
+                'facebook' => 'https://www.facebook.com/',
+                'tiktok' => 'https://www.tiktok.com/search?q=Put%20Metal%20Ball%20in%20Gel%20Blaster&t=1760015090730',
             ],
             'links' => [
-                'shipping_policy' => '/shipping-policy',
-                'return_refund' => '/return-refund',
-                'privacy' => '/privacy-policy',
-                'terms' => '/terms',
+                'shipping_policy' => '/#',
+                'return_refund' => '/#',
+                'privacy' => '/#',
+                'terms' => '/#',
             ],
         ];
     }

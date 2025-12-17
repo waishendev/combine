@@ -164,19 +164,30 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               )}
 
               <div className="mt-4 space-y-2">
-                <p className="text-xs text-[var(--foreground)]/80">Upload your bank-in slip</p>
-                <button
-                  type="button"
-                  onClick={openModal}
-                  className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
-                >
-                  {latestUpload ? "Reupload Slip" : "Upload Slip"}
-                </button>
-                {uploadMessage && <p className="text-xs text-[var(--foreground)]/70">{uploadMessage}</p>}
+                {!latestUpload && (
+                  <p className="text-xs text-[var(--foreground)]/80">Upload your bank-in slip</p>
+                )}
+                {!latestUpload && (
+                  <button
+                    type="button"
+                    onClick={openModal}
+                    className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+                  >
+                    Upload Slip
+                  </button>
+                )}
+                {/* {uploadMessage && <p className="text-xs text-[var(--foreground)]/70">{uploadMessage}</p>} */}
                 {latestUpload && (
-                  <div className="text-xs text-[var(--foreground)]/70">
+                  <div className="text-xs text-[var(--foreground)]/70 space-y-1">
                     <p>Latest upload: {latestUpload.created_at}</p>
                     <p className="font-medium text-[var(--accent-strong)]">Slip submitted • Pending verification</p>
+                    <button
+                      type="button"
+                      onClick={openModal}
+                      className="mt-2 w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+                    >
+                      Reupload Slip
+                    </button>
                   </div>
                 )}
               </div>
@@ -208,76 +219,123 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 text-left shadow-xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-lg font-semibold text-[var(--foreground)]">Upload Payment Slip</p>
-                <p className="text-xs text-[var(--foreground)]/70">Accepted: jpg, jpeg, png, webp, pdf (max 5MB)</p>
-              </div>
+          <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-pink-100 px-6 py-4">
+              <h3 className="text-lg font-semibold text-pink-700">Upload Payment Slip</h3>
               <button
                 type="button"
                 onClick={closeModal}
-                className="rounded p-1 text-sm text-[var(--foreground)]/70 hover:bg-[var(--muted)]/70"
+                className="rounded-full p-1 text-pink-600 transition hover:bg-pink-50"
+                aria-label="Close"
               >
-                ✕
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2"
+                  stroke="currentColor"
+                  className="h-5 w-5"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
-            <div className="mt-4 space-y-3">
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
-                className="w-full text-sm"
-              />
-
-              {selectedFile && (
-                <div className="rounded border border-[var(--muted)] bg-white/80 p-3 text-sm text-[var(--foreground)]/80">
-                  <p className="font-medium">Preview</p>
-                  {previewUrl ? (
-                    <div className="mt-2 overflow-hidden rounded border border-[var(--muted)]">
+            <div className="px-6 py-4">
+              <div className="flex flex-col gap-6 md:flex-row">
+              {/* Left side - Preview */}
+              <div className="w-full md:w-1/2">
+                <div className="space-y-3">
+                  <div className="h-48 w-full overflow-hidden rounded-lg border border-pink-200 bg-pink-50 flex items-center justify-center">
+                    {previewUrl ? (
                       <Image
                         src={previewUrl}
                         alt="Slip preview"
-                        width={640}
-                        height={480}
-                        className="max-h-64 w-full object-contain"
+                        width={192}
+                        height={192}
+                        className="h-full w-full object-contain"
                         unoptimized
                       />
+                      
+                    ) : selectedFile && !previewUrl ? (
+                      <div className="text-center p-4">
+                        <p className="text-sm font-medium text-pink-700 break-words break-all">{selectedFile.name}</p>
+                        <p className="text-xs text-pink-600 mt-1">PDF file selected</p>
+                      </div>
+                    ) : (
+                      <div className="text-center p-4">
+                        <svg className="mx-auto h-12 w-12 text-pink-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-sm text-pink-600 mt-2">No file chosen</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <label className="block cursor-pointer">
+                    
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+                      className="hidden"
+                    />
+                    <div className="w-full rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-center text-sm font-semibold text-pink-700 transition hover:bg-pink-100">
+                      {selectedFile ? "Choose Different File" : "Choose File"}
                     </div>
-                  ) : (
-                    <p className="mt-1">{selectedFile.name}</p>
+                  </label>
+                  {selectedFile && (
+                    <p className="text-xs text-gray-600 text-center break-words break-all px-2">
+                      {selectedFile.name}
+                    </p>
                   )}
+                  <p className="text-xs text-[#FF0000]/70 text-center">
+                    * Accepted: jpg, jpeg, png, webp, pdf (max 5MB)
+                  </p>
                 </div>
-              )}
-
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Add a note (optional)"
-                className="h-20 w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-              />
-
-              {uploadError && <p className="text-xs text-[#c26686]">{uploadError}</p>}
-
-              <div className="flex justify-end gap-2 text-sm">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded border border-[var(--muted)] px-4 py-2 text-[var(--foreground)] hover:bg-[var(--muted)]/70"
-                  disabled={isUploading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleUpload}
-                  disabled={!selectedFile || isUploading}
-                  className="rounded bg-[var(--accent)] px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:bg-[var(--muted)]"
-                >
-                  {isUploading ? "Uploading..." : "Confirm upload"}
-                </button>
               </div>
+
+              {/* Right side - Form */}
+              <div className="w-full md:w-1/2 space-y-4">
+                <div>
+                  <label className="block text-left text-sm">
+                    <span className="block text-pink-800 font-medium mb-2">Note (Optional)</span>
+                    <textarea
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="Add any additional notes about your payment..."
+                      className="mt-1 h-32 w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm leading-relaxed focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100 resize-none"
+                    />
+                  </label>
+                </div>
+
+                {uploadError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                    <p className="text-xs text-red-600">{uploadError}</p>
+                  </div>
+                )}
+              </div>
+              </div>
+            </div>
+
+            {/* Footer - Buttons */}
+            <div className="flex items-center justify-end gap-3 border-t border-pink-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+                disabled={isUploading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={!selectedFile || isUploading}
+                className="rounded-md bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isUploading ? "Uploading..." : "Confirm Upload"}
+              </button>
             </div>
           </div>
         </div>
