@@ -1,0 +1,70 @@
+services:
+  ecommerce_gentlegurl_shop:
+    container_name: ecommerce_gentlegurl_shop_prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}          # ← 保留，Dockerfile 里会补 ARG+ENV
+        
+    # 宿主机 3001 -> 容器 3000，和顾客用的 3000 不冲突
+    ports:
+      - "3001:3000"
+      # 如果后面有 Nginx 反代，更安全：
+      # - "127.0.0.1:3001:3000"
+
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: "production"
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      HEALTHCHECK_PATH: "/api/healthz"
+
+    # ⭐ 新增：docker-watch 监控开关标签（开关来自 .env.*）
+    labels:
+      - com.dkwatch.enable=${WATCH_ENABLE}
+      - com.dkwatch.group=${WATCH_NAME}
+
+    restart: unless-stopped
+
+    # 只读根FS + 必要可写点
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,nr_inodes=4096,mode=1777,noexec,nosuid,nodev
+      - /app/.next/cache:size=256m,mode=1777
+
+    # 安全最小化
+    user: "node"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # 用内置 init（等价 tini），优雅处理信号/僵尸进程
+    init: true
+
+    # 高并发更稳的限制
+    pids_limit: 2048
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+
+    # 日志轮转（防爆盘）
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    # 纯 Node 健康检查（无 curl 依赖）
+    healthcheck:
+      test: ["CMD", "node", "/app/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
