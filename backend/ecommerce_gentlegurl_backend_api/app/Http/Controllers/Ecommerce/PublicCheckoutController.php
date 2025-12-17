@@ -163,10 +163,10 @@ class PublicCheckoutController extends Controller
                 }
             }
 
+            $this->removeOrderedCartItems($customer, $validated['session_token'] ?? null, $calculation['items']);
+
             return $order;
         });
-
-        $this->removeOrderedCartItems($customer, $validated['session_token'] ?? null, $validated['items']);
 
         $billplzUrl = null;
 
