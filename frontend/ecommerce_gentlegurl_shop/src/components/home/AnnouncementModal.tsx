@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 
 type Announcement = {
@@ -22,6 +22,16 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
   if (!open || !items?.length) return null;
 
   const item = items[0];
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--foreground)]/25 px-4 backdrop-blur-sm">
