@@ -62,39 +62,6 @@ services:
       - ./nginx:/etc/nginx/conf.d:ro
       - .:/var/www:ro
     restart: unless-stopped
-
-  horizon:
-    container_name: 95ball_horizon_prod
-    build:
-      context: .
-      dockerfile: Dockerfile-prod
-      target: app
-    labels:
-      - com.dkwatch.enable=${WATCH_ENABLE}
-      - com.dkwatch.group=${WATCH_NAME}
-    env_file:
-      - .env.production
-    volumes:
-      - laravel_storage:/var/www/storage:rw
-      - laravel_cache:/var/www/bootstrap/cache:rw
-    command: ["php", "artisan", "horizon"]
-    restart: unless-stopped
-    user: www-data
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    init: true
-    tmpfs:
-      - /tmp:size=64m,mode=1777
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "7"
-    depends_on:
-      - laravel-app
-
 volumes:
   laravel_storage:
   laravel_cache:
