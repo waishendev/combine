@@ -16,7 +16,7 @@ type ShopHeaderClientProps = {
 
 export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHeaderClientProps) {
   const { customer, logout, isLoading } = useAuth();
-  const { totalQuantity, resetAfterLogout } = useCart();
+  const { items, resetAfterLogout } = useCart();
   const [shopOpen, setShopOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -64,6 +64,8 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const overview = customer ?? initialOverview ?? null;
   const profile = overview?.profile;
   const loyalty = overview?.loyalty;
+
+  const badgeCount = items.length;
 
   const avatarUrl = profile?.avatar ?? "/images/default_user_image.jpg";
   const tierName = loyalty?.current_tier?.name ?? profile?.tier ?? "-";
@@ -335,9 +337,9 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                   <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25 5.647 5.272" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm12.75 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" />
                 </svg>
-                {totalQuantity > 0 && (
+                {badgeCount > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
-                    {totalQuantity > 99 ? "99+" : totalQuantity}
+                    {badgeCount > 99 ? "99+" : badgeCount}
                   </span>
                 )}
               </Link>
@@ -460,9 +462,9 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25 5.647 5.272" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm12.75 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" />
               </svg>
-              {totalQuantity > 0 && (
+              {badgeCount > 0 && (
                 <span className="absolute -right-2 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
-                  {totalQuantity > 99 ? "99+" : totalQuantity}
+                  {badgeCount > 99 ? "99+" : badgeCount}
                 </span>
               )}
             </Link>
