@@ -269,6 +269,8 @@ class PublicCheckoutController extends Controller
             ->map(fn($upload) => [
                 'id' => $upload->id,
                 'file_url' => $upload->file_url,
+                'note' => $upload->note,
+                'status' => $upload->status,
                 'created_at' => $upload->created_at,
             ]);
 
@@ -298,16 +300,31 @@ class PublicCheckoutController extends Controller
     public function uploadSlip(Request $request, Order $order)
     {
         $validated = $request->validate([
-            'file_url' => ['required', 'url'],
+            'slip' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+            'note' => ['nullable', 'string'],
         ]);
+
+        $filePath = $request->file('slip')->store('order-slips', 'public');
 
         $upload = OrderUpload::create([
             'order_id' => $order->id,
             'type' => 'payment_slip',
-            'file_url' => $validated['file_url'],
+            'file_path' => $filePath,
+            'note' => $validated['note'] ?? null,
+            'status' => 'pending',
         ]);
 
-        return $this->respond($upload, __('Payment slip uploaded.'));
+        return $this->respond([
+            'upload' => [
+                'id' => $upload->id,
+                'file_url' => $upload->file_url,
+                'note' => $upload->note,
+                'status' => $upload->status,
+                'created_at' => $upload->created_at,
+            ],
+            'latest_slip_url' => $upload->file_url,
+            'status' => 'pending verification',
+        ], __('Payment slip uploaded.'));
     }
 
     protected function validateOrderRequest(Request $request, bool $requirePaymentMethod = false): array

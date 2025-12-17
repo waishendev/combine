@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { lookupOrder, uploadPaymentSlip, OrderLookupResponse } from "@/lib/apiClient";
@@ -15,8 +15,13 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const [order, setOrder] = useState<OrderLookupResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [slipUrl, setSlipUrl] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [note, setNote] = useState("");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const loadOrder = useCallback(async () => {
     setIsLoading(true);
@@ -36,21 +41,61 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     void loadOrder();
   }, [loadOrder]);
 
-  const handleUpload = async () => {
-    if (!order) return;
-    if (!slipUrl.trim()) {
-      setUploadMessage("Please provide the payment slip URL.");
-      return;
+  const latestUpload = useMemo(() => {
+    if (!order?.uploads?.length) return null;
+    return order.uploads[order.uploads.length - 1];
+  }, [order?.uploads]);
+
+  const openModal = () => {
+    setIsModalOpen(true);
+    setUploadError(null);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setNote("");
+  };
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  const handleFileChange = (file: File | null) => {
+    setSelectedFile(file);
+    setUploadError(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
     }
 
+    if (file && file.type.startsWith("image/")) {
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewUrl(objectUrl);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!order || !selectedFile) return;
+
+    setIsUploading(true);
+    setUploadError(null);
+
     try {
-      await uploadPaymentSlip(order.order_id, slipUrl.trim());
-      setUploadMessage("Uploaded. Pending verification.");
-      setSlipUrl("");
+      await uploadPaymentSlip(order.order_id, selectedFile, note.trim() || undefined);
+      setUploadMessage("Slip submitted • Pending verification");
+      closeModal();
       void loadOrder();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to upload payment slip.";
-      setUploadMessage(message);
+      setUploadError(message);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -120,25 +165,19 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
 
               <div className="mt-4 space-y-2">
                 <p className="text-xs text-[var(--foreground)]/80">Upload your bank-in slip</p>
-                <input
-                  type="text"
-                  value={slipUrl}
-                  onChange={(e) => setSlipUrl(e.target.value)}
-                  placeholder="https://example.com/your-slip.jpg"
-                  className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-                />
                 <button
                   type="button"
-                  onClick={handleUpload}
+                  onClick={openModal}
                   className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
                 >
-                  Upload Slip
+                  {latestUpload ? "Reupload Slip" : "Upload Slip"}
                 </button>
                 {uploadMessage && <p className="text-xs text-[var(--foreground)]/70">{uploadMessage}</p>}
-                {order.uploads.length > 0 && (
-                  <p className="text-xs text-[var(--foreground)]/70">
-                    Latest upload: {order.uploads[order.uploads.length - 1].created_at} (Pending verification)
-                  </p>
+                {latestUpload && (
+                  <div className="text-xs text-[var(--foreground)]/70">
+                    <p>Latest upload: {latestUpload.created_at}</p>
+                    <p className="font-medium text-[var(--accent-strong)]">Slip submitted • Pending verification</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -152,20 +191,97 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
         </div>
       )}
 
-        <div className="mt-8 flex justify-center gap-3 text-sm">
-          <Link
-            href="/shop"
-            className="rounded border border-[var(--accent)] bg-white/70 px-4 py-2 text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
-          >
-            Continue Shopping
-          </Link>
-          <Link
-            href="/orders"
-            className="rounded bg-[var(--accent)] px-4 py-2 text-white transition-colors hover:bg-[var(--accent-strong)]"
-          >
-            View My Orders
-          </Link>
+      <div className="mt-8 flex justify-center gap-3 text-sm">
+        <Link
+          href="/shop"
+          className="rounded border border-[var(--accent)] bg-white/70 px-4 py-2 text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
+        >
+          Continue Shopping
+        </Link>
+        <Link
+          href="/orders"
+          className="rounded bg-[var(--accent)] px-4 py-2 text-white transition-colors hover:bg-[var(--accent-strong)]"
+        >
+          View My Orders
+        </Link>
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 text-left shadow-xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-lg font-semibold text-[var(--foreground)]">Upload Payment Slip</p>
+                <p className="text-xs text-[var(--foreground)]/70">Accepted: jpg, jpeg, png, webp, pdf (max 5MB)</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="rounded p-1 text-sm text-[var(--foreground)]/70 hover:bg-[var(--muted)]/70"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+                className="w-full text-sm"
+              />
+
+              {selectedFile && (
+                <div className="rounded border border-[var(--muted)] bg-white/80 p-3 text-sm text-[var(--foreground)]/80">
+                  <p className="font-medium">Preview</p>
+                  {previewUrl ? (
+                    <div className="mt-2 overflow-hidden rounded border border-[var(--muted)]">
+                      <Image
+                        src={previewUrl}
+                        alt="Slip preview"
+                        width={640}
+                        height={480}
+                        className="max-h-64 w-full object-contain"
+                        unoptimized
+                      />
+                    </div>
+                  ) : (
+                    <p className="mt-1">{selectedFile.name}</p>
+                  )}
+                </div>
+              )}
+
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Add a note (optional)"
+                className="h-20 w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+              />
+
+              {uploadError && <p className="text-xs text-[#c26686]">{uploadError}</p>}
+
+              <div className="flex justify-end gap-2 text-sm">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="rounded border border-[var(--muted)] px-4 py-2 text-[var(--foreground)] hover:bg-[var(--muted)]/70"
+                  disabled={isUploading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={!selectedFile || isUploading}
+                  className="rounded bg-[var(--accent)] px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:bg-[var(--muted)]"
+                >
+                  {isUploading ? "Uploading..." : "Confirm upload"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
+      )}
     </main>
   );
 }
