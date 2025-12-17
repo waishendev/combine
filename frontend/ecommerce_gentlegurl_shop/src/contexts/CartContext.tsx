@@ -166,7 +166,19 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
 
   const updateItemQuantity = useCallback(
     async (itemId: number, quantity: number) => {
-      setIsLoading(true);
+      // Optimistically update the quantity in local state
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                quantity,
+                line_total: (Number(item.unit_price) * quantity).toFixed(2),
+              }
+            : item,
+        ),
+      );
+
       try {
         let productId = items.find((item) => item.id === itemId)?.product_id;
         if (!productId) {
@@ -179,10 +191,14 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
           throw new Error("Cart item not found");
         }
 
+        // Sync with server in background (without showing loading state)
         const response = await addOrUpdateCartItem({ product_id: productId, quantity });
         applyCartResponse(response);
-      } finally {
-        setIsLoading(false);
+      } catch (error) {
+        // On error, reload cart to get correct state
+        const cart = await getCart();
+        applyCartResponse(cart);
+        throw error;
       }
     },
     [applyCartResponse, items],

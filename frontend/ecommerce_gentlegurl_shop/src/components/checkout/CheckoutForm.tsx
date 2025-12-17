@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
+import LoadingOverlay from "@/components/LoadingOverlay";
 import {
   AddressPayload,
   CheckoutPayload,
@@ -57,7 +58,13 @@ export default function CheckoutForm() {
 
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
-  const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
+  const [tempSelectedAddressId, setTempSelectedAddressId] = useState<number | null>(null);
+  const isLoggedIn = !!customer;
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(isLoggedIn); // Initialize as true if logged in
+  const [isConfirmingAddress, setIsConfirmingAddress] = useState(false);
+  const [isLoadingStoreLocations, setIsLoadingStoreLocations] = useState(true);
+  const [isLoadingBankAccounts, setIsLoadingBankAccounts] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showVoucherModal, setShowVoucherModal] = useState(false);
   const [addressMode, setAddressMode] = useState<"list" | "form">("list");
@@ -87,7 +94,6 @@ export default function CheckoutForm() {
     shipping_postcode: "",
   });
 
-  const isLoggedIn = !!customer;
   const isSelfPickup = shippingMethod === "self_pickup";
 
     const safeTotals = useMemo(() => {
@@ -102,7 +108,10 @@ export default function CheckoutForm() {
     }, [totals.discount_total, totals.grand_total, totals.shipping_fee, totals.subtotal, isSelfPickup, shippingFlatFee]);
 
   const fetchAddresses = useCallback(async () => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      setIsLoadingAddresses(false);
+      return;
+    }
     setIsLoadingAddresses(true);
     try {
       const response = await getCustomerAddresses();
@@ -138,6 +147,25 @@ export default function CheckoutForm() {
     fetchAddresses();
   }, [fetchAddresses]);
 
+  // Track when all initial data is loaded
+  useEffect(() => {
+    // Check if all required data is loaded
+    const addressesReady = !isLoggedIn || !isLoadingAddresses; // If not logged in, addresses are ready immediately
+    const allDataLoaded =
+      addressesReady &&
+      !isLoadingStoreLocations &&
+      !isLoadingBankAccounts &&
+      selectedItems.length > 0;
+
+    if (allDataLoaded && isInitialLoad) {
+      // Small delay to ensure smooth transition and all UI is rendered
+      const timer = setTimeout(() => {
+        setIsInitialLoad(false);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoadingAddresses, isLoadingStoreLocations, isLoadingBankAccounts, selectedItems.length, isInitialLoad, isLoggedIn]);
+
   useEffect(() => {
     if (!isLoggedIn) return;
     setForm((prev) => ({
@@ -152,6 +180,7 @@ export default function CheckoutForm() {
   }, [appliedVoucher]);
 
   useEffect(() => {
+    setIsLoadingStoreLocations(true);
     getStoreLocations()
       .then((locations) => {
         setStoreLocations(locations);
@@ -159,10 +188,12 @@ export default function CheckoutForm() {
           setSelectedStoreId((prev) => prev ?? locations[0].id);
         }
       })
-      .catch(() => setStoreLocations([]));
+      .catch(() => setStoreLocations([]))
+      .finally(() => setIsLoadingStoreLocations(false));
   }, []);
 
   useEffect(() => {
+    setIsLoadingBankAccounts(true);
     getBankAccounts()
       .then((accounts) => {
         setBankAccounts(accounts);
@@ -170,7 +201,8 @@ export default function CheckoutForm() {
           setSelectedBankId(accounts.find((bank) => bank.is_default)?.id ?? accounts[0].id);
         }
       })
-      .catch(() => setBankAccounts([]));
+      .catch(() => setBankAccounts([]))
+      .finally(() => setIsLoadingBankAccounts(false));
   }, []);
 
   const handleApplyVoucher = async () => {
@@ -292,6 +324,7 @@ export default function CheckoutForm() {
       await fetchAddresses();
       setAddressMode("list");
       setEditingAddress(null);
+      setTempSelectedAddressId(selectedAddressId);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unable to save address.";
       setError(message);
@@ -335,17 +368,34 @@ export default function CheckoutForm() {
   };
 
   const handleSelectAddress = (address: CustomerAddress) => {
-    setSelectedAddressId(address.id);
-    setForm({
-      shipping_name: address.name,
-      shipping_phone: address.phone,
-      shipping_address_line1: address.line1,
-      shipping_address_line2: address.line2 ?? "",
-      shipping_city: address.city,
-      shipping_state: address.state ?? "",
-      shipping_country: address.country,
-      shipping_postcode: address.postcode ?? "",
-    });
+    setTempSelectedAddressId(address.id);
+  };
+
+  const handleConfirmAddressSelection = async () => {
+    if (tempSelectedAddressId === null) return;
+    
+    const address = addresses.find((addr) => addr.id === tempSelectedAddressId);
+    if (!address) return;
+
+    setIsConfirmingAddress(true);
+    try {
+      setSelectedAddressId(address.id);
+      setForm({
+        shipping_name: address.name,
+        shipping_phone: address.phone,
+        shipping_address_line1: address.line1,
+        shipping_address_line2: address.line2 ?? "",
+        shipping_city: address.city,
+        shipping_state: address.state ?? "",
+        shipping_country: address.country,
+        shipping_postcode: address.postcode ?? "",
+      });
+      // Small delay to show loading state
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      setShowAddressModal(false);
+    } finally {
+      setIsConfirmingAddress(false);
+    }
   };
 
   if (!selectedItems || selectedItems.length === 0) {
@@ -360,7 +410,9 @@ export default function CheckoutForm() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
+    <>
+      <LoadingOverlay message="Loading checkout..." show={isInitialLoad} />
+      <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
       <h1 className="mb-6 text-2xl font-semibold">Checkout</h1>
 
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[2fr,1fr]">
@@ -373,12 +425,13 @@ export default function CheckoutForm() {
                   <button
                     type="button"
                     onClick={() => {
+                      setTempSelectedAddressId(selectedAddressId);
                       setShowAddressModal(true);
                       setAddressMode("list");
                     }}
                     className="rounded border border-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--muted)]/70"
                   >
-                    Change / Manage
+                   Manage
                   </button>
                 )}
               </div>
@@ -508,7 +561,7 @@ export default function CheckoutForm() {
 
             <div className="space-y-3">
               {selectedItems.map((item) => {
-                const unitPrice = Number(item.unit_price ?? item.price ?? 0);
+                const unitPrice = Number(item.unit_price ?? 0);
                 const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
 
                 return (
@@ -755,13 +808,27 @@ export default function CheckoutForm() {
 
       {showAddressModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          {isConfirmingAddress && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/90 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-[var(--muted)] border-t-[var(--accent)]"></div>
+                <p className="text-sm font-medium text-[var(--foreground)]/70">Updating address...</p>
+              </div>
+            </div>
+          )}
           <div className="w-full max-w-2xl rounded-lg bg-white p-4 text-[var(--foreground)] shadow-lg sm:p-5">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold">
                 {addressMode === "form" ? (editingAddress ? "Edit Address" : "Add Address") : "Manage Addresses"}
               </h3>
-              <button onClick={() => setShowAddressModal(false)} className="text-sm text-[var(--foreground)]/70">
-                Close
+              <button
+                onClick={() => {
+                  setShowAddressModal(false);
+                  setTempSelectedAddressId(selectedAddressId);
+                }}
+                className="text-sm text-[var(--foreground)]/70"
+              >
+                ✕
               </button>
             </div>
 
@@ -782,10 +849,10 @@ export default function CheckoutForm() {
                           <input
                             type="radio"
                             name="address"
-                            checked={selectedAddressId === address.id}
+                            checked={tempSelectedAddressId === address.id}
                             onChange={() => handleSelectAddress(address)}
                           />
-                          <div className="space-y-1">
+                          <div className="flex-1 space-y-1">
                             <div className="flex items-center gap-2">
                               <p className="font-semibold">{address.label || address.name}</p>
                               {address.is_default && (
@@ -806,16 +873,19 @@ export default function CheckoutForm() {
                             <p className="text-[var(--foreground)]/70">{address.country}</p>
                           </div>
                         </label>
-                        <div className="flex flex-col items-end gap-2 text-xs">
+                        <div className="flex items-center gap-2">
                           {!address.is_default && (
                             <button
                               type="button"
                               onClick={async () => {
                                 await makeDefaultCustomerAddress(address.id);
                                 await fetchAddresses();
-                                setSelectedAddressId(address.id);
+                                if (selectedAddressId === address.id) {
+                                  setSelectedAddressId(address.id);
+                                }
                               }}
-                              className="rounded border border-[var(--accent)] px-2 py-1 font-semibold text-[var(--accent)] hover:bg-[var(--muted)]/70"
+                              className="rounded border border-[var(--accent)] px-2 py-1 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--muted)]/70 whitespace-nowrap"
+                              title="Set as default"
                             >
                               Set as default
                             </button>
@@ -823,19 +893,43 @@ export default function CheckoutForm() {
                           <button
                             type="button"
                             onClick={() => handleEditAddress(address)}
-                            className="rounded border border-[var(--muted)] px-2 py-1 font-semibold text-[var(--foreground)] hover:bg-[var(--muted)]/70"
+                            className="flex items-center justify-center rounded border border-[#f1a5be] p-1.5 text-[#b8527a] hover:bg-[var(--muted)]/70"
+                            title="Edit"
                           >
-                            Edit
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
                           </button>
                           <button
                             type="button"
                             onClick={async () => {
                               await deleteCustomerAddress(address.id);
                               await fetchAddresses();
+                              if (selectedAddressId === address.id) {
+                                const remainingAddress = addresses.find((addr) => addr.id !== address.id);
+                                if (remainingAddress) {
+                                  setSelectedAddressId(remainingAddress.id);
+                                  setForm({
+                                    shipping_name: remainingAddress.name,
+                                    shipping_phone: remainingAddress.phone,
+                                    shipping_address_line1: remainingAddress.line1,
+                                    shipping_address_line2: remainingAddress.line2 ?? "",
+                                    shipping_city: remainingAddress.city,
+                                    shipping_state: remainingAddress.state ?? "",
+                                    shipping_country: remainingAddress.country,
+                                    shipping_postcode: remainingAddress.postcode ?? "",
+                                  });
+                                } else {
+                                  setSelectedAddressId(null);
+                                }
+                              }
                             }}
-                            className="rounded border border-[#f1a5be] px-2 py-1 font-semibold text-[#b8527a] hover:bg-[var(--muted)]/70"
+                            className="flex items-center justify-center rounded border border-[#f1a5be] p-1.5 text-[#b8527a] hover:bg-[var(--muted)]/70"
+                            title="Delete"
                           >
-                            Delete
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
                           </button>
                         </div>
                       </div>
@@ -843,13 +937,21 @@ export default function CheckoutForm() {
                   ))}
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-2 pt-2">
                   <button
                     type="button"
                     onClick={handleAddAddress}
-                    className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent-strong)]"
+                    className="rounded border border-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--muted)]/70"
                   >
                     Add Address
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAddressSelection}
+                    disabled={tempSelectedAddressId === null || isConfirmingAddress}
+                    className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isConfirmingAddress ? "Confirming..." : "Confirm"}
                   </button>
                 </div>
               </div>
@@ -964,6 +1066,7 @@ export default function CheckoutForm() {
                     onClick={() => {
                       setAddressMode("list");
                       setEditingAddress(null);
+                      setTempSelectedAddressId(selectedAddressId);
                     }}
                     className="rounded border border-[var(--muted)] px-4 py-2 text-sm text-[var(--foreground)]"
                   >
@@ -993,7 +1096,7 @@ export default function CheckoutForm() {
                 onClick={() => setShowVoucherModal(false)}
                 className="text-sm text-[var(--foreground)]/70 hover:text-[var(--accent)]"
               >
-                Close
+                ✕
               </button>
             </div>
 
@@ -1022,5 +1125,6 @@ export default function CheckoutForm() {
         </div>
       )}
     </main>
+    </>
   );
 }
