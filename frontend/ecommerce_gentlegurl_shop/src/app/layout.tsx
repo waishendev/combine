@@ -10,6 +10,8 @@ import { ShopFooter } from "@/components/layout/ShopFooter";
 import { getHomepage } from "@/lib/server/getHomepage";
 import { getUser } from "@/lib/server/getUser";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Gentlegurl Shop",
 };
