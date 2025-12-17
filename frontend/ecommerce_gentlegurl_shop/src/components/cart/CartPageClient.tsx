@@ -86,8 +86,10 @@ export default function CartPageClient() {
   const allSelected = items.length > 0 && selectedItemIds.length === items.length;
   const selectedCount = selectedItems.length;
 
-  const gridCols =
-  "md:grid-cols-[24px_minmax(260px,1fr)_130px_150px_150px_64px]";
+  const gridColsMd =
+    "md:grid-cols-[26px_minmax(220px,1fr)_110px_120px_120px_64px]";
+  const gridColsLg =
+    "lg:grid-cols-[32px_minmax(320px,1fr)_130px_150px_150px_80px]";
 
 
   return (
@@ -97,13 +99,10 @@ export default function CartPageClient() {
       <div className="grid gap-8 md:grid-cols-[2fr,1fr]">
         {/* Left */}
         <div className="space-y-4">
-          {/* Whole “sticky list” container */}
-          <div className="overflow-hidden rounded-lg border border-[var(--muted)] bg-white/85 shadow-sm">
-            {/* Header row */}
-            <div className="bg-white/90 px-4 py-3">
-              <div className={`grid items-center gap-3 md:gap-4 ${gridCols}`}>
-
-                {/* checkbox column */}
+          {/* Desktop / Tablet table */}
+          <div className="hidden md:block overflow-hidden rounded-lg border border-[var(--muted)] bg-white/85 shadow-sm">
+            <div className="bg-white/90 px-3 py-2 lg:px-4 lg:py-3">
+              <div className={`grid items-center gap-3 md:gap-3 lg:gap-4 ${gridColsMd} ${gridColsLg}`}>
                 <div className="flex items-center justify-center">
                   <input
                     type="checkbox"
@@ -113,7 +112,6 @@ export default function CartPageClient() {
                   />
                 </div>
 
-                {/* Product header — 对齐 image */}
                 <div className="text-sm font-medium text-[var(--foreground)]/80">
                   Product
                   <span className="ml-2 text-xs text-[var(--foreground)]/60">
@@ -121,142 +119,101 @@ export default function CartPageClient() {
                   </span>
                 </div>
 
-                <div className="hidden md:block text-right text-xs text-[var(--foreground)]/60">
-                  Unit Price
-                </div>
-                <div className="hidden md:block text-center text-xs text-[var(--foreground)]/60">
-                  Qty
-                </div>
-                <div className="hidden md:block text-right text-xs text-[var(--foreground)]/60">
-                  Subtotal
-                </div>
-                <div className="hidden md:block text-right text-xs text-[var(--foreground)]/60">
-                  Action
-                </div>
+                <div className="text-right text-sm font-medium text-[var(--foreground)]/80">Unit</div>
+                <div className="text-center text-sm font-medium text-[var(--foreground)]/80">Qty</div>
+                <div className="text-right text-sm font-medium text-[var(--foreground)]/80">Subtotal</div>
+                <div className="text-right text-sm font-medium text-[var(--foreground)]/80">Action</div>
               </div>
             </div>
 
-            {/* Divider under header */}
-            <div className="h-px bg-[var(--muted)]" />
-
-            {/* Items */}
-            <div>
-              {items.map((item, idx) => {
-                const product = (item as any).product ?? {};
-                const slug = (item as any).product_slug ?? product.slug;
-                const name = (item as any).product_name ?? item.name;
-                const sku = (item as any).sku;
-                const unitPrice = Number((item as any).unit_price ?? 0);
-                const lineTotal = Number(
-                  (item as any).line_total ?? unitPrice * Number(item.quantity ?? 1)
-                );
-
-                const mainImage =
-                  (item as any).product_image ||
-                  (item as any).product_image_path ||
-                  product.images?.find((img: any) => img.is_main)?.image_path ||
-                  product.images?.[0]?.image_path;
-
-                const checked = selectedItemIds.includes(item.id);
-                const isLast = idx === items.length - 1;
+            <div className="divide-y divide-[var(--muted)]/70">
+              {items.map((item) => {
+                const unitPrice = item.unit_price ?? item.price ?? 0;
+                const lineTotal = unitPrice * item.quantity;
+                const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
+                const name = item.name ?? item.product?.name ?? "Unnamed Product";
+                const sku = (item as any).sku ?? item.product?.sku;
+                const productSlug = (item as any).product_slug ?? item.product?.slug;
 
                 return (
-                  <div
-                    key={item.id}
-                    className={[
-                      "px-4 py-3",
-                      !isLast ? "border-b border-[var(--muted)]" : "",
-                    ].join(" ")}
-                  >
-                    <div className={`grid items-center gap-3 md:gap-4 ${gridCols}`}>
-                      {/* checkbox */}
+                  <div key={item.id} className="bg-white/70 px-3 py-2 lg:px-4 lg:py-4">
+                    <div className={`grid items-center gap-3 md:gap-3 lg:gap-4 ${gridColsMd} ${gridColsLg}`}>
                       <div className="flex items-center justify-center">
                         <input
                           type="checkbox"
                           className="h-4 w-4"
-                          checked={checked}
+                          checked={selectedItemIds.includes(item.id)}
                           onChange={() => toggleSelectItem(item.id)}
                         />
                       </div>
 
-                      {/* product cell */}
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded bg-[var(--muted)]">
-                          {mainImage ? (
-                            <Image src={mainImage} alt={name} fill className="object-cover" />
+                      <div className="flex min-w-0 items-center gap-3 lg:gap-4">
+                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/30">
+                          {imageUrl ? (
+                            <Image src={imageUrl} alt={name} fill className="object-contain" />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center text-[10px] text-[var(--foreground)]/50">
+                            <div className="flex h-full items-center justify-center text-xs text-[var(--foreground)]/60">
                               No Image
                             </div>
                           )}
                         </div>
 
-                        <div className="min-w-0">
-                          {slug ? (
+                        <div className="min-w-0 space-y-1">
+                          {productSlug ? (
                             <Link
-                              href={`/product/${slug}`}
-                              className="block truncate text-sm font-semibold text-[var(--foreground)] hover:underline"
+                              href={`/product/${productSlug}`}
+                              className="block text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-strong)]"
                             >
-                              {name}
+                              <span className="line-clamp-2 lg:line-clamp-none">{name}</span>
                             </Link>
                           ) : (
-                            <div className="truncate text-sm font-semibold">{name}</div>
+                            <div className="line-clamp-2 text-sm font-semibold lg:line-clamp-none">{name}</div>
                           )}
 
-                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
                             {sku && <span>SKU: {sku}</span>}
                             {(item as any).variant_label && <span>{(item as any).variant_label}</span>}
                           </div>
                         </div>
                       </div>
 
-                      {/* Unit price */}
-                      <div className="text-right">
-                        <div className="md:hidden text-[11px] text-[var(--foreground)]/60">Unit</div>
-                        <div className="text-sm font-medium">RM {unitPrice.toFixed(2)}</div>
-                      </div>
+                      <div className="text-right text-sm font-medium">RM {unitPrice.toFixed(2)}</div>
 
-                      {/* Qty */}
                       <div className="flex justify-end md:justify-center">
-                        <div className="flex items-center rounded border border-[var(--muted)] bg-white/70">
+                        <div className="flex items-center rounded border border-[var(--muted)] bg-white/70 text-sm">
                           <button
                             type="button"
-                            className="px-3 py-1 text-sm"
-                            onClick={() =>
-                              updateItemQuantity(item.id, Math.max(1, item.quantity - 1))
-                            }
+                            className="px-2 py-1 lg:px-3"
+                            onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
+                            aria-label="Decrease quantity"
                           >
                             -
                           </button>
                           <input
                             type="number"
                             min={1}
-                            className="w-12 border-x border-[var(--muted)] px-2 py-1 text-center text-sm outline-none"
+                            className="w-12 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
                             value={item.quantity}
                             onChange={(e) =>
                               updateItemQuantity(
                                 item.id,
-                                Math.max(1, Number(e.target.value) || 1)
+                                Math.max(1, Number(e.target.value) || 1),
                               )
                             }
                           />
                           <button
                             type="button"
-                            className="px-3 py-1 text-sm"
+                            className="px-2 py-1 lg:px-3"
                             onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                            aria-label="Increase quantity"
                           >
                             +
                           </button>
                         </div>
                       </div>
 
-                      {/* Subtotal */}
-                      <div className="text-right">
-                        <div className="md:hidden text-[11px] text-[var(--foreground)]/60">Subtotal</div>
-                        <div className="text-sm font-semibold">RM {lineTotal.toFixed(2)}</div>
-                      </div>
+                      <div className="text-right text-sm font-semibold">RM {lineTotal.toFixed(2)}</div>
 
-                      {/* Action */}
                       <div className="flex justify-end">
                         <button
                           type="button"
@@ -272,6 +229,107 @@ export default function CartPageClient() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="space-y-3 md:hidden">
+            {items.map((item) => {
+              const unitPrice = item.unit_price ?? item.price ?? 0;
+              const lineTotal = unitPrice * item.quantity;
+              const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
+              const name = item.name ?? item.product?.name ?? "Unnamed Product";
+              const sku = (item as any).sku ?? item.product?.sku;
+              const productSlug = (item as any).product_slug ?? item.product?.slug;
+
+              return (
+                <div key={item.id} className="rounded-xl border border-[var(--muted)] bg-white/90 p-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 shrink-0"
+                      checked={selectedItemIds.includes(item.id)}
+                      onChange={() => toggleSelectItem(item.id)}
+                    />
+
+                    <div className="flex flex-1 gap-3">
+                      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/30">
+                        {imageUrl ? (
+                          <Image src={imageUrl} alt={name} fill className="object-contain" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-xs text-[var(--foreground)]/60">No Image</div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1 space-y-1">
+                        {productSlug ? (
+                          <Link
+                            href={`/product/${productSlug}`}
+                            className="block text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-strong)]"
+                          >
+                            <span className="line-clamp-2">{name}</span>
+                          </Link>
+                        ) : (
+                          <div className="line-clamp-2 text-sm font-semibold">{name}</div>
+                        )}
+
+                        <div className="text-xs text-[var(--foreground)]/60">
+                          {sku && <span>SKU: {sku}</span>}
+                          {(item as any).variant_label && <span className="ml-2">{(item as any).variant_label}</span>}
+                        </div>
+
+                        <div className="text-sm font-medium text-[var(--foreground)]">RM {unitPrice.toFixed(2)}</div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <div className="flex items-center rounded border border-[var(--muted)] bg-white/70 text-sm">
+                            <button
+                              type="button"
+                              className="px-3 py-1"
+                              onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
+                              aria-label="Decrease quantity"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min={1}
+                              className="w-14 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateItemQuantity(
+                                  item.id,
+                                  Math.max(1, Number(e.target.value) || 1),
+                                )
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="px-3 py-1"
+                              onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                              aria-label="Increase quantity"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          <div className="ml-auto text-right text-sm font-semibold">RM {lineTotal.toFixed(2)}</div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2">
+                          <div className="text-[11px] text-[var(--foreground)]/60">Line total</div>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            className="rounded-md bg-[#c26686]/10 px-3 py-2 text-xs font-semibold text-[#c26686] transition hover:bg-[#c26686]/20"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -293,7 +351,8 @@ export default function CartPageClient() {
                   setVoucherCode(appliedVoucher?.code ?? "");
                   setShowVoucherModal(true);
                 }}
-                className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)]"
+                disabled={selectedCount === 0}
+                className="shrink-0 rounded-md bg-[var(--accent)] px-3 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[var(--muted)] disabled:text-[var(--foreground)]/60"
               >
                 Voucher
               </button>
@@ -380,7 +439,8 @@ export default function CartPageClient() {
                 setVoucherCode(appliedVoucher?.code ?? "");
                 setShowVoucherModal(true);
               }}
-              className="mt-0.5 text-xs font-semibold text-[var(--accent)] hover:text-[var(--accent-strong)]"
+              disabled={selectedCount === 0}
+              className="mt-0.5 text-xs font-semibold text-[var(--accent)] transition hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:text-[var(--foreground)]/40"
             >
               {appliedVoucher ? `Voucher: ${appliedVoucher.code} (Change)` : "Apply voucher"}
             </button>
