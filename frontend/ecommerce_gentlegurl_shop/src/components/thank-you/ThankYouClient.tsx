@@ -23,6 +23,31 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  const resolveVerificationStatus = useCallback(
+    (uploads?: OrderLookupResponse["uploads"], manualTransfer?: boolean) => {
+      if (!manualTransfer) return null;
+
+      const list = uploads ?? [];
+      const latest = list[list.length - 1];
+
+      if (!latest) {
+        return { code: "awaiting", label: "Awaiting Payment Slip" } as const;
+      }
+
+      switch (latest.status) {
+        case "pending":
+          return { code: "pending", label: "Verification in progress" } as const;
+        case "approved":
+          return { code: "approved", label: "Verified" } as const;
+        case "rejected":
+          return { code: "rejected", label: "Rejected (please reupload)" } as const;
+        default:
+          return { code: "awaiting", label: "Awaiting Payment Slip" } as const;
+      }
+    },
+    [],
+  );
+
   const loadOrder = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -45,6 +70,13 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     if (!order?.uploads?.length) return null;
     return order.uploads[order.uploads.length - 1];
   }, [order?.uploads]);
+
+  const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
+
+  const verificationStatus = useMemo(
+    () => resolveVerificationStatus(order?.uploads, isManualTransfer),
+    [isManualTransfer, order?.uploads, resolveVerificationStatus],
+  );
 
   const openModal = () => {
     setIsModalOpen(true);
@@ -87,10 +119,14 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     setUploadError(null);
 
     try {
-      await uploadPaymentSlip(order.order_id, selectedFile, note.trim() || undefined);
-      setUploadMessage("Slip submitted • Pending verification");
+      const response = await uploadPaymentSlip(order.order_id, selectedFile, note.trim() || undefined);
+
+      setOrder(response.data);
+      const nextStatus = resolveVerificationStatus(response.data.uploads, true);
+      setUploadMessage(
+        nextStatus ? `Slip submitted • ${nextStatus.label}` : response.message ?? "Payment slip uploaded.",
+      );
       closeModal();
-      void loadOrder();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to upload payment slip.";
       setUploadError(message);
@@ -98,8 +134,6 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
       setIsUploading(false);
     }
   };
-
-  const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
 
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-center text-[var(--foreground)]">
@@ -117,7 +151,15 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
           <div className="rounded-lg border border-[var(--muted)] bg-white/80 p-4 shadow-sm">
             <p className="font-medium">Order Summary</p>
             <p className="mt-1 text-[var(--foreground)]/70">Amount: RM {Number(order.grand_total).toFixed(2)}</p>
-            <p className="text-[var(--foreground)]/70">Status: {order.payment_status ?? "unpaid"}</p>
+            <p className="text-[var(--foreground)]/70">
+              {isManualTransfer ? (
+                <>
+                  Verification Status: {verificationStatus?.label ?? "Awaiting Payment Slip"}
+                </>
+              ) : (
+                <>Payment Status: {order.payment_status ?? "unpaid"}</>
+              )}
+            </p>
           </div>
 
           {isManualTransfer && (
@@ -176,7 +218,9 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 {latestUpload && (
                   <div className="text-xs text-[var(--foreground)]/70">
                     <p>Latest upload: {latestUpload.created_at}</p>
-                    <p className="font-medium text-[var(--accent-strong)]">Slip submitted • Pending verification</p>
+                    <p className="font-medium text-[var(--accent-strong)]">
+                      {verificationStatus?.label ?? "Verification in progress"}
+                    </p>
                   </div>
                 )}
               </div>

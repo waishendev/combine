@@ -249,52 +249,7 @@ class PublicCheckoutController extends Controller
             return $this->respondError(__('Order not found.'), 404);
         }
 
-        $bankAccount = $order->bankAccount ? [
-            'id' => $order->bankAccount->id,
-            'bank_name' => $order->bankAccount->bank_name,
-            'account_name' => $order->bankAccount->account_name,
-            'account_number' => $order->bankAccount->account_number,
-            'account_no' => $order->bankAccount->account_number,
-            'branch' => $order->bankAccount->branch,
-            'logo_url' => $order->bankAccount->logo_url,
-            'qr_image_url' => $order->bankAccount->qr_image_url,
-            'label' => $order->bankAccount->label,
-            'swift_code' => $order->bankAccount->swift_code,
-            'instructions' => $order->bankAccount->instructions,
-        ] : null;
-
-        $uploads = $order->uploads
-            ->where('type', 'payment_slip')
-            ->values()
-            ->map(fn($upload) => [
-                'id' => $upload->id,
-                'file_url' => $upload->file_url,
-                'note' => $upload->note,
-                'status' => $upload->status,
-                'created_at' => $upload->created_at,
-            ]);
-
-        return $this->respond([
-            'order_id' => $order->id,
-            'order_no' => $order->order_number,
-            'grand_total' => $order->grand_total,
-            'payment_method' => $order->payment_method,
-            'payment_status' => $order->payment_status,
-            'status' => $order->status,
-            'bank_account' => $bankAccount,
-            'pickup_store' => $order->pickupStore ? [
-                'id' => $order->pickupStore->id,
-                'name' => $order->pickupStore->name,
-                'address_line1' => $order->pickupStore->address_line1,
-                'address_line2' => $order->pickupStore->address_line2,
-                'city' => $order->pickupStore->city,
-                'state' => $order->pickupStore->state,
-                'postcode' => $order->pickupStore->postcode,
-                'country' => $order->pickupStore->country,
-                'phone' => $order->pickupStore->phone,
-            ] : null,
-            'uploads' => $uploads,
-        ]);
+        return $this->respond($this->formatOrderLookupData($order));
     }
 
     public function uploadSlip(Request $request, Order $order)
@@ -314,17 +269,14 @@ class PublicCheckoutController extends Controller
             'status' => 'pending',
         ]);
 
-        return $this->respond([
-            'upload' => [
-                'id' => $upload->id,
-                'file_url' => $upload->file_url,
-                'note' => $upload->note,
-                'status' => $upload->status,
-                'created_at' => $upload->created_at,
-            ],
-            'latest_slip_url' => $upload->file_url,
-            'status' => 'pending verification',
-        ], __('Payment slip uploaded.'));
+        if ($order->payment_method === 'manual_transfer' && $order->status !== 'paid') {
+            $order->status = 'awaiting_verification';
+            $order->save();
+        }
+
+        $order->refresh()->loadMissing(['bankAccount', 'uploads', 'pickupStore']);
+
+        return $this->respond($this->formatOrderLookupData($order), __('Payment slip uploaded.'));
     }
 
     protected function validateOrderRequest(Request $request, bool $requirePaymentMethod = false): array
@@ -359,6 +311,59 @@ class PublicCheckoutController extends Controller
                 'exists:bank_accounts,id',
             ],
         ]);
+    }
+
+    protected function formatOrderLookupData(Order $order): array
+    {
+        $order->loadMissing(['bankAccount', 'uploads', 'pickupStore']);
+
+        $bankAccount = $order->bankAccount ? [
+            'id' => $order->bankAccount->id,
+            'bank_name' => $order->bankAccount->bank_name,
+            'account_name' => $order->bankAccount->account_name,
+            'account_number' => $order->bankAccount->account_number,
+            'account_no' => $order->bankAccount->account_number,
+            'branch' => $order->bankAccount->branch,
+            'logo_url' => $order->bankAccount->logo_url,
+            'qr_image_url' => $order->bankAccount->qr_image_url,
+            'label' => $order->bankAccount->label,
+            'swift_code' => $order->bankAccount->swift_code,
+            'instructions' => $order->bankAccount->instructions,
+        ] : null;
+
+        $uploads = $order->uploads
+            ->where('type', 'payment_slip')
+            ->sortBy('created_at')
+            ->values()
+            ->map(fn($upload) => [
+                'id' => $upload->id,
+                'file_url' => $upload->file_url,
+                'note' => $upload->note,
+                'status' => $upload->status,
+                'created_at' => $upload->created_at,
+            ]);
+
+        return [
+            'order_id' => $order->id,
+            'order_no' => $order->order_number,
+            'grand_total' => $order->grand_total,
+            'payment_method' => $order->payment_method,
+            'payment_status' => $order->payment_status,
+            'status' => $order->status,
+            'bank_account' => $bankAccount,
+            'pickup_store' => $order->pickupStore ? [
+                'id' => $order->pickupStore->id,
+                'name' => $order->pickupStore->name,
+                'address_line1' => $order->pickupStore->address_line1,
+                'address_line2' => $order->pickupStore->address_line2,
+                'city' => $order->pickupStore->city,
+                'state' => $order->pickupStore->state,
+                'postcode' => $order->pickupStore->postcode,
+                'country' => $order->pickupStore->country,
+                'phone' => $order->pickupStore->phone,
+            ] : null,
+            'uploads' => $uploads,
+        ];
     }
 
     protected function calculateTotals(array $itemsInput, ?string $voucherCode, ?Customer $customer, string $shippingMethod): array

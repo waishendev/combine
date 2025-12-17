@@ -435,7 +435,13 @@ export type OrderLookupResponse = {
   status: string;
   bank_account?: PublicBankAccount | null;
   pickup_store?: PublicStoreLocation | null;
-  uploads: { id: number; file_url: string | null; status?: string; note?: string | null; created_at: string }[];
+  uploads: { id: number; file_url: string | null; status: string; note?: string | null; created_at: string }[];
+};
+
+export type UploadPaymentSlipResponse = {
+  data: OrderLookupResponse;
+  success: boolean;
+  message?: string | null;
 };
 
 export type OrderTrackingResponse = {
@@ -546,7 +552,7 @@ export async function trackGuestOrder(payload: {
   return json;
 }
 
-export async function uploadPaymentSlip(orderId: number, slip: File, note?: string) {
+export async function uploadPaymentSlip(orderId: number, slip: File, note?: string): Promise<UploadPaymentSlipResponse> {
   const formData = new FormData();
   formData.append("slip", slip);
 
@@ -554,7 +560,7 @@ export async function uploadPaymentSlip(orderId: number, slip: File, note?: stri
     formData.append("note", note);
   }
 
-  return post<{ success: boolean }>(
+  return post<UploadPaymentSlipResponse>(
     `/public/shop/orders/${orderId}/upload-slip`,
     undefined,
     { body: formData, includeSessionToken: true, headers: { Accept: "application/json" } },
