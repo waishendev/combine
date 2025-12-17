@@ -7,9 +7,9 @@ type Announcement = {
   id: number | string;
   title?: string;
   content?: string;
-  image_path?: string;
-  button_link?: string;
-  button_label?: string;
+  image_path?: string | null;
+  button_link?: string | null;
+  button_label?: string | null;
 };
 
 type AnnouncementModalProps = {

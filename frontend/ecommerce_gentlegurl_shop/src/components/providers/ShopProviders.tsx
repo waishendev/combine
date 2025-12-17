@@ -3,12 +3,12 @@
 import { ReactNode, useCallback, useState } from "react";
 import { AuthProvider } from "../../contexts/AuthContext";
 import { CartProvider } from "../../contexts/CartContext";
-import { Customer } from "@/lib/apiClient";
+import { AccountOverview } from "@/lib/apiClient";
 import { HomepageSettings } from "@/lib/server/getHomepage";
 
 type ShopProvidersProps = {
   children: ReactNode;
-  initialCustomer?: Customer | null;
+  initialCustomer?: AccountOverview | null;
   shippingSetting?: HomepageSettings["shipping"];
 };
 
