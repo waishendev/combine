@@ -61,7 +61,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
             RM {Number(product.price).toFixed(2)}
           </div>
 
-          {product.stock !== undefined && (
+          {product.stock != null && (
             <div className="text-sm text-gray-500">
               Stock: {product.stock}{" "}
               {product.stock <= (product.low_stock_threshold ?? 0) &&

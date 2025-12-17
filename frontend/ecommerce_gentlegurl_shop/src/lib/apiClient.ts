@@ -140,6 +140,7 @@ export type PublicBankAccount = {
   label?: string | null;
   swift_code?: string | null;
   is_default?: boolean;
+  instructions?: string | null;
 };
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -587,4 +588,3 @@ export async function toggleWishlist(productId: number) {
   return res.json();
 }
 
-export type { Customer };

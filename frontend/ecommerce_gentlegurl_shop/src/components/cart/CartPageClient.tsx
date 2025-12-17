@@ -129,11 +129,16 @@ export default function CartPageClient() {
 
             <div className="divide-y divide-[var(--muted)]/70">
               {items.map((item) => {
-                const unitPrice = item.unit_price ?? item.price ?? 0;
+                const unitPrice = Number(
+                  item.unit_price ?? (item as { price?: number | string }).price ?? 0,
+                );
                 const lineTotal = unitPrice * item.quantity;
                 const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
-                const name = item.name ?? item.product?.name ?? "Unnamed Product";
-                const sku = item.sku ?? item.product?.sku;
+                const name =
+                  item.name ??
+                  (item.product as { name?: string })?.name ??
+                  "Unnamed Product";
+                const sku = item.sku ?? (item.product as { sku?: string })?.sku;
                 const productSlug = item.product?.slug ?? (item as { product_slug?: string }).product_slug;
                 const variantLabel = (item as { variant_label?: string }).variant_label;
 
@@ -236,10 +241,13 @@ export default function CartPageClient() {
           {/* Mobile cards */}
           <div className="space-y-3 md:hidden">
             {items.map((item) => {
-              const unitPrice = item.unit_price ?? item.price ?? 0;
+              const unitPrice = Number(
+                item.unit_price ?? (item as { price?: number | string }).price ?? 0,
+              );
               const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
-              const name = item.name ?? item.product?.name ?? "Unnamed Product";
-              const sku = item.sku ?? item.product?.sku;
+              const name =
+                item.name ?? (item.product as { name?: string })?.name ?? "Unnamed Product";
+              const sku = item.sku ?? (item.product as { sku?: string })?.sku;
               const productSlug = item.product?.slug ?? (item as { product_slug?: string }).product_slug;
               const variantLabel = (item as { variant_label?: string }).variant_label;
 

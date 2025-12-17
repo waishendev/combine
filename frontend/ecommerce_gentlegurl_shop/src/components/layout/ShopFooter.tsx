@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ReactElement } from "react";
 
 import type { HomepageFooter } from "@/lib/server/getHomepage";
 
@@ -9,7 +10,7 @@ function SocialIcon({
   type: "instagram" | "facebook" | "tiktok";
   href: string;
 }) {
-  const icons: Record<string, JSX.Element> = {
+  const icons: Record<string, ReactElement> = {
     instagram: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
