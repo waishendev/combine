@@ -89,7 +89,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                   <p>
                     <span className="font-semibold">Account Number:</span> {order.bank_account.account_no ?? order.bank_account.account_number}
                   </p>
-                  {order.bank_account.branch && (
+                  {/* {order.bank_account.branch && (
                     <p>
                       <span className="font-semibold">Branch:</span> {order.bank_account.branch}
                     </p>
@@ -98,10 +98,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                     <p>
                       <span className="font-semibold">SWIFT:</span> {order.bank_account.swift_code}
                     </p>
-                  )}
-                  {order.bank_account.instructions && (
-                    <p className="whitespace-pre-wrap text-[var(--foreground)]/70">{order.bank_account.instructions}</p>
-                  )}
+                  )} */}
                   {order.bank_account.qr_image_url && (
                     <div className="mt-3 h-32 w-32 overflow-hidden rounded border border-[var(--muted)] bg-white">
                       <Image
@@ -112,6 +109,9 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                         className="h-full w-full object-contain"
                       />
                     </div>
+                  )}
+                  {order.bank_account.instructions && (
+                    <p className="whitespace-pre-wrap text-[var(--foreground)]/70">{order.bank_account.instructions}</p>
                   )}
                 </div>
               ) : (

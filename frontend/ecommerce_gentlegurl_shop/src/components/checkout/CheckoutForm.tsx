@@ -735,9 +735,9 @@ export default function CheckoutForm() {
                           <div className="font-semibold">{bank.bank_name}</div>
                           <div className="text-[var(--foreground)]/70">{bank.account_name}</div>
                           <div className="text-[var(--foreground)]/70">{bank.account_no}</div>
-                          {bank.branch && (
+                          {/* {bank.branch && (
                             <div className="text-[var(--foreground)]/60">Branch: {bank.branch}</div>
-                          )}
+                          )} */}
                           {bank.qr_image_url && (
                             <div className="mt-2 h-20 w-20 overflow-hidden rounded border border-[var(--muted)] bg-white">
                               <Image
