@@ -19,22 +19,39 @@ type AnnouncementModalProps = {
 export default function AnnouncementModal({ items }: AnnouncementModalProps) {
   const [open, setOpen] = useState(true);
 
+  // Prevent page jump when modal opens by locking scroll position
+  useEffect(() => {
+    if (open && items?.length) {
+      // Save current scroll position
+      const scrollY = window.scrollY;
+      document.body.style.position = "fixed";
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = "100%";
+      document.body.style.overflow = "hidden";
+      document.body.style.margin = "0";
+
+      return () => {
+        // Restore scroll position
+        const savedScrollY = document.body.style.top;
+        document.body.style.position = "";
+        document.body.style.top = "";
+        document.body.style.width = "";
+        document.body.style.overflow = "";
+        document.body.style.margin = "";
+        if (savedScrollY) {
+          const scrollYValue = Math.abs(parseInt(savedScrollY.replace("px", ""), 10));
+          window.scrollTo(0, scrollYValue);
+        }
+      };
+    }
+  }, [open, items]);
+
   if (!open || !items?.length) return null;
 
   const item = items[0];
 
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--foreground)]/25 px-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 m-0 flex items-center justify-center bg-[var(--foreground)]/25 px-4 backdrop-blur-sm">
       <div className="relative w-[90%] max-w-lg overflow-hidden rounded-3xl border border-[var(--muted)] bg-gradient-to-br from-[#fff8f5] via-[#ffeef3] to-white p-8 shadow-[0_25px_90px_-45px_rgba(216,124,163,0.55)]">
         <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent" aria-hidden />
 
