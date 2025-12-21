@@ -35,10 +35,17 @@ class BillplzService
             ])
             : null;
 
+        $mobile = $order->shipping_phone ?? $order->customer?->phone;
+        $email = $order->customer?->email;
+
+        if (!$mobile && !$email) {
+            throw new RuntimeException('Please provide a contact phone or email for the payment.');
+        }
+
         $payload = array_filter([
             'collection_id' => $collectionId,
-            'email' => $order->customer?->email,
-            'mobile' => $order->shipping_phone ?? $order->customer?->phone,
+            'email' => $email,
+            'mobile' => $mobile,
             'name' => $order->shipping_name ?? $order->customer?->name ?? 'Customer',
             'amount' => (int) round(((float) $order->grand_total) * 100),
             'description' => 'Order ' . $order->order_number,
@@ -54,7 +61,14 @@ class BillplzService
             ->post("{$baseUrl}/bills", $payload);
 
         if (!$response->successful()) {
-            throw new RuntimeException('Failed to create Billplz bill: ' . $response->body());
+            $errorBody = $response->json() ?? [];
+            $message = data_get($errorBody, 'error.message');
+            if (is_array($message)) {
+                $message = implode(', ', $message);
+            }
+            $message = $message ?: $response->body();
+
+            throw new RuntimeException('Failed to create Billplz bill: ' . $message);
         }
 
         return $response->json();

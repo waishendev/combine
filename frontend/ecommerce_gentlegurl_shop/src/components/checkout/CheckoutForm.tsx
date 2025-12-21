@@ -229,6 +229,13 @@ export default function CheckoutForm() {
       return;
     }
 
+    if (shippingMethod === "self_pickup") {
+      if (!form.shipping_name || !form.shipping_phone) {
+        setError("Please provide your name and phone number for pickup.");
+        return;
+      }
+    }
+
     if (isLoggedIn && shippingMethod === "shipping" && !selectedAddress) {
       setError("Please add and select an address.");
       return;
@@ -426,7 +433,7 @@ export default function CheckoutForm() {
 
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[2fr,1fr]">
         <div className="space-y-4">
-          {!isSelfPickup && (
+          {!isSelfPickup ? (
             <section className="rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Contact &amp; Address</h2>
@@ -559,6 +566,35 @@ export default function CheckoutForm() {
                   </div>
                 </div>
               )}
+            </section>
+          ) : (
+            <section className="rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">Pickup Contact</h2>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Full Name</label>
+                  <input
+                    required
+                    value={form.shipping_name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, shipping_name: e.target.value }))}
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Phone Number</label>
+                  <input
+                    required
+                    value={form.shipping_phone}
+                    onChange={(e) => setForm((prev) => ({ ...prev, shipping_phone: e.target.value }))}
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-[var(--foreground)]/70">
+                We need your name and phone to create the payment and prepare your pickup.
+              </p>
             </section>
           )}
 

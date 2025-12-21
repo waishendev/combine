@@ -20,6 +20,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 use Throwable;
 
@@ -226,7 +227,12 @@ class PublicCheckoutController extends Controller
                 'payment_method' => $paymentMethod,
             ]);
 
-            return $this->respondError(__('Unable to create order, please try again later.'), 500);
+            $status = $exception instanceof RuntimeException ? 422 : 500;
+            $message = $exception instanceof RuntimeException
+                ? $exception->getMessage()
+                : __('Unable to create order, please try again later.');
+
+            return $this->respondError($message, $status);
         }
 
         return $this->respond([
@@ -381,8 +387,16 @@ class PublicCheckoutController extends Controller
             'customer.phone' => ['nullable', 'string'],
             'billing_address' => ['nullable', 'string'],
             'shipping_address' => ['nullable', 'string'],
-            'shipping_name' => ['nullable', 'string'],
-            'shipping_phone' => ['nullable', 'string'],
+            'shipping_name' => [
+                'nullable',
+                'string',
+                Rule::requiredIf(fn() => ($request->input('shipping_method') === 'self_pickup') || str_starts_with((string) $request->input('payment_method'), 'billplz_')),
+            ],
+            'shipping_phone' => [
+                'nullable',
+                'string',
+                Rule::requiredIf(fn() => ($request->input('shipping_method') === 'self_pickup') || str_starts_with((string) $request->input('payment_method'), 'billplz_')),
+            ],
             'shipping_address_line1' => ['nullable', 'string'],
             'shipping_address_line2' => ['nullable', 'string'],
             'shipping_city' => ['nullable', 'string'],
