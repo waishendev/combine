@@ -3,29 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { toggleWishlist } from "@/lib/apiClient";
+import { toggleWishlist, type WishlistItem } from "@/lib/apiClient";
 import { WishlistToggleButton } from "../wishlist/WishlistToggleButton";
-
-type WishlistItem = {
-  id?: number;
-  product_id?: number;
-  slug?: string;
-  product_slug?: string;
-  name?: string;
-  product_name?: string;
-  price?: number | string;
-  product_price?: number | string;
-  image?: string | null;
-  thumbnail?: string | null;
-  product?: {
-    id?: number;
-    slug?: string;
-    name?: string;
-    price?: number | string;
-    images?: { image_path?: string }[];
-    thumbnail?: string | null;
-  };
-};
 
 type AccountWishlistGridProps = {
   initialItems: WishlistItem[];

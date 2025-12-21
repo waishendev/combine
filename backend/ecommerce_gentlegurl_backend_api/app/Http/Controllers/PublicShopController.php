@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Models\Announcement;
 use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\OrderItem;
@@ -13,10 +14,13 @@ use App\Models\Marquee;
 use App\Models\Promotion;
 use App\Services\SettingService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 
 class PublicShopController extends Controller
 {
+    use ResolvesCurrentCustomer;
+
     public function menu()
     {
         $items = ShopMenuItem::where('is_active', true)
@@ -209,13 +213,16 @@ class PublicShopController extends Controller
             };
         });
 
+        $wishlistIds = $this->resolveWishlistProductIds($request);
+        $wishlistLookup = array_flip($wishlistIds);
+
         $perPage = $request->integer('per_page', $request->integer('limit', 15));
         $products = $productsQuery
             ->paginate($perPage)
             ->appends($request->query());
 
         $products->setCollection(
-            $products->getCollection()->map(function (Product $product) {
+            $products->getCollection()->map(function (Product $product) use ($wishlistLookup) {
                 $sortedImages = $product->images
                     ->sortBy('sort_order')
                     ->sortBy('id')
@@ -233,7 +240,7 @@ class PublicShopController extends Controller
                     'slug' => $product->slug,
                     'sku' => $product->sku,
                     'price' => $product->price,
-                    'is_in_wishlist' => $product->is_in_wishlist ?? false,
+                    'is_in_wishlist' => isset($wishlistLookup[$product->id]),
                     'images' => $sortedImages,
                 ];
             })
@@ -273,7 +280,7 @@ class PublicShopController extends Controller
         return $this->respond($shipping);
     }
 
-    public function showProduct(string $slug)
+    public function showProduct(Request $request, string $slug)
     {
         $product = Product::with(['categories', 'images', 'packageChildren.childProduct'])
             ->where('slug', $slug)
@@ -334,10 +341,27 @@ class PublicShopController extends Controller
             'gallery' => $gallery,
             'categories' => $categories,
             'package_children' => $product->packageChildren,
+            'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),
             'related_products' => $relatedProducts,
         ];
 
         return $this->respond($data);
+    }
+
+    protected function resolveWishlistProductIds(Request $request): array
+    {
+        $customer = $this->currentCustomer();
+        $sessionToken = $customer ? null : ($request->query('session_token') ?? $request->cookie('shop_session_token'));
+
+        if (!$customer && !$sessionToken) {
+            return [];
+        }
+
+        $query = $customer
+            ? DB::table('customer_wishlist_items')->where('customer_id', $customer->id)
+            : DB::table('guest_wishlist_items')->where('session_token', $sessionToken);
+
+        return $query->pluck('product_id')->all();
     }
 
     public function homepage()

@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { AccountOverview } from "@/lib/apiClient";
+import { getWishlistItems } from "@/lib/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import { HomepageShopMenuItem } from "@/lib/server/getHomepage";
@@ -22,6 +23,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
+  const [wishlistCount, setWishlistCount] = useState(0);
   const router = useRouter();
 
   // Close menus when clicking outside
@@ -66,6 +68,29 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const loyalty = overview?.loyalty;
 
   const badgeCount = items.length;
+
+  const loadWishlistCount = useCallback(() => {
+    return getWishlistItems()
+      .then((data) => {
+        setWishlistCount(data.items?.length ?? 0);
+      })
+      .catch(() => {
+        setWishlistCount(0);
+      });
+  }, []);
+
+  useEffect(() => {
+    loadWishlistCount();
+  }, [customer?.profile?.id, loadWishlistCount]);
+
+  useEffect(() => {
+    const handler = () => {
+      loadWishlistCount();
+    };
+
+    window.addEventListener("wishlist:updated", handler);
+    return () => window.removeEventListener("wishlist:updated", handler);
+  }, [loadWishlistCount]);
 
   const avatarUrl = profile?.avatar ?? "/images/default_user_image.jpg";
   const tierName = loyalty?.current_tier?.name ?? profile?.tier ?? "-";
@@ -316,6 +341,33 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                 </div>
               )}
 
+              {/* Mobile Wishlist */}
+              <Link
+                href="/wishlist"
+                className="relative flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+                aria-label="Wishlist"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill={wishlistCount > 0 ? "currentColor" : "none"}
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  className="h-6 w-6"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                  />
+                </svg>
+                {wishlistCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
+                    {wishlistCount > 99 ? "99+" : wishlistCount}
+                  </span>
+                )}
+              </Link>
+
               {/* Mobile Cart */}
               <Link
                 href="/cart"
@@ -440,6 +492,32 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                 </Link>
               </div>
             )}
+
+            {/* Wishlist - Desktop */}
+            <Link
+              href="/wishlist"
+              className="relative flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill={wishlistCount > 0 ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="1.5"
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                />
+              </svg>
+              {wishlistCount > 0 && (
+                <span className="absolute -right-2 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
+                  {wishlistCount > 99 ? "99+" : wishlistCount}
+                </span>
+              )}
+            </Link>
 
             {/* Cart - Desktop (Last item) */}
             <Link

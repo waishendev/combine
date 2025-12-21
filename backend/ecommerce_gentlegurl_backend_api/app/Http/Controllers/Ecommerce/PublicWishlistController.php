@@ -15,7 +15,7 @@ class PublicWishlistController extends Controller
     public function index(Request $request)
     {
         $customer = $this->currentCustomer();
-        $sessionToken = $customer ? null : ($request->query('session_token') ?: null);
+        $sessionToken = $customer ? null : ($request->query('session_token') ?: $request->cookie('shop_session_token'));
 
         if (!$customer && !$sessionToken) {
             return $this->respond([]);
@@ -38,7 +38,7 @@ class PublicWishlistController extends Controller
         ]);
 
         $customer = $this->currentCustomer();
-        $sessionToken = $customer ? null : ($validated['session_token'] ?? $request->query('session_token'));
+        $sessionToken = $customer ? null : ($validated['session_token'] ?? $request->query('session_token') ?? $request->cookie('shop_session_token'));
 
         if (!$customer && !$sessionToken) {
             $sessionToken = (string) Str::uuid();
