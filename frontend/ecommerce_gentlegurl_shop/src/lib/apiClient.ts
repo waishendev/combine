@@ -451,7 +451,7 @@ export type CheckoutPreviewPayload = {
 export type CheckoutPayload = {
   items: { product_id: number; quantity: number }[];
   session_token?: string | null;
-  payment_method: "manual_transfer" | "billplz_fpx";
+  payment_method: "manual_transfer" | "billplz_fpx" | "billplz_card";
   shipping_method: "shipping" | "self_pickup";
   shipping_name?: string;
   shipping_phone?: string;
@@ -472,8 +472,12 @@ export type CreateOrderResponse = {
   payment_status: string;
   status: string;
   payment_method: string;
+  payment_provider?: string | null;
+  payment_reference?: string | null;
+  payment_url?: string | null;
   payment: {
     provider: "billplz" | "manual";
+    billplz_id?: string | null;
     billplz_url?: string | null;
   };
   bank_account?: PublicBankAccount | null;
@@ -499,6 +503,9 @@ export type OrderLookupResponse = {
   order_no: string;
   grand_total: number | string;
   payment_method: string;
+  payment_provider?: string | null;
+  payment_reference?: string | null;
+  payment_url?: string | null;
   payment_status: string;
   status: string;
   bank_account?: PublicBankAccount | null;

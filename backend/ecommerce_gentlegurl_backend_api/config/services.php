@@ -47,12 +47,12 @@ return [
     ],
 
     'billplz' => [
-        'api_key' => env('BILLPLZ_API_KEY'),
-        'x_signature' => env('BILLPLZ_X_SIGNATURE_KEY'),
-        'collection_id' => env('BILLPLZ_COLLECTION_ID'),
-        'sandbox' => env('BILLPLZ_SANDBOX', true),
-        'callback_url' => env('BILLPLZ_CALLBACK_URL'),
-        'redirect_url' => env('BILLPLZ_REDIRECT_URL'),
+        'api_key' => env('BILPLZ_API_KEY', env('BILLPLZ_API_KEY')),
+        'collection_id' => env('BILPLZ_COLLECTION_ID', env('BILLPLZ_COLLECTION_ID')),
+        'x_signature' => env('BILPLZ_X_SIGNATURE', env('BILLPLZ_X_SIGNATURE_KEY')),
+        'base_url' => env('BILPLZ_BASE_URL', 'https://www.billplz.com/api/v3'),
+        'frontend_url' => env('FRONTEND_URL'),
+        'public_url' => env('APP_PUBLIC_URL', env('APP_URL')),
     ],
 
 ];

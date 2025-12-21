@@ -46,9 +46,7 @@ export default function CheckoutForm() {
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"manual_transfer" | "billplz_fpx">(
-    "manual_transfer",
-  );
+  const [paymentMethod, setPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
   const [error, setError] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
@@ -96,16 +94,16 @@ export default function CheckoutForm() {
 
   const isSelfPickup = shippingMethod === "self_pickup";
 
-    const safeTotals = useMemo(() => {
-      const subtotal = Number(totals.subtotal ?? 0);
-      const discount = Number(totals.discount_total ?? 0);
-      const shipping = isSelfPickup ? 0 : Number(totals.shipping_fee ?? shippingFlatFee ?? 0);
-      const computedGrand = subtotal - discount + shipping;
-      const rawGrand = Number(totals.grand_total ?? computedGrand);
-      const grand = isSelfPickup ? computedGrand : rawGrand;
+  const safeTotals = useMemo(() => {
+    const subtotal = Number(totals.subtotal ?? 0);
+    const discount = Number(totals.discount_total ?? 0);
+    const shipping = isSelfPickup ? 0 : Number(totals.shipping_fee ?? shippingFlatFee ?? 0);
+    const computedGrand = subtotal - discount + shipping;
+    const rawGrand = Number(totals.grand_total ?? computedGrand);
+    const grand = isSelfPickup ? computedGrand : rawGrand;
 
-      return { subtotal, discount, shipping, grand };
-    }, [totals.discount_total, totals.grand_total, totals.shipping_fee, totals.subtotal, isSelfPickup, shippingFlatFee]);
+    return { subtotal, discount, shipping, grand };
+  }, [totals.discount_total, totals.grand_total, totals.shipping_fee, totals.subtotal, isSelfPickup, shippingFlatFee]);
 
   const fetchAddresses = useCallback(async () => {
     if (!isLoggedIn) {
@@ -274,18 +272,29 @@ export default function CheckoutForm() {
       removeVoucher();
       setVoucherCode("");
 
-      if (order.payment_method === "billplz_fpx" && order.payment?.billplz_url) {
-        window.location.href = order.payment.billplz_url!;
+      const isBillplzMethod =
+        order.payment_method === "billplz_fpx" || order.payment_method === "billplz_card";
+      const paymentUrl = order.payment_url ?? order.payment?.billplz_url;
+
+      if (isBillplzMethod) {
+        if (paymentUrl) {
+          window.location.href = paymentUrl;
+        } else {
+          setError("Unable to start Billplz payment. Please try again.");
+        }
         return;
       }
 
-      const query = new URLSearchParams({
+      const searchParams = new URLSearchParams({
         order_no: order.order_no,
         order_id: String(order.order_id),
         payment_method: order.payment_method,
-      }).toString();
+      });
+      if (order.payment_provider ?? order.payment?.provider) {
+        searchParams.set("provider", order.payment_provider ?? order.payment?.provider ?? "");
+      }
 
-      router.push(`/thank-you?${query}`);
+      router.push(`/payment-result?${searchParams.toString()}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create order.";
       setError(message);
@@ -769,6 +778,16 @@ export default function CheckoutForm() {
                   onChange={() => setPaymentMethod("billplz_fpx")}
                 />
                 <span>Online Banking (Billplz FPX)</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="payment_method"
+                  value="billplz_card"
+                  checked={paymentMethod === "billplz_card"}
+                  onChange={() => setPaymentMethod("billplz_card")}
+                />
+                <span>Credit Card (Billplz)</span>
               </label>
             </div>
           </div>
