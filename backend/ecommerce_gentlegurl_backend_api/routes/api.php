@@ -113,17 +113,19 @@ Route::prefix('/public/shop')->group(function () {
         Route::post('/cart/items', [PublicCartController::class, 'addOrUpdateItem']);
         Route::delete('/cart/items/{item}', [PublicCartController::class, 'removeItem']);
         Route::post('/cart/reset', [PublicCartController::class, 'reset']);
+
+        Route::get('/wishlist', [PublicWishlistController::class, 'index']);
+        Route::post('/wishlist/toggle', [PublicWishlistController::class, 'toggle']);
     });
 
     Route::post('/cart/merge', [PublicCartController::class, 'merge'])
+        ->middleware(['api.session', 'auth:customer,sanctum']);
+    Route::post('/wishlist/merge', [PublicWishlistController::class, 'merge'])
         ->middleware(['api.session', 'auth:customer,sanctum']);
 
     Route::middleware(['api.session', 'auth:customer,sanctum'])->group(function () {
 
         Route::get('/account/overview', [PublicAccountController::class, 'overview']);
-
-        Route::get('/wishlist', [PublicWishlistController::class, 'index']);
-        Route::post('/wishlist/toggle', [PublicWishlistController::class, 'toggle']);
 
         // Order History
         Route::get('/orders', [PublicOrderHistoryController::class, 'index']);
