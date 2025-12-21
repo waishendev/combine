@@ -37,6 +37,7 @@ function normalizeProductImages(product: ProductDetail): ProductDetail {
 export async function getProduct(slug: string): Promise<ProductDetail | null> {
   try {
     const cookieStore = await cookies();
+    const sessionToken = cookieStore.get("shop_session_token")?.value;
     const cookieHeader = cookieStore
       .getAll()
       .map((c) => `${c.name}=${c.value}`)
@@ -44,9 +45,13 @@ export async function getProduct(slug: string): Promise<ProductDetail | null> {
 
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const url = new URL(`${siteUrl}/api/proxy/public/shop/products/${slug}`);
 
-    const url = `${siteUrl}/api/proxy/public/shop/products/${slug}`;
-    console.log(url);
+    if (sessionToken) {
+      url.searchParams.set("session_token", sessionToken);
+    }
+
+    console.log(url.toString());
     const res = await fetch(url, {
       method: "GET",
       headers: {
