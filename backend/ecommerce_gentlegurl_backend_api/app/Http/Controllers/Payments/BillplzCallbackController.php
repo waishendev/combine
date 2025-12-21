@@ -86,6 +86,32 @@ class BillplzCallbackController extends Controller
             $bill = BillplzBill::where('billplz_id', $billId)->first();
             if ($bill) {
                 $order = $bill->order;
+                $billplzPayload = $request->query('billplz') ?? [];
+
+                if (!empty($billplzPayload) && $this->verifySignature(['billplz' => $billplzPayload])) {
+                    $paid = isset($billplzPayload['paid']) ? filter_var($billplzPayload['paid'], FILTER_VALIDATE_BOOLEAN) : false;
+
+                    if ($paid) {
+                        $bill->paid = true;
+                        $bill->paid_at = $billplzPayload['paid_at'] ?? $bill->paid_at;
+                        $bill->payload = array_merge($bill->payload ?? [], ['redirect' => $billplzPayload]);
+                        $bill->save();
+
+                        if ($order->payment_status !== 'paid') {
+                            $order->payment_status = 'paid';
+                            if ($order->status === 'pending') {
+                                $order->status = 'paid';
+                            }
+                            $order->paid_at = $billplzPayload['paid_at'] ?? $order->paid_at ?? now();
+                            $order->payment_reference = $order->payment_reference ?: $billId;
+                            $order->payment_provider = $order->payment_provider ?: 'billplz';
+                            $order->save();
+
+                            $this->clearOrderCart($order);
+                        }
+                    }
+                }
+
                 $query = http_build_query([
                     'order_id' => $order->id,
                     'order_no' => $order->order_number,
