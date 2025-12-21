@@ -25,6 +25,7 @@ use App\Http\Controllers\Ecommerce\PublicPromotionController;
 use App\Http\Controllers\Ecommerce\PublicPageReviewController;
 use App\Http\Controllers\Ecommerce\PublicHomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicOrderHistoryController;
+use App\Http\Controllers\Ecommerce\PublicProductReviewController;
 use App\Http\Controllers\Ecommerce\PublicReturnController;
 use App\Http\Controllers\Ecommerce\PublicWishlistController;
 use App\Http\Controllers\Ecommerce\PublicStoreLocationController;
@@ -93,6 +94,11 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/categories', [PublicShopController::class, 'categories']);
     Route::get('/products', [PublicShopController::class, 'products']);
     Route::get('/products/{slug}', [PublicShopController::class, 'showProduct']);
+    Route::get('/products/{slug}/reviews', [PublicProductReviewController::class, 'index']);
+    Route::get('/products/{slug}/review-eligibility', [PublicProductReviewController::class, 'eligibility'])
+        ->middleware('api.session');
+    Route::post('/products/{slug}/reviews', [PublicProductReviewController::class, 'store'])
+        ->middleware(['api.session', 'auth:customer,sanctum']);
     Route::get('/promotions', [PublicPromotionController::class, 'index']);
     Route::get('/announcements', [PublicAnnouncementController::class, 'index']);
     Route::get('/announcements/{key}', [PublicAnnouncementController::class, 'showByKey']);
@@ -137,7 +143,7 @@ Route::prefix('/public/shop')->group(function () {
 
         // Order History
         Route::get('/orders', [PublicOrderHistoryController::class, 'index']);
-        Route::get('/orders/{order}', [PublicOrderHistoryController::class, 'show']);
+        Route::get('/orders/{id}', [PublicOrderHistoryController::class, 'showById']);
 
         Route::get('/returns', [PublicReturnController::class, 'index']);
         Route::get('/returns/{returnRequest}', [PublicReturnController::class, 'show']);

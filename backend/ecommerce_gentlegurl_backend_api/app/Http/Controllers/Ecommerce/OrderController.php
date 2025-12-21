@@ -127,6 +127,11 @@ class OrderController extends Controller
         $order->shipping_courier = $validated['shipping_courier'] ?? $order->shipping_courier;
         $order->shipping_tracking_no = $validated['shipping_tracking_no'] ?? $order->shipping_tracking_no;
         $order->shipped_at = !empty($validated['shipped_at']) ? Carbon::parse($validated['shipped_at']) : $order->shipped_at;
+
+        if ($order->status === 'completed' && ! $order->completed_at) {
+            $order->completed_at = Carbon::now();
+        }
+
         $order->save();
 
         return $this->respond($order, __('Order status updated.'));

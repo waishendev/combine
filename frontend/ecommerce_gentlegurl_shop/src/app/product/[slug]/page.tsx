@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
+import { ProductReviewsSection } from "@/components/product/ProductReviewsSection";
 import { getProduct } from "@/lib/server/getProduct";
+import { getProductReviewEligibility } from "@/lib/server/getProductReviewEligibility";
+import { getProductReviews } from "@/lib/server/getProductReviews";
 import { normalizeImageUrl } from "@/lib/imageUrl";
+import { ReviewSettings } from "@/lib/types/reviews";
 import { ProductGallery } from "@/components/product/ProductGallery";
 
 type ProductPageProps = {
@@ -12,6 +16,10 @@ type ProductPageProps = {
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
   const product = await getProduct(slug);
+  const [reviewsData, eligibility] = await Promise.all([
+    getProductReviews(slug),
+    getProductReviewEligibility(slug),
+  ]);
 
   if (!product) return notFound();
 
@@ -79,6 +87,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
           </div>
         </div>
       </div>
+
+      <ProductReviewsSection
+        slug={slug}
+        initialReviews={reviewsData}
+        initialEligibility={eligibility}
+        settings={product.review_settings as ReviewSettings | undefined}
+      />
     </main>
   );
 }

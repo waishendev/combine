@@ -1,42 +1,76 @@
 import { cookies } from "next/headers";
+import { OrderItemSummary } from "./getOrders";
 
 export type OrderDetail = {
   id: number;
   order_no: string;
   status: string;
   payment_status: string;
-  created_at: string;
-  subtotal?: string | number;
-  discount_total?: string | number;
-  shipping_fee?: string | number;
-  grand_total?: string | number;
-  items?: Array<{
-    id: number;
-    name: string;
-    sku: string;
-    quantity: number;
-    unit_price: string | number;
-    line_total: string | number;
-  }>;
+  payment_method?: string | null;
+  payment_provider?: string | null;
+  subtotal: number | string;
+  discount_total: number | string;
+  shipping_fee: number | string;
+  grand_total: number | string;
+  pickup_or_shipping?: string | null;
+  shipping_courier?: string | null;
+  shipping_tracking_no?: string | null;
+  placed_at?: string | null;
+  paid_at?: string | null;
+  completed_at?: string | null;
+  items: OrderItemSummary[];
   voucher?: {
     code: string;
-    discount_amount: string | number;
+    discount_amount: number | string;
   } | null;
-  slips?: Array<{
+  slips?: {
     id: number;
-    file_url: string;
-  }>;
-  returns?: Array<{
+    type: string;
+    file_url?: string | null;
+    created_at?: string | null;
+  }[];
+  returns?: {
     id: number;
     status: string;
     tracking_no?: string | null;
-  }>;
-  [key: string]: unknown;
+  }[];
+  shipping_address?: {
+    name?: string | null;
+    phone?: string | null;
+    line1?: string | null;
+    line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postcode?: string | null;
+    country?: string | null;
+  } | null;
+  pickup_store?: {
+    id: number;
+    name: string;
+    address_line1?: string | null;
+    address_line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postcode?: string | null;
+    country?: string | null;
+    phone?: string | null;
+  } | null;
+  bank_account?: {
+    id: number;
+    bank_name: string;
+    account_name: string;
+    account_number?: string | null;
+    branch?: string | null;
+    logo_url?: string | null;
+    qr_image_url?: string | null;
+  } | null;
 };
 
-export async function getOrderDetail(
-  orderId: string | number,
-): Promise<OrderDetail | null> {
+export type OrderDetailResponse = {
+  order: OrderDetail;
+};
+
+export async function getOrderDetail(id: number): Promise<OrderDetail | null> {
   try {
     const cookieStore = await cookies();
     const cookieHeader = cookieStore
@@ -44,10 +78,9 @@ export async function getOrderDetail(
       .map((c) => `${c.name}=${c.value}`)
       .join("; ");
 
-    const API_BASE =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
-    const res = await fetch(`${API_BASE}/api/public/shop/orders/${orderId}`, {
+    const res = await fetch(`${API_BASE}/api/public/shop/orders/${id}`, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -56,7 +89,7 @@ export async function getOrderDetail(
       cache: "no-store",
     });
 
-    if (res.status === 404) {
+    if (res.status === 401 || res.status === 403) {
       return null;
     }
 
@@ -67,8 +100,7 @@ export async function getOrderDetail(
     }
 
     const json = await res.json();
-
-    return json?.data?.order ?? null;
+    return (json?.data as OrderDetailResponse | undefined)?.order ?? null;
   } catch (error) {
     console.error("[getOrderDetail] Error:", error);
     return null;

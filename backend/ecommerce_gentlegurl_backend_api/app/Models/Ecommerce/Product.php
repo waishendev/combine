@@ -4,6 +4,7 @@ namespace App\Models\Ecommerce;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Ecommerce\ProductReview;
 use DateTimeInterface;
 
 class Product extends Model
@@ -60,6 +61,11 @@ class Product extends Model
     public function packageItems()
     {
         return $this->hasMany(ProductPackage::class, 'child_product_id');
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class);
     }
 
     /**
