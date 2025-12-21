@@ -41,5 +41,10 @@ class SettingSeeder extends Seeder
             ['key' => 'best_sellers'],
             ['value' => ['days' => 60]]
         );
+
+        Setting::updateOrCreate(
+            ['key' => 'page_reviews'],
+            ['value' => ['enabled' => true]]
+        );
     }
 }

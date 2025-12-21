@@ -21,13 +21,20 @@ class StoreLocation extends Model
         'country',
         'phone',
         'is_active',
+        'opening_hours',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'opening_hours' => 'array',
         ];
+    }
+
+    public function images()
+    {
+        return $this->hasMany(StoreLocationImage::class)->orderBy('sort_order')->orderBy('id');
     }
 
     /**

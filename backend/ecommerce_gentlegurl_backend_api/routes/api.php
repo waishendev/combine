@@ -22,6 +22,7 @@ use App\Http\Controllers\Ecommerce\PublicMarqueeController;
 use App\Http\Controllers\Ecommerce\PublicOrderTrackingController;
 use App\Http\Controllers\Ecommerce\PublicPaymentMethodController;
 use App\Http\Controllers\Ecommerce\PublicPromotionController;
+use App\Http\Controllers\Ecommerce\PublicPageReviewController;
 use App\Http\Controllers\Ecommerce\PublicHomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicOrderHistoryController;
 use App\Http\Controllers\Ecommerce\PublicReturnController;
@@ -97,6 +98,10 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/homepage', [PublicHomepageController::class, 'show']);
     Route::get('/shipping', [PublicShopController::class, 'shipping']);
     Route::get('/store-locations', [PublicStoreLocationController::class, 'index']);
+    Route::get('/store-locations/{storeLocation}', [PublicStoreLocationController::class, 'show']);
+    Route::get('/reviews/settings', [PublicPageReviewController::class, 'settings']);
+    Route::get('/reviews', [PublicPageReviewController::class, 'index']);
+    Route::post('/reviews', [PublicPageReviewController::class, 'store']);
     Route::get('/bank-accounts', [PublicBankAccountController::class, 'index']);
     Route::get('/payment-methods', [PublicPaymentMethodController::class, 'index']);
     Route::post('/orders/track', [PublicOrderTrackingController::class, 'track']);
