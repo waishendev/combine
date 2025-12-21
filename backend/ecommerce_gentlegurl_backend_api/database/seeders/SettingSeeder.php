@@ -46,5 +46,10 @@ class SettingSeeder extends Seeder
             ['key' => 'page_reviews'],
             ['value' => ['enabled' => true]]
         );
+
+        Setting::updateOrCreate(
+            ['key' => 'product_reviews'],
+            ['value' => ['enabled' => true, 'review_window_days' => 30]]
+        );
     }
 }

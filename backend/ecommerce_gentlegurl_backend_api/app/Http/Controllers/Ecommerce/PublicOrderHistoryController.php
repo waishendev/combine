@@ -14,6 +14,7 @@ class PublicOrderHistoryController extends Controller
         $perPage = $request->integer('per_page', 10);
 
         $orders = Order::where('customer_id', $customer->id)
+            ->with(['items.product'])
             ->orderByDesc('created_at')
             ->paginate($perPage);
 
@@ -25,6 +26,18 @@ class PublicOrderHistoryController extends Controller
                 'payment_status' => $order->payment_status,
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
+                'items' => $order->items->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'product_id' => $item->product_id,
+                        'product_slug' => $item->product?->slug,
+                        'name' => $item->product_name_snapshot,
+                        'sku' => $item->sku_snapshot,
+                        'quantity' => $item->quantity,
+                        'unit_price' => $item->price_snapshot,
+                        'line_total' => $item->line_total,
+                    ];
+                })->values(),
             ])->all(),
             'pagination' => [
                 'current_page' => $orders->currentPage(),

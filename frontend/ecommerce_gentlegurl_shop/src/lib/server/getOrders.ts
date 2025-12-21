@@ -1,5 +1,16 @@
 import { cookies } from "next/headers";
 
+export type OrderItemSummary = {
+  id: number;
+  product_id: number;
+  product_slug?: string | null;
+  name?: string;
+  sku?: string | null;
+  quantity: number;
+  unit_price?: string | number;
+  line_total?: string | number;
+};
+
 export type OrderSummary = {
   id: number;
   order_no: string;
@@ -7,6 +18,7 @@ export type OrderSummary = {
   payment_status: string;
   grand_total: string | number;
   created_at: string;
+  items?: OrderItemSummary[];
   [key: string]: unknown;
 };
 

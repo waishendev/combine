@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { normalizeImageUrl } from "../imageUrl";
+import { ReviewItem, ReviewSettings, ReviewSummary } from "../types/reviews";
 
 export type ProductImage = {
   id: number;
@@ -20,6 +21,9 @@ export type ProductDetail = {
   images?: ProductImage[];
   gallery?: (ProductImage | string)[];
   is_in_wishlist?: boolean;
+  review_summary?: ReviewSummary;
+  recent_reviews?: ReviewItem[];
+  review_settings?: ReviewSettings;
   [key: string]: unknown;
 };
 

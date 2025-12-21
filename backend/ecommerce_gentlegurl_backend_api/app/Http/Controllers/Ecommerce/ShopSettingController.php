@@ -39,6 +39,10 @@ class ShopSettingController extends Controller
             'page_reviews' => SettingService::get('page_reviews', [
                 'enabled' => true,
             ]),
+            'product_reviews' => SettingService::get('product_reviews', [
+                'enabled' => true,
+                'review_window_days' => 30,
+            ]),
         ];
 
         return response()->json([
@@ -58,7 +62,7 @@ class ShopSettingController extends Controller
      */
     public function show(string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'page_reviews'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'page_reviews', 'product_reviews'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -88,6 +92,10 @@ class ShopSettingController extends Controller
             'page_reviews' => [
                 'enabled' => true,
             ],
+            'product_reviews' => [
+                'enabled' => true,
+                'review_window_days' => 30,
+            ],
         ];
 
         $value = SettingService::get($key, $defaultValues[$key]);
@@ -110,7 +118,7 @@ class ShopSettingController extends Controller
      */
     public function update(Request $request, string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'page_reviews'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'page_reviews', 'product_reviews'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -137,6 +145,10 @@ class ShopSettingController extends Controller
 
             case 'page_reviews':
                 $data = $this->validatePageReviews($request);
+                break;
+
+            case 'product_reviews':
+                $data = $this->validateProductReviews($request);
                 break;
 
             default:
@@ -257,6 +269,19 @@ class ShopSettingController extends Controller
 
         return [
             'enabled' => (bool) $validated['enabled'],
+        ];
+    }
+
+    protected function validateProductReviews(Request $request): array
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'review_window_days' => ['required', 'integer', 'min:1', 'max:365'],
+        ]);
+
+        return [
+            'enabled' => (bool) $validated['enabled'],
+            'review_window_days' => (int) $validated['review_window_days'],
         ];
     }
 

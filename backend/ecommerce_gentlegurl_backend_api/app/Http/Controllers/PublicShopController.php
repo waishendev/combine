@@ -12,6 +12,7 @@ use App\Models\Ecommerce\ShopMenuItem;
 use App\Models\HomeSlider;
 use App\Models\Marquee;
 use App\Models\Promotion;
+use App\Services\Ecommerce\ProductReviewService;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -344,6 +345,15 @@ class PublicShopController extends Controller
             'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),
             'related_products' => $relatedProducts,
         ];
+
+        $reviewService = app(ProductReviewService::class);
+        $reviewSettings = $reviewService->settings();
+        $data['review_settings'] = $reviewSettings;
+
+        if ($reviewSettings['enabled'] ?? false) {
+            $data['review_summary'] = $reviewService->buildSummary($product->id);
+            $data['recent_reviews'] = $reviewService->recentReviews($product->id, 3);
+        }
 
         return $this->respond($data);
     }

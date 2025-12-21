@@ -97,6 +97,35 @@ export default async function AccountOrdersPage() {
                       </svg>
                     </Link>
                   </div>
+
+                  {statusKey === "completed" && Array.isArray(order.items) && order.items.length > 0 && (
+                    <div className="sm:col-span-4">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">
+                        Items
+                      </p>
+                      <div className="space-y-2">
+                        {order.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--background)] px-3 py-2"
+                          >
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
+                              <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
+                            </div>
+                            {item.product_slug && (
+                              <Link
+                                href={`/product/${item.product_slug}#reviews`}
+                                className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                              >
+                                Write Review
+                              </Link>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
