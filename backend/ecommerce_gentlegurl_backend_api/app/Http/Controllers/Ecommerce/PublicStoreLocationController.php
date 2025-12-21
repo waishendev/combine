@@ -17,6 +17,7 @@ class PublicStoreLocationController extends Controller
             ->get([
                 'id',
                 'name',
+                'code',
                 'address_line1',
                 'address_line2',
                 'city',

@@ -36,6 +36,9 @@ class ShopSettingController extends Controller
                 'label' => 'Flat Rate Shipping',
             ]),
             'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
+            'page_reviews' => SettingService::get('page_reviews', [
+                'enabled' => true,
+            ]),
         ];
 
         return response()->json([
@@ -55,7 +58,7 @@ class ShopSettingController extends Controller
      */
     public function show(string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'page_reviews'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -82,6 +85,9 @@ class ShopSettingController extends Controller
                 'label' => 'Flat Rate Shipping',
             ],
             'footer' => $this->defaultFooterSetting(),
+            'page_reviews' => [
+                'enabled' => true,
+            ],
         ];
 
         $value = SettingService::get($key, $defaultValues[$key]);
@@ -104,7 +110,7 @@ class ShopSettingController extends Controller
      */
     public function update(Request $request, string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'page_reviews'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -127,6 +133,10 @@ class ShopSettingController extends Controller
 
             case 'footer':
                 $data = $this->validateFooter($request);
+                break;
+
+            case 'page_reviews':
+                $data = $this->validatePageReviews($request);
                 break;
 
             default:
@@ -236,6 +246,17 @@ class ShopSettingController extends Controller
                 'privacy' => data_get($validated, 'links.privacy'),
                 'terms' => data_get($validated, 'links.terms'),
             ],
+        ];
+    }
+
+    protected function validatePageReviews(Request $request): array
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+        ]);
+
+        return [
+            'enabled' => (bool) $validated['enabled'],
         ];
     }
 

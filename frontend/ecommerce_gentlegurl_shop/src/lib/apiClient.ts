@@ -165,6 +165,32 @@ export type PublicBankAccount = {
   instructions?: string | null;
 };
 
+export type PageReview = {
+  id: number;
+  store_location_id: number;
+  customer_id?: number | null;
+  name: string;
+  email?: string | null;
+  rating: number;
+  title?: string | null;
+  body: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type PageReviewList = {
+  items: PageReview[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total: number;
+  };
+};
+
+export type PageReviewSetting = {
+  enabled: boolean;
+};
+
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 type ApiRequestOptions = RequestInit & {
@@ -172,7 +198,7 @@ type ApiRequestOptions = RequestInit & {
   includeSessionToken?: boolean;
 };
 
-type ApiError = Error & { status?: number; data?: unknown };
+export type ApiError = Error & { status?: number; data?: unknown };
 
 async function apiRequest<T>(path: string, method: HttpMethod, options: ApiRequestOptions = {}): Promise<T> {
   const url = new URL(
@@ -440,6 +466,7 @@ export type CreateOrderResponse = {
 export type PublicStoreLocation = {
   id: number;
   name: string;
+  code?: string | null;
   address_line1: string;
   address_line2?: string | null;
   city: string;
@@ -517,6 +544,53 @@ export async function getBankAccounts(): Promise<PublicBankAccount[]> {
 
 export async function getStoreLocations(): Promise<PublicStoreLocation[]> {
   const response = await get<{ data: PublicStoreLocation[] }>("/public/shop/store-locations", {
+    headers: { Accept: "application/json" },
+  });
+
+  return response.data;
+}
+
+export async function getPageReviewSettings(): Promise<PageReviewSetting> {
+  const response = await get<{ data: PageReviewSetting }>("/public/shop/page-reviews/settings", {
+    headers: { Accept: "application/json" },
+  });
+
+  return response.data;
+}
+
+export async function getPageReviews(params: {
+  store_location_id: number;
+  page?: number;
+  per_page?: number;
+}): Promise<PageReviewList> {
+  const search = new URLSearchParams({ store_location_id: String(params.store_location_id) });
+
+  if (params.page) {
+    search.set("page", String(params.page));
+  }
+
+  if (params.per_page) {
+    search.set("per_page", String(params.per_page));
+  }
+
+  const response = await get<{ data: PageReviewList }>(`/public/shop/page-reviews?${search.toString()}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  return response.data;
+}
+
+export type SubmitPageReviewPayload = {
+  store_location_id: number;
+  name?: string;
+  email?: string | null;
+  rating: number;
+  title?: string | null;
+  body: string;
+};
+
+export async function submitPageReview(payload: SubmitPageReviewPayload): Promise<PageReview> {
+  const response = await post<{ data: PageReview }>("/public/shop/page-reviews", payload, {
     headers: { Accept: "application/json" },
   });
 

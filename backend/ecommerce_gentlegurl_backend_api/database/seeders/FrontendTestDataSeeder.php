@@ -9,6 +9,7 @@ use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductImage;
 use App\Models\Ecommerce\ShopMenuItem;
+use App\Models\Ecommerce\PageReview;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\Voucher;
 use App\Models\Ecommerce\MembershipTierRule;
@@ -53,16 +54,19 @@ class FrontendTestDataSeeder extends Seeder
         // 7. Store Locations
         $this->seedStoreLocations();
 
-        // 8. Marquee
+        // 8. Page Reviews
+        $this->seedPageReviews();
+
+        // 9. Marquee
         $this->seedMarquees();
 
-        // 9. Vouchers
+        // 10. Vouchers
         $this->seedVouchers();
 
-        // 10. Announcements
+        // 11. Announcements
         $this->seedAnnouncements();
 
-        // 11. Home Sliders
+        // 12. Home Sliders
         $this->seedHomeSliders();
     }
 
@@ -664,6 +668,63 @@ class FrontendTestDataSeeder extends Seeder
         }
     }
 
+    private function seedPageReviews(): void
+    {
+        $storeLocations = StoreLocation::where('is_active', true)->get();
+
+        if ($storeLocations->isEmpty()) {
+            return;
+        }
+
+        $reviews = [
+            [
+                'store_code' => 'KL-001',
+                'name' => 'Aisyah',
+                'email' => 'aisyah@example.com',
+                'rating' => 5,
+                'title' => 'Amazing service',
+                'body' => 'Staff were super helpful and friendly. Will definitely come back again!',
+            ],
+            [
+                'store_code' => 'PNG-001',
+                'name' => 'Wei Jun',
+                'email' => 'weijun@example.com',
+                'rating' => 4,
+                'title' => 'Great selection',
+                'body' => 'Good variety of products and the store is clean. Checkout could be faster.',
+            ],
+            [
+                'store_code' => 'JHB-001',
+                'name' => 'Siti',
+                'email' => null,
+                'rating' => 5,
+                'title' => 'Love the ambience',
+                'body' => 'The store layout is cozy and the team gave great recommendations.',
+            ],
+        ];
+
+        foreach ($reviews as $review) {
+            $store = $storeLocations->firstWhere('code', $review['store_code']) ?? $storeLocations->first();
+
+            if (! $store) {
+                continue;
+            }
+
+            PageReview::firstOrCreate(
+                [
+                    'store_location_id' => $store->id,
+                    'name' => $review['name'],
+                    'title' => $review['title'],
+                ],
+                [
+                    'email' => $review['email'],
+                    'rating' => $review['rating'],
+                    'body' => $review['body'],
+                ]
+            );
+        }
+    }
+
     private function seedMarquees(): void
     {
         $marquees = [
@@ -1025,4 +1086,3 @@ class FrontendTestDataSeeder extends Seeder
         }
     }
 }
-

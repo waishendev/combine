@@ -146,6 +146,7 @@ class PublicHomepageController extends Controller
                 'homepage_products' => SettingService::get('homepage_products', $this->defaultHomepageProducts()),
                 'shipping' => SettingService::get('shipping', $this->defaultShippingSetting()),
                 'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
+                'page_reviews' => SettingService::get('page_reviews', ['enabled' => true]),
             ];
 
             return [
@@ -157,10 +158,10 @@ class PublicHomepageController extends Controller
                 'best_sellers' => $bestSellers,
                 'featured_products' => $featuredProducts,
                 'seo' => $seo,
-            'contact' => $settings['shop_contact_widget'],
-            'settings' => $settings,
-        ];
-    });
+                'contact' => $settings['shop_contact_widget'],
+                'settings' => $settings,
+            ];
+        });
 
         return response()->json([
             'data' => $data,
