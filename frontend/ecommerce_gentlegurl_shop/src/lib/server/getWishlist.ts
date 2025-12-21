@@ -32,7 +32,6 @@ export async function getWishlist() {
     }
 
     const json = await res.json();
-    console.log(json);
 
     return json.data;
   } catch (error) {

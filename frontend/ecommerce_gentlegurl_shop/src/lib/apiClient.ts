@@ -1,4 +1,4 @@
-import { getOrCreateSessionToken } from "./sessionToken";
+import { getOrCreateSessionToken, setSessionToken } from "./sessionToken";
 
 export type LoyaltyTier = {
   code: string;
@@ -99,6 +99,28 @@ export type CartResponse = {
   shipping_fee: string;
   grand_total: string;
   session_token?: string | null;
+};
+
+export type WishlistItem = {
+  id?: number;
+  product_id?: number;
+  slug?: string;
+  product_slug?: string;
+  name?: string;
+  product_name?: string;
+  price?: number | string;
+  product_price?: number | string;
+  image?: string | null;
+  thumbnail?: string | null;
+  created_at?: string;
+  product?: {
+    id?: number;
+    slug?: string;
+    name?: string;
+    price?: number | string;
+    images?: { image_path?: string }[];
+    thumbnail?: string | null;
+  };
 };
 
 export type CheckoutPreviewVoucher = {
@@ -571,11 +593,40 @@ export async function getAccountOverview() {
 }
 
 export async function toggleWishlist(productId: number) {
-  return post<{ is_favorited: boolean; product_id: number; session_token?: string }>(
+  const response = await post<{ is_favorited: boolean; product_id: number; session_token?: string }>(
     "/public/shop/wishlist/toggle",
     { product_id: productId },
     { includeSessionToken: true, headers: { Accept: "application/json" } },
   );
+
+  if (response.session_token) {
+    setSessionToken(response.session_token);
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("wishlist:updated", { detail: response }));
+  }
+
+  return response;
+}
+
+export async function getWishlistItems() {
+  const response = await get<{
+    data:
+      | { items: WishlistItem[]; customer_id?: number | null; session_token?: string | null }
+      | WishlistItem[];
+  }>("/public/shop/wishlist", { includeSessionToken: true, headers: { Accept: "application/json" } });
+
+  const payload = response.data;
+  const items = Array.isArray(payload) ? payload : payload?.items ?? [];
+  const sessionToken = Array.isArray(payload) ? null : payload?.session_token ?? null;
+  const customerId = Array.isArray(payload) ? null : payload?.customer_id ?? null;
+
+  if (sessionToken) {
+    setSessionToken(sessionToken);
+  }
+
+  return { items, session_token: sessionToken, customer_id: customerId };
 }
 
 export async function mergeWishlist(payload?: { session_token?: string }) {
