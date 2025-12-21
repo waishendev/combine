@@ -52,7 +52,7 @@ return [
         'x_signature' => env('BILPLZ_X_SIGNATURE', env('BILLPLZ_X_SIGNATURE_KEY')),
         'base_url' => env('BILPLZ_BASE_URL', 'https://www.billplz.com/api/v3'),
         'frontend_url' => env('FRONTEND_URL'),
-        'public_url' => env('APP_PUBLIC_URL', env('APP_URL')),
+        'public_url' =>  env('APP_URL')
     ],
 
 ];

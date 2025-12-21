@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // ⭐ 必须：让 next build 产出 .next/standalone
+  output: "standalone",
+
   reactCompiler: true,
+
   images: {
     remotePatterns: [
       // local backend

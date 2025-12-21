@@ -11,7 +11,7 @@ import { useCart } from "@/contexts/CartContext";
 const navItems = [
   { label: "My Account", href: "/account" },
   { label: "My Orders", href: "/account/orders" },
-  { label: "My Wishlist", href: "/account/wishlist" },
+  // { label: "My Wishlist", href: "/account/wishlist" },
 ];
 
 type AccountLayoutShellProps = {
