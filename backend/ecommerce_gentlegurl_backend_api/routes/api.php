@@ -143,7 +143,7 @@ Route::prefix('/public/shop')->group(function () {
 
         // Order History
         Route::get('/orders', [PublicOrderHistoryController::class, 'index']);
-        Route::get('/orders/{order}', [PublicOrderHistoryController::class, 'show']);
+        Route::get('/orders/{id}', [PublicOrderHistoryController::class, 'showById']);
 
         Route::get('/returns', [PublicReturnController::class, 'index']);
         Route::get('/returns/{returnRequest}', [PublicReturnController::class, 'show']);

@@ -9,6 +9,7 @@ export type OrderItemSummary = {
   quantity: number;
   unit_price?: string | number;
   line_total?: string | number;
+  product_image?: string | null;
 };
 
 export type OrderSummary = {
