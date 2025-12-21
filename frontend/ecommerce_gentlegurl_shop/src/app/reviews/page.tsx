@@ -171,8 +171,8 @@ export default function ReviewsPage() {
     try {
       await submitPageReview({
         store_location_id: selectedLocationId,
-        name: customer ? undefined : form.name,
-        email: customer ? undefined : form.email || undefined,
+        name: customer ? customer.profile.name : form.name,
+        email: customer ? customer.profile.email : form.email || undefined,
         rating: form.rating,
         title: form.title || undefined,
         content: form.body,
