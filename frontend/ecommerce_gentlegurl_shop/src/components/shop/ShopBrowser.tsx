@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ProductGrid from "@/components/products/ProductGrid";
+import { getOrCreateSessionToken } from "@/lib/sessionToken";
 
 const SORT_OPTIONS = [
   { value: "latest", label: "Latest" },
@@ -178,12 +179,18 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         params.set("max_price", appliedMaxPrice);
       }
 
+      const sessionToken = getOrCreateSessionToken();
+      if (sessionToken) {
+        params.set("session_token", sessionToken);
+      }
+
       console.log("[ShopBrowser] products params:", params.toString());
       
       const res = await fetch(
         `/api/proxy/public/shop/products?${params.toString()}`,
         {
           cache: "no-store",
+          credentials: "include",
         },
       );
 
