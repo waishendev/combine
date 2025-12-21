@@ -571,20 +571,17 @@ export async function getAccountOverview() {
 }
 
 export async function toggleWishlist(productId: number) {
-  const res = await fetch("/api/proxy/public/shop/wishlist/toggle", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ product_id: productId }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Wishlist toggle failed: ${res.status} ${text}`);
-  }
-
-  return res.json();
+  return post<{ is_favorited: boolean; product_id: number; session_token?: string }>(
+    "/public/shop/wishlist/toggle",
+    { product_id: productId },
+    { includeSessionToken: true, headers: { Accept: "application/json" } },
+  );
 }
 
+export async function mergeWishlist(payload?: { session_token?: string }) {
+  return post<{ success?: boolean }>(
+    "/public/shop/wishlist/merge",
+    payload,
+    { includeSessionToken: payload?.session_token === undefined },
+  );
+}

@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toggleWishlist } from "@/lib/apiClient";
-import { useAuth } from "@/contexts/AuthContext";
 
 type Props = {
   productId: number;
@@ -39,23 +37,13 @@ export function WishlistToggleButton({
 }: Props) {
   const [isWishlisted, setIsWishlisted] = useState(initialIsWishlisted);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
-  const { customer } = useAuth();
 
   const handleClick = async () => {
-    if (!customer) {
-      router.push("/login");
-      return;
-    }
-
     try {
       setLoading(true);
-      await toggleWishlist(productId);
-      setIsWishlisted((prev) => {
-        const next = !prev;
-        onToggled?.(next);
-        return next;
-      });
+      const response = await toggleWishlist(productId);
+      setIsWishlisted(response.is_favorited);
+      onToggled?.(response.is_favorited);
     } catch (error) {
       console.error("[WishlistToggleButton] Error:", error);
     } finally {

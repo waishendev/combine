@@ -12,8 +12,10 @@ import {
   getAccountOverview,
   loginCustomer,
   logoutCustomer,
+  mergeWishlist,
   registerCustomer,
 } from "../lib/apiClient";
+import { getOrCreateSessionToken } from "../lib/sessionToken";
 
 type AuthCustomer = AccountOverview;
 
@@ -44,6 +46,17 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
   const [customer, setCustomer] = useState<AuthCustomer | null>(initialCustomer ?? null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
+  const mergeWishlistAfterLogin = useCallback(async () => {
+    const sessionToken = getOrCreateSessionToken();
+    if (!sessionToken) return;
+
+    try {
+      await mergeWishlist({ session_token: sessionToken });
+    } catch {
+      // wishlist merge is best-effort
+    }
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -62,6 +75,7 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
       try {
         await loginCustomer({ email, password });
         await refreshProfile();
+        await mergeWishlistAfterLogin();
         if (onLoginSuccess) {
           await onLoginSuccess();
         }
@@ -69,7 +83,7 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
         setIsLoading(false);
       }
     },
-    [onLoginSuccess, refreshProfile],
+    [mergeWishlistAfterLogin, onLoginSuccess, refreshProfile],
   );
 
   const register = useCallback(
@@ -85,6 +99,7 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
         await registerCustomer(payload);
         await loginCustomer({ email: payload.email, password: payload.password });
         await refreshProfile();
+        await mergeWishlistAfterLogin();
         if (onLoginSuccess) {
           await onLoginSuccess();
         }
@@ -92,7 +107,7 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
         setIsLoading(false);
       }
     },
-    [onLoginSuccess, refreshProfile],
+    [mergeWishlistAfterLogin, onLoginSuccess, refreshProfile],
   );
 
   const logout = useCallback(async () => {
