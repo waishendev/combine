@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\PageReview;
+use App\Models\Ecommerce\ReviewPhoto;
 use App\Services\SettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,6 +41,7 @@ class PublicPageReviewController extends Controller
         $reviews = PageReview::query()
             ->where('store_location_id', $validated['store_location_id'])
             ->orderByDesc('created_at')
+            ->with('photos')
             ->paginate($perPage);
 
         return $this->respond([
@@ -77,11 +79,15 @@ class PublicPageReviewController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'rating' => ['required', 'integer', 'min:1', 'max:5'],
             'title' => ['nullable', 'string', 'max:255'],
-            'body' => ['required', 'string', 'min:5'],
+            'content' => ['required_without:body', 'nullable', 'string', 'min:5'],
+            'body' => ['required_without:content', 'nullable', 'string', 'min:5'],
+            'photos' => ['nullable', 'array'],
+            'photos.*' => ['file', 'image', 'max:5120'],
         ]);
 
-        $name = $validated['name'] ?? $customer?->name ?? 'Guest';
-        $email = $validated['email'] ?? $customer?->email;
+        $name = $customer?->name ?? $validated['name'] ?? 'Guest';
+        $email = $customer?->email ?? $validated['email'] ?? null;
+        $body = $validated['content'] ?? $validated['body'];
 
         $review = PageReview::create([
             'store_location_id' => $validated['store_location_id'],
@@ -90,8 +96,21 @@ class PublicPageReviewController extends Controller
             'email' => $email,
             'rating' => $validated['rating'],
             'title' => $validated['title'] ?? null,
-            'body' => $validated['body'],
+            'body' => $body,
         ]);
+
+        if ($request->hasFile('photos')) {
+            foreach ($request->file('photos') as $photo) {
+                $path = $photo->store('review-photos', 'public');
+
+                ReviewPhoto::create([
+                    'review_id' => $review->id,
+                    'file_path' => $path,
+                ]);
+            }
+        }
+
+        $review->load('photos');
 
         return $this->respond($review, 'Review submitted successfully.');
     }

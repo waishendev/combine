@@ -176,6 +176,7 @@ export type PageReview = {
   body: string;
   created_at?: string;
   updated_at?: string;
+  photos?: ReviewPhoto[];
 };
 
 export type PageReviewList = {
@@ -189,6 +190,21 @@ export type PageReviewList = {
 
 export type PageReviewSetting = {
   enabled: boolean;
+};
+
+export type ReviewPhoto = {
+  id: number;
+  review_id: number;
+  file_path: string;
+  file_url?: string | null;
+};
+
+export type StoreLocationImage = {
+  id: number;
+  store_location_id: number;
+  image_path: string;
+  image_url?: string | null;
+  sort_order?: number;
 };
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -474,6 +490,8 @@ export type PublicStoreLocation = {
   postcode: string | null;
   country: string;
   phone: string | null;
+  opening_hours?: Record<string, string> | null;
+  images?: StoreLocationImage[];
 };
 
 export type OrderLookupResponse = {
@@ -550,8 +568,16 @@ export async function getStoreLocations(): Promise<PublicStoreLocation[]> {
   return response.data;
 }
 
+export async function getStoreLocationDetail(id: number): Promise<PublicStoreLocation> {
+  const response = await get<{ data: PublicStoreLocation }>(`/public/shop/store-locations/${id}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  return response.data;
+}
+
 export async function getPageReviewSettings(): Promise<PageReviewSetting> {
-  const response = await get<{ data: PageReviewSetting }>("/public/shop/page-reviews/settings", {
+  const response = await get<{ data: PageReviewSetting }>("/public/shop/reviews/settings", {
     headers: { Accept: "application/json" },
   });
 
@@ -573,7 +599,7 @@ export async function getPageReviews(params: {
     search.set("per_page", String(params.per_page));
   }
 
-  const response = await get<{ data: PageReviewList }>(`/public/shop/page-reviews?${search.toString()}`, {
+  const response = await get<{ data: PageReviewList }>(`/public/shop/reviews?${search.toString()}`, {
     headers: { Accept: "application/json" },
   });
 
@@ -586,11 +612,38 @@ export type SubmitPageReviewPayload = {
   email?: string | null;
   rating: number;
   title?: string | null;
-  body: string;
+  body?: string;
+  content?: string;
+  photos?: File[] | null;
 };
 
 export async function submitPageReview(payload: SubmitPageReviewPayload): Promise<PageReview> {
-  const response = await post<{ data: PageReview }>("/public/shop/page-reviews", payload, {
+  const formData = new FormData();
+  formData.append("store_location_id", String(payload.store_location_id));
+  formData.append("rating", String(payload.rating));
+
+  if (payload.title !== undefined && payload.title !== null) {
+    formData.append("title", payload.title);
+  }
+
+  if (payload.content ?? payload.body) {
+    formData.append("content", payload.content ?? payload.body ?? "");
+  }
+
+  if (payload.name) {
+    formData.append("name", payload.name);
+  }
+
+  if (payload.email) {
+    formData.append("email", payload.email);
+  }
+
+  if (payload.photos) {
+    payload.photos.forEach((file) => formData.append("photos[]", file));
+  }
+
+  const response = await post<{ data: PageReview }>("/public/shop/reviews", undefined, {
+    body: formData,
     headers: { Accept: "application/json" },
   });
 

@@ -11,6 +11,7 @@ import {
   getPageReviewSettings,
   getPageReviews,
   getStoreLocations,
+  getStoreLocationDetail,
   submitPageReview,
 } from "@/lib/apiClient";
 
@@ -49,6 +50,8 @@ export default function ReviewsPage() {
   const [locations, setLocations] = useState<PublicStoreLocation[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [loadingLocations, setLoadingLocations] = useState(false);
+  const [storeDetail, setStoreDetail] = useState<PublicStoreLocation | null>(null);
+  const [loadingStoreDetail, setLoadingStoreDetail] = useState(false);
 
   const [reviews, setReviews] = useState<PageReview[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -60,6 +63,7 @@ export default function ReviewsPage() {
     rating: 5,
     title: "",
     body: "",
+    photos: [] as File[],
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -98,6 +102,24 @@ export default function ReviewsPage() {
 
     loadLocations();
   }, []);
+
+  useEffect(() => {
+    const loadStoreDetail = async () => {
+      if (!selectedLocationId) return;
+      setLoadingStoreDetail(true);
+      try {
+        const data = await getStoreLocationDetail(selectedLocationId);
+        setStoreDetail(data);
+      } catch (err) {
+        setError(getErrorMessage(err));
+        setStoreDetail(null);
+      } finally {
+        setLoadingStoreDetail(false);
+      }
+    };
+
+    loadStoreDetail();
+  }, [selectedLocationId]);
 
   useEffect(() => {
     if (!customer) return;
@@ -149,11 +171,12 @@ export default function ReviewsPage() {
     try {
       await submitPageReview({
         store_location_id: selectedLocationId,
-        name: form.name || customer?.profile.name,
-        email: form.email || customer?.profile.email || undefined,
+        name: customer ? undefined : form.name,
+        email: customer ? undefined : form.email || undefined,
         rating: form.rating,
         title: form.title || undefined,
-        body: form.body,
+        content: form.body,
+        photos: form.photos,
       });
 
       setMessage("Thank you for your review!");
@@ -162,6 +185,7 @@ export default function ReviewsPage() {
         title: "",
         body: "",
         rating: 5,
+        photos: [],
       }));
       await fetchReviews(1);
     } catch (err) {
@@ -207,6 +231,25 @@ export default function ReviewsPage() {
       </div>
 
       <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        {storeDetail?.images && storeDetail.images.length > 0 ? (
+          <div className="mb-4 overflow-hidden rounded-lg">
+            <div className="flex gap-3 overflow-x-auto">
+              {storeDetail.images.map((image) => (
+                <img
+                  key={image.id}
+                  src={image.image_url || image.image_path}
+                  alt={storeDetail.name}
+                  className="h-48 min-w-[240px] rounded-lg object-cover"
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mb-4 flex h-48 items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-500">
+            {loadingStoreDetail ? "Loading store photos..." : "No store photos available"}
+          </div>
+        )}
+
         <label className="block text-sm font-medium text-gray-700">
           Select Store Location
           <select
@@ -222,6 +265,44 @@ export default function ReviewsPage() {
             ))}
           </select>
         </label>
+
+        {storeDetail && (
+          <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-4">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {storeDetail.name} {storeDetail.code ? `(${storeDetail.code})` : ""}
+                </h3>
+              </div>
+              <p className="text-sm text-gray-700">
+                {[
+                  storeDetail.address_line1,
+                  storeDetail.address_line2,
+                  storeDetail.city,
+                  storeDetail.state,
+                  storeDetail.postcode,
+                  storeDetail.country,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              </p>
+              {storeDetail.phone && <p className="text-sm text-gray-700">📞 {storeDetail.phone}</p>}
+              {storeDetail.opening_hours && (
+                <div className="text-sm text-gray-700">
+                  <p className="font-medium">Opening Hours</p>
+                  <ul className="mt-1 space-y-1 text-gray-600">
+                    {Object.entries(storeDetail.opening_hours).map(([key, value]) => (
+                      <li key={key} className="flex justify-between">
+                        <span className="capitalize">{key.replace("_", " ")}:</span>
+                        <span>{value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -270,6 +351,18 @@ export default function ReviewsPage() {
                   </div>
                   {review.title && <p className="mt-2 text-sm font-medium text-gray-900">{review.title}</p>}
                   <p className="mt-1 text-sm text-gray-700">{review.body}</p>
+                  {review.photos && review.photos.length > 0 && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {review.photos.map((photo) => (
+                        <img
+                          key={photo.id}
+                          src={photo.file_url || photo.file_path}
+                          alt="Review photo"
+                          className="h-24 w-full rounded-lg object-cover"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </article>
               ))}
             </div>
@@ -304,29 +397,31 @@ export default function ReviewsPage() {
           <p className="mt-1 text-sm text-gray-600">Share your experience with this store.</p>
 
           <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="text-sm font-medium text-gray-700">
-                Name
-                <input
-                  type="text"
-                  className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                  value={form.name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                  required={!customer}
-                  placeholder="Your name"
-                />
-              </label>
-              <label className="text-sm font-medium text-gray-700">
-                Email (optional)
-                <input
-                  type="email"
-                  className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                  value={form.email}
-                  onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-                  placeholder="you@example.com"
-                />
-              </label>
-            </div>
+            {!customer && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Name
+                  <input
+                    type="text"
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                    value={form.name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                    required
+                    placeholder="Your name"
+                  />
+                </label>
+                <label className="text-sm font-medium text-gray-700">
+                  Email (optional)
+                  <input
+                    type="email"
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                    value={form.email}
+                    onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                    placeholder="you@example.com"
+                  />
+                </label>
+              </div>
+            )}
 
             <label className="text-sm font-medium text-gray-700">
               Rating
@@ -366,6 +461,19 @@ export default function ReviewsPage() {
                 required
                 minLength={5}
                 placeholder="Tell us about your visit..."
+              />
+            </label>
+
+            <label className="text-sm font-medium text-gray-700">
+              Upload photos (optional)
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                className="mt-2 block w-full text-sm text-gray-700"
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, photos: e.target.files ? Array.from(e.target.files) : [] }))
+                }
               />
             </label>
 

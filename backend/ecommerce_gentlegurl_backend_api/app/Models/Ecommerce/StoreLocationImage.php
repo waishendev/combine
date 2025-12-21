@@ -6,31 +6,27 @@ use DateTimeInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
-class PageReview extends Model
+class StoreLocationImage extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'store_location_id',
-        'customer_id',
-        'name',
-        'email',
-        'rating',
-        'title',
-        'body',
+        'image_path',
+        'sort_order',
+    ];
+
+    protected $appends = [
+        'image_url',
     ];
 
     protected function casts(): array
     {
         return [
-            'rating' => 'integer',
+            'sort_order' => 'integer',
         ];
-    }
-
-    public function photos()
-    {
-        return $this->hasMany(ReviewPhoto::class, 'review_id');
     }
 
     public function storeLocation(): BelongsTo
@@ -38,17 +34,11 @@ class PageReview extends Model
         return $this->belongsTo(StoreLocation::class);
     }
 
-    public function customer(): BelongsTo
+    public function getImageUrlAttribute(): ?string
     {
-        return $this->belongsTo(Customer::class);
+        return $this->image_path ? Storage::url($this->image_path) : null;
     }
 
-    /**
-     * Prepare a date for array / JSON serialization.
-     *
-     * @param  \DateTimeInterface  $date
-     * @return string
-     */
     protected function serializeDate(DateTimeInterface $date)
     {
         return $date->format('Y-m-d H:i:s');

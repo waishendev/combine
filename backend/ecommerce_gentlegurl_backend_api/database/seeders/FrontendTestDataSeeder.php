@@ -11,6 +11,7 @@ use App\Models\Ecommerce\ProductImage;
 use App\Models\Ecommerce\ShopMenuItem;
 use App\Models\Ecommerce\PageReview;
 use App\Models\Ecommerce\StoreLocation;
+use App\Models\Ecommerce\StoreLocationImage;
 use App\Models\Ecommerce\Voucher;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\LoyaltySetting;
@@ -633,6 +634,11 @@ class FrontendTestDataSeeder extends Seeder
                 'country' => 'Malaysia',
                 'phone' => '+603-1234-5678',
                 'is_active' => true,
+                'opening_hours' => [
+                    'mon_fri' => '10:00 - 19:00',
+                    'sat' => '10:00 - 17:00',
+                    'sun' => 'Closed',
+                ],
             ],
             [
                 'name' => '分店 - 槟城乔治市',
@@ -645,6 +651,11 @@ class FrontendTestDataSeeder extends Seeder
                 'country' => 'Malaysia',
                 'phone' => '+604-8765-4321',
                 'is_active' => true,
+                'opening_hours' => [
+                    'mon_fri' => '10:00 - 18:00',
+                    'sat' => '10:00 - 16:00',
+                    'sun' => 'Closed',
+                ],
             ],
             [
                 'name' => '分店 - 新山',
@@ -657,14 +668,34 @@ class FrontendTestDataSeeder extends Seeder
                 'country' => 'Malaysia',
                 'phone' => '+607-1111-2222',
                 'is_active' => true,
+                'opening_hours' => [
+                    'mon_fri' => '10:00 - 18:30',
+                    'sat' => '10:00 - 17:00',
+                    'sun' => 'Closed',
+                ],
             ],
         ];
 
         foreach ($stores as $store) {
-            StoreLocation::updateOrCreate(
+            $storeModel = StoreLocation::updateOrCreate(
                 ['code' => $store['code']],
                 $store
             );
+
+            $images = [
+                "/images/stores/{$store['code']}-1.jpg",
+                "/images/stores/{$store['code']}-2.jpg",
+            ];
+
+            foreach ($images as $index => $imagePath) {
+                StoreLocationImage::updateOrCreate(
+                    [
+                        'store_location_id' => $storeModel->id,
+                        'image_path' => $imagePath,
+                    ],
+                    ['sort_order' => $index]
+                );
+            }
         }
     }
 

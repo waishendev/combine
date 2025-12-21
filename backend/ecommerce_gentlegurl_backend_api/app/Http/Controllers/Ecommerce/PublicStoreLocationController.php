@@ -25,8 +25,18 @@ class PublicStoreLocationController extends Controller
                 'postcode',
                 'country',
                 'phone',
+                'opening_hours',
             ]);
 
         return $this->respond($locations);
+    }
+
+    public function show(StoreLocation $storeLocation): JsonResponse
+    {
+        abort_unless($storeLocation->is_active, 404);
+
+        $storeLocation->load('images');
+
+        return $this->respond($storeLocation);
     }
 }
