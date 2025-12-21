@@ -79,6 +79,9 @@ Route::prefix('/public/auth')->middleware('api.session')->group(function () {
 
 Route::post('/public/auth/login/token', [PublicCustomerAuthController::class, 'loginWithToken']);
 
+Route::post('/public/payments/billplz/callback', [BillplzCallbackController::class, 'callback']);
+Route::get('/public/payments/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
+// Backwards compatibility for previous callback URLs
 Route::post('/payment/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/payment/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
 

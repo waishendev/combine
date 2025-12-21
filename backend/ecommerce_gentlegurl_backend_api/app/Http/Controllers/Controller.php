@@ -12,4 +12,9 @@ abstract class Controller
             'success' => $success,
         ], $status);
     }
+
+    protected function respondError(?string $message = null, int $status = 400, mixed $data = null)
+    {
+        return $this->respond($data, $message, false, $status);
+    }
 }

@@ -46,9 +46,7 @@ export default function CheckoutForm() {
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"manual_transfer" | "billplz_fpx">(
-    "manual_transfer",
-  );
+  const [paymentMethod, setPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
   const [error, setError] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
@@ -96,16 +94,16 @@ export default function CheckoutForm() {
 
   const isSelfPickup = shippingMethod === "self_pickup";
 
-    const safeTotals = useMemo(() => {
-      const subtotal = Number(totals.subtotal ?? 0);
-      const discount = Number(totals.discount_total ?? 0);
-      const shipping = isSelfPickup ? 0 : Number(totals.shipping_fee ?? shippingFlatFee ?? 0);
-      const computedGrand = subtotal - discount + shipping;
-      const rawGrand = Number(totals.grand_total ?? computedGrand);
-      const grand = isSelfPickup ? computedGrand : rawGrand;
+  const safeTotals = useMemo(() => {
+    const subtotal = Number(totals.subtotal ?? 0);
+    const discount = Number(totals.discount_total ?? 0);
+    const shipping = isSelfPickup ? 0 : Number(totals.shipping_fee ?? shippingFlatFee ?? 0);
+    const computedGrand = subtotal - discount + shipping;
+    const rawGrand = Number(totals.grand_total ?? computedGrand);
+    const grand = isSelfPickup ? computedGrand : rawGrand;
 
-      return { subtotal, discount, shipping, grand };
-    }, [totals.discount_total, totals.grand_total, totals.shipping_fee, totals.subtotal, isSelfPickup, shippingFlatFee]);
+    return { subtotal, discount, shipping, grand };
+  }, [totals.discount_total, totals.grand_total, totals.shipping_fee, totals.subtotal, isSelfPickup, shippingFlatFee]);
 
   const fetchAddresses = useCallback(async () => {
     if (!isLoggedIn) {
@@ -231,6 +229,13 @@ export default function CheckoutForm() {
       return;
     }
 
+    if (shippingMethod === "self_pickup") {
+      if (!form.shipping_name || !form.shipping_phone) {
+        setError("Please provide your name and phone number for pickup.");
+        return;
+      }
+    }
+
     if (isLoggedIn && shippingMethod === "shipping" && !selectedAddress) {
       setError("Please add and select an address.");
       return;
@@ -274,18 +279,29 @@ export default function CheckoutForm() {
       removeVoucher();
       setVoucherCode("");
 
-      if (order.payment_method === "billplz_fpx" && order.payment?.billplz_url) {
-        window.location.href = order.payment.billplz_url!;
+      const isBillplzMethod =
+        order.payment_method === "billplz_fpx" || order.payment_method === "billplz_card";
+      const paymentUrl = order.payment_url ?? order.payment?.billplz_url;
+
+      if (isBillplzMethod) {
+        if (paymentUrl) {
+          window.location.href = paymentUrl;
+        } else {
+          setError("Unable to start Billplz payment. Please try again.");
+        }
         return;
       }
 
-      const query = new URLSearchParams({
+      const searchParams = new URLSearchParams({
         order_no: order.order_no,
         order_id: String(order.order_id),
         payment_method: order.payment_method,
-      }).toString();
+      });
+      if (order.payment_provider ?? order.payment?.provider) {
+        searchParams.set("provider", order.payment_provider ?? order.payment?.provider ?? "");
+      }
 
-      router.push(`/thank-you?${query}`);
+      router.push(`/payment-result?${searchParams.toString()}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create order.";
       setError(message);
@@ -417,7 +433,7 @@ export default function CheckoutForm() {
 
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[2fr,1fr]">
         <div className="space-y-4">
-          {!isSelfPickup && (
+          {!isSelfPickup ? (
             <section className="rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Contact &amp; Address</h2>
@@ -550,6 +566,35 @@ export default function CheckoutForm() {
                   </div>
                 </div>
               )}
+            </section>
+          ) : (
+            <section className="rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">Pickup Contact</h2>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Full Name</label>
+                  <input
+                    required
+                    value={form.shipping_name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, shipping_name: e.target.value }))}
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Phone Number</label>
+                  <input
+                    required
+                    value={form.shipping_phone}
+                    onChange={(e) => setForm((prev) => ({ ...prev, shipping_phone: e.target.value }))}
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-[var(--foreground)]/70">
+                We need your name and phone to create the payment and prepare your pickup.
+              </p>
             </section>
           )}
 
@@ -769,6 +814,16 @@ export default function CheckoutForm() {
                   onChange={() => setPaymentMethod("billplz_fpx")}
                 />
                 <span>Online Banking (Billplz FPX)</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="payment_method"
+                  value="billplz_card"
+                  checked={paymentMethod === "billplz_card"}
+                  onChange={() => setPaymentMethod("billplz_card")}
+                />
+                <span>Credit Card (Billplz)</span>
               </label>
             </div>
           </div>

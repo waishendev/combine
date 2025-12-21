@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { lookupOrder, uploadPaymentSlip, OrderLookupResponse } from "@/lib/apiClient";
+import { useCart } from "@/contexts/CartContext";
 
 type Props = {
   orderNo: string;
@@ -22,6 +23,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const { reloadCart } = useCart();
 
   const loadOrder = useCallback(async () => {
     setIsLoading(true);
@@ -40,6 +42,12 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   useEffect(() => {
     void loadOrder();
   }, [loadOrder]);
+
+  useEffect(() => {
+    if (order?.payment_status === "paid") {
+      void reloadCart();
+    }
+  }, [order?.payment_status, reloadCart]);
 
   const latestUpload = useMemo(() => {
     if (!order?.uploads?.length) return null;
@@ -100,6 +108,9 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   };
 
   const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
+  const isBillplzPayment = (paymentMethod ?? order?.payment_method)?.startsWith("billplz");
+  const paymentProvider = order?.payment_provider ?? (isBillplzPayment ? "billplz" : "manual");
+  const isPaid = order?.payment_status === "paid";
 
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-center text-[var(--foreground)]">
@@ -116,8 +127,43 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
         <div className="mt-6 space-y-4 text-left text-sm text-[var(--foreground)]">
           <div className="rounded-lg border border-[var(--muted)] bg-white/80 p-4 shadow-sm">
             <p className="font-medium">Order Summary</p>
-            <p className="mt-1 text-[var(--foreground)]/70">Amount: RM {Number(order.grand_total).toFixed(2)}</p>
-            <p className="text-[var(--foreground)]/70">Status: {order.payment_status ?? "unpaid"}</p>
+            <div className="mt-2 space-y-2 text-[var(--foreground)]/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--foreground)]/70">Amount</span>
+                <span className="font-semibold">RM {Number(order.grand_total).toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--foreground)]/70">Payment Status</span>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    isPaid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {isPaid ? "Paid" : "Pending"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--foreground)]/70">Payment Method</span>
+                <span className="font-medium">
+                  {paymentProvider === "billplz" ? "Billplz" : "Manual Transfer"}
+                </span>
+              </div>
+            </div>
+
+            {!isPaid && (
+              <div className="mt-3 flex flex-col gap-2 rounded-md bg-[var(--muted)]/40 p-3 text-xs text-[var(--foreground)]/80 sm:flex-row sm:items-center sm:justify-between">
+                <p>
+                  Payment is still processing{isBillplzPayment ? " • Billplz may take a few seconds to confirm." : "."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void loadOrder()}
+                  className="w-full rounded bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[var(--accent-strong)] sm:w-auto"
+                >
+                  Refresh Status
+                </button>
+              </div>
+            )}
           </div>
 
           {isManualTransfer && (

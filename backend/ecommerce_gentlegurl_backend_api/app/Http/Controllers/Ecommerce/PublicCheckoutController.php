@@ -11,21 +11,27 @@ use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\Cart;
+use App\Services\BillplzService;
 use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
 use App\Services\Voucher\VoucherService;
-use App\Services\Payments\BillplzClient;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use RuntimeException;
+use Throwable;
 
 class PublicCheckoutController extends Controller
 {
     use ResolvesCurrentCustomer;
 
-    public function __construct(protected VoucherService $voucherService)
+    public function __construct(
+        protected VoucherService $voucherService,
+        protected BillplzService $billplzService,
+    )
     {
     }
 
@@ -33,11 +39,12 @@ class PublicCheckoutController extends Controller
     {
         $validated = $this->validateOrderRequest($request);
         $customer = $this->currentCustomer();
+        $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method'] ?? 'pickup');
         $calculation = $this->calculateTotals(
             $validated['items'],
             $validated['voucher_code'] ?? null,
             $customer,
-            $validated['shipping_method'] ?? 'pickup'
+            $shippingMethod
         );
 
         return $this->respond([
@@ -73,7 +80,8 @@ class PublicCheckoutController extends Controller
 
         $customer = $this->currentCustomer();
 
-        $calculation = $this->calculateTotals($validated['items'], $validated['voucher_code'] ?? null, $customer, $validated['shipping_method']);
+        $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method']);
+        $calculation = $this->calculateTotals($validated['items'], $validated['voucher_code'] ?? null, $customer, $shippingMethod);
 
         if (!empty($validated['voucher_code']) && (!$calculation['voucher_result'] || !$calculation['voucher_result']->valid)) {
             return $this->respond(null, $calculation['voucher_error'] ?? __('Invalid voucher'), false, 422);
@@ -110,92 +118,121 @@ class PublicCheckoutController extends Controller
         $shippingPhone = $validated['shipping_phone'] ?? data_get($validated, 'customer.phone') ?? $customer?->phone;
         $shippingAddressLine1 = $validated['shipping_address_line1'] ?? ($validated['shipping_address'] ?? null);
 
-        $order = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount) {
-            $order = Order::create([
-                'order_number' => $this->generateOrderNumber(),
-                'customer_id' => $customer?->id,
-                'status' => 'pending',
-                'payment_status' => 'unpaid',
-                'payment_method' => $paymentMethod,
-                'payment_gateway_id' => null,
-                'bank_account_id' => $bankAccount?->id,
-                'pickup_or_shipping' => $validated['shipping_method'],
-                'pickup_store_id' => $validated['store_location_id'] ?? null,
-                'subtotal' => $calculation['subtotal'],
-                'discount_total' => $calculation['discount_total'],
-                'shipping_fee' => $calculation['shipping_fee'],
-                'grand_total' => $calculation['grand_total'],
-                'voucher_code_snapshot' => $calculation['voucher']['code'] ?? ($validated['voucher_code'] ?? null),
-                'placed_at' => Carbon::now(),
-                'shipping_name' => $shippingName,
-                'shipping_phone' => $shippingPhone,
-                'shipping_address_line1' => $shippingAddressLine1,
-                'shipping_address_line2' => $validated['shipping_address_line2'] ?? null,
-                'shipping_city' => $validated['shipping_city'] ?? null,
-                'shipping_state' => $validated['shipping_state'] ?? null,
-                'shipping_country' => $validated['shipping_country'] ?? null,
-                'shipping_postcode' => $validated['shipping_postcode'] ?? null,
-            ]);
-
-            foreach ($calculation['items'] as $item) {
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'product_id' => $item['product_id'],
-                    'product_name_snapshot' => $item['name'],
-                    'sku_snapshot' => $item['sku'] ?? null,
-                    'price_snapshot' => $item['unit_price'],
-                    'quantity' => $item['quantity'],
-                    'line_total' => $item['line_total'],
-                ]);
-            }
-
-            if (!empty($calculation['voucher']) && $calculation['voucher']['discount_amount'] > 0) {
-                $voucher = $calculation['voucher'];
-                OrderVoucher::create([
-                    'order_id' => $order->id,
-                    'voucher_id' => $voucher['id'] ?? null,
-                    'code_snapshot' => $voucher['code'],
-                    'discount_amount' => $voucher['discount_amount'],
-                ]);
-
-                if (!empty($voucher['id'])) {
-                    $this->voucherService->recordUsage($voucher['id'], $customer?->id, $order->id);
-                }
-            }
-
-            $this->removeOrderedCartItems($customer, $validated['session_token'] ?? null, $calculation['items']);
-
-            return $order;
-        });
-
+        $paymentProvider = str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual';
         $billplzUrl = null;
+        $billplzId = null;
 
-        if ($paymentMethod === 'billplz_fpx') {
-            /** @var BillplzClient $billplz */
-            $billplz = App::make(BillplzClient::class);
+        try {
+            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod) {
+                $order = Order::create([
+                    'order_number' => $this->generateOrderNumber(),
+                    'customer_id' => $customer?->id,
+                    'status' => 'pending',
+                    'payment_status' => 'unpaid',
+                    'payment_method' => $paymentMethod,
+                    'payment_provider' => $paymentProvider,
+                    'payment_gateway_id' => null,
+                    'bank_account_id' => $bankAccount?->id,
+                    'pickup_or_shipping' => $shippingMethod,
+                    'pickup_store_id' => $validated['store_location_id'] ?? null,
+                    'subtotal' => $calculation['subtotal'],
+                    'discount_total' => $calculation['discount_total'],
+                    'shipping_fee' => $calculation['shipping_fee'],
+                    'grand_total' => $calculation['grand_total'],
+                    'voucher_code_snapshot' => $calculation['voucher']['code'] ?? ($validated['voucher_code'] ?? null),
+                    'placed_at' => Carbon::now(),
+                    'shipping_name' => $shippingName,
+                    'shipping_phone' => $shippingPhone,
+                    'shipping_address_line1' => $shippingAddressLine1,
+                    'shipping_address_line2' => $validated['shipping_address_line2'] ?? null,
+                    'shipping_city' => $validated['shipping_city'] ?? null,
+                    'shipping_state' => $validated['shipping_state'] ?? null,
+                    'shipping_country' => $validated['shipping_country'] ?? null,
+                    'shipping_postcode' => $validated['shipping_postcode'] ?? null,
+                ]);
 
-            $amountSen = (int) round((float) $order->grand_total * 100);
-            $payerName = $validated['shipping_name'] ?? $customer?->name ?? 'Guest';
+                if ($customer) {
+                    $order->setRelation('customer', $customer);
+                }
 
-            $billResponse = $billplz->createBill([
-                'name' => $payerName,
-                'email' => $customer?->email,
-                'phone' => $validated['shipping_phone'] ?? $customer?->phone,
-                'amount_sen' => $amountSen,
-                'reference_1' => $order->order_number,
+                foreach ($calculation['items'] as $item) {
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'product_id' => $item['product_id'],
+                        'product_name_snapshot' => $item['name'],
+                        'sku_snapshot' => $item['sku'] ?? null,
+                        'price_snapshot' => $item['unit_price'],
+                        'quantity' => $item['quantity'],
+                        'line_total' => $item['line_total'],
+                    ]);
+                }
+
+                if (!empty($calculation['voucher']) && $calculation['voucher']['discount_amount'] > 0) {
+                    $voucher = $calculation['voucher'];
+                    OrderVoucher::create([
+                        'order_id' => $order->id,
+                        'voucher_id' => $voucher['id'] ?? null,
+                        'code_snapshot' => $voucher['code'],
+                        'discount_amount' => $voucher['discount_amount'],
+                    ]);
+
+                    if (!empty($voucher['id'])) {
+                        $this->voucherService->recordUsage($voucher['id'], $customer?->id, $order->id);
+                    }
+                }
+
+                $this->removeOrderedCartItems($customer, $validated['session_token'] ?? null, $calculation['items']);
+
+                $billplzUrl = null;
+                $billplzId = null;
+
+                if ($paymentProvider === 'billplz') {
+                    $billResponse = $this->billplzService->createBill($order);
+                    $billplzId = data_get($billResponse, 'id');
+                    $billplzUrl = data_get($billResponse, 'url');
+
+                    if (!$billplzId || !$billplzUrl) {
+                        throw new RuntimeException('Invalid Billplz response.');
+                    }
+
+                    $order->payment_reference = $billplzId;
+                    $order->payment_url = $billplzUrl;
+                    $order->payment_meta = [
+                        'provider' => 'billplz',
+                        'bill_id' => $billplzId,
+                        'collection_id' => data_get($billResponse, 'collection_id'),
+                        'state' => data_get($billResponse, 'state'),
+                        'reference_1' => data_get($billResponse, 'reference_1'),
+                    ];
+                    $order->save();
+
+                    BillplzBill::updateOrCreate(
+                        ['billplz_id' => $billplzId],
+                        [
+                            'order_id' => $order->id,
+                            'collection_id' => data_get($billResponse, 'collection_id'),
+                            'state' => data_get($billResponse, 'state'),
+                            'paid' => false,
+                            'amount' => data_get($billResponse, 'amount'),
+                            'payload' => $billResponse,
+                        ]
+                    );
+                }
+
+                return [$order, $billplzUrl, $billplzId];
+            });
+        } catch (Throwable $exception) {
+            Log::error('Failed to create order', [
+                'error' => $exception->getMessage(),
+                'payment_method' => $paymentMethod,
             ]);
 
-            BillplzBill::create([
-                'order_id' => $order->id,
-                'billplz_id' => $billResponse['id'] ?? null,
-                'collection_id' => $billResponse['collection_id'] ?? null,
-                'state' => $billResponse['state'] ?? null,
-                'paid' => false,
-                'amount' => $amountSen,
-                'payload' => $billResponse,
-            ]);
+            $status = $exception instanceof RuntimeException ? 422 : 500;
+            $message = $exception instanceof RuntimeException
+                ? $exception->getMessage()
+                : __('Unable to create order, please try again later.');
 
-            $billplzUrl = $billResponse['url'] ?? null;
+            return $this->respondError($message, $status);
         }
 
         return $this->respond([
@@ -205,8 +242,12 @@ class PublicCheckoutController extends Controller
             'payment_status' => $order->payment_status,
             'status' => $order->status,
             'payment_method' => $paymentMethod,
+            'payment_provider' => $paymentProvider,
+            'payment_reference' => $billplzId,
+            'payment_url' => $billplzUrl,
             'payment' => [
-                'provider' => $paymentMethod === 'billplz_fpx' ? 'billplz' : 'manual',
+                'provider' => $paymentProvider,
+                'billplz_id' => $billplzId,
                 'billplz_url' => $billplzUrl,
             ],
             'bank_account' => $bankAccount ? [
@@ -279,6 +320,9 @@ class PublicCheckoutController extends Controller
             'order_no' => $order->order_number,
             'grand_total' => $order->grand_total,
             'payment_method' => $order->payment_method,
+            'payment_provider' => $order->payment_provider,
+            'payment_reference' => $order->payment_reference,
+            'payment_url' => $order->payment_url,
             'payment_status' => $order->payment_status,
             'status' => $order->status,
             'bank_account' => $bankAccount,
@@ -334,8 +378,8 @@ class PublicCheckoutController extends Controller
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'voucher_code' => ['nullable', 'string'],
-            'shipping_method' => ['required', 'in:pickup,shipping'],
-            'store_location_id' => ['required_if:shipping_method,pickup', 'integer'],
+            'shipping_method' => ['required', 'in:pickup,shipping,self_pickup'],
+            'store_location_id' => ['required_unless:shipping_method,shipping', 'integer'],
             'shipping_postcode' => ['nullable', 'string'],
             'customer' => ['nullable', 'array'],
             'customer.name' => ['required_with:customer', 'string'],
@@ -343,15 +387,23 @@ class PublicCheckoutController extends Controller
             'customer.phone' => ['nullable', 'string'],
             'billing_address' => ['nullable', 'string'],
             'shipping_address' => ['nullable', 'string'],
-            'shipping_name' => ['nullable', 'string'],
-            'shipping_phone' => ['nullable', 'string'],
+            'shipping_name' => [
+                'nullable',
+                'string',
+                Rule::requiredIf(fn() => ($request->input('shipping_method') === 'self_pickup') || str_starts_with((string) $request->input('payment_method'), 'billplz_')),
+            ],
+            'shipping_phone' => [
+                'nullable',
+                'string',
+                Rule::requiredIf(fn() => ($request->input('shipping_method') === 'self_pickup') || str_starts_with((string) $request->input('payment_method'), 'billplz_')),
+            ],
             'shipping_address_line1' => ['nullable', 'string'],
             'shipping_address_line2' => ['nullable', 'string'],
             'shipping_city' => ['nullable', 'string'],
             'shipping_state' => ['nullable', 'string'],
             'shipping_country' => ['nullable', 'string'],
             'session_token' => ['nullable', 'string', 'max:100'],
-            'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx'],
+            'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card'],
             'bank_account_id' => [
                 $requirePaymentMethod ? 'required_if:payment_method,manual_transfer' : 'nullable',
                 'nullable',
@@ -359,6 +411,11 @@ class PublicCheckoutController extends Controller
                 'exists:bank_accounts,id',
             ],
         ]);
+    }
+
+    protected function normalizeShippingMethod(string $shippingMethod): string
+    {
+        return $shippingMethod === 'self_pickup' ? 'pickup' : $shippingMethod;
     }
 
     protected function calculateTotals(array $itemsInput, ?string $voucherCode, ?Customer $customer, string $shippingMethod): array
