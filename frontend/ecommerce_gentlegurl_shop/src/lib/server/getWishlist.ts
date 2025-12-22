@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 export async function getWishlist() {
   try {
     const cookieStore = await cookies();
+    const sessionToken = cookieStore.get("shop_session_token")?.value;
     const cookieHeader = cookieStore
       .getAll()
       .map((c) => `${c.name}=${c.value}`)
@@ -11,7 +12,11 @@ export async function getWishlist() {
     const baseUrl =
       process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
-    const url = `${baseUrl}/api/public/shop/wishlist`;
+    const url = new URL(`${baseUrl}/api/public/shop/wishlist`);
+
+    if (sessionToken) {
+      url.searchParams.set("session_token", sessionToken);
+    }
 
     const res = await fetch(url, {
       method: "GET",
