@@ -21,6 +21,9 @@ export type ProductDetail = {
   images?: ProductImage[];
   gallery?: (ProductImage | string)[];
   is_in_wishlist?: boolean;
+  dummy_sold_count?: number | null;
+  real_sold_count?: number | null;
+  sold_count?: number | null;
   review_summary?: ReviewSummary;
   recent_reviews?: ReviewItem[];
   review_settings?: ReviewSettings;

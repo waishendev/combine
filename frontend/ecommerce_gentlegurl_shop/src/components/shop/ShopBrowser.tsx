@@ -19,6 +19,7 @@ type Product = {
   slug?: string;
   images?: Array<{ image_path?: string }>;
   is_in_wishlist?: boolean;
+  sold_count?: number | string;
 };
 
 type ShopMenuCategory = {
