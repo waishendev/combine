@@ -9,8 +9,6 @@ import { trackGuestOrder } from "@/lib/apiClient";
 
 export default function TrackingPage() {
   const [orderNo, setOrderNo] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OrderTrackingResponse["data"] | null>(null);
@@ -22,7 +20,7 @@ export default function TrackingPage() {
     setLoading(true);
 
     try {
-      const response = await trackGuestOrder({ order_no: orderNo, email, phone });
+      const response = await trackGuestOrder({ order_no: orderNo});
       if (!response.success || !response.data) {
         setError(response.message || "Order not found or verification failed.");
         return;
@@ -41,10 +39,6 @@ export default function TrackingPage() {
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-12">
       <div className="rounded-3xl bg-white/80 p-6 shadow-sm ring-1 ring-pink-100">
         <h1 className="text-2xl font-semibold text-[var(--accent-strong)]">Track your order</h1>
-        <p className="mt-2 text-sm text-[var(--foreground)]/70">
-          Enter your order number and either the email or phone you used during checkout.
-        </p>
-
         <form onSubmit={handleSubmit} className="mt-6 grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
@@ -56,31 +50,6 @@ export default function TrackingPage() {
               required
               className="w-full rounded-xl border border-pink-100 bg-[var(--background-soft)]/60 px-3 py-2 text-[var(--foreground)] shadow-inner focus:border-[var(--accent-strong)] focus:outline-none"
               placeholder="e.g. ORD2025..."
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
-              Email (optional)
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-pink-100 bg-[var(--background-soft)]/60 px-3 py-2 text-[var(--foreground)] shadow-inner focus:border-[var(--accent-strong)] focus:outline-none"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
-              Phone (optional)
-            </label>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full rounded-xl border border-pink-100 bg-[var(--background-soft)]/60 px-3 py-2 text-[var(--foreground)] shadow-inner focus:border-[var(--accent-strong)] focus:outline-none"
-              placeholder="0123456789"
             />
           </div>
 

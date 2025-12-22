@@ -12,36 +12,13 @@ class PublicOrderTrackingController extends Controller
     {
         $validated = $request->validate([
             'order_no' => ['required', 'string'],
-            'email' => ['nullable', 'email'],
-            'phone' => ['nullable', 'string', 'max:50'],
         ]);
-
-        if (empty($validated['email']) && empty($validated['phone'])) {
-            return $this->respond(null, __('Either email or phone is required.'), false, 422);
-        }
 
         $order = Order::with(['items', 'customer'])
             ->where('order_number', $validated['order_no'])
             ->first();
 
         if (! $order) {
-            return $this->respond(null, __('Order not found or verification failed.'), false, 404);
-        }
-
-        $emailMatches = true;
-        $phoneMatches = true;
-
-        if (! empty($validated['email'])) {
-            $emailMatches = strtolower($order->customer?->email ?? '') === strtolower($validated['email']);
-        }
-
-        if (! empty($validated['phone'])) {
-            $submittedPhone = preg_replace('/\D+/', '', $validated['phone']);
-            $storedPhone = preg_replace('/\D+/', '', (string) ($order->shipping_phone ?? $order->customer?->phone ?? ''));
-            $phoneMatches = $submittedPhone !== '' && $submittedPhone === $storedPhone;
-        }
-
-        if (! $emailMatches || ! $phoneMatches) {
             return $this->respond(null, __('Order not found or verification failed.'), false, 404);
         }
 
