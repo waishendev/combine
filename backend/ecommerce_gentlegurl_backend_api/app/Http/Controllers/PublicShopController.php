@@ -15,10 +15,8 @@ use App\Models\Promotion;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\SettingService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class PublicShopController extends Controller
 {
@@ -400,24 +398,8 @@ class PublicShopController extends Controller
         $customer = $this->currentCustomer();
         $sessionToken = $customer ? null : ($request->query('session_token') ?? $request->cookie('shop_session_token'));
 
-        if (!$customer) {
-            if (!$sessionToken) {
-                $sessionToken = (string) Str::uuid();
-            }
-
-            Cookie::queue(
-                Cookie::make(
-                    'shop_session_token',
-                    $sessionToken,
-                    60 * 24 * 365,
-                    '/',
-                    null,
-                    config('session.secure', false),
-                    false,
-                    false,
-                    config('session.same_site', 'lax'),
-                )
-            );
+        if (!$customer && !$sessionToken) {
+            return [];
         }
 
         $query = $customer

@@ -727,21 +727,23 @@ export async function getAccountOverview() {
 }
 
 export async function toggleWishlist(productId: number) {
-  const response = await post<{ is_favorited: boolean; product_id: number; session_token?: string }>(
+  const response = await post<{ data: { is_favorited: boolean; product_id: number; session_token?: string } }>(
     "/public/shop/wishlist/toggle",
     { product_id: productId },
     { includeSessionToken: true, headers: { Accept: "application/json" } },
   );
 
-  if (response.session_token) {
-    setSessionToken(response.session_token);
+  const data = response.data;
+
+  if (data.session_token) {
+    setSessionToken(data.session_token);
   }
 
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("wishlist:updated", { detail: response }));
+    window.dispatchEvent(new CustomEvent("wishlist:updated", { detail: data }));
   }
 
-  return response;
+  return data;
 }
 
 export async function getWishlistItems() {

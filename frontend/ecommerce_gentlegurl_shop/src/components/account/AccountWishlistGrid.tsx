@@ -95,15 +95,6 @@ export function AccountWishlistGrid({ initialItems }: AccountWishlistGridProps) 
                     <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
                   </svg>
                 </Link>
-                {productId && (
-                  <WishlistToggleButton
-                    productId={productId}
-                    initialIsWishlisted
-                    variant="link"
-                    className="text-xs"
-                    onToggled={() => handleRemove(productId)}
-                  />
-                )}
               </div>
             </div>
           </div>
