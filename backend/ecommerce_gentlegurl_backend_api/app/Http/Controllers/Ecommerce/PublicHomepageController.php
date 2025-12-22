@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ecommerce;
 
+use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
 use App\Models\HomeSlider;
@@ -13,11 +14,15 @@ use App\Models\Ecommerce\SeoGlobal;
 use App\Models\Ecommerce\ShopMenuItem;
 use App\Services\SettingService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class PublicHomepageController extends Controller
 {
-    public function show()
+    use ResolvesCurrentCustomer;
+
+    public function show(Request $request)
     {
         $data = Cache::remember('public_homepage_v1', 300, function () {
             $now = Carbon::now();
@@ -163,6 +168,13 @@ class PublicHomepageController extends Controller
             ];
         });
 
+        $wishlistIds = $this->resolveWishlistProductIds($request);
+        $wishlistLookup = array_flip($wishlistIds);
+
+        $data['new_products'] = $this->mapProductsWithWishlistStatus($data['new_products'], $wishlistLookup);
+        $data['best_sellers'] = $this->mapProductsWithWishlistStatus($data['best_sellers'], $wishlistLookup);
+        $data['featured_products'] = $this->mapProductsWithWishlistStatus($data['featured_products'], $wishlistLookup);
+
         return response()->json([
             'data' => $data,
             'success' => true,
@@ -197,6 +209,30 @@ class PublicHomepageController extends Controller
             'currency' => 'MYR',
             'label' => 'Flat Rate Shipping',
         ];
+    }
+
+    protected function resolveWishlistProductIds(Request $request): array
+    {
+        $customer = $this->currentCustomer();
+        $sessionToken = $customer ? null : ($request->query('session_token') ?? $request->cookie('shop_session_token'));
+
+        if (!$customer && !$sessionToken) {
+            return [];
+        }
+
+        $query = $customer
+            ? DB::table('customer_wishlist_items')->where('customer_id', $customer->id)
+            : DB::table('guest_wishlist_items')->where('session_token', $sessionToken);
+
+        return $query->pluck('product_id')->all();
+    }
+
+    protected function mapProductsWithWishlistStatus($products, array $wishlistLookup)
+    {
+        return collect($products)->map(function (Product $product) use ($wishlistLookup) {
+            $product->setAttribute('is_in_wishlist', isset($wishlistLookup[$product->id]));
+            return $product;
+        });
     }
 
     protected function defaultFooterSetting(): array

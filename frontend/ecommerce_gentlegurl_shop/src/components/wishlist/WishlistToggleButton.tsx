@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toggleWishlist } from "@/lib/apiClient";
 
 type Props = {
@@ -37,6 +37,22 @@ export function WishlistToggleButton({
 }: Props) {
   const [isWishlisted, setIsWishlisted] = useState(initialIsWishlisted);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setIsWishlisted(initialIsWishlisted);
+  }, [initialIsWishlisted]);
+
+  useEffect(() => {
+    const handleWishlistUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ product_id?: number; is_favorited?: boolean }>).detail;
+      if (detail?.product_id === productId && typeof detail.is_favorited === "boolean") {
+        setIsWishlisted(detail.is_favorited);
+      }
+    };
+
+    window.addEventListener("wishlist:updated", handleWishlistUpdated as EventListener);
+    return () => window.removeEventListener("wishlist:updated", handleWishlistUpdated as EventListener);
+  }, [productId]);
 
   const handleClick = async () => {
     try {
