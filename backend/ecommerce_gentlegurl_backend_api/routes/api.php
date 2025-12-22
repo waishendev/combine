@@ -92,8 +92,10 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/menu', [PublicShopController::class, 'menu']);
     Route::get('/menu/{slug}', [PublicShopController::class, 'menuDetail']);
     Route::get('/categories', [PublicShopController::class, 'categories']);
-    Route::get('/products', [PublicShopController::class, 'products']);
-    Route::get('/products/{slug}', [PublicShopController::class, 'showProduct']);
+    Route::get('/products', [PublicShopController::class, 'products'])
+        ->middleware('api.session');
+    Route::get('/products/{slug}', [PublicShopController::class, 'showProduct'])
+        ->middleware('api.session');
     Route::get('/products/{slug}/reviews', [PublicProductReviewController::class, 'index']);
     Route::get('/products/{slug}/review-eligibility', [PublicProductReviewController::class, 'eligibility'])
         ->middleware('api.session');
@@ -104,7 +106,8 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/announcements/{key}', [PublicAnnouncementController::class, 'showByKey']);
     Route::get('/marquees', [PublicMarqueeController::class, 'index']);
     Route::get('/sliders', [PublicHomeSliderController::class, 'index']);
-    Route::get('/homepage', [PublicHomepageController::class, 'show']);
+    Route::get('/homepage', [PublicHomepageController::class, 'show'])
+        ->middleware('api.session');
     Route::get('/shipping', [PublicShopController::class, 'shipping']);
     Route::get('/store-locations', [PublicStoreLocationController::class, 'index']);
     Route::get('/store-locations/{storeLocation}', [PublicStoreLocationController::class, 'show']);

@@ -49,11 +49,19 @@ export async function getProduct(slug: string): Promise<ProductDetail | null> {
       .map((c) => `${c.name}=${c.value}`)
       .join("; ");
 
+    // Get session_token from cookie as fallback for query parameter
+    const sessionToken = cookieStore.get("shop_session_token")?.value;
+
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-    const url = `${siteUrl}/api/proxy/public/shop/products/${slug}`;
-    console.log(url);
+    const searchParams = new URLSearchParams();
+    if (sessionToken) {
+      searchParams.set("session_token", sessionToken);
+    }
+    const qs = searchParams.toString();
+    const url = `${siteUrl}/api/proxy/public/shop/products/${slug}${qs ? `?${qs}` : ""}`;
+
     const res = await fetch(url, {
       method: "GET",
       headers: {

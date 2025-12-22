@@ -8,12 +8,18 @@ export async function getProducts(params?: { categorySlug?: string }) {
       .map((c) => `${c.name}=${c.value}`)
       .join("; ");
 
+    // Get session_token from cookie as fallback for query parameter
+    const sessionToken = cookieStore.get("shop_session_token")?.value;
+
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
     const searchParams = new URLSearchParams();
     if (params?.categorySlug) {
       searchParams.set("category_slug", params.categorySlug);
+    }
+    if (sessionToken) {
+      searchParams.set("session_token", sessionToken);
     }
 
     const qs = searchParams.toString();
