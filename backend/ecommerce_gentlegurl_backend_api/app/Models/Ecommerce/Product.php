@@ -22,6 +22,7 @@ class Product extends Model
         'stock',
         'low_stock_threshold',
         'track_stock',
+        'dummy_sold_count',
         'is_active',
         'is_featured',
         'meta_title',
@@ -38,6 +39,7 @@ class Product extends Model
             'stock' => 'integer',
             'low_stock_threshold' => 'integer',
             'track_stock' => 'boolean',
+            'dummy_sold_count' => 'integer',
             'is_active' => 'boolean',
             'is_featured' => 'boolean',
         ];

@@ -42,6 +42,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const initialIndex = mainImage
     ? galleryImages.findIndex((image) => image === mainImage.image_path)
     : 0;
+  const soldCountValue = Number(product.sold_count ?? 0);
+  const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -65,8 +67,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
         <div className="space-y-4">
           <h1 className="text-2xl font-semibold">{product.name}</h1>
 
-          <div className="text-xl font-bold text-red-600">
-            RM {Number(product.price).toFixed(2)}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-xl font-bold text-red-600">
+              RM {Number(product.price).toFixed(2)}
+            </div>
+            <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#ec4899]">
+              Sold {soldCount}
+            </span>
           </div>
 
           {product.stock != null && (

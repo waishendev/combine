@@ -222,8 +222,14 @@ class PublicShopController extends Controller
             ->paginate($perPage)
             ->appends($request->query());
 
+        $realSoldCounts = $this->calculateRealSoldCounts($products->getCollection()->pluck('id')->all());
+
         $products->setCollection(
-            $products->getCollection()->map(function (Product $product) use ($wishlistLookup) {
+            $products->getCollection()->map(function (Product $product) use ($wishlistLookup, $realSoldCounts) {
+                $realSoldCount = $realSoldCounts[$product->id] ?? 0;
+                $dummySoldCount = (int) ($product->dummy_sold_count ?? 0);
+                $soldCount = $realSoldCount + $dummySoldCount;
+
                 $sortedImages = $product->images
                     ->sortBy('sort_order')
                     ->sortBy('id')
@@ -242,6 +248,9 @@ class PublicShopController extends Controller
                     'sku' => $product->sku,
                     'price' => $product->price,
                     'is_in_wishlist' => isset($wishlistLookup[$product->id]),
+                    'dummy_sold_count' => $dummySoldCount,
+                    'real_sold_count' => $realSoldCount,
+                    'sold_count' => $soldCount,
                     'images' => $sortedImages,
                 ];
             })
@@ -328,6 +337,11 @@ class PublicShopController extends Controller
             ];
         });
 
+        $realSoldCountLookup = $this->calculateRealSoldCounts([$product->id]);
+        $realSoldCount = $realSoldCountLookup[$product->id] ?? 0;
+        $dummySoldCount = (int) ($product->dummy_sold_count ?? 0);
+        $soldCount = $realSoldCount + $dummySoldCount;
+
         $data = [
             'id' => $product->id,
             'name' => $product->name,
@@ -338,6 +352,9 @@ class PublicShopController extends Controller
             'stock' => $product->stock,
             'track_stock' => $product->track_stock,
             'is_in_stock' => $isInStock,
+            'dummy_sold_count' => $dummySoldCount,
+            'real_sold_count' => $realSoldCount,
+            'sold_count' => $soldCount,
             'images' => $product->images,
             'gallery' => $gallery,
             'categories' => $categories,
@@ -356,6 +373,24 @@ class PublicShopController extends Controller
         }
 
         return $this->respond($data);
+    }
+
+    protected function calculateRealSoldCounts(array $productIds): array
+    {
+        if (empty($productIds)) {
+            return [];
+        }
+
+        return OrderItem::query()
+            ->selectRaw('product_id, SUM(quantity) AS total_qty')
+            ->whereIn('product_id', $productIds)
+            ->whereHas('order', function ($query) {
+                $query->where('payment_status', 'paid');
+            })
+            ->groupBy('product_id')
+            ->pluck('total_qty', 'product_id')
+            ->map(fn($qty) => (int) $qty)
+            ->all();
     }
 
     protected function resolveWishlistProductIds(Request $request): array

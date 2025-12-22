@@ -10,6 +10,7 @@ interface ProductGridProps {
     slug?: string;
     images?: Array<{ image_path?: string }>;
     is_in_wishlist?: boolean;
+    sold_count?: number | string;
   }>;
 }
 
@@ -21,6 +22,8 @@ export default function ProductGrid({ items }: ProductGridProps) {
         const priceNumber = Number(product.price);
         const priceLabel = Number.isFinite(priceNumber) ? priceNumber.toFixed(2) : product.price;
         const image = product.images?.[0]?.image_path;
+        const soldCountValue = Number(product.sold_count ?? 0);
+        const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
 
         return (
           <div
@@ -54,6 +57,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
                   <span className="font-semibold text-[#ec4899]">RM {priceLabel}</span>
                   <span className="text-[11px] uppercase tracking-[0.18em] text-gray-400">View</span>
                 </div>
+                <p className="text-xs font-medium text-gray-500">Sold {soldCount}</p>
               </div>
             </Link>
           </div>

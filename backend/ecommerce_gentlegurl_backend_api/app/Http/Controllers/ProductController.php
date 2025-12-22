@@ -47,6 +47,7 @@ class ProductController extends Controller
             'cost_price' => ['nullable', 'numeric'],
             'stock' => ['sometimes', 'integer'],
             'low_stock_threshold' => ['sometimes', 'integer'],
+            'dummy_sold_count' => ['nullable', 'integer', 'min:0', 'max:999999'],
             'is_active' => ['sometimes', 'boolean'],
             'is_featured' => ['sometimes', 'boolean'],
             'meta_title' => ['nullable', 'string', 'max:255'],
@@ -67,6 +68,7 @@ class ProductController extends Controller
             'is_featured' => $validated['is_featured'] ?? false,
             'stock' => $validated['stock'] ?? 0,
             'low_stock_threshold' => $validated['low_stock_threshold'] ?? 0,
+            'dummy_sold_count' => $validated['dummy_sold_count'] ?? 0,
         ]);
 
         if (! empty($validated['category_ids'])) {
@@ -99,6 +101,7 @@ class ProductController extends Controller
             'cost_price' => ['nullable', 'numeric'],
             'stock' => ['sometimes', 'integer'],
             'low_stock_threshold' => ['sometimes', 'integer'],
+            'dummy_sold_count' => ['nullable', 'integer', 'min:0', 'max:999999'],
             'is_active' => ['sometimes', 'boolean'],
             'is_featured' => ['sometimes', 'boolean'],
             'meta_title' => ['nullable', 'string', 'max:255'],
@@ -116,6 +119,9 @@ class ProductController extends Controller
         ]);
 
         $product->fill($validated);
+        $product->dummy_sold_count = $request->has('dummy_sold_count')
+            ? ($validated['dummy_sold_count'] ?? 0)
+            : ($product->dummy_sold_count ?? 0);
         $product->save();
 
         if ($request->has('category_ids')) {
