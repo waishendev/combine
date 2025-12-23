@@ -64,7 +64,7 @@ class LoyaltyDemoCustomerSeeder extends Seeder
         $placedAt = Carbon::now()->subDays(14);
         $earnAt = Carbon::now()->subDays(13);
         $redeemAt = Carbon::now()->subDays(12);
-        $earnPoints = 1500;
+        $earnPoints = 4000;
         $redeemPoints = 300;
         $grandTotal = $product->price ?? 99.00;
 

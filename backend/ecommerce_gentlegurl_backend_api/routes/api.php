@@ -119,8 +119,11 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/payment-methods', [PublicPaymentMethodController::class, 'index']);
     Route::post('/orders/track', [PublicOrderTrackingController::class, 'track']);
 
-    Route::post('/checkout/preview', [PublicCheckoutController::class, 'preview']);
-    Route::post('/orders', [PublicCheckoutController::class, 'createOrder']);
+    Route::post('/checkout/preview', [PublicCheckoutController::class, 'preview'])
+        ->middleware('api.session');
+    Route::post('/orders', [PublicCheckoutController::class, 'createOrder'])
+        ->middleware('api.session');
+        
     Route::get('/orders/lookup', [PublicCheckoutController::class, 'lookup']);
     Route::post('/orders/{order}/upload-slip', [PublicCheckoutController::class, 'uploadSlip']);
     Route::post('/orders/{order}/returns', [PublicReturnController::class, 'store']);
