@@ -18,7 +18,6 @@ const FILTERS = [
   { value: "all", label: "All" },
   { value: "voucher", label: "Voucher" },
   { value: "product", label: "Product" },
-  { value: "custom", label: "Custom" },
 ];
 
 type ToastState = {

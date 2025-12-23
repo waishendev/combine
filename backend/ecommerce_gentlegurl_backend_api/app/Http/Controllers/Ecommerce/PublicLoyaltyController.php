@@ -44,15 +44,13 @@ class PublicLoyaltyController extends Controller
             ->orderBy('id')
             ->get();
 
-        $placeholderImage = '/images/placeholder.png';
-
-        $payload = $rewards->map(function (LoyaltyReward $reward) use ($placeholderImage) {
+        $payload = $rewards->map(function (LoyaltyReward $reward) {
             $product = $reward->product;
             $productImage = $product?->images
                 ? $product->images->sortBy('sort_order')->sortBy('id')->first()
                 : null;
 
-            $thumbnail = $productImage?->image_path ?? $placeholderImage;
+            $thumbnail = $productImage?->image_path ;
 
             return [
                 'id' => $reward->id,

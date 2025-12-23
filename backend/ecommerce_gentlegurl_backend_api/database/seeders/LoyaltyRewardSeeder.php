@@ -75,16 +75,16 @@ class LoyaltyRewardSeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => 2,
             ],
-            [
-                'title' => 'Free Gift (In-store)',
-                'description' => 'Collect a complimentary in-store gift.',
-                'type' => 'custom',
-                'points_required' => 300,
-                'product_id' => null,
-                'voucher_id' => null,
-                'is_active' => true,
-                'sort_order' => 3,
-            ],
+            // [
+            //     'title' => 'Free Gift (In-store)',
+            //     'description' => 'Collect a complimentary in-store gift.',
+            //     'type' => 'custom',
+            //     'points_required' => 300,
+            //     'product_id' => null,
+            //     'voucher_id' => null,
+            //     'is_active' => true,
+            //     'sort_order' => 3,
+            // ],
         ];
 
         foreach ($rewards as $index => $reward) {
