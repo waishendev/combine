@@ -499,9 +499,9 @@ export async function mergeCart(payload?: { session_token?: string }) {
 }
 
 export type CheckoutPreviewPayload = {
-  items: { product_id: number; quantity: number; is_reward?: boolean; reward_redemption_id?: number | null }[];
+  items?: { product_id: number; quantity: number; is_reward?: boolean; reward_redemption_id?: number | null }[];
   voucher_code?: string | null;
-  voucher_id?: number | null;
+  customer_voucher_id?: number | null;
   shipping_method: "shipping" | "self_pickup";
   store_location_id?: number | null;
   shipping_postcode?: string | null;
@@ -509,7 +509,6 @@ export type CheckoutPreviewPayload = {
 };
 
 export type CheckoutPayload = {
-  items: { product_id: number; quantity: number; is_reward?: boolean; reward_redemption_id?: number | null }[];
   session_token?: string | null;
   payment_method: "manual_transfer" | "billplz_fpx" | "billplz_card";
   shipping_method: "shipping" | "self_pickup";
@@ -523,6 +522,8 @@ export type CheckoutPayload = {
   shipping_postcode?: string;
   store_location_id?: number | null;
   bank_account_id?: number | null;
+  voucher_code?: string | null;
+  customer_voucher_id?: number | null;
 };
 
 export type CreateOrderResponse = {

@@ -14,7 +14,8 @@ class VoucherService
         string $code,
         ?Customer $customer,
         float $orderAmount,
-        ?CustomerVoucher $customerVoucher = null
+        ?CustomerVoucher $customerVoucher = null,
+        bool $markCustomerVoucherUsed = false
     ): VoucherResult {
         $voucher = $customerVoucher?->voucher ?: Voucher::where('code', $code)->first();
 
@@ -89,7 +90,7 @@ class VoucherService
             return VoucherResult::invalid('Voucher discount amount is zero.');
         }
 
-        if ($customerVoucher && $customerVoucher->status === 'active') {
+        if ($customerVoucher && $markCustomerVoucherUsed && $customerVoucher->status === 'active') {
             $customerVoucher->status = 'used';
             $customerVoucher->used_at = Carbon::now();
             $customerVoucher->save();
@@ -106,7 +107,7 @@ class VoucherService
 
     public function recordUsage(int $voucherId, ?int $customerId, int $orderId, ?int $customerVoucherId = null, ?float $discountAmount = null): void
     {
-        VoucherUsage::create([
+        $usage = VoucherUsage::create([
             'voucher_id' => $voucherId,
             'customer_id' => $customerId,
             'order_id' => $orderId,
@@ -114,5 +115,14 @@ class VoucherService
             'discount_amount' => $discountAmount,
             'used_at' => Carbon::now(),
         ]);
+
+        if ($customerVoucherId) {
+            $customerVoucher = CustomerVoucher::find($customerVoucherId);
+            if ($customerVoucher && $customerVoucher->status === 'active') {
+                $customerVoucher->status = 'used';
+                $customerVoucher->used_at = $usage->used_at;
+                $customerVoucher->save();
+            }
+        }
     }
 }

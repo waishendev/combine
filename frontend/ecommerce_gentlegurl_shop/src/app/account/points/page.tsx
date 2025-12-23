@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCart } from "@/contexts/CartContext";
 import {
   AccountOverview,
   ApiError,
@@ -15,6 +16,7 @@ type ToastState = { type: "success" | "error" | "info"; message: string };
 
 export default function AccountPointsPage() {
   const { customer, refreshProfile } = useAuth();
+  const { reloadCart } = useCart();
   const [overview, setOverview] = useState<AccountOverview | null>(customer);
   const [rewards, setRewards] = useState<LoyaltyReward[]>([]);
   const [loadingRewards, setLoadingRewards] = useState<boolean>(true);
@@ -97,8 +99,9 @@ export default function AccountPointsPage() {
     setRedeemingId(rewardId);
     try {
       await redeemLoyaltyReward(rewardId);
-      showToast({ type: "success", message: "Redeemed successfully." });
+      showToast({ type: "success", message: "Reward redeemed. Reward added to cart." });
       await refreshOverview();
+      await reloadCart();
     } catch (error) {
       const apiError = error as ApiError;
       if (apiError?.status === 401) {

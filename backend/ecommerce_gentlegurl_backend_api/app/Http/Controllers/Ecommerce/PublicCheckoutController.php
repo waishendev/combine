@@ -43,13 +43,18 @@ class PublicCheckoutController extends Controller
         $validated = $this->validateOrderRequest($request);
         $customer = $this->currentCustomer();
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method'] ?? 'pickup');
+        $cart = $this->resolveCart($customer, $validated['session_token'] ?? null);
+
+        if (!$cart || $cart->items()->count() === 0) {
+            return $this->respondError(__('Cart is empty.'), 422);
+        }
+
         $calculation = $this->calculateTotals(
-            $validated['items'],
-            $validated['voucher_code'] ?? null,
-            $validated['voucher_id'] ?? null,
+            $cart,
             $customer,
             $shippingMethod,
-            $validated['session_token'] ?? null
+            $validated['voucher_code'] ?? null,
+            $validated['customer_voucher_id'] ?? null
         );
 
         return $this->respond([
@@ -86,13 +91,18 @@ class PublicCheckoutController extends Controller
         $customer = $this->currentCustomer();
 
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method']);
+        $cart = $this->resolveCart($customer, $validated['session_token'] ?? null);
+
+        if (!$cart || $cart->items()->count() === 0) {
+            return $this->respondError(__('Cart is empty.'), 422);
+        }
+
         $calculation = $this->calculateTotals(
-            $validated['items'],
-            $validated['voucher_code'] ?? null,
-            $validated['voucher_id'] ?? null,
+            $cart,
             $customer,
             $shippingMethod,
-            $validated['session_token'] ?? null
+            $validated['voucher_code'] ?? null,
+            $validated['customer_voucher_id'] ?? null
         );
 
         if ((!empty($validated['voucher_code']) || !empty($validated['voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']->valid)) {
@@ -407,13 +417,13 @@ class PublicCheckoutController extends Controller
     protected function validateOrderRequest(Request $request, bool $requirePaymentMethod = false): array
     {
         return $request->validate([
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items' => ['nullable', 'array'],
+            'items.*.product_id' => ['required_with:items', 'integer', 'exists:products,id'],
+            'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
             'items.*.is_reward' => ['sometimes', 'boolean'],
             'items.*.reward_redemption_id' => ['nullable', 'integer', 'exists:loyalty_redemptions,id'],
             'voucher_code' => ['nullable', 'string'],
-            'voucher_id' => ['nullable', 'integer', 'exists:customer_vouchers,id'],
+            'customer_voucher_id' => ['nullable', 'integer', 'exists:customer_vouchers,id'],
             'shipping_method' => ['required', 'in:pickup,shipping,self_pickup'],
             'store_location_id' => ['required_unless:shipping_method,shipping', 'integer'],
             'shipping_postcode' => ['nullable', 'string'],
@@ -454,44 +464,79 @@ class PublicCheckoutController extends Controller
         return $shippingMethod === 'self_pickup' ? 'pickup' : $shippingMethod;
     }
 
-    protected function calculateTotals(array $itemsInput, ?string $voucherCode, ?int $voucherId, ?Customer $customer, string $shippingMethod, ?string $sessionToken): array
+    protected function resolveCart(?Customer $customer, ?string $sessionToken): ?Cart
     {
-        $cart = $this->cartService->findOrCreateCart($customer, $sessionToken)['cart'] ?? null;
-        $rewardItemsLookup = $cart
-            ? $cart->items()->where('is_reward', true)->get()->keyBy(fn($item) => $item->reward_redemption_id ?? ('p'.$item->product_id))
-            : collect();
+        if ($customer?->id) {
+            return Cart::where('customer_id', $customer->id)
+                ->where('status', 'open')
+                ->first();
+        }
+
+        if ($sessionToken) {
+            return Cart::where('session_token', $sessionToken)
+                ->whereNull('customer_id')
+                ->where('status', 'open')
+                ->first();
+        }
+
+        return null;
+    }
+
+    protected function calculateTotals(Cart $cart, ?Customer $customer, string $shippingMethod, ?string $voucherCode, ?int $customerVoucherId): array
+    {
+        $cart->loadMissing(['items.product']);
+
+        if ($cart->items->isEmpty()) {
+            throw ValidationException::withMessages([
+                'items' => __('Cart is empty.'),
+            ])->status(422);
+        }
 
         $items = [];
         $subtotal = 0;
-        foreach ($itemsInput as $input) {
-            $product = Product::find($input['product_id']);
+
+        foreach ($cart->items as $cartItem) {
+            $product = $cartItem->product;
+
             if (!$product || !$product->is_active) {
                 continue;
             }
-            $isReward = (bool) ($input['is_reward'] ?? false);
-            $redemptionId = $input['reward_redemption_id'] ?? null;
 
-            if ($isReward) {
-                $cartItem = $rewardItemsLookup->get($redemptionId ?: ('p'.$product->id));
-                if (!$cartItem || $cartItem->product_id !== $product->id) {
+            if ($cartItem->is_reward) {
+                if (!$customer) {
                     throw ValidationException::withMessages([
-                        'items' => __('Invalid reward item.'),
+                        'items' => __('Reward item is invalid or not owned by customer.'),
                     ])->status(422);
                 }
 
-                $quantity = 1;
-                $lineTotal = 0;
+                $redemption = $cartItem->reward_redemption_id
+                    ? $customer->loyaltyRedemptions()->where('id', $cartItem->reward_redemption_id)->with('reward')->first()
+                    : null;
+
+                if (
+                    !$redemption ||
+                    !in_array($redemption->status, ['pending', 'completed']) ||
+                    !$redemption->reward ||
+                    $redemption->reward->type !== 'product' ||
+                    (int) $redemption->reward->product_id !== (int) $product->id
+                ) {
+                    throw ValidationException::withMessages([
+                        'items' => __('Reward item is invalid or not owned by customer.'),
+                    ])->status(422);
+                }
+
                 $items[] = [
                     'product_id' => $product->id,
                     'name' => $product->name,
                     'sku' => $product->sku,
-                    'quantity' => $quantity,
+                    'quantity' => 1,
                     'unit_price' => 0.0,
-                    'line_total' => $lineTotal,
+                    'line_total' => 0.0,
                     'is_reward' => true,
-                    'reward_redemption_id' => $redemptionId,
+                    'reward_redemption_id' => $cartItem->reward_redemption_id,
                     'locked' => true,
                 ];
+
                 continue;
             }
 
@@ -501,12 +546,12 @@ class PublicCheckoutController extends Controller
                 ])->status(422);
             }
 
-            $lineTotal = (float) $product->price * (int) $input['quantity'];
+            $lineTotal = (float) $product->price * (int) $cartItem->quantity;
             $items[] = [
                 'product_id' => $product->id,
                 'name' => $product->name,
                 'sku' => $product->sku,
-                'quantity' => (int) $input['quantity'],
+                'quantity' => (int) $cartItem->quantity,
                 'unit_price' => (float) $product->price,
                 'line_total' => $lineTotal,
                 'is_reward' => false,
@@ -528,8 +573,8 @@ class PublicCheckoutController extends Controller
         $voucherResult = null;
 
         $customerVoucher = null;
-        if ($voucherId) {
-            $customerVoucher = $customer ? $customer->customerVouchers()->where('id', $voucherId)->first() : null;
+        if ($customerVoucherId) {
+            $customerVoucher = $customer ? $customer->customerVouchers()->where('id', $customerVoucherId)->with('voucher')->first() : null;
             if (!$customerVoucher) {
                 return [
                     'items' => $items,
@@ -543,10 +588,12 @@ class PublicCheckoutController extends Controller
                     'voucher_valid' => false,
                 ];
             }
+
+            $voucherCode = $customerVoucher->voucher?->code ?? $voucherCode;
         }
 
         if ($voucherCode || $customerVoucher) {
-            $voucherResult = $this->voucherService->validateAndCalculateDiscount($voucherCode ?? ($customerVoucher?->voucher?->code ?? ''), $customer, $subtotal, $customerVoucher);
+            $voucherResult = $this->voucherService->validateAndCalculateDiscount($voucherCode ?? '', $customer, $subtotal, $customerVoucher, false);
 
             if ($voucherResult->valid) {
                 $discountTotal = $voucherResult->discountAmount ?? 0;

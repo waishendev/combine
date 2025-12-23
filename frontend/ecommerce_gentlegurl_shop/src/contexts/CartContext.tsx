@@ -50,7 +50,7 @@ export type CartContextValue = {
   updateItemQuantity: (itemId: number, quantity: number) => Promise<void>;
   removeItem: (itemId: number) => Promise<void>;
   onCustomerLogin: () => Promise<void>;
-  applyVoucher: (voucherCode?: string | null, voucherId?: number | null) => Promise<boolean>;
+  applyVoucher: (voucherCode?: string | null, customerVoucherId?: number | null) => Promise<boolean>;
   removeVoucher: () => Promise<void>;
   clearVoucherFeedback: () => void;
   toggleSelectItem: (itemId: number) => void;
@@ -333,7 +333,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
   }, []);
 
   const applyVoucher = useCallback(
-    async (voucherCode?: string | null, voucherId?: number | null) => {
+    async (voucherCode?: string | null, customerVoucherId?: number | null) => {
       setIsApplyingVoucher(true);
       setVoucherError(null);
       setVoucherMessage(null);
@@ -345,14 +345,8 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
         }
 
         const response = await previewCheckout({
-          items: selectedItems.map((item) => ({
-            product_id: item.product_id,
-            quantity: item.quantity,
-            is_reward: item.is_reward,
-            reward_redemption_id: item.reward_redemption_id ?? undefined,
-          })),
           voucher_code: voucherCode || undefined,
-          voucher_id: voucherId || undefined,
+          customer_voucher_id: customerVoucherId || undefined,
           shipping_method: shippingMethod,
           session_token: sessionToken ?? undefined,
         });
