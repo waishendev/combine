@@ -11,6 +11,8 @@ import { useCart } from "@/contexts/CartContext";
 const navItems = [
   { label: "My Account", href: "/account" },
   { label: "My Orders", href: "/account/orders" },
+  { label: "My Points", href: "/account/points" },
+  { label: "Points History", href: "/account/points/history" },
   // { label: "My Wishlist", href: "/account/wishlist" },
 ];
 

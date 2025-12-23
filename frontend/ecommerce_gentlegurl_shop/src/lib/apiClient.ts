@@ -39,6 +39,40 @@ export type LoyaltySummary = {
   spending: LoyaltySpending;
 };
 
+export type LoyaltyReward = {
+  id: number;
+  title: string;
+  description?: string | null;
+  type: string;
+  points_required: number;
+  product_id?: number | null;
+  voucher_id?: number | null;
+  is_active?: boolean;
+  sort_order?: number | null;
+};
+
+export type LoyaltyHistoryEntry = {
+  id: number;
+  customer_id: number;
+  type: "earn" | "redeem" | "expire" | "adjust" | string;
+  points_change: number;
+  source_type?: string | null;
+  source_id?: number | null;
+  meta?: unknown;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type LoyaltyHistoryResponse = {
+  items: LoyaltyHistoryEntry[];
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+};
+
 export type CustomerProfile = {
   id: number;
   name: string;
@@ -716,6 +750,91 @@ export async function uploadPaymentSlip(orderId: number, slip: File, note?: stri
     undefined,
     { body: formData, includeSessionToken: true, headers: { Accept: "application/json" } },
   );
+}
+
+export async function getLoyaltyRewards() {
+  const response = await get<{ data?: LoyaltyReward[]; meta?: unknown }>(
+    "/public/shop/loyalty/rewards",
+    { headers: { Accept: "application/json" } },
+  );
+
+  const payload = (response as { data?: LoyaltyReward[] })?.data ?? response;
+  return (Array.isArray(payload) ? payload : []) as LoyaltyReward[];
+}
+
+export async function redeemLoyaltyReward(rewardId: number) {
+  return post<{ data?: unknown; message?: string }>(
+    "/public/shop/loyalty/redeem",
+    { reward_id: rewardId },
+    { headers: { Accept: "application/json" } },
+  );
+}
+
+export async function getLoyaltyHistory(options?: { page?: number; perPage?: number }) {
+  const params = new URLSearchParams();
+  if (options?.page) {
+    params.set("page", options.page.toString());
+  }
+  if (options?.perPage) {
+    params.set("per_page", options.perPage.toString());
+  }
+
+  const query = params.toString();
+  const response = await get<{
+    data?: {
+      data?: LoyaltyHistoryEntry[];
+      current_page?: number;
+      last_page?: number;
+      per_page?: number;
+      total?: number;
+      meta?: unknown;
+      [key: string]: unknown;
+    } | LoyaltyHistoryEntry[];
+    meta?: unknown;
+  }>(
+    `/public/shop/loyalty/history${query ? `?${query}` : ""}`,
+    { headers: { Accept: "application/json" } },
+  );
+
+  const payload = response?.data ?? response;
+  const items = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray((payload as { items?: LoyaltyHistoryEntry[] })?.items)
+        ? (payload as { items?: LoyaltyHistoryEntry[] }).items
+        : [];
+
+  const metaPayload =
+    (payload && typeof payload === "object"
+      ? (payload as {
+          current_page?: number;
+          last_page?: number;
+          per_page?: number;
+          total?: number;
+          meta?: { current_page?: number; last_page?: number; per_page?: number; total?: number };
+        })
+      : {}) ?? {};
+
+  const metaFromNested = metaPayload.meta ?? {};
+
+  const pagination = {
+    current_page: Number(metaPayload.current_page ?? (metaFromNested as { current_page?: number }).current_page ?? 1),
+    last_page: Number(metaPayload.last_page ?? (metaFromNested as { last_page?: number }).last_page ?? 1),
+    per_page: Number(metaPayload.per_page ?? (metaFromNested as { per_page?: number }).per_page ?? items.length),
+    total: Number(metaPayload.total ?? (metaFromNested as { total?: number }).total ?? items.length),
+  };
+
+  const normalizedItems = items.map((item) => ({
+    ...item,
+    type: item.type,
+    points_change: Number(item.points_change),
+  })) as LoyaltyHistoryEntry[];
+
+  return {
+    items: normalizedItems,
+    pagination,
+  } as LoyaltyHistoryResponse;
 }
 
 export async function getAccountOverview() {
