@@ -250,33 +250,7 @@ export function RewardsCenter() {
               Discover vouchers, products, and more. Redeem when you have enough points.
             </p>
           </div>
-
-          {customer && (
-            <div className="rounded-xl border border-pink-100 bg-pink-50/60 px-4 py-3 text-sm text-gray-800">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg font-bold text-[#ec4899]">
-                  {loadingOverview ? "…" : availablePoints.toLocaleString()}
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#ec4899]">Available Points</p>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {loadingOverview ? "Loading..." : `${availablePoints.toLocaleString()} pts`}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-2 text-xs text-gray-600">
-                Tier: {overview?.loyalty.current_tier?.name ?? "—"} · Total earned:{" "}
-                {overview?.loyalty.points.total_earned?.toLocaleString() ?? "0"}
-              </p>
-            </div>
-          )}
         </div>
-
-        {!customer && (
-          <div className="mt-3 rounded-xl bg-pink-50/60 px-4 py-3 text-sm text-gray-700">
-            Browse rewards and log in when you are ready to redeem.
-          </div>
-        )}
 
         {renderToast && <div className="mt-4">{renderToast}</div>}
       </div>
@@ -484,12 +458,7 @@ export function RewardsCenter() {
                   {selectedVoucher.points_required.toLocaleString()} pts
                 </p>
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500">Voucher Code</p>
-                <p className="mt-1 font-semibold text-gray-900">
-                  {selectedVoucherDetails?.code ?? selectedVoucher.voucher_code ?? "Revealed after redemption"}
-                </p>
-              </div>
+
               {voucherBenefit && (
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500">Benefit</p>
@@ -503,22 +472,6 @@ export function RewardsCenter() {
                     ? formatAmount(selectedVoucherDetails.min_order_amount)
                     : "No minimum spend"}
                 </p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500">Max Discount</p>
-                <p className="mt-1 font-semibold text-gray-900">
-                  {selectedVoucherDetails?.max_discount_amount
-                    ? formatAmount(selectedVoucherDetails.max_discount_amount)
-                    : "As per voucher rules"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500">Validity</p>
-                <p className="mt-1 font-semibold text-gray-900">{voucherValidity}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500">Usage Limits</p>
-                <p className="mt-1 font-semibold text-gray-900">{voucherUsage}</p>
               </div>
             </div>
 
