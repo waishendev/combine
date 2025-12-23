@@ -138,7 +138,8 @@ class PublicShopController extends Controller
                 $query->orderBy('sort_order')->orderBy('id');
             },
         ])
-            ->where('is_active', true);
+            ->where('is_active', true)
+            ->where('is_reward_only', false);
 
         $menuId = $request->query('menu_id');
         $menuSlug = $request->query('menu_slug');
@@ -295,6 +296,7 @@ class PublicShopController extends Controller
         $product = Product::with(['categories', 'images', 'packageChildren.childProduct'])
             ->where('slug', $slug)
             ->where('is_active', true)
+            ->where('is_reward_only', false)
             ->firstOrFail();
 
         $product->images = $product->images

@@ -5,30 +5,29 @@ namespace App\Models\Ecommerce;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class VoucherUsage extends Model
+class CustomerVoucher extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'voucher_id',
         'customer_id',
-        'order_id',
-        'customer_voucher_id',
-        'discount_amount',
+        'voucher_id',
+        'source_redemption_id',
+        'status',
+        'claimed_at',
         'used_at',
+        'expires_at',
+        'meta',
     ];
 
     protected function casts(): array
     {
         return [
+            'claimed_at' => 'datetime',
             'used_at' => 'datetime',
-            'discount_amount' => 'decimal:2',
+            'expires_at' => 'datetime',
+            'meta' => 'array',
         ];
-    }
-
-    public function voucher()
-    {
-        return $this->belongsTo(Voucher::class);
     }
 
     public function customer()
@@ -36,13 +35,13 @@ class VoucherUsage extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function order()
+    public function voucher()
     {
-        return $this->belongsTo(Order::class);
+        return $this->belongsTo(Voucher::class);
     }
 
-    public function customerVoucher()
+    public function redemption()
     {
-        return $this->belongsTo(CustomerVoucher::class);
+        return $this->belongsTo(LoyaltyRedemption::class, 'source_redemption_id');
     }
 }

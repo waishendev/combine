@@ -50,7 +50,7 @@ export type CartContextValue = {
   updateItemQuantity: (itemId: number, quantity: number) => Promise<void>;
   removeItem: (itemId: number) => Promise<void>;
   onCustomerLogin: () => Promise<void>;
-  applyVoucher: (voucherCode?: string | null) => Promise<boolean>;
+  applyVoucher: (voucherCode?: string | null, customerVoucherId?: number | null) => Promise<boolean>;
   removeVoucher: () => Promise<void>;
   clearVoucherFeedback: () => void;
   toggleSelectItem: (itemId: number) => void;
@@ -106,6 +106,9 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     const normalizedItems = (cart?.items ?? []).map((item) => ({
       ...item,
       name: item.name ?? (item as unknown as { product_name?: string }).product_name ?? "",
+      is_reward: (item as unknown as { is_reward?: boolean }).is_reward ?? false,
+      reward_redemption_id: (item as unknown as { reward_redemption_id?: number | null }).reward_redemption_id ?? null,
+      locked: (item as unknown as { locked?: boolean }).locked ?? false,
       product: item.product ??
         ((item as unknown as { product_slug?: string }).product_slug
           ? { slug: (item as unknown as { product_slug?: string }).product_slug }
@@ -166,6 +169,10 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
 
   const updateItemQuantity = useCallback(
     async (itemId: number, quantity: number) => {
+      const targetItem = items.find((item) => item.id === itemId);
+      if (targetItem?.locked || targetItem?.is_reward) {
+        return;
+      }
       // Optimistically update the quantity in local state
       setItems((prevItems) =>
         prevItems.map((item) =>
@@ -206,6 +213,10 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
 
   const removeItem = useCallback(
     async (itemId: number) => {
+      const targetItem = items.find((item) => item.id === itemId);
+      if (targetItem?.locked || targetItem?.is_reward) {
+        return;
+      }
       setIsLoading(true);
       try {
         const response = await removeCartItem(itemId);
@@ -322,7 +333,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
   }, []);
 
   const applyVoucher = useCallback(
-    async (voucherCode?: string | null) => {
+    async (voucherCode?: string | null, customerVoucherId?: number | null) => {
       setIsApplyingVoucher(true);
       setVoucherError(null);
       setVoucherMessage(null);
@@ -333,9 +344,17 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
           return false;
         }
 
+        const payloadItems = selectedItems.map((item) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          is_reward: item.is_reward,
+          reward_redemption_id: item.reward_redemption_id ?? undefined,
+        }));
+
         const response = await previewCheckout({
-          items: selectedItems.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
-          voucher_code: voucherCode || undefined,
+          items: payloadItems,
+          voucher_code: customerVoucherId ? undefined : voucherCode || undefined,
+          customer_voucher_id: customerVoucherId || undefined,
           shipping_method: shippingMethod,
           session_token: sessionToken ?? undefined,
         });

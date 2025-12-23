@@ -120,6 +120,9 @@ export type CartItem = {
   unit_price: string;
   quantity: number;
   line_total: string;
+  is_reward?: boolean;
+  reward_redemption_id?: number | null;
+  locked?: boolean;
   product?: {
     slug?: string;
     images?: { image_path: string; is_main: boolean }[];
@@ -163,6 +166,7 @@ export type CheckoutPreviewVoucher = {
   discount_amount: number;
   type: string;
   value: number;
+  customer_voucher_id?: number | null;
 };
 
 export type CheckoutPreviewResponse = {
@@ -173,6 +177,9 @@ export type CheckoutPreviewResponse = {
     quantity: number;
     unit_price: number | string;
     line_total: number | string;
+    is_reward?: boolean;
+    reward_redemption_id?: number | null;
+    locked?: boolean;
   }[];
   subtotal: number | string;
   discount_total: number | string;
@@ -197,6 +204,24 @@ export type PublicBankAccount = {
   swift_code?: string | null;
   is_default?: boolean;
   instructions?: string | null;
+};
+
+export type CustomerVoucher = {
+  id: number;
+  status: "active" | "used" | "expired" | string;
+  claimed_at?: string | null;
+  used_at?: string | null;
+  expires_at?: string | null;
+  voucher?: {
+    id: number;
+    code: string;
+    type: string;
+    value: number;
+    min_order_amount?: number | string | null;
+    max_discount_amount?: number | string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+  } | null;
 };
 
 export type PageReview = {
@@ -474,8 +499,9 @@ export async function mergeCart(payload?: { session_token?: string }) {
 }
 
 export type CheckoutPreviewPayload = {
-  items: { product_id: number; quantity: number }[];
+  items?: { product_id: number; quantity: number; is_reward?: boolean; reward_redemption_id?: number | null }[];
   voucher_code?: string | null;
+  customer_voucher_id?: number | null;
   shipping_method: "shipping" | "self_pickup";
   store_location_id?: number | null;
   shipping_postcode?: string | null;
@@ -483,7 +509,6 @@ export type CheckoutPreviewPayload = {
 };
 
 export type CheckoutPayload = {
-  items: { product_id: number; quantity: number }[];
   session_token?: string | null;
   payment_method: "manual_transfer" | "billplz_fpx" | "billplz_card";
   shipping_method: "shipping" | "self_pickup";
@@ -497,6 +522,8 @@ export type CheckoutPayload = {
   shipping_postcode?: string;
   store_location_id?: number | null;
   bank_account_id?: number | null;
+  voucher_code?: string | null;
+  customer_voucher_id?: number | null;
 };
 
 export type CreateOrderResponse = {
@@ -615,6 +642,20 @@ export async function getStoreLocationDetail(id: number): Promise<PublicStoreLoc
   });
 
   return response.data;
+}
+
+export async function getCustomerVouchers(params?: { status?: string }): Promise<CustomerVoucher[]> {
+  const search = new URLSearchParams();
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+
+  const response = await get<{ data: CustomerVoucher[] }>(
+    `/public/shop/vouchers${search.toString() ? `?${search.toString()}` : ""}`,
+    { headers: { Accept: "application/json" } },
+  );
+
+  return response.data ?? [];
 }
 
 export async function getPageReviewSettings(): Promise<PageReviewSetting> {

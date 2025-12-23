@@ -19,6 +19,9 @@ class OrderItem extends Model
         'line_total',
         'is_package',
         'parent_package_item_id',
+        'is_reward',
+        'reward_redemption_id',
+        'locked',
     ];
 
     protected function casts(): array
@@ -28,6 +31,8 @@ class OrderItem extends Model
             'quantity' => 'integer',
             'line_total' => 'decimal:2',
             'is_package' => 'boolean',
+            'is_reward' => 'boolean',
+            'locked' => 'boolean',
         ];
     }
 
@@ -49,5 +54,10 @@ class OrderItem extends Model
     public function childItems()
     {
         return $this->hasMany(OrderItem::class, 'parent_package_item_id');
+    }
+
+    public function redemption()
+    {
+        return $this->belongsTo(LoyaltyRedemption::class, 'reward_redemption_id');
     }
 }

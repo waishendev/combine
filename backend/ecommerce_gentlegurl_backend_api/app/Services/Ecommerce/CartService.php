@@ -72,6 +72,9 @@ class CartService
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price_snapshot,
                 'line_total' => $lineTotal,
+                'is_reward' => (bool) $item->is_reward,
+                'reward_redemption_id' => $item->reward_redemption_id,
+                'locked' => (bool) $item->locked,
             ];
         })->values();
 

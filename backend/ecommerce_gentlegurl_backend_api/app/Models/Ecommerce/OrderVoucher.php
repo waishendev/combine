@@ -12,6 +12,7 @@ class OrderVoucher extends Model
     protected $fillable = [
         'order_id',
         'voucher_id',
+        'customer_voucher_id',
         'code_snapshot',
         'discount_amount',
     ];
@@ -31,5 +32,10 @@ class OrderVoucher extends Model
     public function voucher()
     {
         return $this->belongsTo(Voucher::class);
+    }
+
+    public function customerVoucher()
+    {
+        return $this->belongsTo(CustomerVoucher::class);
     }
 }
