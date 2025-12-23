@@ -8,7 +8,7 @@ import { getProductReviews } from "@/lib/server/getProductReviews";
 import { normalizeImageUrl } from "@/lib/imageUrl";
 import { ReviewSettings } from "@/lib/types/reviews";
 import { ProductGallery } from "@/components/product/ProductGallery";
-import Link from "next/link";
+import { RewardRedeemPanel } from "@/components/product/RewardRedeemPanel";
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>;
@@ -31,6 +31,10 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   const product = await getProduct(slug, { reward: isRewardContext });
   if (!product) return notFound();
   const isRewardOnly = product.is_reward_only === true;
+  const rewardPoints =
+    (product as { points_required?: number | null })?.points_required ??
+    (product as { reward_points_required?: number | null })?.reward_points_required ??
+    null;
 
   const [reviewsData, eligibility] = await Promise.all([
     getProductReviews(slug),
@@ -87,9 +91,11 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                 RM {Number(product.price).toFixed(2)}
               </div>
             )}
-            <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#ec4899]">
-              Sold {soldCount}
-            </span>
+            {!isRewardOnly && (
+              <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#ec4899]">
+                Sold {soldCount}
+              </span>
+            )}
             {isRewardOnly && (
               <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
                 Reward Item
@@ -110,16 +116,21 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               {product.description}
             </div>
           )}
-          {isRewardOnly ? (
-            <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <p className="font-semibold">This is a reward item. Redeem it in Rewards Center.</p>
-              <Link
-                href="/rewards"
-                className="inline-flex w-full items-center justify-center rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 sm:w-auto"
-              >
-                Go to Rewards Center
-              </Link>
-            </div>
+          {isRewardOnly || isRewardContext ? (
+            <RewardRedeemPanel
+              productId={product.id}
+              slug={slug}
+              fallbackPoints={rewardPoints}
+              isRewardOnly={isRewardOnly}
+              productName={product.name}
+              remainingQuantity={
+                product.stock != null
+                  ? Number.isFinite(Number(product.stock))
+                    ? Number(product.stock)
+                    : null
+                  : null
+              }
+            />
           ) : (
             <div className="flex flex-wrap items-center gap-3">
               <AddToCartButton productId={product.id} />
