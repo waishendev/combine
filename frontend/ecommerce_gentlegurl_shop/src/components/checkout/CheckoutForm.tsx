@@ -219,7 +219,10 @@ export default function CheckoutForm() {
   }, [showVoucherModal]);
 
   const handleApplyVoucher = async () => {
-    const applied = await applyVoucher(voucherCode.trim() || undefined, selectedVoucherId ?? undefined);
+    const applied = await applyVoucher(
+      selectedVoucherId ? undefined : voucherCode.trim() || undefined,
+      selectedVoucherId ?? undefined,
+    );
     if (applied) {
       setShowVoucherModal(false);
     }
@@ -275,11 +278,17 @@ export default function CheckoutForm() {
     setIsSubmitting(true);
     try {
       const payload: CheckoutPayload = {
+        items: selectedItems.map((item) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          is_reward: item.is_reward,
+          reward_redemption_id: item.reward_redemption_id ?? undefined,
+        })),
         session_token: sessionToken ?? undefined,
         payment_method: paymentMethod,
         shipping_method: shippingMethod,
         ...form,
-        voucher_code: voucherCode || undefined,
+        voucher_code: selectedVoucherId ? undefined : voucherCode || undefined,
         customer_voucher_id: selectedVoucherId ?? undefined,
         store_location_id: shippingMethod === "self_pickup" ? selectedStoreId ?? undefined : undefined,
         bank_account_id: paymentMethod === "manual_transfer" ? selectedBankId ?? undefined : undefined,

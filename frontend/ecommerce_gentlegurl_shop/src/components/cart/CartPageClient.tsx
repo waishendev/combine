@@ -43,7 +43,10 @@ export default function CartPageClient() {
     }, [appliedVoucher]);
 
   const handleApplyVoucher = async () => {
-    const applied = await applyVoucher(voucherCode.trim() || undefined, selectedVoucherId ?? undefined);
+    const applied = await applyVoucher(
+      selectedVoucherId ? undefined : voucherCode.trim() || undefined,
+      selectedVoucherId ?? undefined,
+    );
     if (applied) setShowVoucherModal(false);
   };
 

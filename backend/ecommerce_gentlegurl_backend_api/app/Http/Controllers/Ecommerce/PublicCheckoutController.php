@@ -44,13 +44,15 @@ class PublicCheckoutController extends Controller
         $customer = $this->currentCustomer();
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method'] ?? 'pickup');
         $cart = $this->resolveCart($customer, $validated['session_token'] ?? null);
+        $cartHasItems = $cart && $cart->items()->count() > 0;
 
-        if (!$cart || $cart->items()->count() === 0) {
+        if (!$cartHasItems && (empty($validated['items']) || count($validated['items']) === 0)) {
             return $this->respondError(__('Cart is empty.'), 422);
         }
 
         $calculation = $this->calculateTotals(
-            $cart,
+            $cartHasItems ? $cart : null,
+            $validated['items'] ?? [],
             $customer,
             $shippingMethod,
             $validated['voucher_code'] ?? null,
@@ -92,20 +94,22 @@ class PublicCheckoutController extends Controller
 
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method']);
         $cart = $this->resolveCart($customer, $validated['session_token'] ?? null);
+        $cartHasItems = $cart && $cart->items()->count() > 0;
 
-        if (!$cart || $cart->items()->count() === 0) {
+        if (!$cartHasItems && (empty($validated['items']) || count($validated['items']) === 0)) {
             return $this->respondError(__('Cart is empty.'), 422);
         }
 
         $calculation = $this->calculateTotals(
-            $cart,
+            $cartHasItems ? $cart : null,
+            $validated['items'] ?? [],
             $customer,
             $shippingMethod,
             $validated['voucher_code'] ?? null,
             $validated['customer_voucher_id'] ?? null
         );
 
-        if ((!empty($validated['voucher_code']) || !empty($validated['voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']->valid)) {
+        if ((!empty($validated['voucher_code']) || !empty($validated['customer_voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']->valid)) {
             return $this->respond(null, $calculation['voucher_error'] ?? __('Invalid voucher'), false, 422);
         }
 
@@ -482,83 +486,153 @@ class PublicCheckoutController extends Controller
         return null;
     }
 
-    protected function calculateTotals(Cart $cart, ?Customer $customer, string $shippingMethod, ?string $voucherCode, ?int $customerVoucherId): array
+    protected function calculateTotals(?Cart $cart, array $itemsInput, ?Customer $customer, string $shippingMethod, ?string $voucherCode, ?int $customerVoucherId): array
     {
-        $cart->loadMissing(['items.product']);
-
-        if ($cart->items->isEmpty()) {
-            throw ValidationException::withMessages([
-                'items' => __('Cart is empty.'),
-            ])->status(422);
-        }
-
         $items = [];
         $subtotal = 0;
 
-        foreach ($cart->items as $cartItem) {
-            $product = $cartItem->product;
+        if ($cart && $cart->items()->count() > 0) {
+            $cart->loadMissing(['items.product']);
 
-            if (!$product || !$product->is_active) {
-                continue;
-            }
+            foreach ($cart->items as $cartItem) {
+                $product = $cartItem->product;
 
-            if ($cartItem->is_reward) {
-                if (!$customer) {
+                if (!$product || !$product->is_active) {
+                    continue;
+                }
+
+                if ($cartItem->is_reward) {
+                    if (!$customer) {
+                        throw ValidationException::withMessages([
+                            'items' => __('Reward item is invalid or not owned by customer.'),
+                        ])->status(422);
+                    }
+
+                    $redemption = $cartItem->reward_redemption_id
+                        ? $customer->loyaltyRedemptions()->where('id', $cartItem->reward_redemption_id)->with('reward')->first()
+                        : null;
+
+                    if (
+                        !$redemption ||
+                        !in_array($redemption->status, ['pending', 'completed']) ||
+                        !$redemption->reward ||
+                        $redemption->reward->type !== 'product' ||
+                        (int) $redemption->reward->product_id !== (int) $product->id
+                    ) {
+                        throw ValidationException::withMessages([
+                            'items' => __('Reward item is invalid or not owned by customer.'),
+                        ])->status(422);
+                    }
+
+                    $items[] = [
+                        'product_id' => $product->id,
+                        'name' => $product->name,
+                        'sku' => $product->sku,
+                        'quantity' => 1,
+                        'unit_price' => 0.0,
+                        'line_total' => 0.0,
+                        'is_reward' => true,
+                        'reward_redemption_id' => $cartItem->reward_redemption_id,
+                        'locked' => true,
+                    ];
+
+                    continue;
+                }
+
+                if ($product->is_reward_only) {
                     throw ValidationException::withMessages([
-                        'items' => __('Reward item is invalid or not owned by customer.'),
+                        'items' => __('Reward-only products cannot be purchased.'),
                     ])->status(422);
                 }
 
-                $redemption = $cartItem->reward_redemption_id
-                    ? $customer->loyaltyRedemptions()->where('id', $cartItem->reward_redemption_id)->with('reward')->first()
-                    : null;
-
-                if (
-                    !$redemption ||
-                    !in_array($redemption->status, ['pending', 'completed']) ||
-                    !$redemption->reward ||
-                    $redemption->reward->type !== 'product' ||
-                    (int) $redemption->reward->product_id !== (int) $product->id
-                ) {
-                    throw ValidationException::withMessages([
-                        'items' => __('Reward item is invalid or not owned by customer.'),
-                    ])->status(422);
-                }
-
+                $lineTotal = (float) $product->price * (int) $cartItem->quantity;
                 $items[] = [
                     'product_id' => $product->id,
                     'name' => $product->name,
                     'sku' => $product->sku,
-                    'quantity' => 1,
-                    'unit_price' => 0.0,
-                    'line_total' => 0.0,
-                    'is_reward' => true,
-                    'reward_redemption_id' => $cartItem->reward_redemption_id,
-                    'locked' => true,
+                    'quantity' => (int) $cartItem->quantity,
+                    'unit_price' => (float) $product->price,
+                    'line_total' => $lineTotal,
+                    'is_reward' => false,
+                    'reward_redemption_id' => null,
+                    'locked' => false,
                 ];
-
-                continue;
+                $subtotal += $lineTotal;
             }
-
-            if ($product->is_reward_only) {
+        } else {
+            if (empty($itemsInput)) {
                 throw ValidationException::withMessages([
-                    'items' => __('Reward-only products cannot be purchased.'),
+                    'items' => __('Cart is empty.'),
                 ])->status(422);
             }
 
-            $lineTotal = (float) $product->price * (int) $cartItem->quantity;
-            $items[] = [
-                'product_id' => $product->id,
-                'name' => $product->name,
-                'sku' => $product->sku,
-                'quantity' => (int) $cartItem->quantity,
-                'unit_price' => (float) $product->price,
-                'line_total' => $lineTotal,
-                'is_reward' => false,
-                'reward_redemption_id' => null,
-                'locked' => false,
-            ];
-            $subtotal += $lineTotal;
+            foreach ($itemsInput as $input) {
+                $product = Product::find($input['product_id'] ?? null);
+                if (!$product || !$product->is_active) {
+                    continue;
+                }
+
+                $isReward = (bool) ($input['is_reward'] ?? false);
+                $redemptionId = $input['reward_redemption_id'] ?? null;
+
+                if ($isReward) {
+                    if (!$customer) {
+                        throw ValidationException::withMessages([
+                            'items' => __('Reward item is invalid or not owned by customer.'),
+                        ])->status(422);
+                    }
+
+                    $redemption = $redemptionId
+                        ? $customer->loyaltyRedemptions()->where('id', $redemptionId)->with('reward')->first()
+                        : null;
+
+                    if (
+                        !$redemption ||
+                        !in_array($redemption->status, ['pending', 'completed']) ||
+                        !$redemption->reward ||
+                        $redemption->reward->type !== 'product' ||
+                        (int) $redemption->reward->product_id !== (int) $product->id
+                    ) {
+                        throw ValidationException::withMessages([
+                            'items' => __('Reward item is invalid or not owned by customer.'),
+                        ])->status(422);
+                    }
+
+                    $items[] = [
+                        'product_id' => $product->id,
+                        'name' => $product->name,
+                        'sku' => $product->sku,
+                        'quantity' => 1,
+                        'unit_price' => 0.0,
+                        'line_total' => 0.0,
+                        'is_reward' => true,
+                        'reward_redemption_id' => $redemptionId,
+                        'locked' => true,
+                    ];
+
+                    continue;
+                }
+
+                if ($product->is_reward_only) {
+                    throw ValidationException::withMessages([
+                        'items' => __('Reward-only products cannot be purchased.'),
+                    ])->status(422);
+                }
+
+                $lineTotal = (float) $product->price * (int) ($input['quantity'] ?? 1);
+                $items[] = [
+                    'product_id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'quantity' => (int) ($input['quantity'] ?? 1),
+                    'unit_price' => (float) $product->price,
+                    'line_total' => $lineTotal,
+                    'is_reward' => false,
+                    'reward_redemption_id' => null,
+                    'locked' => false,
+                ];
+                $subtotal += $lineTotal;
+            }
         }
 
         $shippingFee = 0;

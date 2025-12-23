@@ -344,8 +344,16 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
           return false;
         }
 
+        const payloadItems = selectedItems.map((item) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          is_reward: item.is_reward,
+          reward_redemption_id: item.reward_redemption_id ?? undefined,
+        }));
+
         const response = await previewCheckout({
-          voucher_code: voucherCode || undefined,
+          items: payloadItems,
+          voucher_code: customerVoucherId ? undefined : voucherCode || undefined,
           customer_voucher_id: customerVoucherId || undefined,
           shipping_method: shippingMethod,
           session_token: sessionToken ?? undefined,
