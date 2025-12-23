@@ -182,7 +182,7 @@ class PublicCheckoutController extends Controller
                 }
 
                 foreach ($calculation['items'] as $item) {
-                    OrderItem::create([
+                    $orderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $item['product_id'],
                         'product_name_snapshot' => $item['name'],
@@ -197,10 +197,14 @@ class PublicCheckoutController extends Controller
 
                     if (!empty($item['reward_redemption_id'])) {
                         $redemption = $item['reward_redemption_id']
-                            ? $customer?->loyaltyRedemptions()->find($item['reward_redemption_id'])
+                            ? $customer?->loyaltyRedemptions()->where('id', $item['reward_redemption_id'])->first()
                             : null;
 
-                        if ($redemption && $redemption->status === 'pending') {
+                        if ($redemption) {
+                            $meta = $redemption->meta ?? [];
+                            $meta['order_id'] = $order->id;
+                            $meta['order_item_id'] = $orderItem->id;
+                            $redemption->meta = $meta;
                             $redemption->status = 'completed';
                             $redemption->save();
                         }
@@ -497,7 +501,7 @@ class PublicCheckoutController extends Controller
             foreach ($cart->items as $cartItem) {
                 $product = $cartItem->product;
 
-                if (!$product || !$product->is_active) {
+                if (!$product || (!$cartItem->is_reward && !$product->is_active)) {
                     continue;
                 }
 
@@ -509,18 +513,34 @@ class PublicCheckoutController extends Controller
                     }
 
                     $redemption = $cartItem->reward_redemption_id
-                        ? $customer->loyaltyRedemptions()->where('id', $cartItem->reward_redemption_id)->with('reward')->first()
+                        ? $customer->loyaltyRedemptions()
+                            ->where('id', $cartItem->reward_redemption_id)
+                            ->whereIn('status', ['pending', 'active'])
+                            ->with('reward')
+                            ->first()
                         : null;
 
-                    if (
-                        !$redemption ||
-                        !in_array($redemption->status, ['pending', 'completed']) ||
-                        !$redemption->reward ||
-                        $redemption->reward->type !== 'product' ||
-                        (int) $redemption->reward->product_id !== (int) $product->id
-                    ) {
+                    if (!$redemption || !$redemption->reward) {
                         throw ValidationException::withMessages([
                             'items' => __('Reward item is invalid or not owned by customer.'),
+                        ])->status(422);
+                    }
+
+                    if ($redemption->reward->type !== 'product') {
+                        throw ValidationException::withMessages([
+                            'items' => __('Invalid reward type.'),
+                        ])->status(422);
+                    }
+
+                    if ((int) $redemption->reward->product_id !== (int) $product->id) {
+                        throw ValidationException::withMessages([
+                            'items' => __('Reward product mismatch.'),
+                        ])->status(422);
+                    }
+
+                    if (data_get($redemption->meta, 'order_item_id')) {
+                        throw ValidationException::withMessages([
+                            'items' => __('Reward already used.'),
                         ])->status(422);
                     }
 
@@ -568,7 +588,7 @@ class PublicCheckoutController extends Controller
 
             foreach ($itemsInput as $input) {
                 $product = Product::find($input['product_id'] ?? null);
-                if (!$product || !$product->is_active) {
+                if (!$product || (!$isReward && !$product->is_active)) {
                     continue;
                 }
 
@@ -583,18 +603,34 @@ class PublicCheckoutController extends Controller
                     }
 
                     $redemption = $redemptionId
-                        ? $customer->loyaltyRedemptions()->where('id', $redemptionId)->with('reward')->first()
+                        ? $customer->loyaltyRedemptions()
+                            ->where('id', $redemptionId)
+                            ->whereIn('status', ['pending', 'active'])
+                            ->with('reward')
+                            ->first()
                         : null;
 
-                    if (
-                        !$redemption ||
-                        !in_array($redemption->status, ['pending', 'completed']) ||
-                        !$redemption->reward ||
-                        $redemption->reward->type !== 'product' ||
-                        (int) $redemption->reward->product_id !== (int) $product->id
-                    ) {
+                    if (!$redemption || !$redemption->reward) {
                         throw ValidationException::withMessages([
                             'items' => __('Reward item is invalid or not owned by customer.'),
+                        ])->status(422);
+                    }
+
+                    if ($redemption->reward->type !== 'product') {
+                        throw ValidationException::withMessages([
+                            'items' => __('Invalid reward type.'),
+                        ])->status(422);
+                    }
+
+                    if ((int) $redemption->reward->product_id !== (int) $product->id) {
+                        throw ValidationException::withMessages([
+                            'items' => __('Reward product mismatch.'),
+                        ])->status(422);
+                    }
+
+                    if (data_get($redemption->meta, 'order_item_id')) {
+                        throw ValidationException::withMessages([
+                            'items' => __('Reward already used.'),
                         ])->status(422);
                     }
 
