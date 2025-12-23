@@ -39,11 +39,44 @@ class PublicLoyaltyController extends Controller
         $rewards = LoyaltyReward::query()
             ->where('is_active', true)
             ->when($request->filled('type'), fn($q) => $q->where('type', $request->string('type')->toString()))
+            ->with(['product.images', 'voucher'])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
-        return $this->respond($rewards);
+        $placeholderImage = '/images/placeholder.png';
+
+        $payload = $rewards->map(function (LoyaltyReward $reward) use ($placeholderImage) {
+            $product = $reward->product;
+            $productImage = $product?->images
+                ? $product->images->sortBy('sort_order')->sortBy('id')->first()
+                : null;
+
+            $thumbnail = $productImage?->image_path ?? $placeholderImage;
+
+            return [
+                'id' => $reward->id,
+                'title' => $reward->title,
+                'description' => $reward->description,
+                'type' => $reward->type,
+                'points_required' => $reward->points_required,
+                'product_id' => $reward->product_id,
+                'voucher_id' => $reward->voucher_id,
+                'is_active' => $reward->is_active,
+                'sort_order' => $reward->sort_order,
+                'thumbnail' => $thumbnail,
+                'product' => $product ? [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'slug' => $product->slug,
+                    'sku' => $product->sku,
+                    'thumbnail' => $thumbnail,
+                ] : null,
+                'voucher_code' => $reward->voucher?->code,
+            ];
+        })->values();
+
+        return $this->respond($payload);
     }
 
     public function redeem(Request $request, PointsService $pointsService)

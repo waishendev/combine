@@ -49,6 +49,15 @@ export type LoyaltyReward = {
   voucher_id?: number | null;
   is_active?: boolean;
   sort_order?: number | null;
+  thumbnail?: string | null;
+  product?: {
+    id: number;
+    name: string;
+    slug?: string | null;
+    sku?: string | null;
+    thumbnail?: string | null;
+  } | null;
+  voucher_code?: string | null;
 };
 
 export type LoyaltyHistoryEntry = {

@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Ecommerce\LoyaltyReward;
 use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\ProductImage;
 use App\Models\Ecommerce\Voucher;
 use Illuminate\Database\Seeder;
 
@@ -21,6 +22,7 @@ class LoyaltyRewardSeeder extends Seeder
                 'is_active' => true,
                 'usage_limit_total' => null,
                 'usage_limit_per_customer' => 1,
+                'is_reward_only' => true,
             ]
         );
 
@@ -37,6 +39,18 @@ class LoyaltyRewardSeeder extends Seeder
                 'is_active' => true,
                 'is_featured' => false,
                 'is_reward_only' => true,
+            ]
+        );
+
+        $placeholderImagePath = '/images/placeholder.png';
+        ProductImage::updateOrCreate(
+            [
+                'product_id' => $rewardProduct->id,
+                'image_path' => $placeholderImagePath,
+            ],
+            [
+                'is_main' => true,
+                'sort_order' => 0,
             ]
         );
 
