@@ -23,6 +23,14 @@ class VoucherService
             return VoucherResult::invalid('Voucher not found.');
         }
 
+        if ($customerVoucher && $voucher->id !== $customerVoucher->voucher_id) {
+            return VoucherResult::invalid('Voucher not available for this customer.');
+        }
+
+        if ($voucher->is_reward_only && !$customerVoucher) {
+            return VoucherResult::invalid('This voucher must be claimed before use.');
+        }
+
         if (!$voucher->is_active) {
             return VoucherResult::invalid('Voucher is not active.');
         }
@@ -62,8 +70,16 @@ class VoucherService
         }
 
         if ($customerVoucher) {
+            if (!$customer) {
+                return VoucherResult::invalid('Please login to use this voucher.');
+            }
+
             if ($customerVoucher->customer_id !== $customer?->id) {
                 return VoucherResult::invalid('Voucher not available for this customer.');
+            }
+
+            if ($customerVoucher->status === 'used') {
+                return VoucherResult::invalid('Voucher has already been used.');
             }
 
             if ($customerVoucher->status !== 'active') {

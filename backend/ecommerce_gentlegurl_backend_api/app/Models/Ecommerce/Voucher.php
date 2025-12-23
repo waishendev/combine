@@ -25,6 +25,7 @@ class Voucher extends Model
         'max_uses',
         'max_uses_per_customer',
         'is_active',
+        'is_reward_only',
     ];
 
     protected function casts(): array
@@ -41,6 +42,7 @@ class Voucher extends Model
             'start_at' => 'datetime',
             'end_at' => 'datetime',
             'is_active' => 'boolean',
+            'is_reward_only' => 'boolean',
         ];
     }
 
