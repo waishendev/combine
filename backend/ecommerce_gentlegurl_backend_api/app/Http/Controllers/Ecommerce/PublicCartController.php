@@ -44,9 +44,17 @@ class PublicCartController extends Controller
         $product = Product::find($validated['product_id']);
         $quantity = (int) $validated['quantity'];
 
+        if (!$product || $product->is_reward_only) {
+            return $this->respondError(__('This product cannot be added to cart.'), 422);
+        }
+
         $item = CartItem::where('cart_id', $cart->id)
             ->where('product_id', $product->id)
             ->first();
+
+        if ($item?->locked) {
+            return $this->respondError(__('This reward item cannot be modified from cart.'), 422);
+        }
 
         if ($quantity === 0) {
             $item?->delete();
@@ -79,6 +87,10 @@ class PublicCartController extends Controller
 
         if ($item->cart_id !== $cart->id) {
             return $this->respond(null, __('Item not found in this cart.'), false, 404);
+        }
+
+        if ($item->locked) {
+            return $this->respondError(__('This reward item is locked. Please cancel the reward instead.'), 422);
         }
 
         $item->delete();
@@ -115,5 +127,30 @@ class PublicCartController extends Controller
         $cart = $this->cartService->resetGuestCart($sessionToken);
 
         return $this->respond($this->cartService->formatCart($cart));
+    }
+
+    public function cancelRewardItem(Request $request, CartItem $item)
+    {
+        $customer = $this->currentCustomer();
+        $sessionToken = $customer ? null : $request->query('session_token');
+
+        $result = $this->cartService->findOrCreateCart($customer, $sessionToken);
+        $cart = $result['cart'];
+
+        if ($item->cart_id !== $cart->id || !$item->is_reward) {
+            return $this->respond(null, __('Reward item not found in this cart.'), false, 404);
+        }
+
+        if ($item->reward_redemption_id) {
+            $redemption = $item->redemption;
+            if ($redemption && $redemption->status === 'pending') {
+                $redemption->status = 'cancelled';
+                $redemption->save();
+            }
+        }
+
+        $item->delete();
+
+        return $this->respond($this->cartService->formatCart($cart->fresh()));
     }
 }

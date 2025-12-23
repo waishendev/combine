@@ -7,7 +7,11 @@ use App\Models\Ecommerce\LoyaltyRedemption;
 use App\Models\Ecommerce\LoyaltyReward;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\Ecommerce\PointsTransaction;
+use App\Models\Ecommerce\CustomerVoucher;
+use App\Models\Ecommerce\CartItem;
+use App\Models\Ecommerce\Product;
 use App\Services\Ecommerce\MembershipTierService;
+use App\Services\Ecommerce\CartService;
 use Carbon\Carbon;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +19,10 @@ use Illuminate\Validation\ValidationException;
 
 class PointsService
 {
-    public function __construct(protected MembershipTierService $membershipTierService)
+    public function __construct(
+        protected MembershipTierService $membershipTierService,
+        protected CartService $cartService,
+    )
     {
     }
 
@@ -82,6 +89,27 @@ class PointsService
             ]);
         }
 
+        if ($reward->type === 'voucher' && !$reward->voucher_id) {
+            throw ValidationException::withMessages([
+                'reward_id' => __('Selected voucher reward is not configured correctly.'),
+            ]);
+        }
+
+        if ($reward->type === 'product') {
+            $product = $reward->product;
+            if (!$product) {
+                throw ValidationException::withMessages([
+                    'reward_id' => __('Selected product reward is missing product.'),
+                ]);
+            }
+
+            if (!$product->is_reward_only) {
+                throw ValidationException::withMessages([
+                    'reward_id' => __('Reward product must be reward-only.'),
+                ]);
+            }
+        }
+
         $availablePoints = $this->getAvailablePoints($customer, Carbon::now());
         $required = (int) $reward->points_required;
 
@@ -142,6 +170,24 @@ class PointsService
                 ],
             ]);
 
+            if ($reward->type === 'voucher' && $reward->voucher_id) {
+                CustomerVoucher::create([
+                    'customer_id' => $customer->id,
+                    'voucher_id' => $reward->voucher_id,
+                    'source_redemption_id' => $redemption->id,
+                    'status' => 'active',
+                    'claimed_at' => $now,
+                    'expires_at' => null,
+                ]);
+
+                $redemption->status = 'completed';
+                $redemption->save();
+            }
+
+            if ($reward->type === 'product' && $reward->product_id) {
+                $this->addRewardProductToCart($customer, $reward->product_id, $redemption);
+            }
+
             return $redemption;
         });
     }
@@ -168,5 +214,39 @@ class PointsService
         }
 
         return $meta;
+    }
+
+    protected function addRewardProductToCart(Customer $customer, int $productId, LoyaltyRedemption $redemption): void
+    {
+        $cart = $this->cartService->findOrCreateCart($customer, null)['cart'];
+
+        $existing = CartItem::where('cart_id', $cart->id)
+            ->where('reward_redemption_id', $redemption->id)
+            ->first();
+
+        $product = Product::find($productId);
+
+        if (!$product) {
+            return;
+        }
+
+        if ($existing) {
+            $existing->update([
+                'quantity' => 1,
+                'unit_price_snapshot' => 0,
+                'is_reward' => true,
+                'locked' => true,
+            ]);
+        } else {
+            CartItem::create([
+                'cart_id' => $cart->id,
+                'product_id' => $product->id,
+                'quantity' => 1,
+                'unit_price_snapshot' => 0,
+                'is_reward' => true,
+                'reward_redemption_id' => $redemption->id,
+                'locked' => true,
+            ]);
+        }
     }
 }

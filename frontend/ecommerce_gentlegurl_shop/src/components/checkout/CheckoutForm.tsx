@@ -10,6 +10,7 @@ import {
   AddressPayload,
   CheckoutPayload,
   CustomerAddress,
+  CustomerVoucher,
   PublicBankAccount,
   PublicStoreLocation,
   createCustomerAddress,
@@ -18,6 +19,7 @@ import {
   getCustomerAddresses,
   getBankAccounts,
   getStoreLocations,
+  getCustomerVouchers,
   makeDefaultCustomerAddress,
   updateCustomerAddress,
 } from "@/lib/apiClient";
@@ -49,6 +51,9 @@ export default function CheckoutForm() {
   const [paymentMethod, setPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
   const [error, setError] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
+  const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
+  const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
+  const [loadingVouchers, setLoadingVouchers] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [storeLocations, setStoreLocations] = useState<PublicStoreLocation[]>([]);
@@ -175,6 +180,7 @@ export default function CheckoutForm() {
 
   useEffect(() => {
     setVoucherCode(appliedVoucher?.code ?? "");
+    setSelectedVoucherId(appliedVoucher?.customer_voucher_id ?? null);
   }, [appliedVoucher]);
 
   useEffect(() => {
@@ -203,8 +209,17 @@ export default function CheckoutForm() {
       .finally(() => setIsLoadingBankAccounts(false));
   }, []);
 
+  useEffect(() => {
+    if (!showVoucherModal) return;
+    setLoadingVouchers(true);
+    getCustomerVouchers({ status: "active" })
+      .then((data) => setVouchers(data ?? []))
+      .catch(() => setVouchers([]))
+      .finally(() => setLoadingVouchers(false));
+  }, [showVoucherModal]);
+
   const handleApplyVoucher = async () => {
-    const applied = await applyVoucher(voucherCode.trim() || undefined);
+    const applied = await applyVoucher(voucherCode.trim() || undefined, selectedVoucherId ?? undefined);
     if (applied) {
       setShowVoucherModal(false);
     }
@@ -263,6 +278,8 @@ export default function CheckoutForm() {
         items: selectedItems.map((item) => ({
           product_id: item.product_id,
           quantity: item.quantity,
+          is_reward: item.is_reward,
+          reward_redemption_id: item.reward_redemption_id ?? undefined,
         })),
         session_token: sessionToken ?? undefined,
         payment_method: paymentMethod,
@@ -278,6 +295,7 @@ export default function CheckoutForm() {
       clearSelection();
       removeVoucher();
       setVoucherCode("");
+      setSelectedVoucherId(null);
 
       const isBillplzMethod =
         order.payment_method === "billplz_fpx" || order.payment_method === "billplz_card";
@@ -663,6 +681,7 @@ export default function CheckoutForm() {
                   onClick={() => {
                     removeVoucher();
                     setVoucherCode("");
+                    setSelectedVoucherId(null);
                   }}
                   className="rounded border border-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--muted)]/70"
                 >
@@ -1156,6 +1175,55 @@ export default function CheckoutForm() {
             </div>
 
             <div className="space-y-2">
+              <div className="rounded border border-[var(--muted)]/60 bg-[var(--muted)]/10 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-[var(--foreground)]">My Vouchers</p>
+                  <button
+                    type="button"
+                    className="text-xs text-[var(--accent)] underline"
+                    onClick={() => setSelectedVoucherId(null)}
+                  >
+                    Clear
+                  </button>
+                </div>
+                {loadingVouchers ? (
+                  <p className="text-xs text-[var(--foreground)]/70">Loading vouchers...</p>
+                ) : vouchers.length === 0 ? (
+                  <p className="text-xs text-[var(--foreground)]/60">No vouchers available.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {vouchers.map((voucher) => (
+                      <label
+                        key={voucher.id}
+                        className="flex cursor-pointer items-center justify-between gap-2 rounded border border-transparent px-2 py-1 hover:border-[var(--accent)]/40"
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="voucher_choice"
+                            checked={selectedVoucherId === voucher.id}
+                            onChange={() => {
+                              setSelectedVoucherId(voucher.id);
+                              setVoucherCode(voucher.voucher?.code ?? "");
+                            }}
+                          />
+                          <div className="text-xs">
+                            <div className="font-semibold">{voucher.voucher?.code ?? "Voucher"}</div>
+                            {voucher.voucher?.value !== undefined && (
+                              <div className="text-[11px] text-[var(--foreground)]/70">
+                                Value: {voucher.voucher?.type === "percent" ? `${voucher.voucher?.value}%` : `RM ${voucher.voucher?.value}`}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                          Active
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
               <input
                 type="text"
                 value={voucherCode}
@@ -1166,7 +1234,7 @@ export default function CheckoutForm() {
               <button
                 type="button"
                 onClick={handleApplyVoucher}
-                disabled={isApplyingVoucher || !voucherCode.trim()}
+                disabled={isApplyingVoucher || (!voucherCode.trim() && !selectedVoucherId)}
                 className="w-full rounded bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isApplyingVoucher ? "Applying..." : "Apply"}

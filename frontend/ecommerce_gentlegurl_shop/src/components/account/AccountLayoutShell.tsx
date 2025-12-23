@@ -13,6 +13,7 @@ const navItems = [
   { label: "My Orders", href: "/account/orders" },
   { label: "My Points", href: "/account/points" },
   { label: "Points History", href: "/account/points/history" },
+  { label: "My Vouchers", href: "/account/vouchers" },
   // { label: "My Wishlist", href: "/account/wishlist" },
 ];
 

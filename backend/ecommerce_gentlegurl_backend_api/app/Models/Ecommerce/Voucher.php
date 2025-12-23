@@ -49,6 +49,11 @@ class Voucher extends Model
         return $this->hasMany(VoucherUsage::class);
     }
 
+    public function customerVouchers()
+    {
+        return $this->hasMany(CustomerVoucher::class);
+    }
+
     /**
      * Prepare a date for array / JSON serialization.
      *

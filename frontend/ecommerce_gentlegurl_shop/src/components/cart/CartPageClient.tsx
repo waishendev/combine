@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
+import { CustomerVoucher, getCustomerVouchers } from "@/lib/apiClient";
 
 export default function CartPageClient() {
   const router = useRouter();
@@ -30,15 +31,19 @@ export default function CartPageClient() {
 
   const [voucherCode, setVoucherCode] = useState("");
   const [showVoucherModal, setShowVoucherModal] = useState(false);
+  const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
+  const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
+  const [loadingVouchers, setLoadingVouchers] = useState(false);
 
     useEffect(() => {
       // Sync voucher input with applied voucher code
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setVoucherCode(appliedVoucher?.code ?? "");
+      setSelectedVoucherId(appliedVoucher?.customer_voucher_id ?? null);
     }, [appliedVoucher]);
 
   const handleApplyVoucher = async () => {
-    const applied = await applyVoucher(voucherCode.trim() || undefined);
+    const applied = await applyVoucher(voucherCode.trim() || undefined, selectedVoucherId ?? undefined);
     if (applied) setShowVoucherModal(false);
   };
 
@@ -46,6 +51,15 @@ export default function CartPageClient() {
     setVoucherCode(value);
     clearVoucherFeedback();
   };
+
+  useEffect(() => {
+    if (!showVoucherModal) return;
+    setLoadingVouchers(true);
+    getCustomerVouchers({ status: "active" })
+      .then((data) => setVouchers(data ?? []))
+      .catch(() => setVouchers([]))
+      .finally(() => setLoadingVouchers(false));
+  }, [showVoucherModal]);
 
   // ✅ 如果你的 totals 里面有 discount/shipping/grand_total 就用；没有就 fallback
     const safeTotals = useMemo(() => {
@@ -133,6 +147,7 @@ export default function CartPageClient() {
                   item.unit_price ?? (item as { price?: number | string }).price ?? 0,
                 );
                 const lineTotal = unitPrice * item.quantity;
+                const isReward = item.is_reward || item.locked;
                 const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
                 const name =
                   item.name ??
@@ -177,6 +192,12 @@ export default function CartPageClient() {
                             <div className="line-clamp-2 text-sm font-semibold lg:line-clamp-none">{name}</div>
                           )}
 
+                          {isReward && (
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                              Reward item
+                            </span>
+                          )}
+
                             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
                               {sku && <span>SKU: {sku}</span>}
                               {variantLabel && <span>{variantLabel}</span>}
@@ -184,52 +205,67 @@ export default function CartPageClient() {
                         </div>
                       </div>
 
-                      <div className="text-right text-sm font-medium">RM {unitPrice.toFixed(2)}</div>
+                      <div className="text-right text-sm font-medium">
+                        RM {unitPrice.toFixed(2)}
+                        {isReward && <div className="text-[11px] text-[var(--foreground)]/60">Locked</div>}
+                      </div>
 
                       <div className="flex justify-end md:justify-center">
-                        <div className="flex items-center rounded border border-[var(--muted)] bg-white/70 text-sm">
-                          <button
-                            type="button"
-                            className="px-2 py-1 lg:px-3"
-                            onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
-                            aria-label="Decrease quantity"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min={1}
-                            className="w-12 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateItemQuantity(
-                                item.id,
-                                Math.max(1, Number(e.target.value) || 1),
-                              )
-                            }
-                          />
-                          <button
-                            type="button"
-                            className="px-2 py-1 lg:px-3"
-                            onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
-                            aria-label="Increase quantity"
-                          >
-                            +
-                          </button>
-                        </div>
+                        {isReward ? (
+                          <div className="rounded border border-dashed border-[var(--muted)] px-3 py-2 text-xs text-[var(--foreground)]/60">
+                            Locked
+                          </div>
+                        ) : (
+                          <div className="flex items-center rounded border border-[var(--muted)] bg-white/70 text-sm">
+                            <button
+                              type="button"
+                              className="px-2 py-1 lg:px-3"
+                              onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
+                              aria-label="Decrease quantity"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min={1}
+                              className="w-12 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateItemQuantity(
+                                  item.id,
+                                  Math.max(1, Number(e.target.value) || 1),
+                                )
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="px-2 py-1 lg:px-3"
+                              onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                              aria-label="Increase quantity"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div className="text-right text-sm font-semibold">RM {lineTotal.toFixed(2)}</div>
 
                       <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item.id)}
-                          className="rounded-md px-2 py-1 text-xs font-semibold text-[#c26686] transition hover:bg-[#c26686]/10 hover:text-[var(--accent-strong)]"
-                          title="Remove"
-                        >
-                          Remove
-                        </button>
+                        {isReward ? (
+                          <span className="rounded-md bg-[var(--muted)]/40 px-3 py-1 text-xs font-semibold text-[var(--foreground)]/70">
+                            Locked
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            className="rounded-md px-2 py-1 text-xs font-semibold text-[#c26686] transition hover:bg-[#c26686]/10 hover:text-[var(--accent-strong)]"
+                            title="Remove"
+                          >
+                            Remove
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -244,6 +280,7 @@ export default function CartPageClient() {
               const unitPrice = Number(
                 item.unit_price ?? (item as { price?: number | string }).price ?? 0,
               );
+              const isReward = item.is_reward || item.locked;
               const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
               const name =
                 item.name ?? (item.product as { name?: string })?.name ?? "Unnamed Product";
@@ -285,50 +322,66 @@ export default function CartPageClient() {
                         <div className="text-xs text-[var(--foreground)]/60">
                           {sku && <span>SKU: {sku}</span>}
                           {variantLabel && <span className="ml-2">{variantLabel}</span>}
+                          {isReward && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">Reward</span>}
                         </div>
 
-                        <div className="text-sm font-medium text-[var(--foreground)]">RM {unitPrice.toFixed(2)}</div>
+                        <div className="text-sm font-medium text-[var(--foreground)]">
+                          RM {unitPrice.toFixed(2)}
+                          {isReward && <span className="ml-2 text-[11px] text-[var(--foreground)]/60">Locked</span>}
+                        </div>
 
                         <div className="flex items-center gap-2 pt-1">
-                          <div className="flex items-center rounded border border-[var(--muted)] bg-white/70 text-sm">
-                            <button
-                              type="button"
-                              className="px-3 py-1"
-                              onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
-                              aria-label="Decrease quantity"
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              min={1}
-                              className="w-14 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                updateItemQuantity(
-                                  item.id,
-                                  Math.max(1, Number(e.target.value) || 1),
-                                )
-                              }
-                            />
-                            <button
-                              type="button"
-                              className="px-3 py-1"
-                              onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
-                              aria-label="Increase quantity"
-                            >
-                              +
-                            </button>
-                          </div>
+                          {isReward ? (
+                            <div className="rounded border border-dashed border-[var(--muted)] px-3 py-2 text-xs text-[var(--foreground)]/60">
+                              Locked
+                            </div>
+                          ) : (
+                            <div className="flex items-center rounded border border-[var(--muted)] bg-white/70 text-sm">
+                              <button
+                                type="button"
+                                className="px-3 py-1"
+                                onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
+                                aria-label="Decrease quantity"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min={1}
+                                className="w-14 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  updateItemQuantity(
+                                    item.id,
+                                    Math.max(1, Number(e.target.value) || 1),
+                                  )
+                                }
+                              />
+                              <button
+                                type="button"
+                                className="px-3 py-1"
+                                onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                                aria-label="Increase quantity"
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
 
                           <div className="ml-auto text-right text-sm font-semibold">                          
-                          <button
-                            type="button"
-                            onClick={() => removeItem(item.id)}
-                            className="rounded-md bg-[#c26686]/10 px-3 py-2 text-xs font-semibold text-[#c26686] transition hover:bg-[#c26686]/20"
-                          >
-                            Remove
-                          </button>
+                            {isReward ? (
+                              <span className="rounded-md bg-[var(--muted)]/40 px-3 py-2 text-[11px] font-semibold text-[var(--foreground)]/70">
+                                Locked
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => removeItem(item.id)}
+                                className="rounded-md bg-[#c26686]/10 px-3 py-2 text-xs font-semibold text-[#c26686] transition hover:bg-[#c26686]/20"
+                              >
+                                Remove
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -504,6 +557,55 @@ export default function CartPageClient() {
                 </div>
               )}
 
+              <div className="rounded-lg border border-[var(--muted)]/70 bg-[var(--muted)]/15 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold">My Vouchers</p>
+                  <button
+                    type="button"
+                    className="text-xs text-[var(--accent)] underline"
+                    onClick={() => setSelectedVoucherId(null)}
+                  >
+                    Clear
+                  </button>
+                </div>
+                {loadingVouchers ? (
+                  <p className="text-xs text-[var(--foreground)]/70">Loading vouchers...</p>
+                ) : vouchers.length === 0 ? (
+                  <p className="text-xs text-[var(--foreground)]/60">No vouchers available.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {vouchers.map((voucher) => (
+                      <label
+                        key={voucher.id}
+                        className="flex cursor-pointer items-center justify-between gap-2 rounded border border-transparent px-2 py-1 hover:border-[var(--accent)]/40"
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="voucher_choice"
+                            checked={selectedVoucherId === voucher.id}
+                            onChange={() => {
+                              setSelectedVoucherId(voucher.id);
+                              setVoucherCode(voucher.voucher?.code ?? "");
+                            }}
+                          />
+                          <div className="text-xs">
+                            <div className="font-semibold">{voucher.voucher?.code ?? "Voucher"}</div>
+                            {voucher.voucher?.value !== undefined && (
+                              <div className="text-[11px] text-[var(--foreground)]/70">
+                                Value: {voucher.voucher?.type === "percent" ? `${voucher.voucher?.value}%` : `RM ${voucher.voucher?.value}`}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                          Active
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <input
                 type="text"
@@ -516,7 +618,7 @@ export default function CartPageClient() {
               <button
                 type="button"
                 onClick={handleApplyVoucher}
-                disabled={isApplyingVoucher || !voucherCode.trim()}
+                disabled={isApplyingVoucher || (!voucherCode.trim() && !selectedVoucherId)}
                 className="w-full rounded-lg bg-[var(--accent)] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isApplyingVoucher ? "Applying..." : "Apply"}

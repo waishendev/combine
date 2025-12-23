@@ -11,9 +11,33 @@ class LoyaltyRewardSeeder extends Seeder
 {
     public function run(): void
     {
-        $voucherId = Voucher::query()->value('id');
-        $productId = Product::where('is_active', true)->orderBy('id')->value('id')
-            ?? Product::query()->orderBy('id')->value('id');
+        $voucher = Voucher::firstOrCreate(
+            ['code' => 'RM10-REWARD'],
+            [
+                'type' => 'fixed',
+                'value' => 10,
+                'min_order_amount' => 0,
+                'is_active' => true,
+                'usage_limit_total' => null,
+                'usage_limit_per_customer' => 1,
+            ]
+        );
+
+        $rewardProduct = Product::firstOrCreate(
+            ['slug' => 'reward-free-tshirt'],
+            [
+                'name' => 'Reward - Free T-Shirt',
+                'sku' => 'REWARD-TEE',
+                'type' => 'single',
+                'price' => 0,
+                'cost_price' => 0,
+                'stock' => 999,
+                'low_stock_threshold' => 0,
+                'is_active' => true,
+                'is_featured' => false,
+                'is_reward_only' => true,
+            ]
+        );
 
         $rewards = [
             [
@@ -21,7 +45,7 @@ class LoyaltyRewardSeeder extends Seeder
                 'description' => 'Redeem RM10 off your next purchase.',
                 'type' => 'voucher',
                 'points_required' => 500,
-                'voucher_id' => $voucherId,
+                'voucher_id' => $voucher->id,
                 'product_id' => null,
                 'is_active' => true,
                 'sort_order' => 1,
@@ -31,7 +55,7 @@ class LoyaltyRewardSeeder extends Seeder
                 'description' => 'Claim a free t-shirt with your points.',
                 'type' => 'product',
                 'points_required' => 800,
-                'product_id' => $productId,
+                'product_id' => $rewardProduct->id,
                 'voucher_id' => null,
                 'is_active' => true,
                 'sort_order' => 2,

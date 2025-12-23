@@ -79,6 +79,11 @@ class Customer extends Authenticatable
             ->withPivot(['created_at']);
     }
 
+    public function customerVouchers()
+    {
+        return $this->hasMany(CustomerVoucher::class);
+    }
+
     public function addresses(): HasMany
     {
         return $this->hasMany(CustomerAddress::class);

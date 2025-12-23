@@ -14,7 +14,20 @@ class CartItem extends Model
         'product_id',
         'quantity',
         'unit_price_snapshot',
+        'is_reward',
+        'reward_redemption_id',
+        'locked',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'quantity' => 'integer',
+            'unit_price_snapshot' => 'decimal:2',
+            'is_reward' => 'boolean',
+            'locked' => 'boolean',
+        ];
+    }
 
     public function cart()
     {
@@ -24,5 +37,10 @@ class CartItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function redemption()
+    {
+        return $this->belongsTo(LoyaltyRedemption::class, 'reward_redemption_id');
     }
 }

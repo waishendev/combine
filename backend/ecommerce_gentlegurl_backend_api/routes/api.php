@@ -30,6 +30,7 @@ use App\Http\Controllers\Ecommerce\PublicReturnController;
 use App\Http\Controllers\Ecommerce\PublicWishlistController;
 use App\Http\Controllers\Ecommerce\PublicStoreLocationController;
 use App\Http\Controllers\Ecommerce\PromotionController;
+use App\Http\Controllers\Ecommerce\PublicVoucherController;
 use App\Http\Controllers\Ecommerce\ReturnRequestController;
 use App\Http\Controllers\Ecommerce\PublicAccountController;
 use App\Http\Controllers\Ecommerce\VoucherController;
@@ -130,6 +131,7 @@ Route::prefix('/public/shop')->group(function () {
         Route::post('/cart/items', [PublicCartController::class, 'addOrUpdateItem']);
         Route::delete('/cart/items/{item}', [PublicCartController::class, 'removeItem']);
         Route::post('/cart/reset', [PublicCartController::class, 'reset']);
+        Route::post('/cart/reward-items/{item}/cancel', [PublicCartController::class, 'cancelRewardItem']);
 
         Route::get('/wishlist', [PublicWishlistController::class, 'index']);
         Route::post('/wishlist/toggle', [PublicWishlistController::class, 'toggle']);
@@ -156,6 +158,8 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/loyalty/history', [PublicLoyaltyController::class, 'history']);
         Route::get('/loyalty/rewards', [PublicLoyaltyController::class, 'rewards']);
         Route::post('/loyalty/redeem', [PublicLoyaltyController::class, 'redeem']);
+
+        Route::get('/vouchers', [PublicVoucherController::class, 'index']);
     });
 });
 
