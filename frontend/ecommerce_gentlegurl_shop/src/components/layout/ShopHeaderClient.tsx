@@ -96,6 +96,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
 
   const avatarUrl = profile?.avatar ?? "/images/default_user_image.jpg";
   const tierName = loyalty?.current_tier?.name ?? profile?.tier ?? "-";
+  const availablePoints = loyalty?.points?.available;
 
   const handleLogout = async () => {
     await logout();
@@ -337,6 +338,11 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                         <div className="px-3 py-1.5">
                           <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
                           <div className="text-xs text-[var(--foreground)]/60">{profile?.email}</div>
+                          {availablePoints != null && (
+                            <div className="text-xs font-semibold text-[var(--accent-strong)]">
+                              Points: {availablePoints.toLocaleString()} pts
+                            </div>
+                          )}
                           {tierName && tierName !== "-" && (
                             <div className="mt-1 text-[10px] uppercase tracking-wide text-[var(--accent-strong)]">
                               {tierName}
@@ -483,14 +489,19 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
               {userMenuOpen && (
                 <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-[var(--muted)]/60 bg-white/95 p-2 shadow-lg backdrop-blur-sm">
                   <div className="mb-2 border-b border-[var(--muted)]/50 pb-2">
-                    <div className="px-3 py-1.5">
-                      <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
-                      <div className="text-xs text-[var(--foreground)]/60">{profile?.email}</div>
-                      {tierName && tierName !== "-" && (
-                        <div className="mt-1 text-[10px] uppercase tracking-wide text-[var(--accent-strong)]">
-                          {tierName}
-                        </div>
-                      )}
+                      <div className="px-3 py-1.5">
+                        <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
+                        <div className="text-xs text-[var(--foreground)]/60">{profile?.email}</div>
+                        {availablePoints != null && (
+                          <div className="text-xs font-semibold text-[var(--accent-strong)]">
+                            Points: {availablePoints.toLocaleString()} pts
+                          </div>
+                        )}
+                        {tierName && tierName !== "-" && (
+                          <div className="mt-1 text-[10px] uppercase tracking-wide text-[var(--accent-strong)]">
+                            {tierName}
+                          </div>
+                        )}
                     </div>
                   </div>
                   <Link
