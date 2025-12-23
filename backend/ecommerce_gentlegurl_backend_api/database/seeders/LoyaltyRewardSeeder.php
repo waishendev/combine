@@ -16,6 +16,7 @@ class LoyaltyRewardSeeder extends Seeder
             [
                 'type' => 'fixed',
                 'value' => 10,
+                'amount' => 10,
                 'min_order_amount' => 0,
                 'is_active' => true,
                 'usage_limit_total' => null,
