@@ -588,12 +588,12 @@ class PublicCheckoutController extends Controller
 
             foreach ($itemsInput as $input) {
                 $product = Product::find($input['product_id'] ?? null);
+                $isReward = (bool) ($input['is_reward'] ?? false);
+                $redemptionId = $input['reward_redemption_id'] ?? null;
+
                 if (!$product || (!$isReward && !$product->is_active)) {
                     continue;
                 }
-
-                $isReward = (bool) ($input['is_reward'] ?? false);
-                $redemptionId = $input['reward_redemption_id'] ?? null;
 
                 if ($isReward) {
                     if (!$customer) {
