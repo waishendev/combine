@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\LoyaltyReward;
+use App\Models\Ecommerce\MembershipTierRule;
+use App\Services\Ecommerce\MembershipTierService;
 use App\Services\Ecommerce\LoyaltySummaryService;
 use App\Services\Loyalty\PointsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class PublicLoyaltyController extends Controller
 {
@@ -50,7 +53,8 @@ class PublicLoyaltyController extends Controller
                 ? $product->images->sortBy('sort_order')->sortBy('id')->first()
                 : null;
 
-            $thumbnail = $productImage?->image_path ;
+            $thumbnail = $productImage?->image_path;
+            $imageUrl = $thumbnail ? Storage::disk('public')->url($thumbnail) : null;
 
             return [
                 'id' => $reward->id,
@@ -69,8 +73,25 @@ class PublicLoyaltyController extends Controller
                     'slug' => $product->slug,
                     'sku' => $product->sku,
                     'thumbnail' => $thumbnail,
+                    'image_url' => $imageUrl,
+                    'is_reward_only' => $product->is_reward_only,
                 ] : null,
                 'voucher_code' => $reward->voucher?->code,
+                'voucher' => $reward->voucher ? [
+                    'code' => $reward->voucher->code,
+                    'type' => $reward->voucher->type,
+                    'value' => (float) $reward->voucher->value,
+                    'amount' => (float) $reward->voucher->amount,
+                    'min_order_amount' => $reward->voucher->min_order_amount,
+                    'max_discount_amount' => $reward->voucher->max_discount_amount,
+                    'start_at' => $reward->voucher->start_at,
+                    'end_at' => $reward->voucher->end_at,
+                    'usage_limit_total' => $reward->voucher->usage_limit_total,
+                    'usage_limit_per_customer' => $reward->voucher->usage_limit_per_customer,
+                    'max_uses' => $reward->voucher->max_uses,
+                    'max_uses_per_customer' => $reward->voucher->max_uses_per_customer,
+                    'is_reward_only' => $reward->voucher->is_reward_only,
+                ] : null,
             ];
         })->values();
 
@@ -101,5 +122,19 @@ class PublicLoyaltyController extends Controller
             ],
             'current_points_balance' => $summary['points']['available'],
         ], __('Redemption created successfully.'));
+    }
+
+    public function membershipTiers(MembershipTierService $membershipTierService)
+    {
+        $tiers = MembershipTierRule::query()
+            ->where('is_active', true)
+            ->orderBy('min_spent_last_x_months')
+            ->orderBy('sort_order')
+            ->get()
+            ->map(fn(MembershipTierRule $rule) => $membershipTierService->formatTierData($rule))
+            ->filter()
+            ->values();
+
+        return $this->respond($tiers);
     }
 }

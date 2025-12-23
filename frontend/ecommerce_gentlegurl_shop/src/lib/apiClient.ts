@@ -50,14 +50,32 @@ export type LoyaltyReward = {
   is_active?: boolean;
   sort_order?: number | null;
   thumbnail?: string | null;
+  image_url?: string | null;
   product?: {
     id: number;
     name: string;
     slug?: string | null;
     sku?: string | null;
     thumbnail?: string | null;
+    image_url?: string | null;
+    is_reward_only?: boolean;
   } | null;
   voucher_code?: string | null;
+  voucher?: {
+    code: string;
+    type: string;
+    value: number;
+    amount: number;
+    min_order_amount?: number | string | null;
+    max_discount_amount?: number | string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    usage_limit_total?: number | null;
+    usage_limit_per_customer?: number | null;
+    max_uses?: number | null;
+    max_uses_per_customer?: number | null;
+    is_reward_only?: boolean;
+  } | null;
 };
 
 export type LoyaltyHistoryEntry = {
@@ -810,6 +828,16 @@ export async function getLoyaltyRewards() {
 
   const payload = (response as { data?: LoyaltyReward[] })?.data ?? response;
   return (Array.isArray(payload) ? payload : []) as LoyaltyReward[];
+}
+
+export async function getMembershipTiers() {
+  const response = await get<{ data?: LoyaltyTier[]; meta?: unknown }>(
+    "/public/shop/membership/tiers",
+    { headers: { Accept: "application/json" } },
+  );
+
+  const payload = (response as { data?: LoyaltyTier[] })?.data ?? response;
+  return (Array.isArray(payload) ? payload : []) as LoyaltyTier[];
 }
 
 export async function redeemLoyaltyReward(rewardId: number) {

@@ -109,6 +109,9 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/sliders', [PublicHomeSliderController::class, 'index']);
     Route::get('/homepage', [PublicHomepageController::class, 'show'])
         ->middleware('api.session');
+    Route::get('/loyalty/rewards', [PublicLoyaltyController::class, 'rewards'])
+        ->middleware('api.session');
+    Route::get('/membership/tiers', [PublicLoyaltyController::class, 'membershipTiers']);
     Route::get('/shipping', [PublicShopController::class, 'shipping']);
     Route::get('/store-locations', [PublicStoreLocationController::class, 'index']);
     Route::get('/store-locations/{storeLocation}', [PublicStoreLocationController::class, 'show']);
@@ -159,7 +162,6 @@ Route::prefix('/public/shop')->group(function () {
 
         Route::get('/loyalty/summary', [PublicLoyaltyController::class, 'summary']);
         Route::get('/loyalty/history', [PublicLoyaltyController::class, 'history']);
-        Route::get('/loyalty/rewards', [PublicLoyaltyController::class, 'rewards']);
         Route::post('/loyalty/redeem', [PublicLoyaltyController::class, 'redeem']);
 
         Route::get('/vouchers', [PublicVoucherController::class, 'index']);

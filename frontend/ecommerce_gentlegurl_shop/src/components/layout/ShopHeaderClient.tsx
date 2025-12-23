@@ -20,6 +20,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const { items, resetAfterLogout } = useCart();
   const [shopOpen, setShopOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
+  const [membershipOpen, setMembershipOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
@@ -39,6 +40,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
       if (!target.closest('[data-menu]')) {
         setShopOpen(false);
         setServicesOpen(false);
+        setMembershipOpen(false);
         setUserMenuOpen(false);
       }
       if (!target.closest('[data-mobile-user-menu]')) {
@@ -223,6 +225,50 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                     onClick={() => setServicesOpen(false)}
                   >
                     Nail Courses
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Membership Dropdown */}
+            <div className="relative" data-menu>
+              <button
+                type="button"
+                onClick={() => {
+                  setMembershipOpen((prev) => !prev);
+                  setShopOpen(false);
+                  setServicesOpen(false);
+                }}
+                className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
+              >
+                <span>Membership</span>
+                <svg
+                  className="h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+
+              {membershipOpen && (
+                <div className="absolute left-0 z-20 mt-2 w-56 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
+                  <Link
+                    href="/membership"
+                    className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
+                    onClick={() => setMembershipOpen(false)}
+                  >
+                    Membership Tiers
+                  </Link>
+                  <Link
+                    href="/rewards"
+                    className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
+                    onClick={() => setMembershipOpen(false)}
+                  >
+                    Rewards Center
                   </Link>
                 </div>
               )}
@@ -701,6 +747,51 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                 )}
               </div>
 
+              {/* Membership Menu - Mobile */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setMembershipOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                >
+                  <span>Membership</span>
+                  <svg
+                    className={`h-4 w-4 transition-transform ${membershipOpen ? "rotate-180" : ""}`}
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                {membershipOpen && (
+                  <div className="ml-4 mt-1 space-y-1 border-l border-[var(--muted)]/50 pl-4">
+                    <Link
+                      href="/membership"
+                      className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                      onClick={() => {
+                        setMembershipOpen(false);
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      Membership Tiers
+                    </Link>
+                    <Link
+                      href="/rewards"
+                      className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                      onClick={() => {
+                        setMembershipOpen(false);
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      Rewards Center
+                    </Link>
+                  </div>
+                )}
+              </div>
+              
               <Link
                 href="/tracking"
                 className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"

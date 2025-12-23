@@ -44,6 +44,7 @@ export function RewardsCenter() {
   const [filter, setFilter] = useState<string>("all");
   const [redeemingId, setRedeemingId] = useState<number | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [selectedVoucher, setSelectedVoucher] = useState<LoyaltyReward | null>(null);
   const toastTimer = useRef<NodeJS.Timeout | null>(null);
 
   const availablePoints = overview?.loyalty.points.available ?? 0;
@@ -104,6 +105,22 @@ export function RewardsCenter() {
     toastTimer.current = setTimeout(() => setToast(null), 4200);
   }, []);
 
+  const formatAmount = useCallback((value?: number | string | null) => {
+    if (value === null || value === undefined || value === "") return "N/A";
+    const parsed = Number(value);
+    if (Number.isNaN(parsed)) return String(value);
+    return `RM ${parsed.toFixed(2)}`;
+  }, []);
+
+  const formatDate = useCallback((value?: string | null) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toLocaleDateString();
+  }, []);
+
+  const closeVoucherModal = useCallback(() => setSelectedVoucher(null), []);
+
   const handleRedeem = useCallback(
     async (reward: LoyaltyReward) => {
       if (!customer) {
@@ -126,7 +143,22 @@ export function RewardsCenter() {
       setRedeemingId(reward.id);
       try {
         await redeemLoyaltyReward(reward.id);
+        setOverview((current) => {
+          if (!current) return current;
+          const currentPoints = current.loyalty.points?.available ?? 0;
+          return {
+            ...current,
+            loyalty: {
+              ...current.loyalty,
+              points: {
+                ...current.loyalty.points,
+                available: Math.max(currentPoints - reward.points_required, 0),
+              },
+            },
+          };
+        });
         await refreshProfile();
+        await fetchRewards();
 
         if (reward.type === "product") {
           showToast({
@@ -160,7 +192,7 @@ export function RewardsCenter() {
         setRedeemingId((current) => (current === reward.id ? null : current));
       }
     },
-    [availablePoints, customer, refreshProfile, reloadCart, router, showToast],
+    [availablePoints, customer, fetchRewards, refreshProfile, reloadCart, router, showToast],
   );
 
   const renderToast = toast ? (
@@ -187,6 +219,26 @@ export function RewardsCenter() {
     </div>
   ) : null;
 
+  const selectedVoucherDetails = selectedVoucher?.voucher;
+  const voucherBenefit = selectedVoucherDetails
+    ? selectedVoucherDetails.type === "percent"
+      ? `${selectedVoucherDetails.value}% off`
+      : selectedVoucherDetails.amount
+        ? formatAmount(selectedVoucherDetails.amount)
+        : selectedVoucherDetails.value
+          ? formatAmount(selectedVoucherDetails.value)
+          : "Discount voucher"
+    : null;
+  const voucherValidityStart = formatDate(selectedVoucherDetails?.start_at);
+  const voucherValidityEnd = formatDate(selectedVoucherDetails?.end_at);
+  const voucherValidity = voucherValidityStart || voucherValidityEnd
+    ? `${voucherValidityStart ?? "Now"} - ${voucherValidityEnd ?? "No expiry set"}`
+    : "Validity follows voucher rules upon redemption.";
+  const voucherUsage =
+    (selectedVoucherDetails?.max_uses_per_customer ?? selectedVoucherDetails?.usage_limit_per_customer)
+      ? `${selectedVoucherDetails?.max_uses_per_customer ?? selectedVoucherDetails?.usage_limit_per_customer} per customer`
+      : "Standard usage limits apply.";
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
       <div className="rounded-2xl border border-pink-50 bg-white/80 p-6 shadow-sm">
@@ -197,28 +249,6 @@ export function RewardsCenter() {
             <p className="mt-1 text-sm text-gray-600">
               Discover vouchers, products, and more. Redeem when you have enough points.
             </p>
-          </div>
-
-          <div className="rounded-xl border border-pink-100 bg-pink-50/60 px-4 py-3 text-sm text-gray-800">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg font-bold text-[#ec4899]">
-                {loadingOverview ? "…" : availablePoints.toLocaleString()}
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#ec4899]">Available Points</p>
-                <p className="text-sm font-semibold text-gray-900">
-                  {loadingOverview ? "Loading..." : `${availablePoints.toLocaleString()} pts`}
-                </p>
-              </div>
-            </div>
-            {customer ? (
-              <p className="mt-2 text-xs text-gray-600">
-                Tier: {customer.loyalty.current_tier?.name ?? "—"} · Total earned:{" "}
-                {customer.loyalty.points.total_earned.toLocaleString()}
-              </p>
-            ) : (
-              <p className="mt-2 text-xs text-gray-600">Login to see your full loyalty summary.</p>
-            )}
           </div>
         </div>
 
@@ -285,13 +315,21 @@ export function RewardsCenter() {
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filteredRewards.map((reward) => {
-              const imageUrl = reward.thumbnail || reward.product?.thumbnail || PLACEHOLDER;
+              const imageUrl =
+                reward.product?.image_url ||
+                reward.thumbnail ||
+                reward.product?.thumbnail ||
+                PLACEHOLDER;
               const hasEnoughPoints = availablePoints >= reward.points_required;
               const isRedeeming = redeemingId === reward.id;
               const shouldDisable = customer ? !hasEnoughPoints || isRedeeming : isRedeeming;
               const typeLabel = reward.type
                 ? `${reward.type.charAt(0).toUpperCase()}${reward.type.slice(1)}`
                 : "Reward";
+              const productLink =
+                reward.type === "product" && reward.product?.slug
+                  ? `/product/${reward.product.slug}?reward=1`
+                  : null;
               const buttonLabel = !customer
                 ? "Login to redeem"
                 : isRedeeming
@@ -336,6 +374,33 @@ export function RewardsCenter() {
                         <span className="text-xs font-medium text-gray-500">Voucher reward</span>
                       )}
                     </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
+                      {reward.type === "voucher" && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVoucher(reward)}
+                          className="inline-flex items-center gap-1 font-semibold text-[#ec4899] transition hover:text-[#db2777]"
+                        >
+                          View details
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      )}
+
+                      {productLink && (
+                        <Link
+                          href={productLink}
+                          className="inline-flex items-center gap-1 font-semibold text-[#ec4899] transition hover:text-[#db2777]"
+                        >
+                          View details
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </Link>
+                      )}
+                    </div>
                   </div>
 
                   <button
@@ -362,6 +427,82 @@ export function RewardsCenter() {
           </div>
         )}
       </section>
+
+      {selectedVoucher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#ec4899]">Voucher Reward</p>
+                <h3 className="mt-1 text-xl font-semibold text-gray-900">{selectedVoucher.title}</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  {selectedVoucher.description ?? "Review the voucher rules before redeeming."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeVoucherModal}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+                aria-label="Close voucher details"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase text-gray-500">Points Required</p>
+                <p className="mt-1 text-base font-semibold text-[#ec4899]">
+                  {selectedVoucher.points_required.toLocaleString()} pts
+                </p>
+              </div>
+
+              {voucherBenefit && (
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">Benefit</p>
+                  <p className="mt-1 font-semibold text-gray-900">{voucherBenefit}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold uppercase text-gray-500">Min Spend</p>
+                <p className="mt-1 font-semibold text-gray-900">
+                  {selectedVoucherDetails?.min_order_amount
+                    ? formatAmount(selectedVoucherDetails.min_order_amount)
+                    : "No minimum spend"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg bg-pink-50 px-3 py-2 text-xs text-pink-800">
+              Redeem to add this voucher to your account. Login is required to redeem.
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeVoucherModal}
+                className="rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Close
+              </button>
+              {!customer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    router.push("/login?redirect=/rewards");
+                    closeVoucherModal();
+                  }}
+                  className="rounded-full bg-[#ec4899] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#db2777]"
+                >
+                  Login to redeem
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
