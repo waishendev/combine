@@ -24,6 +24,8 @@ export type ProductDetail = {
   dummy_sold_count?: number | null;
   real_sold_count?: number | null;
   sold_count?: number | null;
+  is_reward_only?: boolean;
+  related_products?: unknown;
   review_summary?: ReviewSummary;
   recent_reviews?: ReviewItem[];
   review_settings?: ReviewSettings;
@@ -41,7 +43,7 @@ function normalizeProductImages(product: ProductDetail): ProductDetail {
   return { ...product, images };
 }
 
-export async function getProduct(slug: string): Promise<ProductDetail | null> {
+export async function getProduct(slug: string, options?: { reward?: boolean }): Promise<ProductDetail | null> {
   try {
     const cookieStore = await cookies();
     const cookieHeader = cookieStore
@@ -58,6 +60,9 @@ export async function getProduct(slug: string): Promise<ProductDetail | null> {
     const searchParams = new URLSearchParams();
     if (sessionToken) {
       searchParams.set("session_token", sessionToken);
+    }
+    if (options?.reward) {
+      searchParams.set("reward", "1");
     }
     const qs = searchParams.toString();
     const url = `${siteUrl}/api/proxy/public/shop/products/${slug}${qs ? `?${qs}` : ""}`;

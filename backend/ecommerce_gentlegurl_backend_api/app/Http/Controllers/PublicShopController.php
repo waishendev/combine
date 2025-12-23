@@ -293,10 +293,12 @@ class PublicShopController extends Controller
 
     public function showProduct(Request $request, string $slug)
     {
+        $allowRewardOnly = $request->boolean('reward', false);
+
         $product = Product::with(['categories', 'images', 'packageChildren.childProduct'])
             ->where('slug', $slug)
             ->where('is_active', true)
-            ->where('is_reward_only', false)
+            ->when(!$allowRewardOnly, fn($query) => $query->where('is_reward_only', false))
             ->firstOrFail();
 
         $product->images = $product->images
@@ -316,28 +318,30 @@ class PublicShopController extends Controller
 
         $isInStock = $product->track_stock ? $product->stock > 0 : true;
 
-        $relatedProducts = Product::with(['images', 'categories'])
-            ->where('is_active', true)
-            ->where('id', '!=', $product->id)
-            ->whereHas('categories', function ($query) use ($product) {
-                $query->whereIn('categories.id', $product->categories->pluck('id'));
-            })
-            ->orderByDesc('created_at')
-            ->limit(4)
-            ->get();
-
-        $relatedProducts = $relatedProducts->map(function (Product $related) {
-            return [
-                'id' => $related->id,
-                'name' => $related->name,
-                'slug' => $related->slug,
-                'price' => $related->price,
-                'thumbnail' => optional($related->images
-                    ->sortBy('id')
-                    ->sortBy('sort_order')
-                    ->first())->image_path,
-            ];
-        });
+        $relatedProducts = [];
+        if (!$product->is_reward_only) {
+            $relatedProducts = Product::with(['images', 'categories'])
+                ->where('is_active', true)
+                ->where('id', '!=', $product->id)
+                ->whereHas('categories', function ($query) use ($product) {
+                    $query->whereIn('categories.id', $product->categories->pluck('id'));
+                })
+                ->orderByDesc('created_at')
+                ->limit(4)
+                ->get()
+                ->map(function (Product $related) {
+                    return [
+                        'id' => $related->id,
+                        'name' => $related->name,
+                        'slug' => $related->slug,
+                        'price' => $related->price,
+                        'thumbnail' => optional($related->images
+                            ->sortBy('id')
+                            ->sortBy('sort_order')
+                            ->first())->image_path,
+                    ];
+                });
+        }
 
         $realSoldCountLookup = $this->calculateRealSoldCounts([$product->id]);
         $realSoldCount = $realSoldCountLookup[$product->id] ?? 0;
@@ -363,6 +367,7 @@ class PublicShopController extends Controller
             'package_children' => $product->packageChildren,
             'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),
             'related_products' => $relatedProducts,
+            'is_reward_only' => $product->is_reward_only,
         ];
 
         $reviewService = app(ProductReviewService::class);
