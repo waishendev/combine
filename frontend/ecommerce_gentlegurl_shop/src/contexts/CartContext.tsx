@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   CartItem,
   CartResponse,
@@ -73,7 +73,9 @@ type CartProviderProps = {
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 
 export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: CartProviderProps) {
+  const selectionStorageKey = "cart_selected_item_ids";
   const [items, setItems] = useState<CartItem[]>([]);
+  const selectionHydratedRef = useRef(false);
   const [subtotal, setSubtotal] = useState<string>("0");
   const [grandTotal, setGrandTotal] = useState<string>("0");
   const [discountTotal, setDiscountTotal] = useState<string>("0");
@@ -102,6 +104,18 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     const token = getOrCreateSessionToken();
     setSessionToken(token || null);
   }, []);
+
+  const readStoredSelection = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = sessionStorage.getItem(selectionStorageKey);
+      if (raw === null) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((id) => Number.isFinite(id)) : null;
+    } catch {
+      return null;
+    }
+  }, [selectionStorageKey]);
 
   const applyCartResponse = useCallback((cart?: CartResponse) => {
     const normalizedItems = (cart?.items ?? []).map((item) => ({
@@ -132,12 +146,26 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
       persistSessionToken(cart.session_token);
     }
 
-    setSelectedItemIds(normalizedItems.map((item) => item.id));
-  }, []);
+    const storedSelection = readStoredSelection();
+    const availableIds = normalizedItems.map((item) => item.id);
+    const nextSelection =
+      storedSelection === null
+        ? availableIds
+        : storedSelection.filter((id) => availableIds.includes(id));
+
+    setSelectedItemIds(nextSelection);
+    selectionHydratedRef.current = true;
+  }, [readStoredSelection]);
 
   useEffect(() => {
     setSelectedItemIds((prev) => prev.filter((id) => items.some((item) => item.id === id)));
   }, [items]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!selectionHydratedRef.current) return;
+    sessionStorage.setItem(selectionStorageKey, JSON.stringify(selectedItemIds));
+  }, [selectedItemIds, selectionStorageKey]);
 
   const reloadCart = useCallback(async () => {
     setIsLoading(true);
@@ -409,6 +437,9 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
       applyCartResponse(response);
       setSessionToken(response.session_token ?? null);
       persistSessionToken(response.session_token ?? null);
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem(selectionStorageKey);
+      }
     } catch {
       setItems([]);
       setSelectedItemIds([]);
@@ -418,8 +449,11 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
       setVoucherMessage(null);
       setSessionToken(null);
       clearSessionToken();
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem(selectionStorageKey);
+      }
     }
-  }, [applyCartResponse]);
+  }, [applyCartResponse, selectionStorageKey]);
 
   const value: CartContextValue = {
     items,

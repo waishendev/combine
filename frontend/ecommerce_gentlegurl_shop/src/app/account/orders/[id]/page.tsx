@@ -173,6 +173,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           orderId={order.id}
           status={order.status}
           paymentStatus={order.payment_status}
+          paymentMethod={order.payment_method}
           reserveExpiresAt={order.reserve_expires_at ?? null}
         />
 

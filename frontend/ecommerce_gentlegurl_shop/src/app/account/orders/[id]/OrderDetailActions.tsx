@@ -1,14 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { cancelOrder } from "@/lib/apiClient";
+import { cancelOrder, payOrder } from "@/lib/apiClient";
+import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrderDetailActionsProps = {
   orderId: number;
   status: string;
   paymentStatus: string;
+  paymentMethod?: string | null;
   reserveExpiresAt?: string | null;
 };
 
@@ -16,16 +17,26 @@ export function OrderDetailActions({
   orderId,
   status,
   paymentStatus,
+  paymentMethod,
   reserveExpiresAt,
 }: OrderDetailActionsProps) {
   const router = useRouter();
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [showSlipModal, setShowSlipModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reserveExpiry = reserveExpiresAt ? new Date(reserveExpiresAt) : null;
   const isExpired = reserveExpiry ? reserveExpiry.getTime() < Date.now() : false;
-  const canPay = status === "pending" && paymentStatus === "unpaid" && !isExpired;
-  const showExpired = status === "cancelled" || isExpired;
+  const statusKey = status.toLowerCase();
+  const canPay = statusKey === "pending" && paymentStatus === "unpaid" && !isExpired;
+  const canUploadSlip =
+    paymentMethod === "manual_transfer" &&
+    !isExpired &&
+    (canPay || (statusKey === "processing" && paymentStatus !== "paid"));
+  const isBillplzPayment = paymentMethod?.startsWith("billplz_");
+  const showExpired = statusKey === "cancelled" || isExpired;
+  const showProcessing = statusKey === "processing" && !showExpired;
 
   const handleCancel = async () => {
     setError(null);
@@ -45,7 +56,40 @@ export function OrderDetailActions({
     }
   };
 
-  if (!canPay && !showExpired) {
+  const handlePayNow = async () => {
+    setError(null);
+
+    if (paymentMethod === "manual_transfer") {
+      setShowSlipModal(true);
+      return;
+    }
+
+    if (!isBillplzPayment) {
+      setError("Payment method is not supported.");
+      return;
+    }
+
+    setIsPaying(true);
+    try {
+      const response = await payOrder(orderId);
+      if (response.redirect_url) {
+        window.location.href = response.redirect_url;
+      } else {
+        setError("Unable to initiate payment.");
+      }
+    } catch (error) {
+      const message =
+        typeof error === "object" && error && "data" in (error as never)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((error as any).data?.message as string | undefined) ?? "Unable to initiate payment."
+          : "Unable to initiate payment.";
+      setError(message);
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
+  if (!canPay && !showExpired && !showProcessing) {
     return null;
   }
 
@@ -55,12 +99,14 @@ export function OrderDetailActions({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {canPay ? (
           <>
-            <Link
-              href={`/checkout?order_id=${orderId}`}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)]"
+            <button
+              type="button"
+              onClick={handlePayNow}
+              disabled={isPaying}
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Pay Now
-            </Link>
+              {isPaying ? "Redirecting..." : "Pay Now"}
+            </button>
             <button
               type="button"
               onClick={handleCancel}
@@ -70,11 +116,33 @@ export function OrderDetailActions({
               {isCancelling ? "Cancelling..." : "Cancel"}
             </button>
           </>
+        ) : showProcessing ? (
+          <>
+            <span className="text-xs font-semibold uppercase text-amber-600">Waiting for verification</span>
+            {canUploadSlip && (
+              <button
+                type="button"
+                onClick={() => setShowSlipModal(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+              >
+                Reupload Slip
+              </button>
+            )}
+          </>
         ) : (
           <span className="text-xs font-semibold uppercase text-rose-600">Expired / Cancelled</span>
         )}
       </div>
       {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
+      <UploadReceiptModal
+        isOpen={showSlipModal}
+        orderId={orderId}
+        onClose={() => setShowSlipModal(false)}
+        onSuccess={() => {
+          setShowSlipModal(false);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

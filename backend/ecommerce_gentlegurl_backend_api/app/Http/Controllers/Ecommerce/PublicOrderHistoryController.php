@@ -5,12 +5,20 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\OrderReserveService;
+use App\Services\BillplzService;
+use App\Models\BillplzBill;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
+use Throwable;
 
 class PublicOrderHistoryController extends Controller
 {
-    public function __construct(protected OrderReserveService $orderReserveService)
+    public function __construct(
+        protected OrderReserveService $orderReserveService,
+        protected BillplzService $billplzService
+    )
     {
     }
 
@@ -30,6 +38,7 @@ class PublicOrderHistoryController extends Controller
                 'order_no' => $order->order_number,
                 'status' => $order->status,
                 'payment_status' => $order->payment_status,
+                'payment_method' => $order->payment_method,
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
@@ -229,6 +238,87 @@ class PublicOrderHistoryController extends Controller
                 'payment_status' => $order->payment_status,
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
             ],
+        ]);
+    }
+
+    public function pay(Request $request, Order $order)
+    {
+        $customer = $request->user('customer');
+
+        if ($order->customer_id !== $customer->id) {
+            return $this->respondError(__('Order not found.'), 404);
+        }
+
+        if ($order->status !== 'pending' || $order->payment_status !== 'unpaid') {
+            return $this->respondError(__('Order cannot be paid.'), 422);
+        }
+
+        if ($this->orderReserveService->isExpired($order)) {
+            return $this->respondError(__('Order reservation has expired.'), 422);
+        }
+
+        if (!str_starts_with((string) $order->payment_method, 'billplz_')) {
+            return $this->respondError(__('Order is not eligible for Billplz payment.'), 422);
+        }
+
+        if (!empty($order->payment_url)) {
+            return $this->respond([
+                'redirect_url' => $order->payment_url,
+            ]);
+        }
+
+        try {
+            $billplzUrl = DB::transaction(function () use ($order) {
+                $billResponse = $this->billplzService->createBill($order);
+                $billplzId = data_get($billResponse, 'id');
+                $billplzUrl = data_get($billResponse, 'url');
+
+                if (!$billplzId || !$billplzUrl) {
+                    throw new RuntimeException('Invalid Billplz response.');
+                }
+
+                $order->payment_reference = $billplzId;
+                $order->payment_url = $billplzUrl;
+                $order->payment_provider = $order->payment_provider ?: 'billplz';
+                $order->payment_meta = [
+                    'provider' => 'billplz',
+                    'bill_id' => $billplzId,
+                    'collection_id' => data_get($billResponse, 'collection_id'),
+                    'state' => data_get($billResponse, 'state'),
+                    'reference_1' => data_get($billResponse, 'reference_1'),
+                ];
+                $order->save();
+
+                BillplzBill::updateOrCreate(
+                    ['billplz_id' => $billplzId],
+                    [
+                        'order_id' => $order->id,
+                        'collection_id' => data_get($billResponse, 'collection_id'),
+                        'state' => data_get($billResponse, 'state'),
+                        'paid' => false,
+                        'amount' => data_get($billResponse, 'amount'),
+                        'payload' => $billResponse,
+                    ]
+                );
+
+                return $billplzUrl;
+            });
+        } catch (Throwable $exception) {
+            Log::error('Failed to initiate Billplz payment', [
+                'error' => $exception->getMessage(),
+                'order_id' => $order->id,
+            ]);
+
+            $status = $exception instanceof RuntimeException ? 422 : 500;
+            $message = $exception instanceof RuntimeException
+                ? $exception->getMessage()
+                : __('Unable to initiate payment, please try again later.');
+
+            return $this->respondError($message, $status);
+        }
+
+        return $this->respond([
+            'redirect_url' => $billplzUrl,
         ]);
     }
 }

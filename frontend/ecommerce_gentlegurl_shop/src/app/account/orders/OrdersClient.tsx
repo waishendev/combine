@@ -2,13 +2,15 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { OrderItemSummary, OrderSummary } from "@/lib/server/getOrders";
 import {
   fetchProductReviewEligibility,
   submitProductReview,
 } from "@/lib/api/productReviews";
 import { RatingStars } from "@/components/reviews/RatingStars";
-import { cancelOrder } from "@/lib/apiClient";
+import { cancelOrder, payOrder } from "@/lib/apiClient";
+import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrdersClientProps = {
   orders: OrderSummary[];
@@ -18,6 +20,10 @@ type ModalState = {
   orderId: number;
   item: OrderItemSummary;
   slug: string;
+};
+
+type SlipModalState = {
+  orderId: number;
 };
 
 const reasonMessages: Record<string, string> = {
@@ -30,6 +36,7 @@ const reasonMessages: Record<string, string> = {
 };
 
 export function OrdersClient({ orders }: OrdersClientProps) {
+  const router = useRouter();
   const [modal, setModal] = useState<ModalState | null>(null);
   const [rating, setRating] = useState<number>(5);
   const [title, setTitle] = useState<string>("");
@@ -43,6 +50,9 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   const [orderOverrides, setOrderOverrides] = useState<Record<number, { status?: string; payment_status?: string }>>({});
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
+  const [slipModal, setSlipModal] = useState<SlipModalState | null>(null);
+  const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const reviewedItemIds = useMemo(() => reviewedItems, [reviewedItems]);
 
@@ -149,6 +159,39 @@ export function OrdersClient({ orders }: OrdersClientProps) {
     }
   }
 
+  async function handlePayNow(orderId: number, paymentMethod?: string | null) {
+    setPaymentError(null);
+
+    if (paymentMethod === "manual_transfer") {
+      setSlipModal({ orderId });
+      return;
+    }
+
+    if (!paymentMethod?.startsWith("billplz_")) {
+      setPaymentError("Payment method is not supported.");
+      return;
+    }
+
+    setPayingOrderId(orderId);
+    try {
+      const response = await payOrder(orderId);
+      if (response.redirect_url) {
+        window.location.href = response.redirect_url;
+      } else {
+        setPaymentError("Unable to initiate payment.");
+      }
+    } catch (error) {
+      const message =
+        typeof error === "object" && error && "data" in (error as never)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((error as any).data?.message as string | undefined) ?? "Unable to initiate payment."
+          : "Unable to initiate payment.";
+      setPaymentError(message);
+    } finally {
+      setPayingOrderId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {eligibilityError && (
@@ -159,6 +202,11 @@ export function OrdersClient({ orders }: OrdersClientProps) {
       {cancelError && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {cancelError}
+        </div>
+      )}
+      {paymentError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {paymentError}
         </div>
       )}
       {submitSuccess && (
@@ -175,6 +223,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         const reserveExpiresAt = order.reserve_expires_at ? new Date(order.reserve_expires_at) : null;
         const isExpired = reserveExpiresAt ? reserveExpiresAt.getTime() < Date.now() : false;
         const canPay = statusKey === "pending" && paymentStatusValue === "unpaid" && !isExpired;
+        const isProcessing = statusKey === "processing" && !isExpired;
+        const canUploadSlip = order.payment_method === "manual_transfer" && (canPay || isProcessing);
         const displayStatus = isExpired ? "expired" : statusValue;
         const badgeStyle =
           statusKey === "pending" && !isExpired
@@ -241,16 +291,18 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 </Link>
               </div>
 
-              {(canPay || (statusKey === "cancelled" || isExpired)) && (
+              {(canPay || isProcessing || statusKey === "cancelled" || isExpired) && (
                 <div className="sm:col-span-4">
                   {canPay ? (
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/checkout?order_id=${order.id}`}
-                        className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)]"
+                      <button
+                        type="button"
+                        onClick={() => handlePayNow(order.id, order.payment_method)}
+                        disabled={payingOrderId === order.id}
+                        className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Pay Now
-                      </Link>
+                        {payingOrderId === order.id ? "Redirecting..." : "Pay Now"}
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleCancel(order.id)}
@@ -259,6 +311,19 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       >
                         {cancellingOrderId === order.id ? "Cancelling..." : "Cancel"}
                       </button>
+                    </div>
+                  ) : isProcessing ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-semibold uppercase text-amber-600">Waiting for verification</p>
+                      {canUploadSlip && (
+                        <button
+                          type="button"
+                          onClick={() => setSlipModal({ orderId: order.id })}
+                          className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                        >
+                          Reupload Slip
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <p className="text-xs font-semibold uppercase text-rose-600">Expired / Cancelled</p>
@@ -405,6 +470,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
           </div>
         </div>
       )}
+
+      <UploadReceiptModal
+        isOpen={!!slipModal}
+        orderId={slipModal?.orderId ?? 0}
+        onClose={() => setSlipModal(null)}
+        onSuccess={() => {
+          setSlipModal(null);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }
