@@ -411,54 +411,6 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                   </div>
                 ))}
               </div>
-
-              <div className="mt-6 rounded-xl border border-pink-100 bg-white/70 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Price Range</p>
-                <div className="mt-3 grid grid-cols-1 gap-3">
-                  <div>
-                    <label htmlFor="min-price" className="text-[11px] uppercase tracking-[0.12em] text-gray-500">
-                      Min (RM)
-                    </label>
-                    <input
-                      id="min-price"
-                      type="number"
-                      inputMode="decimal"
-                      value={minPriceInput}
-                      onChange={(event) => setMinPriceInput(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="max-price" className="text-[11px] uppercase tracking-[0.12em] text-gray-500">
-                      Max (RM)
-                    </label>
-                    <input
-                      id="max-price"
-                      type="number"
-                      inputMode="decimal"
-                      value={maxPriceInput}
-                      onChange={(event) => setMaxPriceInput(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleApplyPrice}
-                      className="flex-1 rounded-xl bg-[#ec4899] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#db2777]"
-                    >
-                      Apply
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleClearPrice}
-                      className="flex-1 rounded-xl border border-pink-100 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-[#ec4899] hover:text-[#ec4899]"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </div>
             </aside>
 
             <section className="space-y-6">

@@ -2,20 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
-import type { AccountOverview } from "@/lib/apiClient";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { getWishlistItems } from "@/lib/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import { HomepageShopMenuItem } from "@/lib/server/getHomepage";
+import { buildRedirectTarget } from "@/lib/auth/redirect";
 
 type ShopHeaderClientProps = {
-  overview: AccountOverview | null;
   shopMenu: HomepageShopMenuItem[];
 };
 
-export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHeaderClientProps) {
+export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
   const { customer, logout, isLoading } = useAuth();
   const { items, resetAfterLogout } = useCart();
   const [shopOpen, setShopOpen] = useState(false);
@@ -25,6 +24,8 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
 
   // Close menus when clicking outside
@@ -65,7 +66,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
     };
   }, [mobileMenuOpen]);
 
-  const overview = customer ?? initialOverview ?? null;
+  const overview = customer ?? null;
   const profile = overview?.profile;
   const loyalty = overview?.loyalty;
 
@@ -97,6 +98,13 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const avatarUrl = profile?.avatar ?? "/images/default_user_image.jpg";
   const tierName = loyalty?.current_tier?.name ?? profile?.tier ?? "-";
   const availablePoints = loyalty?.points?.available;
+
+  const redirectTarget = useMemo(() => {
+    return buildRedirectTarget(pathname, searchParams?.toString());
+  }, [pathname, searchParams]);
+
+  const loginHref = `/login?redirect=${encodeURIComponent(redirectTarget)}`;
+  const registerHref = `/register?redirect=${encodeURIComponent(redirectTarget)}`;
 
   const handleLogout = async () => {
     await logout();
@@ -337,9 +345,8 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                       <div className="mb-2 border-b border-[var(--muted)]/50 pb-2">
                         <div className="px-3 py-1.5">
                           <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
-                          <div className="text-xs text-[var(--foreground)]/60">{profile?.email}</div>
                           {availablePoints != null && (
-                            <div className="text-xs font-semibold text-[var(--accent-strong)]">
+                            <div className="mt-1 text-xs font-semibold text-[var(--accent-strong)]">
                               Points: {availablePoints.toLocaleString()} pts
                             </div>
                           )}
@@ -358,19 +365,19 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                         My Account
                       </Link>
                       <Link
-                        href="/orders"
+                        href="/account/orders"
                         className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                         onClick={() => setMobileUserMenuOpen(false)}
                       >
                         My Orders
                       </Link>
-                      <Link
-                        href="/wishlist"
+                      {/* <Link
+                        href="/account/points/history"
                         className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                         onClick={() => setMobileUserMenuOpen(false)}
                       >
-                        Wishlist
-                      </Link>
+                        Points History
+                      </Link> */}
                       <div className="my-1 border-t border-[var(--muted)]/50" />
                       <button
                         onClick={() => {
@@ -388,10 +395,16 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                 /* Mobile Login/Register */
                 <div className="flex items-center gap-2 text-sm">
                   <Link
-                    href="/login"
+                    href={loginHref}
                     className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
                   >
                     Login
+                  </Link>
+                  <Link
+                    href={registerHref}
+                    className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+                  >
+                    Register
                   </Link>
                 </div>
               )}
@@ -491,9 +504,8 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                   <div className="mb-2 border-b border-[var(--muted)]/50 pb-2">
                       <div className="px-3 py-1.5">
                         <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
-                        <div className="text-xs text-[var(--foreground)]/60">{profile?.email}</div>
                         {availablePoints != null && (
-                          <div className="text-xs font-semibold text-[var(--accent-strong)]">
+                          <div className="mt-1 text-xs font-semibold text-[var(--accent-strong)]">
                             Points: {availablePoints.toLocaleString()} pts
                           </div>
                         )}
@@ -512,19 +524,19 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                     My Account
                   </Link>
                   <Link
-                    href="/orders"
+                    href="/account/orders"
                     className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                     onClick={() => setUserMenuOpen(false)}
                   >
                     My Orders
                   </Link>
-                  <Link
-                    href="/wishlist"
+                  {/* <Link
+                    href="/account/points/history"
                     className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                     onClick={() => setUserMenuOpen(false)}
                   >
-                    Wishlist
-                  </Link>
+                    Points History
+                  </Link> */}
                   <div className="my-1 border-t border-[var(--muted)]/50" />
                   <button
                     onClick={handleLogout}
@@ -539,13 +551,13 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
               /* Login/Register - Desktop */
               <div className="flex items-center gap-4 text-sm">
                 <Link
-                  href="/login"
+                  href={loginHref}
                   className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
                 >
                   Login
                 </Link>
                 <Link
-                  href="/register"
+                  href={registerHref}
                   className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
                 >
                   Register

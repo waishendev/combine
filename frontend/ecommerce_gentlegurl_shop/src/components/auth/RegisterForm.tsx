@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { extractApiError } from "@/lib/auth/redirect";
 
 function Field({
   label,
@@ -64,7 +64,13 @@ function Field({
   );
 }
 
-export function RegisterForm() {
+export function RegisterForm({ 
+  redirectTarget,
+  onSubmittingChange,
+}: { 
+  redirectTarget?: string | null;
+  onSubmittingChange?: (isSubmitting: boolean) => void;
+}) {
   const { register } = useAuth();
   const router = useRouter();
 
@@ -81,6 +87,10 @@ export function RegisterForm() {
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    onSubmittingChange?.(submitting);
+  }, [submitting, onSubmittingChange]);
 
   const handleChange = (field: keyof typeof formState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -109,11 +119,10 @@ export function RegisterForm() {
 
     try {
       await register(formState);
+      router.replace(redirectTarget ?? "/");
       router.refresh();
-      router.push("/account");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Registration failed";
-      setError(message);
+      setError(extractApiError(err));
     } finally {
       setSubmitting(false);
     }

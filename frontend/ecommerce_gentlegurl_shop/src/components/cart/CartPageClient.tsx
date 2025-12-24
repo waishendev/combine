@@ -111,7 +111,7 @@ export default function CartPageClient() {
 
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 text-[var(--foreground)] pb-24 md:pb-8">
+    <main className=" mx-auto max-w-6xl px-4 py-8 text-[var(--foreground)] pb-24 md:pb-8">
       <h1 className="mb-4 text-2xl font-semibold">Shopping Cart</h1>
 
       <div className="grid gap-8 md:grid-cols-[2fr,1fr]">

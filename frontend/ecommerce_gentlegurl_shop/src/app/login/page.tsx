@@ -1,12 +1,37 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LoginForm } from "@/components/auth/LoginForm";
+import { useAuth } from "@/contexts/AuthContext";
+import { getSafeRedirect } from "@/lib/auth/redirect";
+import { getAuthFlag } from "@/lib/auth/session";
+import LoadingOverlay from "@/components/LoadingOverlay";
 
 export default function LoginPage() {
+  const { customer } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const redirectTarget = useMemo(() => {
+    const target = getSafeRedirect(searchParams.get("redirect"));
+    if (target === "/login" || target === "/register") return null;
+    return target;
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (customer || getAuthFlag()) {
+      router.replace(redirectTarget ?? "/");
+    }
+  }, [customer, redirectTarget, router]);
+
   return (
-    <div className="min-h-screen">
-
-
-      <div className="relative mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-14">
+    <>
+      <LoadingOverlay show={isSubmitting} message="Signing in..." />
+      <div className="min-h-[70vh]">
+      <div className="relative mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center px-4 py-14">
         <div className="w-full max-w-md">
           {/* Header */}
           <div className="mb-6 text-center">
@@ -20,7 +45,7 @@ export default function LoginPage() {
 
           {/* Card */}
           <div className="rounded-3xl border border-pink-100/60 bg-white/80 p-7 shadow-[0_12px_40px_-24px_rgba(231,162,186,0.25)] backdrop-blur-sm md:p-8">
-            <LoginForm />
+            <LoginForm redirectTarget={redirectTarget} onSubmittingChange={setIsSubmitting} />
           </div>
 
           <p className="mt-6 text-center text-xs text-[var(--foreground)]/55">
@@ -37,5 +62,6 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

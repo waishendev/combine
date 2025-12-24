@@ -256,7 +256,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
           Continue Shopping
         </Link>
         <Link
-          href="/orders"
+          href="/account/orders"
           className="rounded bg-[var(--accent)] px-4 py-2 text-white transition-colors hover:bg-[var(--accent-strong)]"
         >
           View My Orders
