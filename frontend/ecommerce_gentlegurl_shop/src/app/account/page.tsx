@@ -396,15 +396,15 @@ export default function AccountPage() {
                 className="h-full w-full object-cover"
               />
             </div>
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <div className="inline-flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-pink-900">{profile.name}</h2>
+                <h2 className="break-words text-lg font-semibold text-pink-900">{profile.name}</h2>
                 {/* <span className="rounded-full bg-pink-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-pink-700">
                   {profile.tier}
                 </span> */}
               </div>
-              <p className="text-sm text-gray-700">{profile.email}</p>
-              {profile.phone && <p className="text-sm text-gray-700">{profile.phone}</p>}
+              <p className="break-words text-sm text-gray-700">{profile.email}</p>
+              {profile.phone && <p className="break-words text-sm text-gray-700">{profile.phone}</p>}
             </div>
           </div>
 
