@@ -248,9 +248,15 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 <p className="text-lg font-semibold text-[var(--foreground)]">{order.order_no}</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
-                  {displayStatus}
-                </span>
+                {isProcessing ? (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                    Waiting for verification
+                  </span>
+                ) : (
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
+                    {displayStatus}
+                  </span>
+                )}
                 <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
                   {paymentStatusValue}
                 </span>
@@ -291,7 +297,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 </Link>
               </div>
 
-              {(canPay || isProcessing || statusKey === "cancelled" || isExpired) && (
+              {(canPay || isProcessing) && (
                 <div className="sm:col-span-4">
                   {canPay ? (
                     <div className="flex flex-wrap items-center gap-2">
@@ -303,6 +309,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       >
                         {payingOrderId === order.id ? "Redirecting..." : "Pay Now"}
                       </button>
+
                       <button
                         type="button"
                         onClick={() => handleCancel(order.id)}
@@ -312,9 +319,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                         {cancellingOrderId === order.id ? "Cancelling..." : "Cancel"}
                       </button>
                     </div>
-                  ) : isProcessing ? (
+                  ) : (
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs font-semibold uppercase text-amber-600">Waiting for verification</p>
                       {canUploadSlip && (
                         <button
                           type="button"
@@ -325,8 +331,6 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                         </button>
                       )}
                     </div>
-                  ) : (
-                    <p className="text-xs font-semibold uppercase text-rose-600">Expired / Cancelled</p>
                   )}
                 </div>
               )}

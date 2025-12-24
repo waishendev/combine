@@ -22,6 +22,8 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
 
   const reserveExpiresAt = order.reserve_expires_at ? new Date(order.reserve_expires_at) : null;
   const isExpired = reserveExpiresAt ? reserveExpiresAt.getTime() < Date.now() : false;
+  const statusKey = (order.status || "").toLowerCase();
+  const isProcessing = statusKey === "processing" && !isExpired;
   const displayStatus = isExpired ? "expired" : order.status;
 
   return (
@@ -34,9 +36,15 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-            {displayStatus}
-          </span>
+          {isProcessing ? (
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
+              Waiting for verification
+            </span>
+          ) : (
+            <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+              {displayStatus}
+            </span>
+          )}
           <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
             {order.payment_status}
           </span>
@@ -169,13 +177,13 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           </div>
         </div>
 
-        <OrderDetailActions
+        {/* <OrderDetailActions
           orderId={order.id}
           status={order.status}
           paymentStatus={order.payment_status}
           paymentMethod={order.payment_method}
           reserveExpiresAt={order.reserve_expires_at ?? null}
-        />
+        /> */}
 
         {order.returns && order.returns.length > 0 && (
           <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm">
