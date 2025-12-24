@@ -1,9 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import LoadingOverlay from "@/components/LoadingOverlay";
 import { extractApiError } from "@/lib/auth/redirect";
 
 function Field({
@@ -65,7 +64,13 @@ function Field({
   );
 }
 
-export function RegisterForm({ redirectTarget }: { redirectTarget?: string | null }) {
+export function RegisterForm({ 
+  redirectTarget,
+  onSubmittingChange,
+}: { 
+  redirectTarget?: string | null;
+  onSubmittingChange?: (isSubmitting: boolean) => void;
+}) {
   const { register } = useAuth();
   const router = useRouter();
 
@@ -82,6 +87,10 @@ export function RegisterForm({ redirectTarget }: { redirectTarget?: string | nul
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    onSubmittingChange?.(submitting);
+  }, [submitting, onSubmittingChange]);
 
   const handleChange = (field: keyof typeof formState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -121,7 +130,6 @@ export function RegisterForm({ redirectTarget }: { redirectTarget?: string | nul
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <LoadingOverlay show={submitting} message="Creating account..." />
       {error && (
         <div className="rounded-xl border border-pink-200/50 bg-white/90 px-3 py-2 text-sm text-[#b8527a]">
           {error}

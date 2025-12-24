@@ -41,17 +41,6 @@ export default function WishlistPage() {
             Save the products you love and access them anytime.
           </p>
         </div>
-        {!customer && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-[var(--foreground)]/70">Have an account?</span>
-            <Link
-              href="/login"
-              className="rounded-full border border-[var(--muted)] px-3 py-1.5 font-semibold text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
-            >
-              Sign in to sync wishlist
-            </Link>
-          </div>
-        )}
       </div>
 
       {isLoading ? (

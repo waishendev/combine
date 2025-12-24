@@ -40,7 +40,7 @@ export default async function RootLayout({
             <Marquee items={homepage.marquees} />
           )}
           <ShopHeader />
-          <main className="min-h-screen bg-[var(--background-soft)]/70">{children}</main>
+          <main className="min-h-[70vh] bg-[var(--background-soft)]/70">{children}</main>
           <ShopFooter footer={homepage?.settings?.footer} />
           <WhatsappButton
             enabled={homepage?.contact?.whatsapp?.enabled}

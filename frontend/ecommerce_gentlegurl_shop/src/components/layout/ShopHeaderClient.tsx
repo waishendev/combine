@@ -345,9 +345,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                       <div className="mb-2 border-b border-[var(--muted)]/50 pb-2">
                         <div className="px-3 py-1.5">
                           <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
-                          <div className="text-xs text-[var(--foreground)]/60">{profile?.email}</div>
                           {availablePoints != null && (
-                            <div className="text-xs font-semibold text-[var(--accent-strong)]">
+                            <div className="mt-1 text-xs font-semibold text-[var(--accent-strong)]">
                               Points: {availablePoints.toLocaleString()} pts
                             </div>
                           )}
@@ -366,19 +365,19 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                         My Account
                       </Link>
                       <Link
-                        href="/orders"
+                        href="/account/orders"
                         className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                         onClick={() => setMobileUserMenuOpen(false)}
                       >
                         My Orders
                       </Link>
-                      <Link
-                        href="/wishlist"
+                      {/* <Link
+                        href="/account/points/history"
                         className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                         onClick={() => setMobileUserMenuOpen(false)}
                       >
-                        Wishlist
-                      </Link>
+                        Points History
+                      </Link> */}
                       <div className="my-1 border-t border-[var(--muted)]/50" />
                       <button
                         onClick={() => {
@@ -505,9 +504,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                   <div className="mb-2 border-b border-[var(--muted)]/50 pb-2">
                       <div className="px-3 py-1.5">
                         <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
-                        <div className="text-xs text-[var(--foreground)]/60">{profile?.email}</div>
                         {availablePoints != null && (
-                          <div className="text-xs font-semibold text-[var(--accent-strong)]">
+                          <div className="mt-1 text-xs font-semibold text-[var(--accent-strong)]">
                             Points: {availablePoints.toLocaleString()} pts
                           </div>
                         )}
@@ -526,19 +524,19 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                     My Account
                   </Link>
                   <Link
-                    href="/orders"
+                    href="/account/orders"
                     className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                     onClick={() => setUserMenuOpen(false)}
                   >
                     My Orders
                   </Link>
-                  <Link
-                    href="/wishlist"
+                  {/* <Link
+                    href="/account/points/history"
                     className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                     onClick={() => setUserMenuOpen(false)}
                   >
-                    Wishlist
-                  </Link>
+                    Points History
+                  </Link> */}
                   <div className="my-1 border-t border-[var(--muted)]/50" />
                   <button
                     onClick={handleLogout}

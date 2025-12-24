@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSafeRedirect } from "@/lib/auth/redirect";
 import { getAuthFlag } from "@/lib/auth/session";
+import LoadingOverlay from "@/components/LoadingOverlay";
 
 export default function RegisterPage() {
   const { customer } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const redirectTarget = useMemo(() => {
     const target = getSafeRedirect(searchParams.get("redirect"));
@@ -31,7 +33,9 @@ export default function RegisterPage() {
   }, [customer, redirectTarget, router]);
 
   return (
-    <div className="min-h-[70vh]">
+    <>
+      <LoadingOverlay show={isSubmitting} message="Creating account..." />
+      <div className="min-h-[70vh]">
       <div className="relative mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center px-4 py-14">
         <div className="w-full max-w-md">
           {/* Header */}
@@ -46,7 +50,7 @@ export default function RegisterPage() {
 
           {/* Card */}
           <div className="rounded-3xl border border-pink-100/60 bg-white/80 p-7 shadow-[0_12px_40px_-24px_rgba(231,162,186,0.25)] backdrop-blur-sm md:p-8">
-            <RegisterForm redirectTarget={redirectTarget} />
+            <RegisterForm redirectTarget={redirectTarget} onSubmittingChange={setIsSubmitting} />
 
             <div className="mt-6 text-center text-sm text-[var(--foreground)]/70">
               Already have an account?{" "}
@@ -73,5 +77,6 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

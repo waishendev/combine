@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import LoadingOverlay from "@/components/LoadingOverlay";
 import { extractApiError } from "@/lib/auth/redirect";
 
 function Field({
@@ -66,7 +65,13 @@ function Field({
   );
 }
 
-export function LoginForm({ redirectTarget }: { redirectTarget?: string | null }) {
+export function LoginForm({ 
+  redirectTarget,
+  onSubmittingChange,
+}: { 
+  redirectTarget?: string | null;
+  onSubmittingChange?: (isSubmitting: boolean) => void;
+}) {
   const { login } = useAuth();
   const router = useRouter();
 
@@ -75,6 +80,10 @@ export function LoginForm({ redirectTarget }: { redirectTarget?: string | null }
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    onSubmittingChange?.(submitting);
+  }, [submitting, onSubmittingChange]);
 
   const canSubmit = useMemo(() => {
     return email.trim().length > 0 && password.trim().length > 0 && !submitting;
@@ -105,7 +114,6 @@ export function LoginForm({ redirectTarget }: { redirectTarget?: string | null }
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <LoadingOverlay show={submitting} message="Signing in..." />
       {error && (
         <div className="rounded-xl border border-pink-200/50 bg-white/90 px-3 py-2 text-sm text-[#b8527a]">
           {error}
