@@ -96,18 +96,27 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                 Sold {soldCount}
               </span>
             )}
-            {isRewardOnly && (
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
-                Reward Item
-              </span>
+          {isRewardOnly && (
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+              Reward Item
+            </span>
+          )}
+        </div>
+
+        {isRewardOnly && product.stock != null && (
+          <div className="text-sm text-gray-600">
+            <p>Stock left: {product.stock}</p>
+            {product.stock <= 0 && (
+              <p className="mt-1 font-semibold text-rose-600">Out of stock</p>
             )}
           </div>
+        )}
 
-          {!isRewardOnly && product.stock != null && (
-            <div className="text-sm text-gray-500">
-              Stock: {product.stock}{" "}
-              {product.stock <= (product.low_stock_threshold ?? 0) &&
-                "(Low stock)"}
+        {!isRewardOnly && product.stock != null && (
+          <div className="text-sm text-gray-500">
+            Stock: {product.stock}{" "}
+            {product.stock <= (product.low_stock_threshold ?? 0) &&
+              "(Low stock)"}
             </div>
           )}
 
@@ -122,6 +131,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               slug={slug}
               fallbackPoints={rewardPoints}
               isRewardOnly={isRewardOnly}
+              stock={product.stock ?? null}
             />
           ) : (
             <div className="flex flex-wrap items-center gap-3">

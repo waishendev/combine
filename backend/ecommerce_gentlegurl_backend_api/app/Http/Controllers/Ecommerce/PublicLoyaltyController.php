@@ -16,6 +16,8 @@ class PublicLoyaltyController extends Controller
 {
     use ResolvesCurrentCustomer;
 
+    protected const PRODUCT_PLACEHOLDER = '/images/placeholder.png';
+
     public function summary(Request $request, LoyaltySummaryService $loyaltySummary)
     {
         $customer = $this->requireCustomer();
@@ -54,7 +56,18 @@ class PublicLoyaltyController extends Controller
                 : null;
 
             $thumbnail = $productImage?->image_path;
-            $imageUrl = $thumbnail ? Storage::disk('public')->url($thumbnail) : null;
+            $imageUrl = $thumbnail ? Storage::disk('public')->url($thumbnail) : self::PRODUCT_PLACEHOLDER;
+            $remaining = null;
+
+            if ($reward->type === 'voucher') {
+                $remaining = $reward->quota_total === null
+                    ? null
+                    : max(0, (int) $reward->quota_total - (int) $reward->quota_used);
+            } elseif ($reward->type === 'product') {
+                $remaining = $product?->stock ?? 0;
+            }
+
+            $isAvailable = $remaining === null ? true : $remaining > 0;
 
             return [
                 'id' => $reward->id,
@@ -67,14 +80,14 @@ class PublicLoyaltyController extends Controller
                 'is_active' => $reward->is_active,
                 'sort_order' => $reward->sort_order,
                 'thumbnail' => $thumbnail,
+                'remaining' => $remaining,
+                'is_available' => $isAvailable,
                 'product' => $product ? [
                     'id' => $product->id,
                     'name' => $product->name,
                     'slug' => $product->slug,
-                    'sku' => $product->sku,
-                    'thumbnail' => $thumbnail,
                     'image_url' => $imageUrl,
-                    'is_reward_only' => $product->is_reward_only,
+                    'stock' => $product->stock,
                 ] : null,
                 'voucher_code' => $reward->voucher?->code,
                 'voucher' => $reward->voucher ? [

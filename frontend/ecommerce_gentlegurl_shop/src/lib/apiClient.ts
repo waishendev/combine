@@ -51,14 +51,14 @@ export type LoyaltyReward = {
   sort_order?: number | null;
   thumbnail?: string | null;
   image_url?: string | null;
+  remaining?: number | null;
+  is_available?: boolean;
   product?: {
     id: number;
     name: string;
     slug?: string | null;
-    sku?: string | null;
-    thumbnail?: string | null;
     image_url?: string | null;
-    is_reward_only?: boolean;
+    stock?: number | null;
   } | null;
   voucher_code?: string | null;
   voucher?: {
