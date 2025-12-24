@@ -201,13 +201,14 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 </Link>
               </div>
 
-              {statusKey === "completed" && Array.isArray(order.items) && order.items.length > 0 && (
+              {Array.isArray(order.items) && order.items.length > 0 && (
                 <div className="sm:col-span-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Items</p>
                   <div className="space-y-2">
                     {order.items.map((item) => {
                       const isReviewed = reviewedItemIds[item.id] === true;
                       const disabled = isReviewed || !item.product_slug;
+                      const canReview = statusKey === "completed";
                       return (
                         <div
                           key={item.id}
@@ -229,16 +230,18 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenReview(order.id, item)}
-                              disabled={disabled || eligibilityLoading}
-                              className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {isReviewed ? "Reviewed" : "Write Review"}
-                            </button>
-                          </div>
+                          {canReview && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenReview(order.id, item)}
+                                disabled={disabled || eligibilityLoading}
+                                className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {isReviewed ? "Reviewed" : "Write Review"}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
