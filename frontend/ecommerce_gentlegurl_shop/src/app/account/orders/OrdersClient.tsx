@@ -10,7 +10,7 @@ import {
 } from "@/lib/api/productReviews";
 import { RatingStars } from "@/components/reviews/RatingStars";
 import { cancelOrder, payOrder } from "@/lib/apiClient";
-import UploadSlipForm from "@/components/orders/UploadSlipForm";
+import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrdersClientProps = {
   orders: OrderSummary[];
@@ -471,37 +471,15 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         </div>
       )}
 
-      {slipModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Upload Payment Slip</h3>
-                <p className="text-xs text-gray-500">Order #{slipModal.orderId}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSlipModal(null)}
-                className="text-gray-500 hover:text-gray-700"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="mt-4">
-              <UploadSlipForm
-                orderId={slipModal.orderId}
-                mode="modal"
-                onClose={() => setSlipModal(null)}
-                onSuccess={() => {
-                  setSlipModal(null);
-                  router.refresh();
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <UploadReceiptModal
+        isOpen={!!slipModal}
+        orderId={slipModal?.orderId ?? 0}
+        onClose={() => setSlipModal(null)}
+        onSuccess={() => {
+          setSlipModal(null);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

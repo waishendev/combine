@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   CartItem,
   CartResponse,
@@ -75,6 +75,7 @@ const CartContext = createContext<CartContextValue | undefined>(undefined);
 export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: CartProviderProps) {
   const selectionStorageKey = "cart_selected_item_ids";
   const [items, setItems] = useState<CartItem[]>([]);
+  const selectionHydratedRef = useRef(false);
   const [subtotal, setSubtotal] = useState<string>("0");
   const [grandTotal, setGrandTotal] = useState<string>("0");
   const [discountTotal, setDiscountTotal] = useState<string>("0");
@@ -153,6 +154,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
         : storedSelection.filter((id) => availableIds.includes(id));
 
     setSelectedItemIds(nextSelection);
+    selectionHydratedRef.current = true;
   }, [readStoredSelection]);
 
   useEffect(() => {
@@ -161,6 +163,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!selectionHydratedRef.current) return;
     sessionStorage.setItem(selectionStorageKey, JSON.stringify(selectedItemIds));
   }, [selectedItemIds, selectionStorageKey]);
 

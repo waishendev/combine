@@ -45,16 +45,18 @@ class PublicCheckoutController extends Controller
         $validated = $this->validateOrderRequest($request);
         $customer = $this->currentCustomer();
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method'] ?? 'pickup');
-        $cart = $this->resolveCart($customer, $validated['session_token'] ?? null);
+        $itemsInput = $validated['items'] ?? [];
+        $hasItemsInput = !empty($itemsInput);
+        $cart = $hasItemsInput ? null : $this->resolveCart($customer, $validated['session_token'] ?? null);
         $cartHasItems = $cart && $cart->items()->count() > 0;
 
-        if (!$cartHasItems && (empty($validated['items']) || count($validated['items']) === 0)) {
+        if (!$cartHasItems && !$hasItemsInput) {
             return $this->respondError(__('Cart is empty.'), 422);
         }
 
         $calculation = $this->calculateTotals(
             $cartHasItems ? $cart : null,
-            $validated['items'] ?? [],
+            $itemsInput,
             $customer,
             $shippingMethod,
             $validated['voucher_code'] ?? null,
@@ -97,16 +99,18 @@ class PublicCheckoutController extends Controller
         $customer = $this->currentCustomer();
 
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method']);
-        $cart = $this->resolveCart($customer, $validated['session_token'] ?? null);
+        $itemsInput = $validated['items'] ?? [];
+        $hasItemsInput = !empty($itemsInput);
+        $cart = $hasItemsInput ? null : $this->resolveCart($customer, $validated['session_token'] ?? null);
         $cartHasItems = $cart && $cart->items()->count() > 0;
 
-        if (!$cartHasItems && (empty($validated['items']) || count($validated['items']) === 0)) {
+        if (!$cartHasItems && !$hasItemsInput) {
             return $this->respondError(__('Cart is empty.'), 422);
         }
 
         $calculation = $this->calculateTotals(
             $cartHasItems ? $cart : null,
-            $validated['items'] ?? [],
+            $itemsInput,
             $customer,
             $shippingMethod,
             $validated['voucher_code'] ?? null,

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelOrder, payOrder } from "@/lib/apiClient";
-import UploadSlipForm from "@/components/orders/UploadSlipForm";
+import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrderDetailActionsProps = {
   orderId: number;
@@ -134,37 +134,15 @@ export function OrderDetailActions({
         )}
       </div>
       {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
-      {showSlipModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Upload Payment Slip</h3>
-                <p className="text-xs text-gray-500">Order #{orderId}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSlipModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="mt-4">
-              <UploadSlipForm
-                orderId={orderId}
-                mode="modal"
-                onClose={() => setShowSlipModal(false)}
-                onSuccess={() => {
-                  setShowSlipModal(false);
-                  router.refresh();
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <UploadReceiptModal
+        isOpen={showSlipModal}
+        orderId={orderId}
+        onClose={() => setShowSlipModal(false)}
+        onSuccess={() => {
+          setShowSlipModal(false);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }
