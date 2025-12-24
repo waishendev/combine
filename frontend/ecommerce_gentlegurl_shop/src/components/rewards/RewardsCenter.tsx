@@ -187,21 +187,6 @@ export function RewardsCenter() {
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={() => {
-            void fetchRewards();
-            void refreshProfile();
-          }}
-          className="inline-flex items-center gap-2 rounded-full border border-pink-100 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[#ec4899] hover:text-[#ec4899]"
-        >
-          Refresh
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M2.985 15.015v-4.992h4.992" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M20.04 4.357a9 9 0 0 0-15.946 2.331M3.96 19.643a9 9 0 0 0 15.946-2.331" />
-          </svg>
-        </button>
       </div>
 
       <section className="mt-6">

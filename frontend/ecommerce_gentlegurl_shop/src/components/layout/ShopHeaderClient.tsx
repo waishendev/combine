@@ -38,7 +38,11 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
         return;
       }
       
-      if (!target.closest('[data-menu]')) {
+      // Don't close dropdowns if clicking inside mobile menu panel
+      const isInMobileMenu = target.closest('[data-mobile-menu]');
+      
+      // Only close desktop menus if not clicking inside desktop menu area
+      if (!target.closest('[data-menu]') && !isInMobileMenu) {
         setShopOpen(false);
         setServicesOpen(false);
         setMembershipOpen(false);
@@ -632,7 +636,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
           />
 
           {/* Menu Panel */}
-          <div className="fixed left-0 top-0 z-40 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-[var(--muted)]/50 bg-white/95 backdrop-blur-sm shadow-xl md:hidden">
+          <div data-mobile-menu className="fixed left-0 top-0 z-40 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-[var(--muted)]/50 bg-white/95 backdrop-blur-sm shadow-xl md:hidden">
             <div className="flex h-16 items-center justify-between border-b border-[var(--muted)]/50 px-4">
               <span className="text-sm font-semibold text-[var(--foreground)]">Menu</span>
               <button

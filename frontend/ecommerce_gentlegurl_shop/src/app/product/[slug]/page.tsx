@@ -151,23 +151,23 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           )}
         </div>
       </div>
-
-      {relatedProducts.length > 0 && (
+      <ProductReviewsSection
+        slug={slug}
+        initialReviews={reviewsData}
+        initialEligibility={eligibility}
+        settings={product.review_settings as ReviewSettings | undefined}
+      />
+            {relatedProducts.length > 0 && (
         <section className="mt-12 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-pink-500">
-                Recommended
-              </p>
-              <h2 className="text-xl font-semibold text-gray-900">猜你喜欢 / 相关商品</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                精选搭配商品，为你打造更完整的购物体验。
-              </p>
-            </div>
-            <span className="rounded-full bg-pink-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-pink-500">
-              Shopee style
-            </span>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-pink-500">
+              Recommended
+            </p>
+            <h2 className="text-xl font-semibold text-gray-900">
+              You May Also Like
+            </h2>
           </div>
+
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
             {relatedProducts.map((related) => {
               const priceNumber = Number(related.price);
@@ -218,13 +218,6 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           </div>
         </section>
       )}
-
-      <ProductReviewsSection
-        slug={slug}
-        initialReviews={reviewsData}
-        initialEligibility={eligibility}
-        settings={product.review_settings as ReviewSettings | undefined}
-      />
     </main>
   );
 }

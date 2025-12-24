@@ -53,24 +53,6 @@ export default function MembershipPage() {
     return currencyFormatter.format(numeric);
   };
 
-  const renderTierBadge = (tier: LoyaltyTier) => {
-    if (tier.code === currentTierCode) {
-      return (
-        <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-          Current
-        </span>
-      );
-    }
-    if (tier.code === nextTierCode) {
-      return (
-        <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-          Next Tier
-        </span>
-      );
-    }
-    return null;
-  };
-
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
       <div className="rounded-2xl border border-pink-50 bg-white/80 p-6 shadow-sm">
@@ -127,7 +109,6 @@ export default function MembershipPage() {
                     </div>
                   )}
                 </div>
-                {renderTierBadge(tier)}
                 <p className="text-sm text-gray-700">
                   Multiplier <span className="font-semibold">x{tier.multiplier.toFixed(2)}</span>
                 </p>
