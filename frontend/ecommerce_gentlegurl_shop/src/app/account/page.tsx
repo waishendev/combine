@@ -348,7 +348,7 @@ export default function AccountPage() {
   const amountToNextTier = loyalty?.spending.amount_to_next_tier.toFixed(2);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
+    <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-pink-800">My Account</h1>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

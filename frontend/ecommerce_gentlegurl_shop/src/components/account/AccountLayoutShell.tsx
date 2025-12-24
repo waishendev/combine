@@ -50,9 +50,9 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
               className="rounded-full object-cover"
             />
           </div>
-          <div className="min-w-0">
-            <div className="break-words text-base font-semibold text-[var(--foreground)]">{profile?.name}</div>
-            <div className="break-words text-sm text-[var(--foreground)]/70">{profile?.email}</div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-base font-semibold text-[var(--foreground)]">{profile?.name}</div>
+            <div className="truncate text-sm text-[var(--foreground)]/70">{profile?.email}</div>
           </div>
         </div>
 
@@ -107,7 +107,7 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
         </nav>
       </aside>
 
-      <section className="space-y-6 rounded-xl border border-[var(--muted)] bg-white p-6 shadow-sm">
+      <section className="min-w-0 space-y-6 rounded-xl border border-[var(--muted)] bg-white p-6 shadow-sm">
         {children}
       </section>
     </div>
