@@ -45,6 +45,7 @@ export default function CheckoutForm() {
     removeVoucher,
     clearVoucherFeedback,
     shippingFlatFee,
+    isLoading,
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -177,6 +178,13 @@ export default function CheckoutForm() {
       shipping_phone: prev.shipping_phone || customer?.profile.phone || "",
     }));
   }, [customer, isLoggedIn]);
+
+  const shouldRedirectToCart = !isLoading && selectedItems.length === 0;
+
+  useEffect(() => {
+    if (!shouldRedirectToCart) return;
+    router.replace("/cart");
+  }, [shouldRedirectToCart, router]);
 
   useEffect(() => {
     setVoucherCode(appliedVoucher?.code ?? "");
@@ -437,13 +445,11 @@ export default function CheckoutForm() {
     }
   };
 
-  if (!selectedItems || selectedItems.length === 0) {
+  if (isLoading || shouldRedirectToCart) {
     return (
       <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
         <h1 className="mb-4 text-2xl font-semibold">Checkout</h1>
-        <p className="text-sm text-[var(--foreground)]/70">
-          Your cart is empty. Please add items before checking out.
-        </p>
+        <p className="text-sm text-[var(--foreground)]/70">Loading checkout...</p>
       </main>
     );
   }
