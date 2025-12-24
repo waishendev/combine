@@ -34,6 +34,7 @@ export default function CartPageClient() {
   const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [quantityNotices, setQuantityNotices] = useState<Record<number, string>>({});
 
     useEffect(() => {
       // Sync voucher input with applied voucher code
@@ -41,6 +42,38 @@ export default function CartPageClient() {
       setVoucherCode(appliedVoucher?.code ?? "");
       setSelectedVoucherId(appliedVoucher?.customer_voucher_id ?? null);
     }, [appliedVoucher]);
+
+  const setQuantityNotice = (itemId: number, message?: string) => {
+    setQuantityNotices((prev) => {
+      if (!message) {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      }
+      return { ...prev, [itemId]: message };
+    });
+  };
+
+  const getItemStock = (item: (typeof items)[number]) =>
+    typeof item.product_stock === "number" ? item.product_stock : null;
+
+  const handleQuantityChange = (item: (typeof items)[number], desiredQty: number) => {
+    const maxStock = getItemStock(item);
+    if (maxStock !== null && maxStock <= 0) {
+      setQuantityNotice(item.id, "Out of stock. Please remove this item.");
+      return;
+    }
+
+    let nextQty = Math.max(1, desiredQty);
+    if (maxStock !== null && nextQty > maxStock) {
+      nextQty = maxStock;
+      setQuantityNotice(item.id, `Only ${maxStock} available in stock.`);
+    } else {
+      setQuantityNotice(item.id);
+    }
+
+    updateItemQuantity(item.id, nextQty);
+  };
 
   const handleApplyVoucher = async () => {
     const applied = await applyVoucher(
@@ -159,6 +192,7 @@ export default function CartPageClient() {
                 const sku = item.sku ?? (item.product as { sku?: string })?.sku;
                 const productSlug = item.product?.slug ?? (item as { product_slug?: string }).product_slug;
                 const variantLabel = (item as { variant_label?: string }).variant_label;
+                const maxStock = getItemStock(item);
 
                 return (
                   <div key={item.id} className="bg-white/70 px-3 py-2 lg:px-4 lg:py-4">
@@ -223,7 +257,7 @@ export default function CartPageClient() {
                             <button
                               type="button"
                               className="px-2 py-1 lg:px-3"
-                              onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
+                              onClick={() => handleQuantityChange(item, Math.max(1, item.quantity - 1))}
                               aria-label="Decrease quantity"
                             >
                               -
@@ -231,26 +265,34 @@ export default function CartPageClient() {
                             <input
                               type="number"
                               min={1}
+                              max={maxStock ?? undefined}
                               className="w-12 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
                               value={item.quantity}
                               onChange={(e) =>
-                                updateItemQuantity(
-                                  item.id,
-                                  Math.max(1, Number(e.target.value) || 1),
-                                )
+                                handleQuantityChange(item, Number(e.target.value) || 1)
                               }
                             />
                             <button
                               type="button"
                               className="px-2 py-1 lg:px-3"
-                              onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                              onClick={() => {
+                                if (maxStock !== null && item.quantity >= maxStock) {
+                                  setQuantityNotice(item.id, `Only ${maxStock} available in stock.`);
+                                  return;
+                                }
+                                handleQuantityChange(item, item.quantity + 1);
+                              }}
                               aria-label="Increase quantity"
+                              disabled={maxStock !== null && item.quantity >= maxStock}
                             >
                               +
                             </button>
                           </div>
                         )}
                       </div>
+                      {quantityNotices[item.id] && (
+                        <p className="text-xs text-amber-600">{quantityNotices[item.id]}</p>
+                      )}
 
                       <div className="text-right text-sm font-semibold">RM {lineTotal.toFixed(2)}</div>
 
@@ -290,6 +332,7 @@ export default function CartPageClient() {
               const sku = item.sku ?? (item.product as { sku?: string })?.sku;
               const productSlug = item.product?.slug ?? (item as { product_slug?: string }).product_slug;
               const variantLabel = (item as { variant_label?: string }).variant_label;
+              const maxStock = getItemStock(item);
 
               return (
                 <div key={item.id} className="rounded-xl border border-[var(--muted)] bg-white/90 p-3 shadow-sm">
@@ -343,7 +386,7 @@ export default function CartPageClient() {
                               <button
                                 type="button"
                                 className="px-3 py-1"
-                                onClick={() => updateItemQuantity(item.id, Math.max(1, item.quantity - 1))}
+                                onClick={() => handleQuantityChange(item, Math.max(1, item.quantity - 1))}
                                 aria-label="Decrease quantity"
                               >
                                 -
@@ -351,24 +394,32 @@ export default function CartPageClient() {
                               <input
                                 type="number"
                                 min={1}
+                                max={maxStock ?? undefined}
                                 className="w-14 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
                                 value={item.quantity}
                                 onChange={(e) =>
-                                  updateItemQuantity(
-                                    item.id,
-                                    Math.max(1, Number(e.target.value) || 1),
-                                  )
+                                  handleQuantityChange(item, Number(e.target.value) || 1)
                                 }
                               />
                               <button
                                 type="button"
                                 className="px-3 py-1"
-                                onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                                onClick={() => {
+                                  if (maxStock !== null && item.quantity >= maxStock) {
+                                    setQuantityNotice(item.id, `Only ${maxStock} available in stock.`);
+                                    return;
+                                  }
+                                  handleQuantityChange(item, item.quantity + 1);
+                                }}
                                 aria-label="Increase quantity"
+                                disabled={maxStock !== null && item.quantity >= maxStock}
                               >
                                 +
                               </button>
                             </div>
+                          )}
+                          {quantityNotices[item.id] && (
+                            <p className="text-xs text-amber-600">{quantityNotices[item.id]}</p>
                           )}
 
                           <div className="ml-auto text-right text-sm font-semibold">                          

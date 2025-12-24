@@ -6,6 +6,7 @@ export type OrderDetail = {
   order_no: string;
   status: string;
   payment_status: string;
+  reserve_expires_at?: string | null;
   payment_method?: string | null;
   payment_provider?: string | null;
   subtotal: number | string;

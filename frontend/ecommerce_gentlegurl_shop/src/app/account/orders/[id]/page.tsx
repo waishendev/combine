@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
+import { OrderDetailActions } from "./OrderDetailActions";
 
 type OrderDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -19,6 +20,10 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
     return notFound();
   }
 
+  const reserveExpiresAt = order.reserve_expires_at ? new Date(order.reserve_expires_at) : null;
+  const isExpired = reserveExpiresAt ? reserveExpiresAt.getTime() < Date.now() : false;
+  const displayStatus = isExpired ? "expired" : order.status;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -30,7 +35,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-            {order.status}
+            {displayStatus}
           </span>
           <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
             {order.payment_status}
@@ -163,6 +168,13 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
             )}
           </div>
         </div>
+
+        <OrderDetailActions
+          orderId={order.id}
+          status={order.status}
+          paymentStatus={order.payment_status}
+          reserveExpiresAt={order.reserve_expires_at ?? null}
+        />
 
         {order.returns && order.returns.length > 0 && (
           <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm">

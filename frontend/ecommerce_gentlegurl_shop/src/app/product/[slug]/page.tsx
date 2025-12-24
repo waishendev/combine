@@ -146,7 +146,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             />
           ) : (
             <div className="flex flex-wrap items-center gap-3">
-              <AddToCartButton productId={product.id} />
+              <AddToCartButton productId={product.id} stock={product.stock ?? null} />
             </div>
           )}
         </div>

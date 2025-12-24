@@ -19,6 +19,7 @@ export type OrderSummary = {
   payment_status: string;
   grand_total: string | number;
   created_at: string;
+  reserve_expires_at?: string | null;
   items?: OrderItemSummary[];
   [key: string]: unknown;
 };

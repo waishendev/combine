@@ -4,10 +4,16 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
+use App\Services\Ecommerce\OrderReserveService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 
 class PublicOrderHistoryController extends Controller
 {
+    public function __construct(protected OrderReserveService $orderReserveService)
+    {
+    }
+
     public function index(Request $request)
     {
         $customer = $request->user('customer');
@@ -26,6 +32,7 @@ class PublicOrderHistoryController extends Controller
                 'payment_status' => $order->payment_status,
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
+                'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'items' => $order->items->map(function ($item) {
                     $images = $item->product?->images
                         ? $item->product->images
@@ -119,6 +126,7 @@ class PublicOrderHistoryController extends Controller
                 'order_no' => $order->order_number,
                 'status' => $order->status,
                 'payment_status' => $order->payment_status,
+                'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'payment_method' => $order->payment_method,
                 'payment_provider' => $order->payment_provider,
                 'subtotal' => $order->subtotal,
@@ -177,5 +185,50 @@ class PublicOrderHistoryController extends Controller
         ];
 
         return $this->respond($data);
+    }
+
+    public function cancel(Request $request, Order $order)
+    {
+        $customer = $request->user('customer');
+
+        if ($order->customer_id !== $customer->id) {
+            return $this->respondError(__('Order not found.'), 404);
+        }
+
+        if ($order->status !== 'pending' || $order->payment_status !== 'unpaid') {
+            return $this->respondError(__('Order cannot be cancelled.'), 422);
+        }
+
+        if ($this->orderReserveService->isExpired($order)) {
+            return $this->respondError(__('Order reservation has expired.'), 422);
+        }
+
+        DB::transaction(function () use ($order) {
+            $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
+
+            if (!$lockedOrder || $lockedOrder->status !== 'pending' || $lockedOrder->payment_status !== 'unpaid') {
+                return;
+            }
+
+            if ($this->orderReserveService->isExpired($lockedOrder)) {
+                return;
+            }
+
+            $lockedOrder->status = 'cancelled';
+            $lockedOrder->save();
+
+            $this->orderReserveService->releaseStockForOrder($lockedOrder);
+        });
+
+        $order->refresh();
+
+        return $this->respond([
+            'order' => [
+                'id' => $order->id,
+                'status' => $order->status,
+                'payment_status' => $order->payment_status,
+                'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
+            ],
+        ]);
     }
 }
