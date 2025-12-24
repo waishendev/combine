@@ -448,16 +448,13 @@ export default function CheckoutForm() {
 
   if (isLoading || !hasLoadedCart || shouldRedirectToCart) {
     return (
-      <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
-        <h1 className="mb-4 text-2xl font-semibold">Checkout</h1>
-        <p className="text-sm text-[var(--foreground)]/70">Loading checkout...</p>
-      </main>
+      <LoadingOverlay message="Loading checkout..." show={isInitialLoad} />
     );
   }
 
   return (
     <>
-      <LoadingOverlay message="Loading checkout..." show={isInitialLoad} />
+
       <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
       <h1 className="mb-6 text-2xl font-semibold">Checkout</h1>
 
