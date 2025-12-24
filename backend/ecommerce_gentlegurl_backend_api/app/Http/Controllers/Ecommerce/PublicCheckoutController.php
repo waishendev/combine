@@ -17,6 +17,7 @@ use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
 use App\Services\Voucher\VoucherService;
+use App\Services\Ecommerce\OrderReserveService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,7 @@ class PublicCheckoutController extends Controller
         protected VoucherService $voucherService,
         protected BillplzService $billplzService,
         protected CartService $cartService,
+        protected OrderReserveService $orderReserveService,
     )
     {
     }
@@ -43,21 +45,25 @@ class PublicCheckoutController extends Controller
         $validated = $this->validateOrderRequest($request);
         $customer = $this->currentCustomer();
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method'] ?? 'pickup');
-        $cart = $this->resolveCart($customer, $validated['session_token'] ?? null);
+        $itemsInput = $validated['items'] ?? [];
+        $hasItemsInput = !empty($itemsInput);
+        $cart = $hasItemsInput ? null : $this->resolveCart($customer, $validated['session_token'] ?? null);
         $cartHasItems = $cart && $cart->items()->count() > 0;
 
-        if (!$cartHasItems && (empty($validated['items']) || count($validated['items']) === 0)) {
+        if (!$cartHasItems && !$hasItemsInput) {
             return $this->respondError(__('Cart is empty.'), 422);
         }
 
         $calculation = $this->calculateTotals(
             $cartHasItems ? $cart : null,
-            $validated['items'] ?? [],
+            $itemsInput,
             $customer,
             $shippingMethod,
             $validated['voucher_code'] ?? null,
             $validated['customer_voucher_id'] ?? null
         );
+
+        $this->orderReserveService->validateStockForItems($calculation['items']);
 
         return $this->respond([
             'items' => $calculation['items'],
@@ -93,16 +99,18 @@ class PublicCheckoutController extends Controller
         $customer = $this->currentCustomer();
 
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method']);
-        $cart = $this->resolveCart($customer, $validated['session_token'] ?? null);
+        $itemsInput = $validated['items'] ?? [];
+        $hasItemsInput = !empty($itemsInput);
+        $cart = $hasItemsInput ? null : $this->resolveCart($customer, $validated['session_token'] ?? null);
         $cartHasItems = $cart && $cart->items()->count() > 0;
 
-        if (!$cartHasItems && (empty($validated['items']) || count($validated['items']) === 0)) {
+        if (!$cartHasItems && !$hasItemsInput) {
             return $this->respondError(__('Cart is empty.'), 422);
         }
 
         $calculation = $this->calculateTotals(
             $cartHasItems ? $cart : null,
-            $validated['items'] ?? [],
+            $itemsInput,
             $customer,
             $shippingMethod,
             $validated['voucher_code'] ?? null,
@@ -150,6 +158,8 @@ class PublicCheckoutController extends Controller
 
         try {
             [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod) {
+                $this->orderReserveService->reserveStockForItems($calculation['items']);
+
                 $order = Order::create([
                     'order_number' => $this->generateOrderNumber(),
                     'customer_id' => $customer?->id,
@@ -272,6 +282,8 @@ class PublicCheckoutController extends Controller
 
                 return [$order, $billplzUrl, $billplzId];
             });
+        } catch (ValidationException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             Log::error('Failed to create order', [
                 'error' => $exception->getMessage(),
@@ -394,6 +406,18 @@ class PublicCheckoutController extends Controller
 
     public function uploadSlip(Request $request, Order $order)
     {
+        if ($order->payment_method !== 'manual_transfer') {
+            return $this->respondError(__('Order does not support manual transfer uploads.'), 422);
+        }
+
+        if ($order->payment_status === 'paid' || in_array($order->status, ['cancelled', 'completed'], true)) {
+            return $this->respondError(__('Payment slip upload is no longer allowed.'), 422);
+        }
+
+        if (!in_array($order->status, ['pending', 'processing'], true)) {
+            return $this->respondError(__('Order is not eligible for slip upload.'), 422);
+        }
+
         $validated = $request->validate([
             'slip' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'note' => ['nullable', 'string'],
@@ -409,6 +433,11 @@ class PublicCheckoutController extends Controller
             'status' => 'pending',
         ]);
 
+        if ($order->status === 'pending') {
+            $order->status = 'processing';
+            $order->save();
+        }
+
         return $this->respond([
             'upload' => [
                 'id' => $upload->id,
@@ -418,7 +447,7 @@ class PublicCheckoutController extends Controller
                 'created_at' => $upload->created_at,
             ],
             'latest_slip_url' => $upload->file_url,
-            'status' => 'pending verification',
+            'status' => $order->status === 'processing' ? 'processing' : 'pending verification',
         ], __('Payment slip uploaded.'));
     }
 

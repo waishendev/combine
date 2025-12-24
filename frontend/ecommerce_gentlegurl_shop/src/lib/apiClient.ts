@@ -144,6 +144,7 @@ export type CartItem = {
   name: string;
   sku?: string | null;
   product_image?: string | null;
+  product_stock?: number | null;
   unit_price: string;
   quantity: number;
   line_total: string;
@@ -502,6 +503,19 @@ export async function addOrUpdateCartItem(payload: {
   return response.data;
 }
 
+export async function addCartItemIncrement(payload: {
+  product_id: number;
+  quantity: number;
+}): Promise<CartResponse> {
+  const response = await post<{ data: CartResponse }>(
+    "/public/shop/cart/items/add",
+    payload,
+    { includeSessionToken: true, headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
+}
+
 export async function removeCartItem(itemId: number): Promise<CartResponse> {
   const response = await del<{ data: CartResponse }>(
     `/public/shop/cart/items/${itemId}`,
@@ -642,6 +656,39 @@ export async function createOrder(payload: CheckoutPayload): Promise<CreateOrder
     "/public/shop/orders",
     payload,
     { includeSessionToken: payload.session_token === undefined, headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
+}
+
+export type CancelOrderResponse = {
+  order: {
+    id: number;
+    status: string;
+    payment_status: string;
+    reserve_expires_at?: string | null;
+  };
+};
+
+export async function cancelOrder(orderId: number): Promise<CancelOrderResponse> {
+  const response = await post<{ data: CancelOrderResponse }>(
+    `/public/shop/orders/${orderId}/cancel`,
+    undefined,
+    { headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
+}
+
+export type OrderPaymentResponse = {
+  redirect_url: string;
+};
+
+export async function payOrder(orderId: number): Promise<OrderPaymentResponse> {
+  const response = await post<{ data: OrderPaymentResponse }>(
+    `/public/shop/orders/${orderId}/pay`,
+    undefined,
+    { headers: { Accept: "application/json" } },
   );
 
   return response.data;

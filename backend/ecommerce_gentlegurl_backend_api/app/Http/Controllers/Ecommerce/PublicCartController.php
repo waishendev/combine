@@ -59,6 +59,10 @@ class PublicCartController extends Controller
         if ($quantity === 0) {
             $item?->delete();
         } else {
+            if ($product->stock !== null && $quantity > (int) $product->stock) {
+                return $this->respondError(__('Insufficient stock. Max available: :stock', ['stock' => (int) $product->stock]), 422);
+            }
+
             if ($item) {
                 $item->update([
                     'quantity' => $quantity,
@@ -72,6 +76,60 @@ class PublicCartController extends Controller
                     'unit_price_snapshot' => $product->price,
                 ]);
             }
+        }
+
+        return $this->respond($this->cartService->formatCart($cart->fresh()));
+    }
+
+    public function addItemIncrement(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'session_token' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $customer = $this->currentCustomer();
+        $sessionToken = $customer ? null : ($validated['session_token'] ?? $request->query('session_token'));
+
+        $result = $this->cartService->findOrCreateCart($customer, $sessionToken);
+        $cart = $result['cart'];
+
+        $product = Product::find($validated['product_id']);
+        $delta = (int) $validated['quantity'];
+
+        if (!$product || $product->is_reward_only) {
+            return $this->respondError(__('This product cannot be added to cart.'), 422);
+        }
+
+        $item = CartItem::where('cart_id', $cart->id)
+            ->where('product_id', $product->id)
+            ->first();
+
+        if ($item?->locked) {
+            return $this->respondError(__('This reward item cannot be modified from cart.'), 422);
+        }
+
+        $newQuantity = $delta + (int) ($item?->quantity ?? 0);
+
+        if ($product->stock !== null && $newQuantity > (int) $product->stock) {
+            return $this->respondError(__('Insufficient stock. Max available: :stock', ['stock' => (int) $product->stock]), 422);
+        }
+
+        if ($newQuantity <= 0) {
+            $item?->delete();
+        } elseif ($item) {
+            $item->update([
+                'quantity' => $newQuantity,
+                'unit_price_snapshot' => $product->price,
+            ]);
+        } else {
+            CartItem::create([
+                'cart_id' => $cart->id,
+                'product_id' => $product->id,
+                'quantity' => $newQuantity,
+                'unit_price_snapshot' => $product->price,
+            ]);
         }
 
         return $this->respond($this->cartService->formatCart($cart->fresh()));

@@ -2,12 +2,15 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { OrderItemSummary, OrderSummary } from "@/lib/server/getOrders";
 import {
   fetchProductReviewEligibility,
   submitProductReview,
 } from "@/lib/api/productReviews";
 import { RatingStars } from "@/components/reviews/RatingStars";
+import { cancelOrder, payOrder } from "@/lib/apiClient";
+import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrdersClientProps = {
   orders: OrderSummary[];
@@ -17,6 +20,10 @@ type ModalState = {
   orderId: number;
   item: OrderItemSummary;
   slug: string;
+};
+
+type SlipModalState = {
+  orderId: number;
 };
 
 const reasonMessages: Record<string, string> = {
@@ -29,6 +36,7 @@ const reasonMessages: Record<string, string> = {
 };
 
 export function OrdersClient({ orders }: OrdersClientProps) {
+  const router = useRouter();
   const [modal, setModal] = useState<ModalState | null>(null);
   const [rating, setRating] = useState<number>(5);
   const [title, setTitle] = useState<string>("");
@@ -39,6 +47,12 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   const [eligibilityLoading, setEligibilityLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [reviewedItems, setReviewedItems] = useState<Record<number, boolean>>({});
+  const [orderOverrides, setOrderOverrides] = useState<Record<number, { status?: string; payment_status?: string }>>({});
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
+  const [slipModal, setSlipModal] = useState<SlipModalState | null>(null);
+  const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const reviewedItemIds = useMemo(() => reviewedItems, [reviewedItems]);
 
@@ -121,11 +135,78 @@ export function OrdersClient({ orders }: OrdersClientProps) {
     }
   }
 
+  async function handleCancel(orderId: number) {
+    setCancelError(null);
+    setCancellingOrderId(orderId);
+    try {
+      const response = await cancelOrder(orderId);
+      setOrderOverrides((prev) => ({
+        ...prev,
+        [orderId]: {
+          status: response.order.status,
+          payment_status: response.order.payment_status,
+        },
+      }));
+    } catch (error) {
+      const message =
+        typeof error === "object" && error && "data" in (error as never)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((error as any).data?.message as string | undefined) ?? "Unable to cancel this order."
+          : "Unable to cancel this order.";
+      setCancelError(message);
+    } finally {
+      setCancellingOrderId(null);
+    }
+  }
+
+  async function handlePayNow(orderId: number, paymentMethod?: string | null) {
+    setPaymentError(null);
+
+    if (paymentMethod === "manual_transfer") {
+      setSlipModal({ orderId });
+      return;
+    }
+
+    if (!paymentMethod?.startsWith("billplz_")) {
+      setPaymentError("Payment method is not supported.");
+      return;
+    }
+
+    setPayingOrderId(orderId);
+    try {
+      const response = await payOrder(orderId);
+      if (response.redirect_url) {
+        window.location.href = response.redirect_url;
+      } else {
+        setPaymentError("Unable to initiate payment.");
+      }
+    } catch (error) {
+      const message =
+        typeof error === "object" && error && "data" in (error as never)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((error as any).data?.message as string | undefined) ?? "Unable to initiate payment."
+          : "Unable to initiate payment.";
+      setPaymentError(message);
+    } finally {
+      setPayingOrderId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {eligibilityError && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {eligibilityError}
+        </div>
+      )}
+      {cancelError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {cancelError}
+        </div>
+      )}
+      {paymentError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {paymentError}
         </div>
       )}
       {submitSuccess && (
@@ -135,17 +216,26 @@ export function OrdersClient({ orders }: OrdersClientProps) {
       )}
 
       {orders.map((order) => {
-        const statusKey = (order.status || "").toLowerCase();
+        const override = orderOverrides[order.id] ?? {};
+        const statusValue = override.status ?? order.status;
+        const paymentStatusValue = override.payment_status ?? order.payment_status;
+        const statusKey = (statusValue || "").toLowerCase();
+        const reserveExpiresAt = order.reserve_expires_at ? new Date(order.reserve_expires_at) : null;
+        const isExpired = reserveExpiresAt ? reserveExpiresAt.getTime() < Date.now() : false;
+        const canPay = statusKey === "pending" && paymentStatusValue === "unpaid" && !isExpired;
+        const isProcessing = statusKey === "processing" && !isExpired;
+        const canUploadSlip = order.payment_method === "manual_transfer" && (canPay || isProcessing);
+        const displayStatus = isExpired ? "expired" : statusValue;
         const badgeStyle =
-          statusKey === "pending"
+          statusKey === "pending" && !isExpired
             ? "bg-amber-50 text-amber-700 border-amber-200"
             : statusKey === "paid" || statusKey === "completed"
               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : statusKey === "shipped"
-                ? "bg-blue-50 text-blue-700 border-blue-200"
-                : statusKey === "cancelled"
-                  ? "bg-rose-50 text-rose-700 border-rose-200"
-                  : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
+            : statusKey === "shipped"
+              ? "bg-blue-50 text-blue-700 border-blue-200"
+              : statusKey === "cancelled" || isExpired
+                ? "bg-rose-50 text-rose-700 border-rose-200"
+                : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
 
         return (
           <div
@@ -159,10 +249,10 @@ export function OrdersClient({ orders }: OrdersClientProps) {
               </div>
               <div className="flex items-center gap-2">
                 <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
-                  {order.status}
+                  {displayStatus}
                 </span>
                 <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                  {order.payment_status}
+                  {paymentStatusValue}
                 </span>
               </div>
             </div>
@@ -176,7 +266,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Payment</p>
-                <p className="text-base font-medium text-[var(--foreground)]">{order.payment_status}</p>
+                <p className="text-base font-medium text-[var(--foreground)]">{paymentStatusValue}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Total Amount</p>
@@ -200,6 +290,46 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                   </svg>
                 </Link>
               </div>
+
+              {(canPay || isProcessing || statusKey === "cancelled" || isExpired) && (
+                <div className="sm:col-span-4">
+                  {canPay ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handlePayNow(order.id, order.payment_method)}
+                        disabled={payingOrderId === order.id}
+                        className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {payingOrderId === order.id ? "Redirecting..." : "Pay Now"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCancel(order.id)}
+                        disabled={cancellingOrderId === order.id}
+                        className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold uppercase text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {cancellingOrderId === order.id ? "Cancelling..." : "Cancel"}
+                      </button>
+                    </div>
+                  ) : isProcessing ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-semibold uppercase text-amber-600">Waiting for verification</p>
+                      {canUploadSlip && (
+                        <button
+                          type="button"
+                          onClick={() => setSlipModal({ orderId: order.id })}
+                          className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                        >
+                          Reupload Slip
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-semibold uppercase text-rose-600">Expired / Cancelled</p>
+                  )}
+                </div>
+              )}
 
               {Array.isArray(order.items) && order.items.length > 0 && (
                 <div className="sm:col-span-4">
@@ -340,6 +470,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
           </div>
         </div>
       )}
+
+      <UploadReceiptModal
+        isOpen={!!slipModal}
+        orderId={slipModal?.orderId ?? 0}
+        onClose={() => setSlipModal(null)}
+        onSuccess={() => {
+          setSlipModal(null);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }
