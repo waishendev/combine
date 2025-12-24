@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
 import { ProductReviewsSection } from "@/components/product/ProductReviewsSection";
@@ -62,6 +64,15 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
     : 0;
   const soldCountValue = Number(product.sold_count ?? 0);
   const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
+  const relatedProducts = Array.isArray(product.related_products)
+    ? (product.related_products as Array<{
+        id: number | string;
+        name: string;
+        slug?: string;
+        price: number | string;
+        thumbnail?: string | null;
+      }>)
+    : [];
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -140,6 +151,73 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           )}
         </div>
       </div>
+
+      {relatedProducts.length > 0 && (
+        <section className="mt-12 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-pink-500">
+                Recommended
+              </p>
+              <h2 className="text-xl font-semibold text-gray-900">猜你喜欢 / 相关商品</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                精选搭配商品，为你打造更完整的购物体验。
+              </p>
+            </div>
+            <span className="rounded-full bg-pink-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-pink-500">
+              Shopee style
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+            {relatedProducts.map((related) => {
+              const priceNumber = Number(related.price);
+              const priceLabel = Number.isFinite(priceNumber)
+                ? priceNumber.toFixed(2)
+                : related.price;
+              const thumbnail = related.thumbnail
+                ? normalizeImageUrl(related.thumbnail)
+                : null;
+
+              return (
+                <Link
+                  key={related.id}
+                  href={`/product/${related.slug ?? related.id}`}
+                  className="group relative overflow-hidden rounded-2xl border border-white/70 bg-white/90 shadow-[0_16px_50px_-36px_rgba(15,23,42,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-36px_rgba(236,72,153,0.45)]"
+                >
+                  <div className="relative h-36 w-full overflow-hidden bg-gradient-to-b from-[#fff1f7] via-[#fdf6ff] to-white">
+                    {thumbnail ? (
+                      <Image
+                        src={thumbnail}
+                        alt={related.name}
+                        fill
+                        className="object-cover transition duration-500 ease-out group-hover:scale-110"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                        No Image
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-white/80 to-transparent" />
+                  </div>
+                  <div className="space-y-2 p-3">
+                    <h3 className="line-clamp-2 text-sm font-semibold text-gray-900">
+                      {related.name}
+                    </h3>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-[#ec4899]">
+                        RM {priceLabel}
+                      </span>
+                      <span className="rounded-full bg-rose-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-500">
+                        View
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <ProductReviewsSection
         slug={slug}
