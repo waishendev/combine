@@ -45,6 +45,8 @@ export default function CheckoutForm() {
     removeVoucher,
     clearVoucherFeedback,
     shippingFlatFee,
+    isLoading,
+    hasLoadedCart,
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -177,6 +179,13 @@ export default function CheckoutForm() {
       shipping_phone: prev.shipping_phone || customer?.profile.phone || "",
     }));
   }, [customer, isLoggedIn]);
+
+  const shouldRedirectToCart = hasLoadedCart && selectedItems.length === 0;
+
+  useEffect(() => {
+    if (!shouldRedirectToCart) return;
+    router.replace("/cart");
+  }, [shouldRedirectToCart, router]);
 
   useEffect(() => {
     setVoucherCode(appliedVoucher?.code ?? "");
@@ -437,20 +446,15 @@ export default function CheckoutForm() {
     }
   };
 
-  if (!selectedItems || selectedItems.length === 0) {
+  if (isLoading || !hasLoadedCart || shouldRedirectToCart) {
     return (
-      <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
-        <h1 className="mb-4 text-2xl font-semibold">Checkout</h1>
-        <p className="text-sm text-[var(--foreground)]/70">
-          Your cart is empty. Please add items before checking out.
-        </p>
-      </main>
+      <LoadingOverlay message="Loading checkout..." show={isInitialLoad} />
     );
   }
 
   return (
     <>
-      <LoadingOverlay message="Loading checkout..." show={isInitialLoad} />
+
       <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
       <h1 className="mb-6 text-2xl font-semibold">Checkout</h1>
 

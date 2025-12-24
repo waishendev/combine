@@ -62,6 +62,7 @@ export type CartContextValue = {
   shippingFlatFee: number;
   shippingLabel?: string;
   resetAfterLogout: () => Promise<void>;
+  hasLoadedCart: boolean;
 };
 
 type CartProviderProps = {
@@ -81,6 +82,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
   const [discountTotal, setDiscountTotal] = useState<string>("0");
   const [shippingFee, setShippingFee] = useState<string>("0");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasLoadedCart, setHasLoadedCart] = useState<boolean>(false);
   const [isApplyingVoucher, setIsApplyingVoucher] = useState<boolean>(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
@@ -176,6 +178,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
       applyCartResponse();
     } finally {
       setIsLoading(false);
+      setHasLoadedCart(true);
     }
   }, [applyCartResponse]);
 
@@ -489,6 +492,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     shippingFlatFee,
     shippingLabel,
     resetAfterLogout,
+    hasLoadedCart,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
