@@ -680,6 +680,20 @@ export async function cancelOrder(orderId: number): Promise<CancelOrderResponse>
   return response.data;
 }
 
+export type OrderPaymentResponse = {
+  redirect_url: string;
+};
+
+export async function payOrder(orderId: number): Promise<OrderPaymentResponse> {
+  const response = await post<{ data: OrderPaymentResponse }>(
+    `/public/shop/orders/${orderId}/pay`,
+    undefined,
+    { headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
+}
+
 export async function getBankAccounts(): Promise<PublicBankAccount[]> {
   const response = await get<{ data: PublicBankAccount[] }>("/public/shop/bank-accounts", {
     headers: { Accept: "application/json" },

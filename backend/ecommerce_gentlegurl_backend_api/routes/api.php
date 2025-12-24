@@ -157,6 +157,7 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/orders', [PublicOrderHistoryController::class, 'index']);
         Route::get('/orders/{id}', [PublicOrderHistoryController::class, 'showById']);
         Route::post('/orders/{order}/cancel', [PublicOrderHistoryController::class, 'cancel']);
+        Route::post('/orders/{order}/pay', [PublicOrderHistoryController::class, 'pay']);
 
         Route::get('/returns', [PublicReturnController::class, 'index']);
         Route::get('/returns/{returnRequest}', [PublicReturnController::class, 'show']);
