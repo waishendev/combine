@@ -21,7 +21,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-[var(--foreground)]">Order {order.order_no}</h1>
           <p className="text-sm text-[var(--foreground)]/70">
@@ -44,7 +44,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           {order.items.map((item) => (
             <div
               key={item.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--muted)] bg-white px-3 py-3"
+              className="flex flex-col gap-3 rounded-xl border border-[var(--muted)] bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex items-center gap-3">
                 {item.product_image ? (
@@ -67,7 +67,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   )}
                 </div>
               </div>
-              <div className="text-right text-sm text-[var(--foreground)]">
+              <div className="w-full text-left text-sm text-[var(--foreground)] sm:w-auto sm:text-right">
                 <p>Unit: {item.unit_price}</p>
                 <p className="font-semibold text-[var(--accent-strong)]">Line: {item.line_total}</p>
               </div>

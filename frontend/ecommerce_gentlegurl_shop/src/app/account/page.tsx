@@ -349,9 +349,9 @@ export default function AccountPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-pink-800">My Account</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <button
             type="button"
             onClick={() => {
@@ -359,14 +359,14 @@ export default function AccountPage() {
               setError(null);
               setChangePasswordModalOpen(true);
             }}
-            className="rounded-lg border border-pink-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-sm transition hover:bg-pink-50"
+            className="w-full rounded-lg border border-pink-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-sm transition hover:bg-pink-50 sm:w-auto"
           >
             Change Password
           </button>
           <button
             type="button"
             onClick={() => setProfileModalOpen(true)}
-            className="rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600"
+            className="w-full rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600 sm:w-auto"
           >
             Edit Profile
           </button>
@@ -488,7 +488,7 @@ export default function AccountPage() {
       </div>
 
       <section className="rounded-xl border border-pink-200 bg-white/70 p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-pink-700">Address Book</h2>
             <p className="text-xs text-gray-600">Manage your shipping and billing details.</p>
@@ -496,7 +496,7 @@ export default function AccountPage() {
           <button
             type="button"
             onClick={() => openAddressModal()}
-            className="rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-sm font-semibold text-pink-700 transition hover:bg-pink-100"
+            className="w-full rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-sm font-semibold text-pink-700 transition hover:bg-pink-100 sm:w-auto"
           >
             Add Address
           </button>
