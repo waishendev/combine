@@ -46,6 +46,7 @@ export default function CheckoutForm() {
     clearVoucherFeedback,
     shippingFlatFee,
     isLoading,
+    hasLoadedCart,
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -179,7 +180,7 @@ export default function CheckoutForm() {
     }));
   }, [customer, isLoggedIn]);
 
-  const shouldRedirectToCart = !isLoading && selectedItems.length === 0;
+  const shouldRedirectToCart = hasLoadedCart && selectedItems.length === 0;
 
   useEffect(() => {
     if (!shouldRedirectToCart) return;
@@ -445,7 +446,7 @@ export default function CheckoutForm() {
     }
   };
 
-  if (isLoading || shouldRedirectToCart) {
+  if (isLoading || !hasLoadedCart || shouldRedirectToCart) {
     return (
       <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
         <h1 className="mb-4 text-2xl font-semibold">Checkout</h1>
