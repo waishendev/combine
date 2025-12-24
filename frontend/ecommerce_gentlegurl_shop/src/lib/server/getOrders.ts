@@ -17,8 +17,10 @@ export type OrderSummary = {
   order_no: string;
   status: string;
   payment_status: string;
+  payment_method?: string | null;
   grand_total: string | number;
   created_at: string;
+  reserve_expires_at?: string | null;
   items?: OrderItemSummary[];
   [key: string]: unknown;
 };

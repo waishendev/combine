@@ -5,6 +5,7 @@ import {
   CartItem,
   CartResponse,
   CheckoutPreviewResponse,
+  addCartItemIncrement,
   addOrUpdateCartItem,
   getCart,
   mergeCart,
@@ -158,7 +159,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     async (productId: number, quantity: number) => {
       setIsLoading(true);
       try {
-        const response = await addOrUpdateCartItem({ product_id: productId, quantity });
+        const response = await addCartItemIncrement({ product_id: productId, quantity });
         applyCartResponse(response);
       } finally {
         setIsLoading(false);

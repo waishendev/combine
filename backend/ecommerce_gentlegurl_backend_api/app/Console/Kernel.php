@@ -9,12 +9,16 @@ class Kernel extends ConsoleKernel
 {
     protected $commands = [
         Commands\SendLowStockSummary::class,
+        Commands\ExpirePendingOrders::class,
     ];
 
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('ecommerce:send-low-stock-summary')
             ->dailyAt('12:00');
+
+        $schedule->command('ecommerce:expire-pending-orders')
+            ->everyMinute();
     }
 
     protected function commands(): void

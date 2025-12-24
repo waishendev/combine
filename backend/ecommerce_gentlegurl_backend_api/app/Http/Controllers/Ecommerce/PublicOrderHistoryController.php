@@ -4,10 +4,21 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
+use App\Services\Ecommerce\OrderReserveService;
+use App\Services\BillplzService;
+use App\Models\BillplzBill;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 
 class PublicOrderHistoryController extends Controller
 {
+    public function __construct(
+        protected OrderReserveService $orderReserveService,
+        protected BillplzService $billplzService,
+    )
+    {
+    }
+
     public function index(Request $request)
     {
         $customer = $request->user('customer');
@@ -24,8 +35,10 @@ class PublicOrderHistoryController extends Controller
                 'order_no' => $order->order_number,
                 'status' => $order->status,
                 'payment_status' => $order->payment_status,
+                'payment_method' => $order->payment_method,
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
+                'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'items' => $order->items->map(function ($item) {
                     $images = $item->product?->images
                         ? $item->product->images
@@ -119,6 +132,7 @@ class PublicOrderHistoryController extends Controller
                 'order_no' => $order->order_number,
                 'status' => $order->status,
                 'payment_status' => $order->payment_status,
+                'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'payment_method' => $order->payment_method,
                 'payment_provider' => $order->payment_provider,
                 'subtotal' => $order->subtotal,
@@ -177,5 +191,113 @@ class PublicOrderHistoryController extends Controller
         ];
 
         return $this->respond($data);
+    }
+
+    public function cancel(Request $request, Order $order)
+    {
+        $customer = $request->user('customer');
+
+        if ($order->customer_id !== $customer->id) {
+            return $this->respondError(__('Order not found.'), 404);
+        }
+
+        if ($order->status !== 'pending' || $order->payment_status !== 'unpaid') {
+            return $this->respondError(__('Order cannot be cancelled.'), 422);
+        }
+
+        if ($this->orderReserveService->isExpired($order)) {
+            return $this->respondError(__('Order reservation has expired.'), 422);
+        }
+
+        DB::transaction(function () use ($order) {
+            $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
+
+            if (!$lockedOrder || $lockedOrder->status !== 'pending' || $lockedOrder->payment_status !== 'unpaid') {
+                return;
+            }
+
+            if ($this->orderReserveService->isExpired($lockedOrder)) {
+                return;
+            }
+
+            $lockedOrder->status = 'cancelled';
+            $lockedOrder->save();
+
+            $this->orderReserveService->releaseStockForOrder($lockedOrder);
+        });
+
+        $order->refresh();
+
+        return $this->respond([
+            'order' => [
+                'id' => $order->id,
+                'status' => $order->status,
+                'payment_status' => $order->payment_status,
+                'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
+            ],
+        ]);
+    }
+
+    public function pay(Request $request, Order $order)
+    {
+        $customer = $request->user('customer');
+
+        if ($order->customer_id !== $customer->id) {
+            return $this->respondError(__('Order not found.'), 404);
+        }
+
+        if ($order->status !== 'pending' || $order->payment_status !== 'unpaid') {
+            return $this->respondError(__('Order cannot be paid.'), 422);
+        }
+
+        if ($this->orderReserveService->isExpired($order)) {
+            return $this->respondError(__('Order reservation has expired.'), 422);
+        }
+
+        if (!str_starts_with((string) $order->payment_method, 'billplz_')) {
+            return $this->respondError(__('Order payment method is not supported.'), 422);
+        }
+
+        if (!empty($order->payment_url)) {
+            return $this->respond([
+                'redirect_url' => $order->payment_url,
+            ]);
+        }
+
+        $billResponse = $this->billplzService->createBill($order);
+        $billplzId = data_get($billResponse, 'id');
+        $billplzUrl = data_get($billResponse, 'url');
+
+        if (!$billplzId || !$billplzUrl) {
+            return $this->respondError(__('Unable to initiate payment.'), 422);
+        }
+
+        $order->payment_provider = 'billplz';
+        $order->payment_reference = $billplzId;
+        $order->payment_url = $billplzUrl;
+        $order->payment_meta = [
+            'provider' => 'billplz',
+            'bill_id' => $billplzId,
+            'collection_id' => data_get($billResponse, 'collection_id'),
+            'state' => data_get($billResponse, 'state'),
+            'reference_1' => data_get($billResponse, 'reference_1'),
+        ];
+        $order->save();
+
+        BillplzBill::updateOrCreate(
+            ['billplz_id' => $billplzId],
+            [
+                'order_id' => $order->id,
+                'collection_id' => data_get($billResponse, 'collection_id'),
+                'state' => data_get($billResponse, 'state'),
+                'paid' => false,
+                'amount' => data_get($billResponse, 'amount'),
+                'payload' => $billResponse,
+            ]
+        );
+
+        return $this->respond([
+            'redirect_url' => $billplzUrl,
+        ]);
     }
 }
