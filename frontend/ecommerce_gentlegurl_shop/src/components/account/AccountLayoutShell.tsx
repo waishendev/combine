@@ -41,15 +41,15 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
     <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
       <aside className="h-fit rounded-xl border border-[var(--muted)] bg-white p-6 shadow-sm">
         <div className="mb-6 flex items-center gap-3">
-            <div className="relative h-12 w-12 overflow-hidden rounded-full border border-[var(--muted)] bg-[var(--muted)]/40">
-              <Image
-                 src={profile?.avatar || "/images/default_user_image.jpg"}
-                alt={profile.name}
-                fill
-                sizes="48px"
-                className="object-cover"
-              />
-            </div>
+          <div className="relative h-12 w-12 flex-none overflow-hidden rounded-full border border-[var(--muted)] bg-[var(--muted)]/40">
+            <Image
+              src={profile?.avatar || "/images/default_user_image.jpg"}
+              alt={profile.name}
+              fill
+              sizes="48px"
+              className="rounded-full object-cover"
+            />
+          </div>
           <div>
             <div className="text-base font-semibold text-[var(--foreground)]">{profile?.name}</div>
             <div className="text-sm text-[var(--foreground)]/70">{profile?.email}</div>

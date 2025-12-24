@@ -14,7 +14,7 @@ export default async function AccountOrdersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-[var(--foreground)]">My Orders</h2>
           <p className="text-sm text-[var(--foreground)]/70">Review your recent purchases and their status.</p>
