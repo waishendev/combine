@@ -125,9 +125,10 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
 
         {!isRewardOnly && product.stock != null && (
           <div className="text-sm text-gray-500">
-            Stock: {product.stock}{" "}
-            {product.stock <= (product.low_stock_threshold ?? 0) &&
-              "(Low stock)"}
+            <p>Stock left: {product.stock}</p>
+            {product.stock <= 0 && (
+              <p className="mt-1 font-semibold text-rose-600">Out of stock</p>
+            )}
             </div>
           )}
 

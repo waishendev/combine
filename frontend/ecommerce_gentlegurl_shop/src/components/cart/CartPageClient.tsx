@@ -215,6 +215,7 @@ export default function CartPageClient() {
                               No Image
                             </div>
                           )}
+                          
                         </div>
 
                         <div className="min-w-0 space-y-1">
@@ -225,10 +226,13 @@ export default function CartPageClient() {
                             >
                               <span className="line-clamp-2 lg:line-clamp-none">{name}</span>
                             </Link>
+                            
                           ) : (
                             <div className="line-clamp-2 text-sm font-semibold lg:line-clamp-none">{name}</div>
                           )}
-
+                          {quantityNotices[item.id] && (
+                            <p className="text-xs text-amber-600">{quantityNotices[item.id]}</p>
+                          )}
                           {isReward && (
                             <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
                               Reward item
@@ -290,9 +294,7 @@ export default function CartPageClient() {
                           </div>
                         )}
                       </div>
-                      {quantityNotices[item.id] && (
-                        <p className="text-xs text-amber-600">{quantityNotices[item.id]}</p>
-                      )}
+
 
                       <div className="text-right text-sm font-semibold">RM {lineTotal.toFixed(2)}</div>
 
@@ -313,6 +315,7 @@ export default function CartPageClient() {
                         )}
                       </div>
                     </div>
+                    
                   </div>
                 );
               })}
@@ -368,13 +371,16 @@ export default function CartPageClient() {
                         <div className="text-xs text-[var(--foreground)]/60">
                           {sku && <span>SKU: {sku}</span>}
                           {variantLabel && <span className="ml-2">{variantLabel}</span>}
-                          {isReward && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">Reward</span>}
+                          {isReward && <span className=" rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">Reward</span>}
                         </div>
 
                         <div className="text-sm font-medium text-[var(--foreground)]">
                           RM {unitPrice.toFixed(2)}
                           {isReward && <span className="ml-2 text-[11px] text-[var(--foreground)]/60">Locked</span>}
                         </div>
+                        {quantityNotices[item.id] && (
+                            <p className="text-xs text-amber-600">{quantityNotices[item.id]}</p>
+                          )}
 
                         <div className="flex items-center gap-2 pt-1">
                           {isReward ? (
@@ -418,10 +424,6 @@ export default function CartPageClient() {
                               </button>
                             </div>
                           )}
-                          {quantityNotices[item.id] && (
-                            <p className="text-xs text-amber-600">{quantityNotices[item.id]}</p>
-                          )}
-
                           <div className="ml-auto text-right text-sm font-semibold">                          
                             {isReward ? (
                               <span className="rounded-md bg-[var(--muted)]/40 px-3 py-2 text-[11px] font-semibold text-[var(--foreground)]/70">
