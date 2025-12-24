@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import LoadingOverlay from "@/components/LoadingOverlay";
+import { extractApiError } from "@/lib/auth/redirect";
 
 function Field({
   label,
@@ -64,7 +65,7 @@ function Field({
   );
 }
 
-export function RegisterForm() {
+export function RegisterForm({ redirectTarget }: { redirectTarget?: string | null }) {
   const { register } = useAuth();
   const router = useRouter();
 
@@ -109,11 +110,10 @@ export function RegisterForm() {
 
     try {
       await register(formState);
+      router.replace(redirectTarget ?? "/");
       router.refresh();
-      router.push("/account");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Registration failed";
-      setError(message);
+      setError(extractApiError(err));
     } finally {
       setSubmitting(false);
     }
@@ -121,6 +121,7 @@ export function RegisterForm() {
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
+      <LoadingOverlay show={submitting} message="Creating account..." />
       {error && (
         <div className="rounded-xl border border-pink-200/50 bg-white/90 px-3 py-2 text-sm text-[#b8527a]">
           {error}

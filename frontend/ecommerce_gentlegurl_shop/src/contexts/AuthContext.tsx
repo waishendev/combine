@@ -16,6 +16,7 @@ import {
   registerCustomer,
 } from "../lib/apiClient";
 import { getOrCreateSessionToken } from "../lib/sessionToken";
+import { clearAuthFlag, setAuthFlag } from "../lib/auth/session";
 
 type AuthCustomer = AccountOverview;
 
@@ -76,6 +77,7 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
         await loginCustomer({ email, password });
         await refreshProfile();
         await mergeWishlistAfterLogin();
+        setAuthFlag(true);
         if (onLoginSuccess) {
           await onLoginSuccess();
         }
@@ -100,6 +102,7 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
         await loginCustomer({ email: payload.email, password: payload.password });
         await refreshProfile();
         await mergeWishlistAfterLogin();
+        setAuthFlag(true);
         if (onLoginSuccess) {
           await onLoginSuccess();
         }
@@ -116,6 +119,7 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
       await logoutCustomer();
     } finally {
       setCustomer(null);
+      clearAuthFlag();
       setIsLoading(false);
     }
   }, []);

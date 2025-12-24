@@ -2,20 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
-import type { AccountOverview } from "@/lib/apiClient";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { getWishlistItems } from "@/lib/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import { HomepageShopMenuItem } from "@/lib/server/getHomepage";
+import { buildRedirectTarget } from "@/lib/auth/redirect";
 
 type ShopHeaderClientProps = {
-  overview: AccountOverview | null;
   shopMenu: HomepageShopMenuItem[];
 };
 
-export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHeaderClientProps) {
+export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
   const { customer, logout, isLoading } = useAuth();
   const { items, resetAfterLogout } = useCart();
   const [shopOpen, setShopOpen] = useState(false);
@@ -25,6 +24,8 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
 
   // Close menus when clicking outside
@@ -65,7 +66,7 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
     };
   }, [mobileMenuOpen]);
 
-  const overview = customer ?? initialOverview ?? null;
+  const overview = customer ?? null;
   const profile = overview?.profile;
   const loyalty = overview?.loyalty;
 
@@ -97,6 +98,13 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
   const avatarUrl = profile?.avatar ?? "/images/default_user_image.jpg";
   const tierName = loyalty?.current_tier?.name ?? profile?.tier ?? "-";
   const availablePoints = loyalty?.points?.available;
+
+  const redirectTarget = useMemo(() => {
+    return buildRedirectTarget(pathname, searchParams?.toString());
+  }, [pathname, searchParams]);
+
+  const loginHref = `/login?redirect=${encodeURIComponent(redirectTarget)}`;
+  const registerHref = `/register?redirect=${encodeURIComponent(redirectTarget)}`;
 
   const handleLogout = async () => {
     await logout();
@@ -388,10 +396,16 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
                 /* Mobile Login/Register */
                 <div className="flex items-center gap-2 text-sm">
                   <Link
-                    href="/login"
+                    href={loginHref}
                     className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
                   >
                     Login
+                  </Link>
+                  <Link
+                    href={registerHref}
+                    className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+                  >
+                    Register
                   </Link>
                 </div>
               )}
@@ -539,13 +553,13 @@ export function ShopHeaderClient({ overview: initialOverview, shopMenu }: ShopHe
               /* Login/Register - Desktop */
               <div className="flex items-center gap-4 text-sm">
                 <Link
-                  href="/login"
+                  href={loginHref}
                   className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
                 >
                   Login
                 </Link>
                 <Link
-                  href="/register"
+                  href={registerHref}
                   className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
                 >
                   Register

@@ -7,6 +7,7 @@ import WhatsappButton from "@/components/home/WhatsappButton";
 import CursorTrail from "@/components/visual/CursorTrail";
 import { ShopProviders } from "@/components/providers/ShopProviders";
 import { ShopFooter } from "@/components/layout/ShopFooter";
+import { headers } from "next/headers";
 import { getHomepage } from "@/lib/server/getHomepage";
 import { getUser } from "@/lib/server/getUser";
 
@@ -21,7 +22,10 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const initialCustomer = await getUser();
+  const headerList = await headers();
+  const pathname = headerList.get("x-pathname") ?? "";
+  const isAuthRoute = pathname === "/login" || pathname === "/register";
+  const initialCustomer = isAuthRoute ? null : await getUser();
   const homepage = await getHomepage();
 
   return (

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import LoadingOverlay from "@/components/LoadingOverlay";
+import { extractApiError } from "@/lib/auth/redirect";
 
 function Field({
   label,
@@ -64,7 +66,7 @@ function Field({
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ redirectTarget }: { redirectTarget?: string | null }) {
   const { login } = useAuth();
   const router = useRouter();
 
@@ -78,6 +80,13 @@ export function LoginForm() {
     return email.trim().length > 0 && password.trim().length > 0 && !submitting;
   }, [email, password, submitting]);
 
+  const registerHref = useMemo(() => {
+    if (!redirectTarget) {
+      return "/register";
+    }
+    return `/register?redirect=${encodeURIComponent(redirectTarget)}`;
+  }, [redirectTarget]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
@@ -85,11 +94,10 @@ export function LoginForm() {
 
     try {
       await login(email, password);
+      router.replace(redirectTarget ?? "/");
       router.refresh();
-      router.push("/");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Login failed";
-      setError(message);
+      setError(extractApiError(err));
     } finally {
       setSubmitting(false);
     }
@@ -97,6 +105,7 @@ export function LoginForm() {
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
+      <LoadingOverlay show={submitting} message="Signing in..." />
       {error && (
         <div className="rounded-xl border border-pink-200/50 bg-white/90 px-3 py-2 text-sm text-[#b8527a]">
           {error}
@@ -159,7 +168,7 @@ export function LoginForm() {
 
       <div className="flex items-center justify-between pt-1 text-xs text-[var(--foreground)]/60">
         <span>New here?</span>
-        <Link href="/register" className="font-medium text-[var(--accent-strong)] hover:opacity-80">
+        <Link href={registerHref} className="font-medium text-[var(--accent-strong)] hover:opacity-80">
           Create account
         </Link>
       </div>
