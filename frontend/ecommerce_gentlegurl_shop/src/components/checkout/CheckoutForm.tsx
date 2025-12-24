@@ -2,13 +2,15 @@
 
 import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import {
   AddressPayload,
+  CartItem,
   CheckoutPayload,
+  CheckoutPreviewResponse,
   CustomerAddress,
   CustomerVoucher,
   PublicBankAccount,
@@ -21,29 +23,23 @@ import {
   getStoreLocations,
   getCustomerVouchers,
   makeDefaultCustomerAddress,
+  previewCheckout,
   updateCustomerAddress,
 } from "@/lib/apiClient";
 
 export default function CheckoutForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { customer } = useAuth();
 
   const {
-    selectedItems,
+    items,
     sessionToken,
     shippingMethod,
     setShippingMethod,
-    totals,
-    applyVoucher,
-    voucherError,
-    voucherMessage,
-    isApplyingVoucher,
-    appliedVoucher,
     shippingLabel,
     reloadCart,
     clearSelection,
-    removeVoucher,
-    clearVoucherFeedback,
     shippingFlatFee,
   } = useCart();
 
@@ -54,6 +50,18 @@ export default function CheckoutForm() {
   const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+  const [appliedVoucher, setAppliedVoucher] = useState<CheckoutPreviewResponse["voucher"] | null>(null);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [voucherMessage, setVoucherMessage] = useState<string | null>(null);
+  const [previewTotals, setPreviewTotals] = useState({
+    subtotal: "0",
+    discount_total: "0",
+    shipping_fee: "0",
+    grand_total: "0",
+  });
+  const [resolvedItems, setResolvedItems] = useState<CartItem[]>([]);
+  const [checkoutSource, setCheckoutSource] = useState<"cart" | "selected">("cart");
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [storeLocations, setStoreLocations] = useState<PublicStoreLocation[]>([]);
@@ -100,15 +108,15 @@ export default function CheckoutForm() {
   const isSelfPickup = shippingMethod === "self_pickup";
 
   const safeTotals = useMemo(() => {
-    const subtotal = Number(totals.subtotal ?? 0);
-    const discount = Number(totals.discount_total ?? 0);
-    const shipping = isSelfPickup ? 0 : Number(totals.shipping_fee ?? shippingFlatFee ?? 0);
+    const subtotal = Number(previewTotals.subtotal ?? 0);
+    const discount = Number(previewTotals.discount_total ?? 0);
+    const shipping = isSelfPickup ? 0 : Number(previewTotals.shipping_fee ?? shippingFlatFee ?? 0);
     const computedGrand = subtotal - discount + shipping;
-    const rawGrand = Number(totals.grand_total ?? computedGrand);
+    const rawGrand = Number(previewTotals.grand_total ?? computedGrand);
     const grand = isSelfPickup ? computedGrand : rawGrand;
 
     return { subtotal, discount, shipping, grand };
-  }, [totals.discount_total, totals.grand_total, totals.shipping_fee, totals.subtotal, isSelfPickup, shippingFlatFee]);
+  }, [isSelfPickup, previewTotals.discount_total, previewTotals.grand_total, previewTotals.shipping_fee, previewTotals.subtotal, shippingFlatFee]);
 
   const fetchAddresses = useCallback(async () => {
     if (!isLoggedIn) {
@@ -158,7 +166,7 @@ export default function CheckoutForm() {
       addressesReady &&
       !isLoadingStoreLocations &&
       !isLoadingBankAccounts &&
-      selectedItems.length > 0;
+      resolvedItems.length > 0;
 
     if (allDataLoaded && isInitialLoad) {
       // Small delay to ensure smooth transition and all UI is rendered
@@ -167,7 +175,7 @@ export default function CheckoutForm() {
       }, 200);
       return () => clearTimeout(timer);
     }
-  }, [isLoadingAddresses, isLoadingStoreLocations, isLoadingBankAccounts, selectedItems.length, isInitialLoad, isLoggedIn]);
+  }, [isLoadingAddresses, isLoadingStoreLocations, isLoadingBankAccounts, resolvedItems.length, isInitialLoad, isLoggedIn]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -182,6 +190,119 @@ export default function CheckoutForm() {
     setVoucherCode(appliedVoucher?.code ?? "");
     setSelectedVoucherId(appliedVoucher?.customer_voucher_id ?? null);
   }, [appliedVoucher]);
+
+  const buildPreviewItems = useCallback(
+    (sourceItems: CartItem[]) =>
+      sourceItems.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        is_reward: item.is_reward,
+        reward_redemption_id: item.reward_redemption_id ?? undefined,
+      })),
+    [],
+  );
+
+  const refreshPreview = useCallback(
+    async (voucherOverride?: { code?: string; customerVoucherId?: number | null }) => {
+      if (resolvedItems.length === 0) {
+        return null;
+      }
+
+      const response = await previewCheckout({
+        items: buildPreviewItems(resolvedItems),
+        voucher_code: voucherOverride?.customerVoucherId ? undefined : voucherOverride?.code || undefined,
+        customer_voucher_id: voucherOverride?.customerVoucherId ?? undefined,
+        shipping_method: shippingMethod,
+        session_token: sessionToken ?? undefined,
+      });
+
+      setPreviewTotals({
+        subtotal: String(response.subtotal ?? 0),
+        discount_total: String(response.discount_total ?? 0),
+        shipping_fee: String(response.shipping_fee ?? 0),
+        grand_total: String(response.grand_total ?? 0),
+      });
+
+      return response;
+    },
+    [buildPreviewItems, resolvedItems, sessionToken, shippingMethod],
+  );
+
+  useEffect(() => {
+    const storageKey = "checkout_selected_items";
+    const stored = sessionStorage.getItem(storageKey);
+    const wantsSelected = searchParams.get("mode") === "selected";
+    const currentToken = sessionToken ?? null;
+
+    if (!stored && wantsSelected) {
+      setError("Selected items not found. Please select items again.");
+      router.push("/cart");
+      return;
+    }
+
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as {
+          session_token?: string | null;
+          items?: { product_id: number; quantity: number; is_reward?: boolean; reward_redemption_id?: number | null }[];
+        };
+
+        const storedToken = parsed.session_token ?? null;
+
+        if (!sessionToken && storedToken) {
+          return;
+        }
+
+        if (storedToken !== currentToken) {
+          sessionStorage.removeItem(storageKey);
+        } else if (parsed.items && parsed.items.length > 0) {
+          const missing = parsed.items.filter((storedItem) =>
+            !items.find((cartItem) =>
+              cartItem.product_id === storedItem.product_id &&
+              (cartItem.is_reward ?? false) === (storedItem.is_reward ?? false) &&
+              (cartItem.reward_redemption_id ?? null) === (storedItem.reward_redemption_id ?? null),
+            ),
+          );
+
+          if (missing.length > 0) {
+            setError("Selected items are no longer in your cart. Please select items again.");
+            router.push("/cart");
+            return;
+          }
+
+          const nextItems = parsed.items.map((storedItem) => {
+            const cartItem = items.find((cartItem) =>
+              cartItem.product_id === storedItem.product_id &&
+              (cartItem.is_reward ?? false) === (storedItem.is_reward ?? false) &&
+              (cartItem.reward_redemption_id ?? null) === (storedItem.reward_redemption_id ?? null),
+            )!;
+            const unitPrice = Number(cartItem.unit_price ?? 0);
+            const quantity = storedItem.quantity;
+            return {
+              ...cartItem,
+              quantity,
+              line_total: (unitPrice * quantity).toFixed(2),
+            };
+          });
+
+          setCheckoutSource("selected");
+          setResolvedItems(nextItems);
+          return;
+        }
+      } catch {
+        sessionStorage.removeItem(storageKey);
+      }
+    }
+
+    if (wantsSelected) {
+      setError("Selected items not found. Please select items again.");
+      router.push("/cart");
+      return;
+    }
+
+    setCheckoutSource("cart");
+    setResolvedItems(items);
+  }, [items, router, searchParams, sessionToken]);
 
   useEffect(() => {
     setIsLoadingStoreLocations(true);
@@ -219,12 +340,43 @@ export default function CheckoutForm() {
   }, [showVoucherModal]);
 
   const handleApplyVoucher = async () => {
-    const applied = await applyVoucher(
-      selectedVoucherId ? undefined : voucherCode.trim() || undefined,
-      selectedVoucherId ?? undefined,
-    );
-    if (applied) {
-      setShowVoucherModal(false);
+    if (resolvedItems.length === 0) {
+      setVoucherError("Select items to apply voucher.");
+      return;
+    }
+
+    setIsApplyingVoucher(true);
+    setVoucherError(null);
+    setVoucherMessage(null);
+    try {
+      const response = await refreshPreview({
+        code: selectedVoucherId ? undefined : voucherCode.trim() || undefined,
+        customerVoucherId: selectedVoucherId ?? undefined,
+      });
+
+      if (!response) {
+        return;
+      }
+
+      const hasVoucher = !!response.voucher_valid && !!response.voucher && !response.voucher_error;
+      setAppliedVoucher(hasVoucher ? response.voucher : null);
+      setVoucherError(response.voucher_error ?? null);
+      setVoucherMessage(
+        hasVoucher
+          ? `Voucher ${response.voucher?.code} applied.`
+          : response.voucher_message ?? response.voucher_error ?? null,
+      );
+
+      if (hasVoucher) {
+        setShowVoucherModal(false);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unable to apply voucher.";
+      setVoucherError(message);
+      setAppliedVoucher(null);
+      setVoucherMessage(null);
+    } finally {
+      setIsApplyingVoucher(false);
     }
   };
 
@@ -232,7 +384,7 @@ export default function CheckoutForm() {
     e.preventDefault();
     setError(null);
 
-    if (!selectedItems || selectedItems.length === 0) {
+    if (!resolvedItems || resolvedItems.length === 0) {
       setError("Please select at least one item in your cart.");
       return;
     }
@@ -278,7 +430,7 @@ export default function CheckoutForm() {
     setIsSubmitting(true);
     try {
       const payload: CheckoutPayload = {
-        items: selectedItems.map((item) => ({
+        items: resolvedItems.map((item) => ({
           product_id: item.product_id,
           quantity: item.quantity,
           is_reward: item.is_reward,
@@ -288,8 +440,8 @@ export default function CheckoutForm() {
         payment_method: paymentMethod,
         shipping_method: shippingMethod,
         ...form,
-        voucher_code: selectedVoucherId ? undefined : voucherCode || undefined,
-        customer_voucher_id: selectedVoucherId ?? undefined,
+        voucher_code: appliedVoucher?.code ?? (selectedVoucherId ? undefined : voucherCode || undefined),
+        customer_voucher_id: appliedVoucher?.customer_voucher_id ?? selectedVoucherId ?? undefined,
         store_location_id: shippingMethod === "self_pickup" ? selectedStoreId ?? undefined : undefined,
         bank_account_id: paymentMethod === "manual_transfer" ? selectedBankId ?? undefined : undefined,
       };
@@ -298,9 +450,12 @@ export default function CheckoutForm() {
 
       await reloadCart();
       clearSelection();
-      removeVoucher();
+      setAppliedVoucher(null);
       setVoucherCode("");
       setSelectedVoucherId(null);
+      setVoucherError(null);
+      setVoucherMessage(null);
+      sessionStorage.removeItem("checkout_selected_items");
 
       const isBillplzMethod =
         order.payment_method === "billplz_fpx" || order.payment_method === "billplz_card";
@@ -332,6 +487,29 @@ export default function CheckoutForm() {
       setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (resolvedItems.length === 0) {
+      return;
+    }
+
+    refreshPreview({
+      code: appliedVoucher?.code,
+      customerVoucherId: appliedVoucher?.customer_voucher_id ?? undefined,
+    }).catch(() => {
+      setPreviewTotals({
+        subtotal: "0",
+        discount_total: "0",
+        shipping_fee: "0",
+        grand_total: "0",
+      });
+    });
+  }, [
+    appliedVoucher?.code,
+    appliedVoucher?.customer_voucher_id,
+    refreshPreview,
+    resolvedItems,
+  ]);
 
   const selectedBank = useMemo(
     () => bankAccounts.find((bank) => bank.id === selectedBankId) ?? bankAccounts[0],
@@ -437,12 +615,14 @@ export default function CheckoutForm() {
     }
   };
 
-  if (!selectedItems || selectedItems.length === 0) {
+  if (!resolvedItems || resolvedItems.length === 0) {
     return (
       <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
         <h1 className="mb-4 text-2xl font-semibold">Checkout</h1>
         <p className="text-sm text-[var(--foreground)]/70">
-          Your cart is empty. Please add items before checking out.
+          {checkoutSource === "selected"
+            ? "Selected items are unavailable. Please return to cart and select items again."
+            : "Your cart is empty. Please add items before checking out."}
         </p>
       </main>
     );
@@ -624,11 +804,11 @@ export default function CheckoutForm() {
           <section className="rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">Items in this order</h2>
-              <p className="text-xs text-[var(--foreground)]/60">{selectedItems.length} item(s)</p>
+              <p className="text-xs text-[var(--foreground)]/60">{resolvedItems.length} item(s)</p>
             </div>
 
             <div className="space-y-3">
-              {selectedItems.map((item) => {
+              {resolvedItems.map((item) => {
                 const unitPrice = Number(item.unit_price ?? 0);
                 const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
 
@@ -684,9 +864,12 @@ export default function CheckoutForm() {
                 <button
                   type="button"
                   onClick={() => {
-                    removeVoucher();
+                    setAppliedVoucher(null);
+                    setVoucherError(null);
+                    setVoucherMessage(null);
                     setVoucherCode("");
                     setSelectedVoucherId(null);
+                    refreshPreview().catch(() => undefined);
                   }}
                   className="rounded border border-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--muted)]/70"
                 >
@@ -695,9 +878,10 @@ export default function CheckoutForm() {
               )}
               <button
                 type="button"
-                disabled={selectedItems.length === 0}
+                disabled={resolvedItems.length === 0}
                 onClick={() => {
-                  clearVoucherFeedback();
+                  setVoucherError(null);
+                  setVoucherMessage(null);
                   setVoucherCode(appliedVoucher?.code ?? "");
                   setShowVoucherModal(true);
                 }}

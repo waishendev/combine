@@ -135,6 +135,7 @@ Route::prefix('/public/shop')->group(function () {
     Route::middleware('api.session')->group(function () {
         Route::get('/cart', [PublicCartController::class, 'show']);
         Route::post('/cart/items', [PublicCartController::class, 'addOrUpdateItem']);
+        Route::post('/cart/items/add', [PublicCartController::class, 'addItemIncrement']);
         Route::delete('/cart/items/{item}', [PublicCartController::class, 'removeItem']);
         Route::post('/cart/reset', [PublicCartController::class, 'reset']);
         Route::post('/cart/reward-items/{item}/cancel', [PublicCartController::class, 'cancelRewardItem']);
@@ -155,6 +156,8 @@ Route::prefix('/public/shop')->group(function () {
         // Order History
         Route::get('/orders', [PublicOrderHistoryController::class, 'index']);
         Route::get('/orders/{id}', [PublicOrderHistoryController::class, 'showById']);
+        Route::post('/orders/{order}/cancel', [PublicOrderHistoryController::class, 'cancel']);
+        Route::post('/orders/{order}/pay', [PublicOrderHistoryController::class, 'pay']);
 
         Route::get('/returns', [PublicReturnController::class, 'index']);
         Route::get('/returns/{returnRequest}', [PublicReturnController::class, 'show']);

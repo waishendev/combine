@@ -17,6 +17,7 @@ use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
 use App\Services\Voucher\VoucherService;
+use App\Services\Ecommerce\OrderReserveService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,7 @@ class PublicCheckoutController extends Controller
         protected VoucherService $voucherService,
         protected BillplzService $billplzService,
         protected CartService $cartService,
+        protected OrderReserveService $orderReserveService,
     )
     {
     }
@@ -58,6 +60,8 @@ class PublicCheckoutController extends Controller
             $validated['voucher_code'] ?? null,
             $validated['customer_voucher_id'] ?? null
         );
+
+        $this->orderReserveService->validateStockForItems($calculation['items']);
 
         return $this->respond([
             'items' => $calculation['items'],
@@ -150,6 +154,8 @@ class PublicCheckoutController extends Controller
 
         try {
             [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod) {
+                $this->orderReserveService->reserveStockForItems($calculation['items']);
+
                 $order = Order::create([
                     'order_number' => $this->generateOrderNumber(),
                     'customer_id' => $customer?->id,
@@ -272,6 +278,8 @@ class PublicCheckoutController extends Controller
 
                 return [$order, $billplzUrl, $billplzId];
             });
+        } catch (ValidationException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             Log::error('Failed to create order', [
                 'error' => $exception->getMessage(),

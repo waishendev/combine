@@ -69,6 +69,7 @@ class CartService
                 'product_name' => $item->product?->name,
                 'product_slug' => $item->product?->slug,
                 'product_image' => $thumbnail,
+                'product_stock' => $item->product?->stock,
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price_snapshot,
                 'line_total' => $lineTotal,
