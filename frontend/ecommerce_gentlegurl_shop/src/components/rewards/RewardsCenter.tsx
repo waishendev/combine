@@ -165,8 +165,8 @@ export function RewardsCenter() {
             </p>
           </div>
         </div>
-
-        {renderToast && <div className="mt-4">{renderToast}</div>}
+{/* 
+        {renderToast && <div className="mt-4">{renderToast}</div>} */}
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-3">
