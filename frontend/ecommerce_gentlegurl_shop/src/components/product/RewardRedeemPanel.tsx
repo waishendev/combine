@@ -12,9 +12,10 @@ type RewardRedeemPanelProps = {
   slug: string;
   fallbackPoints?: number | null;
   isRewardOnly: boolean;
+  stock?: number | null;
 };
 
-export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnly }: RewardRedeemPanelProps) {
+export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnly, stock }: RewardRedeemPanelProps) {
   const router = useRouter();
   const { customer, refreshProfile } = useAuth();
   const { reloadCart } = useCart();
@@ -109,6 +110,7 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
 
   const hasEnoughPoints = requiredPoints == null || availablePoints >= requiredPoints;
   const isLoggedIn = !!customer;
+  const isOutOfStock = stock != null && stock <= 0;
 
   return (
     <div className="space-y-3 rounded-xl border border-pink-100 bg-pink-50/80 p-4">
@@ -119,6 +121,9 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
             {requiredPoints != null ? `${requiredPoints.toLocaleString()} pts` : "Reward redeem"}
           </p>
           <p className="text-xs text-gray-600">Redeem with your points to get this item.</p>
+          {stock != null && (
+            <p className="mt-1 text-xs text-gray-600">Stock left: {stock}</p>
+          )}
         </div>
         {loadingReward ? (
           <div className="h-10 w-24 animate-pulse rounded-full bg-white/70" />
@@ -142,25 +147,33 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
         </div>
       )}
 
+      {isOutOfStock && (
+        <div className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-600">
+          Out of stock
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={handleRedeem}
-          disabled={redeeming || (isLoggedIn ? !hasEnoughPoints : false)}
-          className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
-            !isLoggedIn || hasEnoughPoints
-              ? "bg-[#ec4899] text-white shadow-sm hover:bg-[#db2777]"
-              : "cursor-not-allowed bg-pink-100 text-gray-500"
-          }`}
-        >
-          {!isLoggedIn
-            ? "Login to redeem"
-            : redeeming
-              ? "Redeeming..."
-              : hasEnoughPoints
-                ? "Redeem"
-                : "Not enough points"}
-        </button>
+        {!isOutOfStock && (
+          <button
+            type="button"
+            onClick={handleRedeem}
+            disabled={redeeming || (isLoggedIn ? !hasEnoughPoints : false)}
+            className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
+              !isLoggedIn || hasEnoughPoints
+                ? "bg-[#ec4899] text-white shadow-sm hover:bg-[#db2777]"
+                : "cursor-not-allowed bg-pink-100 text-gray-500"
+            }`}
+          >
+            {!isLoggedIn
+              ? "Login to redeem"
+              : redeeming
+                ? "Redeeming..."
+                : hasEnoughPoints
+                  ? "Redeem"
+                  : "Not enough points"}
+          </button>
+        )}
         {!isRewardOnly && (
           <p className="text-xs text-gray-600">
             Reward redemption available. Standard purchase also applies when not redeeming.

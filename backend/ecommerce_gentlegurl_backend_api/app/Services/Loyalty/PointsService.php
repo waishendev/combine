@@ -123,6 +123,39 @@ class PointsService
             $now = Carbon::now();
             $remaining = $required;
 
+            $reward = LoyaltyReward::whereKey($reward->id)->lockForUpdate()->firstOrFail();
+
+            if (!$reward->is_active) {
+                throw ValidationException::withMessages([
+                    'reward_id' => __('Selected reward is not active.'),
+                ]);
+            }
+
+            if ($reward->type === 'voucher') {
+                if ($reward->quota_total !== null && $reward->quota_used >= $reward->quota_total) {
+                    throw ValidationException::withMessages([
+                        'reward_id' => __('This reward has been fully redeemed.'),
+                    ])->status(422);
+                }
+            }
+
+            $lockedProduct = null;
+            if ($reward->type === 'product' && $reward->product_id) {
+                $lockedProduct = Product::whereKey($reward->product_id)->lockForUpdate()->first();
+
+                if (!$lockedProduct) {
+                    throw ValidationException::withMessages([
+                        'reward_id' => __('Selected product reward is missing product.'),
+                    ]);
+                }
+
+                if ($lockedProduct->stock <= 0) {
+                    throw ValidationException::withMessages([
+                        'reward_id' => __('Out of stock.'),
+                    ])->status(422);
+                }
+            }
+
             $batches = PointsEarnBatch::where('customer_id', $customer->id)
                 ->where('status', 'active')
                 ->where('points_remaining', '>', 0)
@@ -146,6 +179,16 @@ class PointsService
                 throw ValidationException::withMessages([
                     'points' => __('Insufficient points for this reward.'),
                 ])->status(422);
+            }
+
+            if ($reward->type === 'voucher') {
+                $reward->quota_used = (int) $reward->quota_used + 1;
+                $reward->save();
+            }
+
+            if ($lockedProduct) {
+                $lockedProduct->stock = (int) $lockedProduct->stock - 1;
+                $lockedProduct->save();
             }
 
             $redemption = LoyaltyRedemption::create([

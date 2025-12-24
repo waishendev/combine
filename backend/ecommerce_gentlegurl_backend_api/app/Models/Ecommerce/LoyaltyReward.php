@@ -16,6 +16,8 @@ class LoyaltyReward extends Model
         'points_required',
         'product_id',
         'voucher_id',
+        'quota_total',
+        'quota_used',
         'is_active',
         'sort_order',
     ];
@@ -24,6 +26,8 @@ class LoyaltyReward extends Model
     {
         return [
             'points_required' => 'integer',
+            'quota_total' => 'integer',
+            'quota_used' => 'integer',
             'is_active' => 'boolean',
         ];
     }

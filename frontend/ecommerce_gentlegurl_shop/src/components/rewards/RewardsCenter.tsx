@@ -165,8 +165,8 @@ export function RewardsCenter() {
             </p>
           </div>
         </div>
-
-        {renderToast && <div className="mt-4">{renderToast}</div>}
+{/* 
+        {renderToast && <div className="mt-4">{renderToast}</div>} */}
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -233,20 +233,27 @@ export function RewardsCenter() {
               const imageUrl =
                 reward.product?.image_url ||
                 reward.thumbnail ||
-                reward.product?.thumbnail ||
                 PLACEHOLDER;
               const hasEnoughPoints = availablePoints >= reward.points_required;
               const isRedeeming = redeemingId === reward.id;
-              const shouldDisable = customer ? !hasEnoughPoints || isRedeeming : isRedeeming;
+              const isAvailable = reward.is_available !== false;
+              const shouldDisable = customer ? !hasEnoughPoints || !isAvailable || isRedeeming : !isAvailable || isRedeeming;
               const productLink =
                 isProduct && reward.product?.slug ? `/product/${reward.product.slug}?reward=1` : null;
               const buttonLabel = !customer
                 ? "Login to redeem"
                 : isRedeeming
                   ? "Redeeming..."
-                  : hasEnoughPoints
+                  : !isAvailable
+                    ? "Unavailable"
+                    : hasEnoughPoints
                     ? "Redeem"
                     : "Not enough points";
+              const remainingLabel = isProduct
+                ? `Stock left: ${reward.remaining ?? 0}`
+                : reward.remaining == null
+                  ? "Remaining: Unlimited"
+                  : `Remaining: ${reward.remaining}`;
 
               const voucherBenefit = reward.voucher
                 ? reward.voucher.type === "percent"
@@ -287,6 +294,10 @@ export function RewardsCenter() {
                         <span>{reward.points_required.toLocaleString()} pts</span>
                         <span className="text-xs font-medium text-gray-500">Product reward</span>
                       </div>
+                      <div className="text-xs text-gray-600">{remainingLabel}</div>
+                      {!isAvailable && (
+                        <span className="text-xs font-semibold text-rose-600">Out of stock</span>
+                      )}
 
                       {productLink && (
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
@@ -328,6 +339,10 @@ export function RewardsCenter() {
                             : "None"}
                         </span>
                       </div>
+                      <div className="text-xs text-gray-600">{remainingLabel}</div>
+                      {!isAvailable && (
+                        <span className="text-xs font-semibold text-rose-600">Fully redeemed</span>
+                      )}
                     </div>
                   )}
 

@@ -63,6 +63,8 @@ class LoyaltyRewardController extends Controller
             'points_required' => ['required', 'integer', 'min:1'],
             'product_id' => ['required_if:type,product', 'nullable', 'exists:products,id'],
             'voucher_id' => ['required_if:type,voucher', 'nullable', 'exists:vouchers,id'],
+            'quota_total' => ['nullable', 'integer', 'min:0'],
+            'quota_used' => ['sometimes', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer'],
         ]);
