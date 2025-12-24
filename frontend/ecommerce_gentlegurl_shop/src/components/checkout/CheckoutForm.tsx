@@ -180,12 +180,12 @@ export default function CheckoutForm() {
     }));
   }, [customer, isLoggedIn]);
 
-  const shouldRedirectToCart = hasLoadedCart && selectedItems.length === 0;
+  // const shouldRedirectToCart = hasLoadedCart && selectedItems.length === 0;
 
-  useEffect(() => {
-    if (!shouldRedirectToCart) return;
-    router.replace("/cart");
-  }, [shouldRedirectToCart, router]);
+  // useEffect(() => {
+  //   if (!shouldRedirectToCart) return;
+  //   router.replace("/cart");
+  // }, [shouldRedirectToCart, router]);
 
   useEffect(() => {
     setVoucherCode(appliedVoucher?.code ?? "");
@@ -446,7 +446,7 @@ export default function CheckoutForm() {
     }
   };
 
-  if (isLoading || !hasLoadedCart || shouldRedirectToCart) {
+  if (isLoading || !hasLoadedCart ) {
     return (
       <LoadingOverlay message="Loading checkout..." show={isInitialLoad} />
     );
@@ -881,7 +881,7 @@ export default function CheckoutForm() {
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || selectedItems.length === 0}
             className="mt-1 w-full rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-semibold uppercase text-white transition-colors hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? "Placing Order..." : "Place Order"}
