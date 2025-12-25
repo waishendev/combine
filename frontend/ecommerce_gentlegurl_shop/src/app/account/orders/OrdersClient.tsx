@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { OrderItemSummary, OrderSummary } from "@/lib/server/getOrders";
@@ -53,8 +53,14 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   const [slipModal, setSlipModal] = useState<SlipModalState | null>(null);
   const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const reviewedItemIds = useMemo(() => reviewedItems, [reviewedItems]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const closeModal = () => {
     setModal(null);
@@ -221,16 +227,20 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         const paymentStatusValue = override.payment_status ?? order.payment_status;
         const statusKey = (statusValue || "").toLowerCase();
         const reserveExpiresAt = order.reserve_expires_at ? new Date(order.reserve_expires_at) : null;
-        const remainingMinutes = reserveExpiresAt
-          ? Math.max(0, Math.ceil((reserveExpiresAt.getTime() - Date.now()) / 60000))
+        const remainingSeconds = reserveExpiresAt
+          ? Math.max(0, Math.floor((reserveExpiresAt.getTime() - now) / 1000))
           : null;
+        const remainingLabel =
+          remainingSeconds !== null
+            ? `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`
+            : null;
         const isPendingUnpaid = statusKey === "pending" && paymentStatusValue === "unpaid";
         const isProcessing = statusKey === "processing" && paymentStatusValue === "unpaid";
         const canPay = isPendingUnpaid;
         const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
         const displayStatus =
           statusKey === "pending" && paymentStatusValue === "unpaid"
-            ? `Pending Payment${remainingMinutes !== null ? ` (${remainingMinutes} min left)` : ""}`
+            ? `Pending Payment${remainingLabel !== null ? ` (${remainingLabel} left)` : ""}`
             : statusKey === "processing" && paymentStatusValue === "unpaid"
               ? "Waiting for verification"
               : statusKey === "paid" && paymentStatusValue === "paid"
@@ -243,7 +253,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       ? "Refunded"
                       : statusValue;
         const badgeStyle =
-          statusKey === "pending" && paymentStatusValue === "unpaid"
+          (statusKey === "pending" || statusKey === "processing") && paymentStatusValue === "unpaid"
             ? "bg-amber-50 text-amber-700 border-amber-200"
             : statusKey === "paid" || statusKey === "completed"
               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
