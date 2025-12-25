@@ -15,7 +15,12 @@ export default function WhatsappButton({ phone, defaultMessage, enabled = true }
   const url = `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
 
   return (
-    <div className="fixed bottom-6 right-6 z-40">
+    <div className="
+  fixed z-50
+  right-4
+  bottom-24        // mobile
+  md:bottom-6      // desktop
+">
       <Link
         href={url}
         target="_blank"

@@ -288,7 +288,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
             </div>
 
             <Link href="/tracking">Tracking</Link>
-
+            <Link href="/reviews">Store Reviews</Link>
           </nav>
         </div>
 
@@ -827,6 +827,13 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 Tracking
               </Link>
 
+              <Link
+                href="/reviews"
+                className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Store Reviews
+              </Link>
             </nav>
             </div>
           </div>
