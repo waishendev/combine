@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 
+import Image from "next/image";
 import Link from "next/link";
 
 import type { OrderTrackingResponse } from "@/lib/apiClient";
 import { trackGuestOrder } from "@/lib/apiClient";
+import { normalizeImageUrl } from "@/lib/imageUrl";
 
 export default function TrackingPage() {
   const [orderNo, setOrderNo] = useState("");
@@ -120,16 +122,38 @@ export default function TrackingPage() {
               Items
             </div>
             <div className="divide-y divide-pink-50">
-              {result.items.map((item, idx) => (
-                <div key={`${item.product_name}-${idx}`} className="grid gap-2 px-4 py-3 sm:grid-cols-12 sm:items-center">
-                  <div className="sm:col-span-6 font-medium text-[var(--foreground)]">{item.product_name}</div>
-                  <div className="sm:col-span-2 text-sm text-[var(--foreground)]/70">Qty: {item.quantity}</div>
-                  <div className="sm:col-span-2 text-sm text-[var(--foreground)]/70">RM {Number(item.unit_price).toFixed(2)}</div>
-                  <div className="sm:col-span-2 text-right font-semibold text-[var(--foreground)]">
-                    RM {Number(item.line_total).toFixed(2)}
+              {result.items.map((item, idx) => {
+                const imageUrl = item.product_image
+                  ? normalizeImageUrl(item.product_image)
+                  : "/images/placeholder.png";
+
+                return (
+                  <div
+                    key={`${item.product_name}-${idx}`}
+                    className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 overflow-hidden rounded-lg bg-[var(--muted)]">
+                        <Image
+                          src={imageUrl}
+                          alt={item.product_name}
+                          width={48}
+                          height={48}
+                          className="h-12 w-12 object-cover"
+                        />
+                      </div>
+                      <div className="font-medium text-[var(--foreground)]">{item.product_name}</div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--foreground)]/70">
+                      <span>Qty: {item.quantity}</span>
+                      <span>RM {Number(item.unit_price).toFixed(2)}</span>
+                    </div>
+                    <div className="text-right font-semibold text-[var(--foreground)]">
+                      RM {Number(item.line_total).toFixed(2)}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
