@@ -53,7 +53,7 @@ export default function TrackingPage() {
             />
           </div>
 
-          <div className="sm:col-span-2 flex items-center gap-3">
+          <div className="  items-center gap-3">
             <button
               type="submit"
               disabled={loading}
@@ -61,9 +61,6 @@ export default function TrackingPage() {
             >
               {loading ? "Checking..." : "Track Order"}
             </button>
-            <p className="text-xs text-[var(--foreground)]/70">
-              We need your order number and at least one contact detail to verify.
-            </p>
           </div>
         </form>
 

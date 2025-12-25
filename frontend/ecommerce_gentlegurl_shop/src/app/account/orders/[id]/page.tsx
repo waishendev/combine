@@ -159,7 +159,6 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   unoptimized
                 />
               </a>
-              {receiptSlip.created_at && <p>Uploaded at: {receiptSlip.created_at}</p>}
             </div>
           </div>
         )}
