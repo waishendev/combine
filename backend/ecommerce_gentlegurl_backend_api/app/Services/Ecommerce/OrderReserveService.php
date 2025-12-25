@@ -30,6 +30,10 @@ class OrderReserveService
         return $base->addMinutes($this->getReserveMinutes());
     }
 
+    public function isExpired(Order $order): bool
+    {
+        return $this->getReserveExpiresAt($order)->isPast();
+    }  
     /**
      * @param array<int, array<string, mixed>> $items
      */

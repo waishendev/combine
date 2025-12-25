@@ -234,34 +234,38 @@ export function OrdersClient({ orders }: OrdersClientProps) {
           remainingSeconds !== null
             ? `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`
             : null;
+        const isExpired = remainingSeconds !== null && remainingSeconds === 0;
         const isPendingUnpaid = statusKey === "pending" && paymentStatusValue === "unpaid";
+        const isPendingUnpaidExpired = isPendingUnpaid && isExpired;
         const isProcessing = statusKey === "processing" && paymentStatusValue === "unpaid";
-        const canPay = isPendingUnpaid;
+        const canPay = isPendingUnpaid && !isExpired;
         const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
         const displayStatus =
-          statusKey === "pending" && paymentStatusValue === "unpaid"
-            ? `Pending Payment${remainingLabel !== null ? ` (${remainingLabel} left)` : ""}`
-            : statusKey === "processing" && paymentStatusValue === "unpaid"
-              ? "Waiting for verification"
-              : statusKey === "paid" && paymentStatusValue === "paid"
-                ? "Paid"
-                : statusKey === "completed" && paymentStatusValue === "paid"
-                  ? "Completed"
-                  : statusKey === "cancelled"
-                    ? "Cancelled"
-                    : statusKey === "refunded" || paymentStatusValue === "refunded"
-                      ? "Refunded"
-                      : statusValue;
+          isPendingUnpaidExpired
+            ? "Cancelled"
+            : statusKey === "pending" && paymentStatusValue === "unpaid"
+              ? `Pending Payment${remainingLabel !== null ? ` (${remainingLabel} left)` : ""}`
+              : statusKey === "processing" && paymentStatusValue === "unpaid"
+                ? "Waiting for verification"
+                : statusKey === "paid" && paymentStatusValue === "paid"
+                  ? "Paid"
+                  : statusKey === "completed" && paymentStatusValue === "paid"
+                    ? "Completed"
+                    : statusKey === "cancelled"
+                      ? "Cancelled"
+                      : statusKey === "refunded" || paymentStatusValue === "refunded"
+                        ? "Refunded"
+                        : statusValue;
         const badgeStyle =
-          (statusKey === "pending" || statusKey === "processing") && paymentStatusValue === "unpaid"
-            ? "bg-amber-50 text-amber-700 border-amber-200"
-            : statusKey === "paid" || statusKey === "completed"
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-            : statusKey === "shipped"
-              ? "bg-blue-50 text-blue-700 border-blue-200"
-              : statusKey === "cancelled"
-                ? "bg-rose-50 text-rose-700 border-rose-200"
-                : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
+          isPendingUnpaidExpired || statusKey === "cancelled"
+            ? "bg-rose-50 text-rose-700 border-rose-200"
+            : (statusKey === "pending" || statusKey === "processing") && paymentStatusValue === "unpaid"
+              ? "bg-amber-50 text-amber-700 border-amber-200"
+              : statusKey === "paid" || statusKey === "completed"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : statusKey === "shipped"
+                  ? "bg-blue-50 text-blue-700 border-blue-200"
+                  : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
 
         return (
           <div

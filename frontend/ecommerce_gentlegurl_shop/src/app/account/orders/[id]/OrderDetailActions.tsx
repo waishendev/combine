@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelOrder, payOrder } from "@/lib/apiClient";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
@@ -10,6 +10,7 @@ type OrderDetailActionsProps = {
   status: string;
   paymentStatus: string;
   paymentMethod?: string | null;
+  reserveExpiresAt?: string | null;
 };
 
 export function OrderDetailActions({
@@ -17,15 +18,25 @@ export function OrderDetailActions({
   status,
   paymentStatus,
   paymentMethod,
+  reserveExpiresAt,
 }: OrderDetailActionsProps) {
   const router = useRouter();
   const [isCancelling, setIsCancelling] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [showSlipModal, setShowSlipModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const statusKey = status.toLowerCase();
-  const canPay = statusKey === "pending" && paymentStatus === "unpaid";
+  const reserveExpiry = reserveExpiresAt ? new Date(reserveExpiresAt) : null;
+  const remainingSeconds = reserveExpiry ? Math.max(0, Math.floor((reserveExpiry.getTime() - now) / 1000)) : null;
+  const isExpired = remainingSeconds !== null && remainingSeconds === 0;
+  const canPay = statusKey === "pending" && paymentStatus === "unpaid" && !isExpired;
   const canUploadSlip =
     paymentMethod === "manual_transfer" &&
     (canPay || (statusKey === "processing" && paymentStatus !== "paid"));
@@ -89,8 +100,7 @@ export function OrderDetailActions({
   }
 
   return (
-    <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm">
-      <h3 className="text-lg font-semibold text-[var(--foreground)]">Actions</h3>
+    <>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {canPay ? (
           <>
@@ -113,7 +123,6 @@ export function OrderDetailActions({
           </>
         ) : showProcessing ? (
           <>
-            <span className="text-xs font-semibold uppercase text-amber-600">Waiting for verification</span>
             {canUploadSlip && (
               <button
                 type="button"
@@ -138,6 +147,6 @@ export function OrderDetailActions({
           router.refresh();
         }}
       />
-    </div>
+    </>
   );
 }
