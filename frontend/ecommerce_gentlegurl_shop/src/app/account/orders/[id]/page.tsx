@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
-import { OrderDetailActions } from "./OrderDetailActions";
+import { OrderHeaderClient } from "./OrderHeaderClient";
 
 type OrderDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -20,46 +20,17 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
     return notFound();
   }
 
-  const reserveExpiresAt = order.reserve_expires_at ? new Date(order.reserve_expires_at) : null;
-  const isExpired = reserveExpiresAt ? reserveExpiresAt.getTime() < Date.now() : false;
-  const statusKey = (order.status || "").toLowerCase();
-  const isProcessing = statusKey === "processing" && !isExpired;
-  const displayStatus = isExpired ? "expired" : order.status;
-  const badgeStyle =
-    statusKey === "pending" && !isExpired
-      ? "bg-amber-50 text-amber-700 border-amber-200"
-      : statusKey === "paid" || statusKey === "completed"
-        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-        : statusKey === "shipped"
-          ? "bg-blue-50 text-blue-700 border-blue-200"
-          : statusKey === "cancelled" || isExpired
-            ? "bg-rose-50 text-rose-700 border-rose-200"
-            : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Order {order.order_no}</h1>
-          <p className="text-sm text-[var(--foreground)]/70">
-            {order.placed_at ? new Date(order.placed_at).toLocaleString() : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {isProcessing ? (
-            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
-              Waiting for verification
-            </span>
-          ) : (
-            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
-              {displayStatus}
-            </span>
-          )}
-          <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-            {order.payment_status}
-          </span>
-        </div>
-      </div>
+      <OrderHeaderClient
+        orderId={order.id}
+        orderNo={order.order_no}
+        placedAt={order.placed_at}
+        status={order.status}
+        paymentStatus={order.payment_status}
+        paymentMethod={order.payment_method}
+        reserveExpiresAt={order.reserve_expires_at ?? null}
+      />
 
       <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-[var(--foreground)]">Items</h2>
@@ -186,14 +157,6 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
             )}
           </div>
         </div>
-
-        {/* <OrderDetailActions
-          orderId={order.id}
-          status={order.status}
-          paymentStatus={order.payment_status}
-          paymentMethod={order.payment_method}
-          reserveExpiresAt={order.reserve_expires_at ?? null}
-        /> */}
 
         {order.returns && order.returns.length > 0 && (
           <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm">

@@ -33,8 +33,7 @@ class OrderReserveService
     public function isExpired(Order $order): bool
     {
         return $this->getReserveExpiresAt($order)->isPast();
-    }
-
+    }  
     /**
      * @param array<int, array<string, mixed>> $items
      */

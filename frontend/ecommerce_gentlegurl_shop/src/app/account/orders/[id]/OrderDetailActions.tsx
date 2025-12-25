@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelOrder, payOrder } from "@/lib/apiClient";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
@@ -25,18 +25,24 @@ export function OrderDetailActions({
   const [isPaying, setIsPaying] = useState(false);
   const [showSlipModal, setShowSlipModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
-  const reserveExpiry = reserveExpiresAt ? new Date(reserveExpiresAt) : null;
-  const isExpired = reserveExpiry ? reserveExpiry.getTime() < Date.now() : false;
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const statusKey = status.toLowerCase();
+  const reserveExpiry = reserveExpiresAt ? new Date(reserveExpiresAt) : null;
+  const remainingSeconds = reserveExpiry ? Math.max(0, Math.floor((reserveExpiry.getTime() - now) / 1000)) : null;
+  const isExpired = remainingSeconds !== null && remainingSeconds === 0;
   const canPay = statusKey === "pending" && paymentStatus === "unpaid" && !isExpired;
   const canUploadSlip =
     paymentMethod === "manual_transfer" &&
-    !isExpired &&
     (canPay || (statusKey === "processing" && paymentStatus !== "paid"));
   const isBillplzPayment = paymentMethod?.startsWith("billplz_");
-  const showExpired = statusKey === "cancelled" || isExpired;
-  const showProcessing = statusKey === "processing" && !showExpired;
+  const showCancelled = statusKey === "cancelled";
+  const showProcessing = statusKey === "processing";
 
   const handleCancel = async () => {
     setError(null);
@@ -89,13 +95,12 @@ export function OrderDetailActions({
     }
   };
 
-  if (!canPay && !showExpired && !showProcessing) {
+  if (!canPay && !showCancelled && !showProcessing) {
     return null;
   }
 
   return (
-    <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm">
-      <h3 className="text-lg font-semibold text-[var(--foreground)]">Actions</h3>
+    <>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {canPay ? (
           <>
@@ -118,7 +123,6 @@ export function OrderDetailActions({
           </>
         ) : showProcessing ? (
           <>
-            <span className="text-xs font-semibold uppercase text-amber-600">Waiting for verification</span>
             {canUploadSlip && (
               <button
                 type="button"
@@ -130,7 +134,7 @@ export function OrderDetailActions({
             )}
           </>
         ) : (
-          <span className="text-xs font-semibold uppercase text-rose-600">Expired / Cancelled</span>
+          <span className="text-xs font-semibold uppercase text-rose-600">Cancelled</span>
         )}
       </div>
       {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
@@ -143,6 +147,6 @@ export function OrderDetailActions({
           router.refresh();
         }}
       />
-    </div>
+    </>
   );
 }
