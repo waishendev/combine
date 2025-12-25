@@ -14,7 +14,7 @@ class PublicOrderTrackingController extends Controller
             'order_no' => ['required', 'string'],
         ]);
 
-        $order = Order::with(['items', 'customer'])
+        $order = Order::with(['items.product.images', 'customer'])
             ->where('order_number', $validated['order_no'])
             ->first();
 
@@ -22,12 +22,27 @@ class PublicOrderTrackingController extends Controller
             return $this->respond(null, __('Order not found or verification failed.'), false, 404);
         }
 
-        $items = $order->items->map(fn ($item) => [
-            'product_name' => $item->product_name_snapshot ?? $item->product?->name,
-            'quantity' => $item->quantity,
-            'unit_price' => $item->price_snapshot,
-            'line_total' => $item->line_total,
-        ]);
+        $items = $order->items->map(function ($item) {
+            $images = $item->product?->images
+                ? $item->product->images
+                    ->sortBy('id')
+                    ->sortBy('sort_order')
+                : collect();
+
+            $thumbnail = optional(
+                $images->firstWhere('is_main', true) ?? $images->first()
+            )->image_path;
+
+            return [
+                'product_id' => $item->product_id,
+                'product_name' => $item->product_name_snapshot ?? $item->product?->name,
+                'product_slug' => $item->product?->slug,
+                'product_image' => $thumbnail,
+                'quantity' => $item->quantity,
+                'unit_price' => $item->price_snapshot,
+                'line_total' => $item->line_total,
+            ];
+        });
 
         $data = [
             'order_no' => $order->order_number,

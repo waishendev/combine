@@ -629,7 +629,10 @@ export type OrderTrackingResponse = {
       grand_total: number | string;
     };
     items: {
+      product_id?: number | null;
       product_name: string;
+      product_slug?: string | null;
+      product_image?: string | null;
       quantity: number;
       unit_price: number | string;
       line_total: number | string;
