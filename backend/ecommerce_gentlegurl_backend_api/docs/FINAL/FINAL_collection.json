@@ -784,1364 +784,6 @@
               ]
             }
           ]
-        }
-      ]
-    },
-    {
-      "name": "ECOMMERCE",
-      "item": [
-        {
-          "name": "Auth (Public)",
-          "item": [
-            {
-              "name": "Register",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"customer@example.com\",\n  \"phone\": \"+60123456789\",\n  \"password\": \"password\",\n  \"password_confirmation\": \"password\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/public/auth/register",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "auth",
-                    "register"
-                  ]
-                },
-                "description": "Register a new customer. Session login automatically after registration."
-              },
-              "response": []
-            },
-            {
-              "name": "Login (Session)",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password\",\n  \"session_token\": \"\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/public/auth/login",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "auth",
-                    "login"
-                  ]
-                },
-                "description": "Session login. Run first to store cookie in Postman. Optional session_token to merge guest cart."
-              },
-              "response": []
-            },
-            {
-              "name": "Login (Token)",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password\",\n  \"session_token\": \"\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/public/auth/login/token",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "auth",
-                    "login",
-                    "token"
-                  ]
-                },
-                "description": "Token login. Copy response data.token to {{token}} for Bearer auth. Optional session_token to merge guest cart."
-              },
-              "response": []
-            },
-            {
-              "name": "Profile",
-              "request": {
-                "auth": {
-                  "type": "inherit"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/auth/profile",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "auth",
-                    "profile"
-                  ]
-                },
-                "description": "Get current customer profile. Requires authentication (session or token)."
-              },
-              "response": []
-            },
-            {
-              "name": "Logout",
-              "request": {
-                "auth": {
-                  "type": "inherit"
-                },
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/auth/logout",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "auth",
-                    "logout"
-                  ]
-                },
-                "description": "Logout current customer. Requires authentication."
-              },
-              "response": []
-            },
-            {
-              "name": "Update Profile",
-              "request": {
-                "method": "PUT",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/auth/profile",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "auth",
-                    "profile"
-                  ]
-                },
-                "auth": {
-                  "type": "inherit"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"John Doe\",\n  \"phone\": \"+60123456789\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Change Password",
-              "request": {
-                "method": "PUT",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/auth/password",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "auth",
-                    "password"
-                  ]
-                },
-                "auth": {
-                  "type": "inherit"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"current_password\": \"password\",\n  \"password\": \"newpassword\",\n  \"password_confirmation\": \"newpassword\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Addresses",
-              "item": [
-                {
-                  "name": "List Addresses",
-                  "request": {
-                    "method": "GET",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/auth/addresses",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "auth",
-                        "addresses"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Create Address",
-                  "request": {
-                    "method": "POST",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/auth/addresses",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "auth",
-                        "addresses"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    },
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"name\": \"Home\",\n  \"phone\": \"+60123456789\",\n  \"address_1\": \"123 Main St\",\n  \"address_2\": \"\",\n  \"city\": \"Kuala Lumpur\",\n  \"state\": \"KL\",\n  \"postcode\": \"50000\",\n  \"country\": \"MY\",\n  \"is_default\": true\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
-                        }
-                      }
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Update Address",
-                  "request": {
-                    "method": "PUT",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/auth/addresses/{{address_id}}",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "auth",
-                        "addresses",
-                        "{{address_id}}"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    },
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"name\": \"Home\",\n  \"phone\": \"+60123456789\",\n  \"address_1\": \"123 Main St\",\n  \"address_2\": \"\",\n  \"city\": \"Kuala Lumpur\",\n  \"state\": \"KL\",\n  \"postcode\": \"50000\",\n  \"country\": \"MY\",\n  \"is_default\": true\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
-                        }
-                      }
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Delete Address",
-                  "request": {
-                    "method": "DELETE",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/auth/addresses/{{address_id}}",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "auth",
-                        "addresses",
-                        "{{address_id}}"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Set Default Address",
-                  "request": {
-                    "method": "PUT",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/auth/addresses/{{address_id}}/default",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "auth",
-                        "addresses",
-                        "{{address_id}}",
-                        "default"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    }
-                  },
-                  "response": []
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "Public Shop",
-          "item": [
-            {
-              "name": "Menu",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/menu",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "menu"
-                  ]
-                },
-                "description": "List active menu items with their active categories (ordered by pivot sort_order)."
-              },
-              "response": []
-            },
-            {
-              "name": "Categories",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/categories?menu_id=&menu_slug=",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "categories"
-                  ],
-                  "query": [
-                    {
-                      "key": "menu_id",
-                      "value": ""
-                    },
-                    {
-                      "key": "menu_slug",
-                      "value": ""
-                    }
-                  ]
-                },
-                "description": "List active categories; filter by menu_id or menu_slug; response includes menu_ids array."
-              },
-              "response": []
-            },
-            {
-              "name": "Products",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/products?page=1&per_page=15&category_id=&keyword=&is_featured=&menu_id=&menu_slug=",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "products"
-                  ],
-                  "query": [
-                    {
-                      "key": "page",
-                      "value": "1"
-                    },
-                    {
-                      "key": "per_page",
-                      "value": "15"
-                    },
-                    {
-                      "key": "category_id",
-                      "value": ""
-                    },
-                    {
-                      "key": "keyword",
-                      "value": ""
-                    },
-                    {
-                      "key": "is_featured",
-                      "value": ""
-                    },
-                    {
-                      "key": "menu_id",
-                      "value": ""
-                    },
-                    {
-                      "key": "menu_slug",
-                      "value": ""
-                    }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Show Product By Slug",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/products/{{product_slug}}",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "products",
-                    "{{product_slug}}"
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Menu Detail by Slug",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/menu/laptops",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "menu",
-                    "laptops"
-                  ]
-                },
-                "description": "Get a single menu item with its categories."
-              },
-              "response": []
-            },
-            {
-              "name": "Announcements",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/announcements?key=",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "announcements"
-                  ],
-                  "query": [
-                    {
-                      "key": "key",
-                      "value": ""
-                    }
-                  ]
-                },
-                "description": "List active and current announcements. Optionally filter by key."
-              },
-              "response": []
-            },
-            {
-              "name": "Show Announcement by Key",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/announcements/{{announcement_key}}",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "announcements",
-                    "{{announcement_key}}"
-                  ]
-                },
-                "description": "Get a single active and current announcement by key."
-              },
-              "response": []
-            },
-            {
-              "name": "Sliders",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/sliders",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "sliders"
-                  ]
-                },
-                "description": "Get active home sliders for public display."
-              },
-              "response": []
-            },
-            {
-              "name": "Homepage",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/homepage",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "homepage"
-                  ]
-                },
-                "description": "Get homepage data including sliders, promotions, marquees, announcements, shop menu, and SEO settings."
-              },
-              "response": []
-            },
-            {
-              "name": "Public Orders",
-              "item": [
-                {
-                  "name": "Lookup Order",
-                  "request": {
-                    "method": "GET",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/shop/orders/lookup",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "shop",
-                        "orders",
-                        "lookup"
-                      ],
-                      "query": [
-                        {
-                          "key": "order_no",
-                          "value": ""
-                        },
-                        {
-                          "key": "email",
-                          "value": ""
-                        }
-                      ]
-                    },
-                    "auth": {
-                      "type": "noauth"
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Upload Payment Slip",
-                  "request": {
-                    "method": "POST",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}/upload-slip",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "shop",
-                        "orders",
-                        "{{order_id}}",
-                        "upload-slip"
-                      ]
-                    },
-                    "auth": {
-                      "type": "noauth"
-                    },
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"payment_method\": \"bank_transfer\",\n  \"paid_at\": \"2025-01-01T10:00:00\",\n  \"amount\": 100,\n  \"reference_no\": \"REF123\",\n  \"slip_url\": \"https://cdn.example.com/uploads/slip.jpg\"\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
-                        }
-                      }
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Order History - Show",
-                  "request": {
-                    "method": "GET",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "shop",
-                        "orders",
-                        "{{order_id}}"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Order History - Cancel",
-                  "request": {
-                    "method": "POST",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}/cancel",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "shop",
-                        "orders",
-                        "{{order_id}}",
-                        "cancel"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Order History - Pay",
-                  "request": {
-                    "method": "POST",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}/pay",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "shop",
-                        "orders",
-                        "{{order_id}}",
-                        "pay"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    },
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"payment_method\": \"bank_transfer\"\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
-                        }
-                      }
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "List Vouchers (Auth)",
-                  "request": {
-                    "method": "GET",
-                    "header": [],
-                    "url": {
-                      "raw": "{{base_url}}/public/shop/vouchers",
-                      "host": [
-                        "{{base_url}}"
-                      ],
-                      "path": [
-                        "public",
-                        "shop",
-                        "vouchers"
-                      ]
-                    },
-                    "auth": {
-                      "type": "inherit"
-                    }
-                  },
-                  "response": []
-                }
-              ]
-            },
-            {
-              "name": "List Product Reviews",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/products/{{product_slug}}/reviews",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "products",
-                    "{{product_slug}}",
-                    "reviews"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Review Eligibility",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/products/{{product_slug}}/review-eligibility",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "products",
-                    "{{product_slug}}",
-                    "review-eligibility"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "List Promotions",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/promotions",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "promotions"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "List Marquees",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/marquees",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "marquees"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Membership Tiers",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/membership/tiers",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "membership",
-                    "tiers"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Shipping Info",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/shipping",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "shipping"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "List Store Locations",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/store-locations",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "store-locations"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Show Store Location",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/store-locations/{{store_location_id}}",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "store-locations",
-                    "{{store_location_id}}"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Review Settings",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/reviews/settings",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "reviews",
-                    "settings"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "List Page Reviews",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/reviews",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "reviews"
-                  ],
-                  "query": [
-                    {
-                      "key": "page",
-                      "value": "1"
-                    }
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "List Public Bank Accounts",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/bank-accounts",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "bank-accounts"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "List Payment Methods",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/payment-methods",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "payment-methods"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Track Order",
-              "request": {
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/orders/track",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "orders",
-                    "track"
-                  ]
-                },
-                "auth": {
-                  "type": "noauth"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"order_no\": \"ORDER-0001\",\n  \"email\": \"customer@example.com\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Public Loyalty",
-          "item": [
-            {
-              "name": "Loyalty Summary",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/loyalty/summary?customer_id=1",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "loyalty",
-                    "summary"
-                  ],
-                  "query": [
-                    {
-                      "key": "customer_id",
-                      "value": "1"
-                    }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Loyalty History",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/loyalty/history?customer_id=1&type=redeem&page=1",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "loyalty",
-                    "history"
-                  ],
-                  "query": [
-                    {
-                      "key": "customer_id",
-                      "value": "1"
-                    },
-                    {
-                      "key": "type",
-                      "value": "redeem"
-                    },
-                    {
-                      "key": "page",
-                      "value": "1"
-                    }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "List Loyalty Rewards (Public)",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/loyalty/rewards?type=voucher",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "loyalty",
-                    "rewards"
-                  ],
-                  "query": [
-                    {
-                      "key": "type",
-                      "value": "voucher"
-                    }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Redeem Loyalty Reward",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"customer_id\": 1,\n  \"reward_id\": 5\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/public/shop/loyalty/redeem",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "loyalty",
-                    "redeem"
-                  ]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Public Returns",
-          "item": [
-            {
-              "name": "Create Return Request",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"customer_id\": 1,\n  \"request_type\": \"return\",\n  \"reason\": \"wrong_item\",\n  \"description\": \"I received the wrong color.\",\n  \"item_ids\": [\n    { \"order_item_id\": 10, \"quantity\": 1 }\n  ],\n  \"image_urls\": [\n    \"https://cdn.example.com/uploads/returns/img1.jpg\"\n  ]\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/public/shop/orders/{{order_id}}/returns",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "orders",
-                    "{{order_id}}",
-                    "returns"
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "List Return Requests",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/returns?customer_id=1&status=&order_id=",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "returns"
-                  ],
-                  "query": [
-                    {
-                      "key": "customer_id",
-                      "value": "1"
-                    },
-                    {
-                      "key": "status",
-                      "value": ""
-                    },
-                    {
-                      "key": "order_id",
-                      "value": ""
-                    }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Show Return Request",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/public/shop/returns/{{return_request_id}}?customer_id=1",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "returns",
-                    "{{return_request_id}}"
-                  ],
-                  "query": [
-                    {
-                      "key": "customer_id",
-                      "value": "1"
-                    }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Submit Tracking",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"customer_id\": 1,\n  \"courier_name\": \"J&T\",\n  \"tracking_no\": \"JT123456789MY\",\n  \"shipped_at\": \"2025-12-01T10:00:00\",\n  \"image_urls\": [\n    \"https://cdn.example.com/uploads/returns/shipping_label.jpg\"\n  ]\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/public/shop/returns/{{return_request_id}}/tracking",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "public",
-                    "shop",
-                    "returns",
-                    "{{return_request_id}}",
-                    "tracking"
-                  ]
-                }
-              },
-              "response": []
-            }
-          ]
         },
         {
           "name": "Admin",
@@ -5403,6 +4045,1364 @@
                   ]
                 },
                 "description": "Get top customers report. Requires permission: ecommerce.reports.sales.view"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ECOMMERCE",
+      "item": [
+        {
+          "name": "Auth (Public)",
+          "item": [
+            {
+              "name": "Register",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"customer@example.com\",\n  \"phone\": \"+60123456789\",\n  \"password\": \"password\",\n  \"password_confirmation\": \"password\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/auth/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "auth",
+                    "register"
+                  ]
+                },
+                "description": "Register a new customer. Session login automatically after registration."
+              },
+              "response": []
+            },
+            {
+              "name": "Login (Session)",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password\",\n  \"session_token\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/auth/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "Session login. Run first to store cookie in Postman. Optional session_token to merge guest cart."
+              },
+              "response": []
+            },
+            {
+              "name": "Login (Token)",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password\",\n  \"session_token\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/auth/login/token",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "auth",
+                    "login",
+                    "token"
+                  ]
+                },
+                "description": "Token login. Copy response data.token to {{token}} for Bearer auth. Optional session_token to merge guest cart."
+              },
+              "response": []
+            },
+            {
+              "name": "Profile",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/auth/profile",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "auth",
+                    "profile"
+                  ]
+                },
+                "description": "Get current customer profile. Requires authentication (session or token)."
+              },
+              "response": []
+            },
+            {
+              "name": "Logout",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/auth/logout",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "auth",
+                    "logout"
+                  ]
+                },
+                "description": "Logout current customer. Requires authentication."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Profile",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/auth/profile",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "auth",
+                    "profile"
+                  ]
+                },
+                "auth": {
+                  "type": "inherit"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Doe\",\n  \"phone\": \"+60123456789\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Change Password",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/auth/password",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "auth",
+                    "password"
+                  ]
+                },
+                "auth": {
+                  "type": "inherit"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"current_password\": \"password\",\n  \"password\": \"newpassword\",\n  \"password_confirmation\": \"newpassword\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Addresses",
+              "item": [
+                {
+                  "name": "List Addresses",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/auth/addresses",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "auth",
+                        "addresses"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Create Address",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/auth/addresses",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "auth",
+                        "addresses"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Home\",\n  \"phone\": \"+60123456789\",\n  \"address_1\": \"123 Main St\",\n  \"address_2\": \"\",\n  \"city\": \"Kuala Lumpur\",\n  \"state\": \"KL\",\n  \"postcode\": \"50000\",\n  \"country\": \"MY\",\n  \"is_default\": true\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Update Address",
+                  "request": {
+                    "method": "PUT",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/auth/addresses/{{address_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "auth",
+                        "addresses",
+                        "{{address_id}}"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Home\",\n  \"phone\": \"+60123456789\",\n  \"address_1\": \"123 Main St\",\n  \"address_2\": \"\",\n  \"city\": \"Kuala Lumpur\",\n  \"state\": \"KL\",\n  \"postcode\": \"50000\",\n  \"country\": \"MY\",\n  \"is_default\": true\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Delete Address",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/auth/addresses/{{address_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "auth",
+                        "addresses",
+                        "{{address_id}}"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Set Default Address",
+                  "request": {
+                    "method": "PUT",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/auth/addresses/{{address_id}}/default",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "auth",
+                        "addresses",
+                        "{{address_id}}",
+                        "default"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Public Shop",
+          "item": [
+            {
+              "name": "Menu",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/menu",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "menu"
+                  ]
+                },
+                "description": "List active menu items with their active categories (ordered by pivot sort_order)."
+              },
+              "response": []
+            },
+            {
+              "name": "Categories",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/categories?menu_id=&menu_slug=",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "categories"
+                  ],
+                  "query": [
+                    {
+                      "key": "menu_id",
+                      "value": ""
+                    },
+                    {
+                      "key": "menu_slug",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "List active categories; filter by menu_id or menu_slug; response includes menu_ids array."
+              },
+              "response": []
+            },
+            {
+              "name": "Products",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/products?page=1&per_page=15&category_id=&keyword=&is_featured=&menu_id=&menu_slug=",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "products"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "category_id",
+                      "value": ""
+                    },
+                    {
+                      "key": "keyword",
+                      "value": ""
+                    },
+                    {
+                      "key": "is_featured",
+                      "value": ""
+                    },
+                    {
+                      "key": "menu_id",
+                      "value": ""
+                    },
+                    {
+                      "key": "menu_slug",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Product By Slug",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/products/{{product_slug}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "products",
+                    "{{product_slug}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Menu Detail by Slug",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/menu/laptops",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "menu",
+                    "laptops"
+                  ]
+                },
+                "description": "Get a single menu item with its categories."
+              },
+              "response": []
+            },
+            {
+              "name": "Announcements",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/announcements?key=",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "announcements"
+                  ],
+                  "query": [
+                    {
+                      "key": "key",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "List active and current announcements. Optionally filter by key."
+              },
+              "response": []
+            },
+            {
+              "name": "Show Announcement by Key",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/announcements/{{announcement_key}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "announcements",
+                    "{{announcement_key}}"
+                  ]
+                },
+                "description": "Get a single active and current announcement by key."
+              },
+              "response": []
+            },
+            {
+              "name": "Sliders",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/sliders",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "sliders"
+                  ]
+                },
+                "description": "Get active home sliders for public display."
+              },
+              "response": []
+            },
+            {
+              "name": "Homepage",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/homepage",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "homepage"
+                  ]
+                },
+                "description": "Get homepage data including sliders, promotions, marquees, announcements, shop menu, and SEO settings."
+              },
+              "response": []
+            },
+            {
+              "name": "Public Orders",
+              "item": [
+                {
+                  "name": "Lookup Order",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/orders/lookup",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "orders",
+                        "lookup"
+                      ],
+                      "query": [
+                        {
+                          "key": "order_no",
+                          "value": ""
+                        },
+                        {
+                          "key": "email",
+                          "value": ""
+                        }
+                      ]
+                    },
+                    "auth": {
+                      "type": "noauth"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Upload Payment Slip",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}/upload-slip",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "orders",
+                        "{{order_id}}",
+                        "upload-slip"
+                      ]
+                    },
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"payment_method\": \"bank_transfer\",\n  \"paid_at\": \"2025-01-01T10:00:00\",\n  \"amount\": 100,\n  \"reference_no\": \"REF123\",\n  \"slip_url\": \"https://cdn.example.com/uploads/slip.jpg\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Order History - Show",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "orders",
+                        "{{order_id}}"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Order History - Cancel",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}/cancel",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "orders",
+                        "{{order_id}}",
+                        "cancel"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Order History - Pay",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}/pay",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "orders",
+                        "{{order_id}}",
+                        "pay"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"payment_method\": \"bank_transfer\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "List Vouchers (Auth)",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/vouchers",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "vouchers"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "List Product Reviews",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/products/{{product_slug}}/reviews",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "products",
+                    "{{product_slug}}",
+                    "reviews"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Review Eligibility",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/products/{{product_slug}}/review-eligibility",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "products",
+                    "{{product_slug}}",
+                    "review-eligibility"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Promotions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/promotions",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "promotions"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Marquees",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/marquees",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "marquees"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Membership Tiers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/membership/tiers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "membership",
+                    "tiers"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Shipping Info",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/shipping",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "shipping"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Store Locations",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/store-locations",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "store-locations"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Store Location",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/store-locations/{{store_location_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "store-locations",
+                    "{{store_location_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Review Settings",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/reviews/settings",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "reviews",
+                    "settings"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Page Reviews",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/reviews",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "reviews"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Public Bank Accounts",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/bank-accounts",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "bank-accounts"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Payment Methods",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/payment-methods",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "payment-methods"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Track Order",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/orders/track",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "orders",
+                    "track"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_no\": \"ORDER-0001\",\n  \"email\": \"customer@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Public Loyalty",
+          "item": [
+            {
+              "name": "Loyalty Summary",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/loyalty/summary?customer_id=1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "loyalty",
+                    "summary"
+                  ],
+                  "query": [
+                    {
+                      "key": "customer_id",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Loyalty History",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/loyalty/history?customer_id=1&type=redeem&page=1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "loyalty",
+                    "history"
+                  ],
+                  "query": [
+                    {
+                      "key": "customer_id",
+                      "value": "1"
+                    },
+                    {
+                      "key": "type",
+                      "value": "redeem"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Loyalty Rewards (Public)",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/loyalty/rewards?type=voucher",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "loyalty",
+                    "rewards"
+                  ],
+                  "query": [
+                    {
+                      "key": "type",
+                      "value": "voucher"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Redeem Loyalty Reward",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customer_id\": 1,\n  \"reward_id\": 5\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/shop/loyalty/redeem",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "loyalty",
+                    "redeem"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Public Returns",
+          "item": [
+            {
+              "name": "Create Return Request",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customer_id\": 1,\n  \"request_type\": \"return\",\n  \"reason\": \"wrong_item\",\n  \"description\": \"I received the wrong color.\",\n  \"item_ids\": [\n    { \"order_item_id\": 10, \"quantity\": 1 }\n  ],\n  \"image_urls\": [\n    \"https://cdn.example.com/uploads/returns/img1.jpg\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/shop/orders/{{order_id}}/returns",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "orders",
+                    "{{order_id}}",
+                    "returns"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Return Requests",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/returns?customer_id=1&status=&order_id=",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "returns"
+                  ],
+                  "query": [
+                    {
+                      "key": "customer_id",
+                      "value": "1"
+                    },
+                    {
+                      "key": "status",
+                      "value": ""
+                    },
+                    {
+                      "key": "order_id",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Return Request",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/returns/{{return_request_id}}?customer_id=1",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "returns",
+                    "{{return_request_id}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "customer_id",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Submit Tracking",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customer_id\": 1,\n  \"courier_name\": \"J&T\",\n  \"tracking_no\": \"JT123456789MY\",\n  \"shipped_at\": \"2025-12-01T10:00:00\",\n  \"image_urls\": [\n    \"https://cdn.example.com/uploads/returns/shipping_label.jpg\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/shop/returns/{{return_request_id}}/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "returns",
+                    "{{return_request_id}}",
+                    "tracking"
+                  ]
+                }
               },
               "response": []
             }
