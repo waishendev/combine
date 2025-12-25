@@ -1459,6 +1459,108 @@
                     }
                   },
                   "response": []
+                },
+                {
+                  "name": "Order History - Show",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "orders",
+                        "{{order_id}}"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Order History - Cancel",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}/cancel",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "orders",
+                        "{{order_id}}",
+                        "cancel"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Order History - Pay",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/orders/{{order_id}}/pay",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "orders",
+                        "{{order_id}}",
+                        "pay"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"payment_method\": \"bank_transfer\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "List Vouchers (Auth)",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/vouchers",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "vouchers"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
                 }
               ]
             },
@@ -2324,6 +2426,16 @@
                           "key": "main_image_index",
                           "value": "0",
                           "type": "text"
+                        },
+                        {
+                          "key": "dummy_sold_count",
+                          "value": "0",
+                          "type": "text"
+                        },
+                        {
+                          "key": "meta_og_image",
+                          "value": "",
+                          "type": "text"
                         }
                       ]
                     },
@@ -2465,6 +2577,16 @@
                         {
                           "key": "main_image_index",
                           "value": "0",
+                          "type": "text"
+                        },
+                        {
+                          "key": "dummy_sold_count",
+                          "value": "0",
+                          "type": "text"
+                        },
+                        {
+                          "key": "meta_og_image",
+                          "value": "",
                           "type": "text"
                         }
                       ]
@@ -4942,7 +5064,7 @@
                     },
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"code\": \"WELCOME10\",\n  \"type\": \"percent\",\n  \"amount\": 10,\n  \"min_order_amount\": 100,\n  \"max_uses\": 100,\n  \"max_uses_per_customer\": 1,\n  \"start_at\": \"2025-01-01\",\n  \"end_at\": \"2025-12-31\",\n  \"is_active\": true\n}",
+                      "raw": "{\n  \"code\": \"WELCOME10\",\n  \"type\": \"percent\",\n  \"min_order_amount\": 100,\n  \"max_uses\": 100,\n  \"max_uses_per_customer\": 1,\n  \"start_at\": \"2025-01-01\",\n  \"end_at\": \"2025-12-31\",\n  \"is_active\": true,\n  \"value\": 10,\n  \"max_discount_amount\": 50,\n  \"usage_limit_total\": 100,\n  \"usage_limit_per_customer\": 1\n}",
                       "options": {
                         "raw": {
                           "language": "json"
@@ -4995,7 +5117,7 @@
                     },
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"code\": \"WELCOME15\",\n  \"type\": \"percent\",\n  \"amount\": 15,\n  \"min_order_amount\": 150,\n  \"max_uses\": 200,\n  \"max_uses_per_customer\": 2,\n  \"start_at\": \"2025-01-01\",\n  \"end_at\": \"2025-12-31\",\n  \"is_active\": true\n}",
+                      "raw": "{\n  \"code\": \"WELCOME15\",\n  \"type\": \"percent\",\n  \"min_order_amount\": 100,\n  \"max_uses\": 200,\n  \"max_uses_per_customer\": 2,\n  \"start_at\": \"2025-01-01\",\n  \"end_at\": \"2025-12-31\",\n  \"is_active\": true,\n  \"value\": 10,\n  \"max_discount_amount\": 50,\n  \"usage_limit_total\": 100,\n  \"usage_limit_per_customer\": 1\n}",
                       "options": {
                         "raw": {
                           "language": "json"
@@ -5520,6 +5642,160 @@
                   "raw": "{\n  \"customer_id\": 1,\n  \"product_id\": 1\n}"
                 }
               }
+            },
+            {
+              "name": "Cart - Add Item (Increment)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/cart/items/add",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "cart",
+                    "items",
+                    "add"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"product_id\": 1,\n  \"quantity\": 1,\n  \"session_token\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Cart - Reset",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/cart/reset",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "cart",
+                    "reset"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"session_token\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Cart - Cancel Reward Item",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/cart/reward-items/{{cart_item_id}}/cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "cart",
+                    "reward-items",
+                    "{{cart_item_id}}",
+                    "cancel"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Cart - Merge",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/cart/merge",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "cart",
+                    "merge"
+                  ]
+                },
+                "auth": {
+                  "type": "inherit"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customer_id\": 1,\n  \"session_token\": \"c3f15e5a-...\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Wishlist - Merge",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/wishlist/merge",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "wishlist",
+                    "merge"
+                  ]
+                },
+                "auth": {
+                  "type": "inherit"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customer_id\": 1,\n  \"session_token\": \"c3f15e5a-...\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
             }
           ]
         },
