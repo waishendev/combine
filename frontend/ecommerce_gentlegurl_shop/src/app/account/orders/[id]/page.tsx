@@ -25,6 +25,16 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   const statusKey = (order.status || "").toLowerCase();
   const isProcessing = statusKey === "processing" && !isExpired;
   const displayStatus = isExpired ? "expired" : order.status;
+  const badgeStyle =
+    statusKey === "pending" && !isExpired
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : statusKey === "paid" || statusKey === "completed"
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        : statusKey === "shipped"
+          ? "bg-blue-50 text-blue-700 border-blue-200"
+          : statusKey === "cancelled" || isExpired
+            ? "bg-rose-50 text-rose-700 border-rose-200"
+            : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
 
   return (
     <div className="space-y-6">
@@ -41,7 +51,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               Waiting for verification
             </span>
           ) : (
-            <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
               {displayStatus}
             </span>
           )}

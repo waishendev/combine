@@ -134,13 +134,21 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Payment Status</span>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    isPaid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                  }`}
-                >
-                  {isPaid ? "Paid" : "Pending"}
+                <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+                  {order.payment_status}
                 </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--foreground)]/70">Status</span>
+                {order.status?.toLowerCase() === "processing" ? (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                    Waiting for verification
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+                    {order.status}
+                  </span>
+                )}
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Payment Method</span>
@@ -150,7 +158,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               </div>
             </div>
 
-            {!isPaid && (
+            {/* {!isPaid && (
               <div className="mt-3 flex flex-col gap-2 rounded-md bg-[var(--muted)]/40 p-3 text-xs text-[var(--foreground)]/80 sm:flex-row sm:items-center sm:justify-between">
                 <p>
                   Payment is still processing{isBillplzPayment ? " • Billplz may take a few seconds to confirm." : "."}
@@ -163,7 +171,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                   Refresh Status
                 </button>
               </div>
-            )}
+            )} */}
           </div>
 
           {isManualTransfer && (
