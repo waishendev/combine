@@ -237,8 +237,9 @@ export default function CheckoutForm() {
   // }, [shouldRedirectToCart, router]);
 
   useEffect(() => {
-    setVoucherCode(appliedVoucher?.code ?? "");
+    // Sync selectedVoucherId with applied voucher, but don't show code in input field
     setSelectedVoucherId(appliedVoucher?.customer_voucher_id ?? null);
+    // Don't auto-fill voucher code - let user see empty input when opening modal
   }, [appliedVoucher]);
 
   useEffect(() => {
@@ -762,7 +763,7 @@ export default function CheckoutForm() {
                 disabled={selectedItems.length === 0}
                 onClick={() => {
                   clearVoucherFeedback();
-                  setVoucherCode(appliedVoucher?.code ?? "");
+                  setVoucherCode("");
                   setShowVoucherModal(true);
                 }}
                 className="rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
@@ -1280,13 +1281,6 @@ export default function CheckoutForm() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-[var(--foreground)]">My Vouchers</p>
-                  <button
-                    type="button"
-                    className="text-xs text-[var(--accent)] underline"
-                    onClick={() => setSelectedVoucherId(null)}
-                  >
-                    Clear
-                  </button>
                 </div>
                 {loadingVouchers ? (
                   <p className="text-xs text-[var(--foreground)]/70">Loading vouchers...</p>
@@ -1304,7 +1298,7 @@ export default function CheckoutForm() {
                             isSelected
                               ? "border-[var(--accent)] bg-[var(--accent)]/10"
                               : "border-[var(--muted)]/70 bg-white"
-                          } ${isDisabled ? "cursor-not-allowed opacity-60" : "hover:border-[var(--accent)]/60"}`}
+                          } ${isDisabled ? "cursor-not-allowed opacity-50 grayscale" : "hover:border-[var(--accent)]/60"}`}
                         >
                           <input
                             type="radio"
@@ -1314,17 +1308,18 @@ export default function CheckoutForm() {
                             disabled={isDisabled}
                             onChange={() => {
                               if (isDisabled) return;
-                              setSelectedVoucherId(entry.voucher.id);
-                              setVoucherCode(entry.voucher.voucher?.code ?? "");
+                              // Toggle: if already selected, unselect it
+                              if (isSelected) {
+                                setSelectedVoucherId(null);
+                              } else {
+                                setSelectedVoucherId(entry.voucher.id);
+                              }
                               clearVoucherFeedback();
                             }}
                           />
                           <div className="flex-1 text-xs">
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-sm font-semibold">{entry.title}</div>
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
-                                {entry.voucher.status ?? "active"}
-                              </span>
                             </div>
                             <div className="mt-2 grid gap-1 text-[11px] text-[var(--foreground)]/70 sm:grid-cols-2">
                               <div>

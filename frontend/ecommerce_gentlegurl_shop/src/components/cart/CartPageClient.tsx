@@ -36,10 +36,10 @@ export default function CartPageClient() {
   const [quantityNotices, setQuantityNotices] = useState<Record<number, string>>({});
 
     useEffect(() => {
-      // Sync voucher input with applied voucher code
+      // Sync selectedVoucherId with applied voucher, but don't show code in input field
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setVoucherCode(appliedVoucher?.code ?? "");
       setSelectedVoucherId(appliedVoucher?.customer_voucher_id ?? null);
+      // Don't auto-fill voucher code - let user see empty input when opening modal
     }, [appliedVoucher]);
 
   const setQuantityNotice = (itemId: number, message?: string) => {
@@ -517,7 +517,7 @@ export default function CartPageClient() {
                 type="button"
                 onClick={() => {
                   clearVoucherFeedback();
-                  setVoucherCode(appliedVoucher?.code ?? "");
+                  setVoucherCode("");
                   setShowVoucherModal(true);
                 }}
                 disabled={selectedCount === 0}
@@ -605,7 +605,7 @@ export default function CartPageClient() {
               type="button"
               onClick={() => {
                 clearVoucherFeedback();
-                setVoucherCode(appliedVoucher?.code ?? "");
+                setVoucherCode("");
                 setShowVoucherModal(true);
               }}
               disabled={selectedCount === 0}
@@ -694,13 +694,6 @@ export default function CartPageClient() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold">My Vouchers</p>
-                  <button
-                    type="button"
-                    className="text-xs text-[var(--accent)] underline"
-                    onClick={() => setSelectedVoucherId(null)}
-                  >
-                    Clear
-                  </button>
                 </div>
 
                 {loadingVouchers ? (
@@ -719,7 +712,7 @@ export default function CartPageClient() {
                             isSelected
                               ? "border-[var(--accent)] bg-[var(--accent)]/10"
                               : "border-[var(--muted)]/70 bg-white"
-                          } ${isDisabled ? "cursor-not-allowed opacity-60" : "hover:border-[var(--accent)]/60"}`}
+                          } ${isDisabled ? "cursor-not-allowed opacity-50 grayscale" : "hover:border-[var(--accent)]/60"}`}
                         >
                           <input
                             type="radio"
@@ -729,17 +722,18 @@ export default function CartPageClient() {
                             disabled={isDisabled}
                             onChange={() => {
                               if (isDisabled) return;
-                              setSelectedVoucherId(entry.voucher.id);
-                              setVoucherCode(entry.voucher.voucher?.code ?? "");
+                              // Toggle: if already selected, unselect it
+                              if (isSelected) {
+                                setSelectedVoucherId(null);
+                              } else {
+                                setSelectedVoucherId(entry.voucher.id);
+                              }
                               clearVoucherFeedback();
                             }}
                           />
                           <div className="flex-1 text-xs">
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-sm font-semibold">{entry.title}</div>
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
-                                {entry.voucher.status ?? "active"}
-                              </span>
                             </div>
                             <div className="mt-2 grid gap-1 text-[11px] text-[var(--foreground)]/70 sm:grid-cols-2">
                               <div>
