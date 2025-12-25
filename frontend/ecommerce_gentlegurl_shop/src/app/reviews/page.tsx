@@ -65,6 +65,7 @@ export default function ReviewsPage() {
     body: "",
     photos: [] as File[],
   });
+  const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +188,7 @@ export default function ReviewsPage() {
         rating: 5,
         photos: [],
       }));
+      setPhotoPreviews([]);
       await fetchReviews(1);
     } catch (err) {
       setError(getErrorMessage(err));
@@ -305,20 +307,10 @@ export default function ReviewsPage() {
         )}
       </div>
 
-      {error && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
-      {message && (
-        <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          {message}
-        </div>
-      )}
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="flex max-h-[600px] flex-col rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xl font-semibold text-gray-900">Recent Reviews</h2>
             {pagination && (
@@ -328,48 +320,50 @@ export default function ReviewsPage() {
             )}
           </div>
 
-          {loadingReviews ? (
-            <p className="mt-4 text-sm text-gray-500">Loading reviews...</p>
-          ) : reviews.length === 0 ? (
-            <p className="mt-4 text-sm text-gray-500">No reviews yet for this store.</p>
-          ) : (
-            <div className="mt-4 space-y-4">
-              {reviews.map((review) => (
-                <article key={review.id} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{review.name}</p>
-                      <p className="text-xs text-gray-500">{formatDate(review.created_at)}</p>
+          <div className="mt-4 max-h-[550px] flex-1 overflow-y-auto pr-2">
+            {loadingReviews ? (
+              <p className="text-sm text-gray-500">Loading reviews...</p>
+            ) : reviews.length === 0 ? (
+              <p className="text-sm text-gray-500">No reviews yet for this store.</p>
+            ) : (
+              <div className="space-y-4">
+                {reviews.map((review) => (
+                  <article key={review.id} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{review.name}</p>
+                        <p className="text-xs text-gray-500">{formatDate(review.created_at)}</p>
+                      </div>
+                      <div className="flex items-center gap-1 text-yellow-400">
+                        {Array.from({ length: 5 }).map((_, index) => (
+                          <span key={index} className={index < review.rating ? "text-yellow-400" : "text-gray-300"}>
+                            ★
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 text-yellow-400">
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <span key={index} className={index < review.rating ? "text-yellow-400" : "text-gray-300"}>
-                          ★
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {review.title && <p className="mt-2 text-sm font-medium text-gray-900">{review.title}</p>}
-                  <p className="mt-1 text-sm text-gray-700">{review.body}</p>
-                  {review.photos && review.photos.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {review.photos.map((photo) => (
-                        <img
-                          key={photo.id}
-                          src={photo.file_url || photo.file_path}
-                          alt="Review photo"
-                          className="h-24 w-full rounded-lg object-cover"
-                        />
-                      ))}
-                    </div>
-                  )}
-                </article>
-              ))}
-            </div>
-          )}
+                    {review.title && <p className="mt-2 text-sm font-medium text-gray-900">{review.title}</p>}
+                    <p className="mt-1 text-sm text-gray-700">{review.body}</p>
+                    {review.photos && review.photos.length > 0 && (
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {review.photos.map((photo) => (
+                          <img
+                            key={photo.id}
+                            src={photo.file_url || photo.file_path}
+                            alt="Review photo"
+                            className="h-24 w-full rounded-lg object-cover"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
 
           {pagination && pagination.total > pagination.per_page && (
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-4 flex items-center gap-3 border-t border-gray-100 pt-4">
               <button
                 className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
                 disabled={loadingReviews || (pagination?.page ?? 1) <= 1}
@@ -396,14 +390,26 @@ export default function ReviewsPage() {
           <h2 className="text-xl font-semibold text-gray-900">Add a Review</h2>
           <p className="mt-1 text-sm text-gray-600">Share your experience with this store.</p>
 
-          <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
+          {error && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {message && (
+            <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              {message}
+            </div>
+          )}
+          
+          <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
             {!customer && (
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-sm font-medium text-gray-700">
                   Name
                   <input
                     type="text"
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
                     value={form.name}
                     onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                     required
@@ -414,7 +420,7 @@ export default function ReviewsPage() {
                   Email (optional)
                   <input
                     type="email"
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
                     value={form.email}
                     onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
                     placeholder="you@example.com"
@@ -423,28 +429,32 @@ export default function ReviewsPage() {
               </div>
             )}
 
-            <label className="text-sm font-medium text-gray-700">
-              Rating
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  type="range"
-                  min={1}
-                  max={5}
-                  value={form.rating}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, rating: Number(e.target.value) }))
-                  }
-                  className="w-full accent-pink-500"
-                />
-                <span className="w-10 text-right text-sm font-semibold text-gray-900">{form.rating}★</span>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Rating</label>
+              <div className="mt-2 flex items-center gap-4">
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setForm((prev) => ({ ...prev, rating: index + 1 }))}
+                      className={`text-2xl transition hover:scale-110 ${
+                        index < form.rating ? "text-yellow-400" : "text-gray-300"
+                      }`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+                <span className="text-sm font-semibold text-gray-700">{form.rating} out of 5</span>
               </div>
-            </label>
+            </div>
 
             <label className="text-sm font-medium text-gray-700">
               Title (optional)
               <input
                 type="text"
-                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
                 value={form.title}
                 onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
                 placeholder="Great service!"
@@ -454,7 +464,7 @@ export default function ReviewsPage() {
             <label className="text-sm font-medium text-gray-700">
               Your Review
               <textarea
-                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
                 rows={4}
                 value={form.body}
                 onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
@@ -464,23 +474,106 @@ export default function ReviewsPage() {
               />
             </label>
 
-            <label className="text-sm font-medium text-gray-700">
-              Upload photos (optional)
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                className="mt-2 block w-full text-sm text-gray-700"
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, photos: e.target.files ? Array.from(e.target.files) : [] }))
-                }
-              />
-            </label>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Upload photos (optional)</label>
+              <div className="mt-2 flex flex-wrap items-start gap-3">
+                {/* Add button - only show if less than 3 photos */}
+                {form.photos.length < 3 && (
+                  <label className="group relative flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 transition hover:border-pink-400 hover:bg-pink-50/30">
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      onChange={async (e) => {
+                        const files = e.target.files ? Array.from(e.target.files) : [];
+                        if (files.length === 0) return;
+                        
+                        // Limit to 3 photos total
+                        const remainingSlots = 3 - form.photos.length;
+                        const filesToAdd = files.slice(0, remainingSlots);
+                        
+                        if (filesToAdd.length === 0) return;
+                        
+                        setForm((prev) => ({ ...prev, photos: [...prev.photos, ...filesToAdd] }));
+                        
+                        // Create previews for new files
+                        const previewPromises = filesToAdd.map((file) => {
+                          return new Promise<string>((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result as string);
+                            reader.readAsDataURL(file);
+                          });
+                        });
+                        
+                        const newPreviews = await Promise.all(previewPromises);
+                        setPhotoPreviews((prev) => [...prev, ...newPreviews]);
+                      }}
+                    />
+                    <svg
+                      className="h-8 w-8 text-gray-400 transition group-hover:text-pink-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    <span className="mt-1 text-xs font-medium text-gray-600">Add</span>
+                  </label>
+                )}
+
+                {/* Photo previews */}
+                {form.photos.map((photo, index) => (
+                  <div key={index} className="group relative h-24 w-24 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+                    <img
+                      src={photoPreviews[index] || URL.createObjectURL(photo)}
+                      alt={`Preview ${index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm((prev) => ({
+                          ...prev,
+                          photos: prev.photos.filter((_, i) => i !== index),
+                        }));
+                        setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
+                      }}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition hover:bg-black/90 group-hover:opacity-100"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {form.photos.length > 0 && (
+                <p className="mt-2 text-xs text-gray-500">
+                  {form.photos.length} of 3 photos selected
+                </p>
+              )}
+            </div>
 
             <button
               type="submit"
               disabled={submitting || loadingReviews}
-              className="w-full rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-pink-600 disabled:cursor-not-allowed disabled:bg-pink-300"
+              className="w-full rounded-lg bg-gradient-to-r from-pink-500 to-pink-600 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:from-pink-600 hover:to-pink-700 hover:shadow-lg disabled:cursor-not-allowed disabled:from-pink-300 disabled:to-pink-300 disabled:shadow-none"
             >
               {submitting ? "Submitting..." : "Submit Review"}
             </button>
