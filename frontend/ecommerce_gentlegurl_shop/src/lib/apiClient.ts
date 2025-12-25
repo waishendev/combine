@@ -550,6 +550,12 @@ export type CheckoutPreviewPayload = {
 };
 
 export type CheckoutPayload = {
+  items?: Array<{
+    product_id: number;
+    quantity: number;
+    is_reward?: boolean;
+    reward_redemption_id?: number;
+  }>;
   session_token?: string | null;
   payment_method: "manual_transfer" | "billplz_fpx" | "billplz_card";
   shipping_method: "shipping" | "self_pickup";
@@ -925,12 +931,12 @@ export async function getLoyaltyHistory(options?: { page?: number; perPage?: num
   );
 
   const payload = response?.data ?? response;
-  const items = Array.isArray(payload)
+  const items: LoyaltyHistoryEntry[] = Array.isArray(payload)
     ? payload
     : Array.isArray(payload?.data)
       ? payload.data
       : Array.isArray((payload as { items?: LoyaltyHistoryEntry[] })?.items)
-        ? (payload as { items?: LoyaltyHistoryEntry[] }).items
+        ? ((payload as { items?: LoyaltyHistoryEntry[] }).items ?? [])
         : [];
 
   const metaPayload =

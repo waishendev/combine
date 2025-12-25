@@ -18,10 +18,11 @@ type ProductPageProps = {
 };
 
 export default async function ProductPage({ params, searchParams }: ProductPageProps) {
-  const [{ slug }, resolvedSearchParams = {}] = await Promise.all([
+  const [{ slug }, searchParamsResolved] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve({}),
+    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>),
   ]);
+  const resolvedSearchParams: Record<string, string | string[] | undefined> = searchParamsResolved;
 
   const rewardParam = Array.isArray(resolvedSearchParams?.reward)
     ? resolvedSearchParams.reward[0]
