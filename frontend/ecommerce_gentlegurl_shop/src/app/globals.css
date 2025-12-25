@@ -13,7 +13,9 @@
   --background-soft-rgb: 255 238 243;
 }
 
-:root[data-theme="cream"] {
+:root[data-theme="cream"],
+html[data-theme="cream"],
+body[data-theme="cream"] {
   --background: #fefbe8;
   --background-soft: #f0dfd5;
   --foreground: #3b2f2a;
