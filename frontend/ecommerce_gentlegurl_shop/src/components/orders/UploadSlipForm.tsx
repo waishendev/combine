@@ -74,7 +74,7 @@ export default function UploadSlipForm({ orderId, mode = "page", onClose, onSucc
       </div>
 
       {error && (
-        <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[#b8527a]">{error}</div>
+        <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[var(--accent-stronger)]">{error}</div>
       )}
       {successMessage && (
         <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[#7a4d63]">

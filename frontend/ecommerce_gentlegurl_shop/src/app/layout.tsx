@@ -22,6 +22,8 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const colorMode = process.env.COLOR ?? "1";
+  const theme = colorMode === "2" ? "cream" : "soft";
   const headerList = await headers();
   const pathname = headerList.get("x-pathname") ?? "";
   const isAuthRoute = pathname === "/login" || pathname === "/register";
@@ -29,7 +31,7 @@ export default async function RootLayout({
   const homepage = await getHomepage();
 
   return (
-    <html lang="en">
+    <html lang="en" data-theme={theme}>
       <body>
         <CursorTrail />
         <ShopProviders

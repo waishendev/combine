@@ -224,7 +224,7 @@ export default function ReviewsPage() {
     <main className="mx-auto max-w-5xl px-4 py-10">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-500">Community</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Community</p>
           <h1 className="text-3xl font-semibold text-gray-900">Store Reviews</h1>
           <p className="mt-2 text-sm text-gray-600">
             Read what other customers say and share your experience for each location.
@@ -255,7 +255,7 @@ export default function ReviewsPage() {
         <label className="block text-sm font-medium text-gray-700">
           Select Store Location
           <select
-            className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+            className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-strong)]"
             value={selectedLocationId ?? ""}
             onChange={(e) => setSelectedLocationId(Number(e.target.value))}
             disabled={loadingLocations}
@@ -409,7 +409,7 @@ export default function ReviewsPage() {
                   Name
                   <input
                     type="text"
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
                     value={form.name}
                     onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                     required
@@ -420,7 +420,7 @@ export default function ReviewsPage() {
                   Email (optional)
                   <input
                     type="email"
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
                     value={form.email}
                     onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
                     placeholder="you@example.com"
@@ -454,7 +454,7 @@ export default function ReviewsPage() {
               Title (optional)
               <input
                 type="text"
-                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
+                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
                 value={form.title}
                 onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
                 placeholder="Great service!"
@@ -464,7 +464,7 @@ export default function ReviewsPage() {
             <label className="text-sm font-medium text-gray-700">
               Your Review
               <textarea
-                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
+                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
                 rows={4}
                 value={form.body}
                 onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
@@ -479,7 +479,7 @@ export default function ReviewsPage() {
               <div className="mt-2 flex flex-wrap items-start gap-3">
                 {/* Add button - only show if less than 3 photos */}
                 {form.photos.length < 3 && (
-                  <label className="group relative flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 transition hover:border-pink-400 hover:bg-pink-50/30">
+                  <label className="group relative flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 transition hover:border-[var(--accent-strong)] hover:bg-[var(--background-soft)]/30">
                     <input
                       type="file"
                       multiple
@@ -511,7 +511,7 @@ export default function ReviewsPage() {
                       }}
                     />
                     <svg
-                      className="h-8 w-8 text-gray-400 transition group-hover:text-pink-500"
+                      className="h-8 w-8 text-gray-400 transition group-hover:text-[var(--accent-strong)]"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -573,7 +573,7 @@ export default function ReviewsPage() {
             <button
               type="submit"
               disabled={submitting || loadingReviews}
-              className="w-full rounded-lg bg-gradient-to-r from-pink-500 to-pink-600 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:from-pink-600 hover:to-pink-700 hover:shadow-lg disabled:cursor-not-allowed disabled:from-pink-300 disabled:to-pink-300 disabled:shadow-none"
+              className="w-full rounded-lg bg-gradient-to-r from-[var(--accent-strong)] to-[var(--accent-stronger)] px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:from-[var(--accent-stronger)] hover:to-[var(--accent-stronger)] hover:shadow-lg disabled:cursor-not-allowed disabled:from-[var(--muted)] disabled:to-[var(--muted)] disabled:shadow-none"
             >
               {submitting ? "Submitting..." : "Submit Review"}
             </button>

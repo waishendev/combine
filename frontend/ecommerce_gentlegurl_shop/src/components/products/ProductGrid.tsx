@@ -39,7 +39,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
 
             <Link href={`/product/${productSlug}`} className="block">
               {image && (
-                <div className="relative h-44 w-full overflow-hidden bg-gradient-to-b from-[#f5f0ff] to-white">
+                <div className="relative h-44 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-white">
                   <Image
                     // src={image}
                     src={"/images/placeholder.png"}
@@ -54,7 +54,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
                   {product.name}
                 </h3>
                 <div className="flex items-center justify-between text-sm text-gray-700">
-                  <span className="font-semibold text-[#ec4899]">RM {priceLabel}</span>
+                  <span className="font-semibold text-[var(--accent-strong)]">RM {priceLabel}</span>
                   <span className="text-[11px] uppercase tracking-[0.18em] text-gray-400">View</span>
                 </div>
                 <p className="text-xs font-medium text-gray-500">Sold {soldCount}</p>

@@ -48,13 +48,13 @@ function Modal({ open, title, onClose, children, footer }: ModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-xl border border-pink-200 bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-pink-100 px-6 py-4">
-          <h3 className="text-lg font-semibold text-pink-700">{title}</h3>
+      <div className="w-full max-w-xl rounded-xl border border-[var(--muted)] bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-[var(--muted)] px-6 py-4">
+          <h3 className="text-lg font-semibold text-[var(--accent-strong)]">{title}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1 text-pink-600 transition hover:bg-pink-50"
+            className="rounded-full p-1 text-[var(--accent-strong)] transition hover:bg-[var(--background-soft)]"
             aria-label="Close"
           >
             <svg
@@ -70,7 +70,7 @@ function Modal({ open, title, onClose, children, footer }: ModalProps) {
           </button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-6 py-4">{children}</div>
-        {footer && <div className="border-t border-pink-100 px-6 py-4">{footer}</div>}
+        {footer && <div className="border-t border-[var(--muted)] px-6 py-4">{footer}</div>}
       </div>
     </div>
   );
@@ -330,7 +330,7 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-5xl space-y-4 px-4 py-12 text-center text-pink-700">
+      <div className="mx-auto max-w-5xl space-y-4 px-4 py-12 text-center text-[var(--accent-strong)]">
         <p className="text-lg font-medium">Loading your account...</p>
       </div>
     );
@@ -350,7 +350,7 @@ export default function AccountPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-pink-800">My Account</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--accent-stronger)]">My Account</h1>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <button
             type="button"
@@ -359,14 +359,14 @@ export default function AccountPage() {
               setError(null);
               setChangePasswordModalOpen(true);
             }}
-            className="w-full rounded-lg border border-pink-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-sm transition hover:bg-pink-50 sm:w-auto"
+            className="w-full rounded-lg border border-[var(--muted)] bg-white px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] shadow-sm transition hover:bg-[var(--background-soft)] sm:w-auto"
           >
             Change Password
           </button>
           <button
             type="button"
             onClick={() => setProfileModalOpen(true)}
-            className="w-full rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600 sm:w-auto"
+            className="w-full rounded-lg bg-[var(--background-soft)]0 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] sm:w-auto"
           >
             Edit Profile
           </button>
@@ -374,7 +374,7 @@ export default function AccountPage() {
       </div>
 
       {feedback && (
-        <div className="rounded-lg border border-pink-200 bg-pink-50 px-4 py-3 text-sm text-pink-800">
+        <div className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-3 text-sm text-[var(--accent-stronger)]">
           {feedback}
         </div>
       )}
@@ -385,9 +385,9 @@ export default function AccountPage() {
       )}
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)]">
-        <section className="rounded-xl border border-pink-200 bg-white/70 p-6 shadow-sm">
+        <section className="rounded-xl border border-[var(--muted)] bg-white/70 p-6 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="h-16 w-16 overflow-hidden rounded-full bg-pink-50 ring-2 ring-pink-200">
+            <div className="h-16 w-16 overflow-hidden rounded-full bg-[var(--background-soft)] ring-2 ring-[var(--muted)]">
               <Image
                 src={avatarUrl}
                 alt={profile.name}
@@ -398,8 +398,8 @@ export default function AccountPage() {
             </div>
             <div className="min-w-0 space-y-2">
               <div className="inline-flex items-center gap-2">
-                <h2 className="break-words text-lg font-semibold text-pink-900">{profile.name}</h2>
-                {/* <span className="rounded-full bg-pink-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-pink-700">
+                <h2 className="break-words text-lg font-semibold text-[var(--accent-stronger)]">{profile.name}</h2>
+                {/* <span className="rounded-full bg-[var(--muted)] px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-[var(--accent-strong)]">
                   {profile.tier}
                 </span> */}
               </div>
@@ -424,11 +424,11 @@ export default function AccountPage() {
           </div>
         </section>
 
-        <section className="flex flex-col gap-4 rounded-xl border border-pink-200 bg-white/70 p-6 shadow-sm">
+        <section className="flex flex-col gap-4 rounded-xl border border-[var(--muted)] bg-white/70 p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-pink-700">Loyalty Summary</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Loyalty Summary</h2>
             {loyalty?.current_tier.badge_image_url && (
-              <div className="h-8 w-8 overflow-hidden rounded-full bg-pink-50">
+              <div className="h-8 w-8 overflow-hidden rounded-full bg-[var(--background-soft)]">
                 <Image
                   src={loyalty.current_tier.badge_image_url}
                   alt={`${loyalty.current_tier.name} badge`}
@@ -445,7 +445,7 @@ export default function AccountPage() {
               <div className="space-y-1 text-sm text-gray-800">
                 <p className="flex items-center gap-2">
                   <span className="text-gray-600">Current tier:</span>
-                  <span className="font-semibold text-pink-800">{loyalty.current_tier.name}</span>
+                  <span className="font-semibold text-[var(--accent-stronger)]">{loyalty.current_tier.name}</span>
                 </p>
                 <p className="text-xs text-gray-500">
                   Multiplier: x{loyalty.current_tier.multiplier} • Min spend: RM {loyalty.current_tier.min_spend.toFixed(2)}
@@ -453,20 +453,20 @@ export default function AccountPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="rounded-lg border border-pink-100 bg-pink-50 p-3">
-                  <p className="text-xs text-pink-700">Available Points</p>
-                  <p className="mt-1 text-xl font-semibold text-pink-900">{loyalty.points.available}</p>
+                <div className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] p-3">
+                  <p className="text-xs text-[var(--accent-strong)]">Available Points</p>
+                  <p className="mt-1 text-xl font-semibold text-[var(--accent-stronger)]">{loyalty.points.available}</p>
                 </div>
-                <div className="rounded-lg border border-pink-100 bg-pink-50 p-3">
-                  <p className="text-xs text-pink-700">Total Earned</p>
-                  <p className="mt-1 text-xl font-semibold text-pink-900">{loyalty.points.total_earned}</p>
+                <div className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] p-3">
+                  <p className="text-xs text-[var(--accent-strong)]">Total Earned</p>
+                  <p className="mt-1 text-xl font-semibold text-[var(--accent-stronger)]">{loyalty.points.total_earned}</p>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <div className="h-2 rounded-full bg-pink-100">
+                <div className="h-2 rounded-full bg-[var(--muted)]">
                   <div
-                    className="h-2 rounded-full bg-pink-500"
+                    className="h-2 rounded-full bg-[var(--background-soft)]0"
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
@@ -487,16 +487,16 @@ export default function AccountPage() {
         </section>
       </div>
 
-      <section className="rounded-xl border border-pink-200 bg-white/70 p-6 shadow-sm">
+      <section className="rounded-xl border border-[var(--muted)] bg-white/70 p-6 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-pink-700">Address Book</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Address Book</h2>
             <p className="text-xs text-gray-600">Manage your shipping and billing details.</p>
           </div>
           <button
             type="button"
             onClick={() => openAddressModal()}
-            className="w-full rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-sm font-semibold text-pink-700 transition hover:bg-pink-100 sm:w-auto"
+            className="w-full rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] transition hover:bg-[var(--muted)] sm:w-auto"
           >
             Add Address
           </button>
@@ -509,16 +509,16 @@ export default function AccountPage() {
             {profile.addresses.map((addr) => (
               <div
                 key={addr.id}
-                className="rounded-lg border border-pink-200 bg-pink-50 p-4 text-sm text-gray-800 shadow-sm"
+                className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] p-4 text-sm text-gray-800 shadow-sm"
               >
                 <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <div className="font-medium text-pink-900">{addr.label || "Address"}</div>
-                    {/* <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-pink-700">
+                    <div className="font-medium text-[var(--accent-stronger)]">{addr.label || "Address"}</div>
+                    {/* <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
                       {addr.type}
                     </span> */}
                     {addr.is_default && (
-                      <span className="rounded-full bg-pink-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
+                      <span className="rounded-full bg-[var(--accent-stronger)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
                         Default
                       </span>
                     )}
@@ -527,7 +527,7 @@ export default function AccountPage() {
                     <button
                       type="button"
                       onClick={() => openAddressModal(addr)}
-                      className="rounded-md border border-pink-200 px-3 py-1 text-xs font-semibold text-pink-700 hover:bg-pink-100"
+                      className="rounded-md border border-[var(--muted)] px-3 py-1 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--muted)]"
                     >
                       Edit
                     </button>
@@ -549,7 +549,7 @@ export default function AccountPage() {
                     )}
                   </div>
                 </div>
-                <div className="font-semibold text-pink-900">{addr.name}</div>
+                <div className="font-semibold text-[var(--accent-stronger)]">{addr.name}</div>
                 <div className="text-sm text-gray-700">{addr.phone}</div>
                 <div className="mt-1 text-sm text-gray-800">
                   {addr.line1}
@@ -589,7 +589,7 @@ export default function AccountPage() {
               type="button"
               onClick={handleProfileSave}
               disabled={savingProfile}
-              className="rounded-md bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-70"
+              className="rounded-md bg-[var(--background-soft)]0 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {savingProfile ? "Saving..." : "Save"}
             </button>
@@ -599,7 +599,7 @@ export default function AccountPage() {
         <div className="flex flex-col gap-6 md:flex-row">
           <div className="w-full max-w-xs md:w-auto">
             <div className="space-y-3">
-              <div className="h-48 w-full overflow-hidden rounded-lg border border-pink-200 bg-pink-50">
+              <div className="h-48 w-full overflow-hidden rounded-lg border border-[var(--muted)] bg-[var(--background-soft)]">
                 <Image
                   src={photoPreview || profile?.avatar || "/images/default_user_image.jpg"}
                   alt="Profile preview"
@@ -627,7 +627,7 @@ export default function AccountPage() {
                   }}
                   className="hidden"
                 />
-                <div className="w-full rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-center text-sm font-semibold text-pink-700 transition hover:bg-pink-100">
+                <div className="w-full rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2 text-center text-sm font-semibold text-[var(--accent-strong)] transition hover:bg-[var(--muted)]">
                   Upload Photo
                 </div>
               </label>
@@ -638,21 +638,21 @@ export default function AccountPage() {
           </div>
           <div className="flex-1 space-y-4">
             <label className="block space-y-1 text-sm">
-              <span className="text-pink-800">Name</span>
+              <span className="text-[var(--accent-stronger)]">Name</span>
               <input
                 type="text"
                 value={profileForm.name}
                 onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               />
             </label>
             <label className="block space-y-1 text-sm">
-              <span className="text-pink-800">Phone</span>
+              <span className="text-[var(--accent-stronger)]">Phone</span>
               <input
                 type="text"
                 value={profileForm.phone}
                 onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               />
             </label>
           </div>
@@ -696,7 +696,7 @@ export default function AccountPage() {
               type="button"
               onClick={handlePasswordChange}
               disabled={changingPassword}
-              className="rounded-md bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-70"
+              className="rounded-md bg-[var(--background-soft)]0 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {changingPassword ? "Updating..." : "Update Password"}
             </button>
@@ -722,7 +722,7 @@ export default function AccountPage() {
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })
                 }
-                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-pink-100/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-pink-200/25"
+                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--muted)]/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--muted)]/25"
                 placeholder="Current password"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -731,7 +731,7 @@ export default function AccountPage() {
                   onClick={() =>
                     setChangePasswordForm((prev) => ({ ...prev, showCurrent: !prev.showCurrent }))
                   }
-                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-[var(--background-soft)] hover:text-[var(--accent-strong)]"
                   aria-label={changePasswordForm.showCurrent ? "Hide current password" : "Show current password"}
                 >
                   {changePasswordForm.showCurrent ? "Hide" : "Show"}
@@ -757,14 +757,14 @@ export default function AccountPage() {
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })
                 }
-                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-pink-100/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-pink-200/25"
+                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--muted)]/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--muted)]/25"
                 placeholder="New password"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2">
                 <button
                   type="button"
                   onClick={() => setChangePasswordForm((prev) => ({ ...prev, showNew: !prev.showNew }))}
-                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-[var(--background-soft)] hover:text-[var(--accent-strong)]"
                   aria-label={changePasswordForm.showNew ? "Hide new password" : "Show new password"}
                 >
                   {changePasswordForm.showNew ? "Hide" : "Show"}
@@ -790,7 +790,7 @@ export default function AccountPage() {
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })
                 }
-                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-pink-100/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-pink-200/25"
+                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--muted)]/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--muted)]/25"
                 placeholder="Confirm new password"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -799,7 +799,7 @@ export default function AccountPage() {
                   onClick={() =>
                     setChangePasswordForm((prev) => ({ ...prev, showConfirm: !prev.showConfirm }))
                   }
-                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-[var(--background-soft)] hover:text-[var(--accent-strong)]"
                   aria-label={changePasswordForm.showConfirm ? "Hide confirm password" : "Show confirm password"}
                 >
                   {changePasswordForm.showConfirm ? "Hide" : "Show"}
@@ -827,7 +827,7 @@ export default function AccountPage() {
               type="button"
               onClick={handleAddressSave}
               disabled={savingAddress}
-              className="rounded-md bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-70"
+              className="rounded-md bg-[var(--background-soft)]0 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {savingAddress ? "Saving..." : editingAddress ? "Update" : "Save"}
             </button>
@@ -837,21 +837,21 @@ export default function AccountPage() {
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-pink-800">Label</span>
+              <span className="text-[var(--accent-stronger)]">Label</span>
               <input
                 type="text"
                 value={addressForm.label ?? ""}
                 onChange={(e) => setAddressForm({ ...addressForm, label: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
                 placeholder="e.g. Home"
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-pink-800">Type</span>
+              <span className="text-[var(--accent-stronger)]">Type</span>
               <select
                 value={addressForm.type}
                 onChange={(e) => setAddressForm({ ...addressForm, type: e.target.value as AddressFormState["type"] })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               >
                 <option value="shipping">Shipping</option>
                 {/* <option value="billing">Billing</option> */}
@@ -861,93 +861,93 @@ export default function AccountPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-pink-800">Recipient Name</span>
+              <span className="text-[var(--accent-stronger)]">Recipient Name</span>
               <input
                 type="text"
                 value={addressForm.name}
                 onChange={(e) => setAddressForm({ ...addressForm, name: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-pink-800">Phone</span>
+              <span className="text-[var(--accent-stronger)]">Phone</span>
               <input
                 type="text"
                 value={addressForm.phone}
                 onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               />
             </label>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
 
           <label className="space-y-1 text-sm">
-            <span className="text-pink-800">Address Line 1</span>
+            <span className="text-[var(--accent-stronger)]">Address Line 1</span>
             <input
               type="text"
               value={addressForm.line1}
               onChange={(e) => setAddressForm({ ...addressForm, line1: e.target.value })}
-              className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+              className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
             />
           </label>
 
           <label className="space-y-1 text-sm">
-            <span className="text-pink-800">Address Line 2</span>
+            <span className="text-[var(--accent-stronger)]">Address Line 2</span>
             <input
               type="text"
               value={addressForm.line2 ?? ""}
               onChange={(e) => setAddressForm({ ...addressForm, line2: e.target.value })}
-              className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+              className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
             />
           </label>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <label className="space-y-1 text-sm">
-              <span className="text-pink-800">City</span>
+              <span className="text-[var(--accent-stronger)]">City</span>
               <input
                 type="text"
                 value={addressForm.city}
                 onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-pink-800">State</span>
+              <span className="text-[var(--accent-stronger)]">State</span>
               <input
                 type="text"
                 value={addressForm.state ?? ""}
                 onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-pink-800">Postcode</span>
+              <span className="text-[var(--accent-stronger)]">Postcode</span>
               <input
                 type="text"
                 value={addressForm.postcode ?? ""}
                 onChange={(e) => setAddressForm({ ...addressForm, postcode: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               />
             </label>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-pink-800">Country</span>
+              <span className="text-[var(--accent-stronger)]">Country</span>
               <input
                 type="text"
                 value={addressForm.country}
                 onChange={(e) => setAddressForm({ ...addressForm, country: e.target.value })}
-                className="w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
               />
             </label>
-            <label className="mt-6 flex items-center gap-2 text-sm text-pink-800">
+            <label className="mt-6 flex items-center gap-2 text-sm text-[var(--accent-stronger)]">
               <input
                 type="checkbox"
                 checked={!!addressForm.is_default}
                 onChange={(e) => setAddressForm({ ...addressForm, is_default: e.target.checked })}
-                className="h-4 w-4 rounded border-pink-300 text-pink-600 focus:ring-pink-400"
+                className="h-4 w-4 rounded border-[var(--muted)] text-[var(--accent-strong)] focus:ring-[var(--accent-strong)]"
               />
               Set as default address
             </label>

@@ -111,7 +111,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
         </div>
 
         {error && (
-          <div className="mb-3 rounded bg-[var(--muted)] px-3 py-2 text-sm text-[#b8527a]">
+          <div className="mb-3 rounded bg-[var(--muted)] px-3 py-2 text-sm text-[var(--accent-stronger)]">
             {error}
           </div>
         )}

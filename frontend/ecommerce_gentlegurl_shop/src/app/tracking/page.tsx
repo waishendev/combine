@@ -39,7 +39,7 @@ export default function TrackingPage() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-12">
-      <div className="rounded-3xl bg-white/80 p-6 shadow-sm ring-1 ring-pink-100">
+      <div className="rounded-3xl bg-white/80 p-6 shadow-sm ring-1 ring-[var(--muted)]">
         <h1 className="text-2xl font-semibold text-[var(--accent-strong)]">Track your order</h1>
         <form onSubmit={handleSubmit} className="mt-6 grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -50,7 +50,7 @@ export default function TrackingPage() {
               value={orderNo}
               onChange={(e) => setOrderNo(e.target.value)}
               required
-              className="w-full rounded-xl border border-pink-100 bg-[var(--background-soft)]/60 px-3 py-2 text-[var(--foreground)] shadow-inner focus:border-[var(--accent-strong)] focus:outline-none"
+              className="w-full rounded-xl border border-[var(--muted)] bg-[var(--background-soft)]/60 px-3 py-2 text-[var(--foreground)] shadow-inner focus:border-[var(--accent-strong)] focus:outline-none"
               placeholder="e.g. ORD2025..."
             />
           </div>
@@ -74,7 +74,7 @@ export default function TrackingPage() {
       </div>
 
       {result && (
-        <div className="space-y-4 rounded-3xl bg-white/90 p-6 shadow-sm ring-1 ring-pink-100">
+        <div className="space-y-4 rounded-3xl bg-white/90 p-6 shadow-sm ring-1 ring-[var(--muted)]">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-wide text-[var(--foreground)]/60">Order</p>
@@ -117,8 +117,8 @@ export default function TrackingPage() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-pink-100">
-            <div className="divide-y divide-pink-50">
+          <div className="overflow-hidden rounded-2xl border border-[var(--muted)]">
+            <div className="divide-y divide-[var(--background-soft)]">
               {/* Table Header */}
               <div className="bg-[var(--background-soft)] hidden grid-cols-12 gap-4 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70 sm:grid">
                 <div className="col-span-6">Items</div>

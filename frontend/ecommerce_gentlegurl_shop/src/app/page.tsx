@@ -40,10 +40,10 @@ export default async function HomePage() {
           <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#ec4899]">Featured</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Featured</p>
                 <h2 className="text-2xl font-semibold text-gray-900 sm:text-3xl">Featured Products</h2>
               </div>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#ec4899]/40 to-transparent sm:ml-6" />
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/40 to-transparent sm:ml-6" />
             </div>
             <div className="mt-6">
               <ProductGrid items={data.featured_products} />
@@ -55,10 +55,10 @@ export default async function HomePage() {
           <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7c3aed]">New Arrivals</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">New Arrivals</p>
                 <h2 className="text-2xl font-semibold text-gray-900 sm:text-3xl">New Products</h2>
               </div>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#7c3aed]/35 to-transparent sm:ml-6" />
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/35 to-transparent sm:ml-6" />
             </div>
             <div className="mt-6">
               <ProductGrid items={data.new_products} />
@@ -70,10 +70,10 @@ export default async function HomePage() {
           <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#fb7185]">Community Favorites</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Community Favorites</p>
                 <h2 className="text-2xl font-semibold text-gray-900 sm:text-3xl">Best Sellers</h2>
               </div>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#fb7185]/40 to-transparent sm:ml-6" />
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/40 to-transparent sm:ml-6" />
             </div>
             <div className="mt-6">
               <ProductGrid items={data.best_sellers} />

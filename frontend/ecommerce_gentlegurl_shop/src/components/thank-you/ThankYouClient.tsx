@@ -274,12 +274,12 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6">
           <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-pink-100 px-6 py-4">
-              <h3 className="text-lg font-semibold text-pink-700">Upload Payment Slip</h3>
+            <div className="flex items-center justify-between border-b border-[var(--muted)] px-6 py-4">
+              <h3 className="text-lg font-semibold text-[var(--accent-strong)]">Upload Payment Slip</h3>
               <button
                 type="button"
                 onClick={closeModal}
-                className="rounded-full p-1 text-pink-600 transition hover:bg-pink-50"
+                className="rounded-full p-1 text-[var(--accent-strong)] transition hover:bg-[var(--background-soft)]"
                 aria-label="Close"
               >
                 <svg
@@ -300,7 +300,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               {/* Left side - Preview */}
               <div className="w-full md:w-1/2">
                 <div className="space-y-3">
-                  <div className="h-48 w-full overflow-hidden rounded-lg border border-pink-200 bg-pink-50 flex items-center justify-center">
+                  <div className="h-48 w-full overflow-hidden rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] flex items-center justify-center">
                     {previewUrl ? (
                       <Image
                         src={previewUrl}
@@ -313,15 +313,15 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                       
                     ) : selectedFile && !previewUrl ? (
                       <div className="text-center p-4">
-                        <p className="text-sm font-medium text-pink-700 break-words break-all">{selectedFile.name}</p>
-                        <p className="text-xs text-pink-600 mt-1">PDF file selected</p>
+                        <p className="text-sm font-medium text-[var(--accent-strong)] break-words break-all">{selectedFile.name}</p>
+                        <p className="text-xs text-[var(--accent-strong)] mt-1">PDF file selected</p>
                       </div>
                     ) : (
                       <div className="text-center p-4">
-                        <svg className="mx-auto h-12 w-12 text-pink-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="mx-auto h-12 w-12 text-[var(--muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
-                        <p className="text-sm text-pink-600 mt-2">No file chosen</p>
+                        <p className="text-sm text-[var(--accent-strong)] mt-2">No file chosen</p>
                       </div>
                     )}
                   </div>
@@ -334,7 +334,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                       onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
                       className="hidden"
                     />
-                    <div className="w-full rounded-lg border border-pink-300 bg-pink-50 px-4 py-2 text-center text-sm font-semibold text-pink-700 transition hover:bg-pink-100">
+                    <div className="w-full rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2 text-center text-sm font-semibold text-[var(--accent-strong)] transition hover:bg-[var(--muted)]">
                       {selectedFile ? "Choose Different File" : "Choose File"}
                     </div>
                   </label>
@@ -353,12 +353,12 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               <div className="w-full md:w-1/2 space-y-4">
                 <div>
                   <label className="block text-left text-sm">
-                    <span className="block text-pink-800 font-medium mb-2">Note (Optional)</span>
+                    <span className="block text-[var(--accent-stronger)] font-medium mb-2">Note (Optional)</span>
                     <textarea
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
                       placeholder="Add any additional notes about your payment..."
-                      className="mt-1 h-32 w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm leading-relaxed focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100 resize-none"
+                      className="mt-1 h-32 w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm leading-relaxed focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)] resize-none"
                     />
                   </label>
                 </div>
@@ -373,7 +373,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
             </div>
 
             {/* Footer - Buttons */}
-            <div className="flex items-center justify-end gap-3 border-t border-pink-100 px-6 py-4">
+            <div className="flex items-center justify-end gap-3 border-t border-[var(--muted)] px-6 py-4">
               <button
                 type="button"
                 onClick={closeModal}
@@ -386,7 +386,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 type="button"
                 onClick={handleUpload}
                 disabled={!selectedFile || isUploading}
-                className="rounded-md bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-70"
+                className="rounded-md bg-[var(--background-soft)]0 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isUploading ? "Uploading..." : "Confirm Upload"}
               </button>

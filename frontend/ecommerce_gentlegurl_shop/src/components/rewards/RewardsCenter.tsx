@@ -155,10 +155,10 @@ export function RewardsCenter() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <div className="rounded-2xl border border-pink-50 bg-white/80 p-6 shadow-sm">
+      <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-[#ec4899]">Rewards</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-[var(--accent-strong)]">Rewards</p>
             <h1 className="mt-2 text-3xl font-semibold text-gray-900">Rewards Center</h1>
             <p className="mt-1 text-sm text-gray-600">
               Discover vouchers, products, and more. Redeem when you have enough points.
@@ -179,8 +179,8 @@ export function RewardsCenter() {
               onClick={() => setFilter(item.value)}
               className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                 isActive
-                  ? "border-[#ec4899] bg-[#ec4899] text-white shadow-sm"
-                  : "border-pink-100 bg-white text-gray-700 hover:border-[#ec4899] hover:text-[#ec4899]"
+                  ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white shadow-sm"
+                  : "border-[var(--muted)] bg-white text-gray-700 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
               }`}
             >
               {item.label}
@@ -199,16 +199,16 @@ export function RewardsCenter() {
         {loadingRewards ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, idx) => (
-              <div key={idx} className="rounded-2xl border border-pink-50 bg-white/80 p-4 shadow-sm">
-                <div className="h-36 w-full rounded-xl bg-pink-50" />
-                <div className="mt-3 h-5 w-1/2 rounded bg-pink-50" />
-                <div className="mt-2 h-4 w-2/3 rounded bg-pink-50" />
-                <div className="mt-4 h-10 w-full rounded-full bg-pink-50" />
+              <div key={idx} className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm">
+                <div className="h-36 w-full rounded-xl bg-[var(--background-soft)]" />
+                <div className="mt-3 h-5 w-1/2 rounded bg-[var(--background-soft)]" />
+                <div className="mt-2 h-4 w-2/3 rounded bg-[var(--background-soft)]" />
+                <div className="mt-4 h-10 w-full rounded-full bg-[var(--background-soft)]" />
               </div>
             ))}
           </div>
         ) : filteredRewards.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-pink-100 bg-white/70 px-6 py-10 text-center text-sm text-gray-600">
+          <div className="rounded-xl border border-dashed border-[var(--muted)] bg-white/70 px-6 py-10 text-center text-sm text-gray-600">
             No rewards available for this filter right now. Please check back later.
           </div>
         ) : (
@@ -253,11 +253,11 @@ export function RewardsCenter() {
               return (
                 <div
                   key={reward.id}
-                  className="flex h-full flex-col justify-between rounded-2xl border border-pink-50 bg-white/80 p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+                  className="flex h-full flex-col justify-between rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
                 >
                   {isProduct ? (
                     <div className="space-y-3">
-                      <div className="relative h-40 w-full overflow-hidden rounded-xl bg-pink-50/70">
+                      <div className="relative h-40 w-full overflow-hidden rounded-xl bg-[var(--background-soft)]/70">
                         <Image
                           src={imageUrl}
                           alt={reward.title}
@@ -275,7 +275,7 @@ export function RewardsCenter() {
                         <p className="text-sm text-gray-600 line-clamp-3">{reward.description}</p>
                       )}
 
-                      <div className="flex items-center justify-between text-sm font-semibold text-[#ec4899]">
+                      <div className="flex items-center justify-between text-sm font-semibold text-[var(--accent-strong)]">
                         <span>{reward.points_required.toLocaleString()} pts</span>
                         <span className="text-xs font-medium text-gray-500">Product reward</span>
                       </div>
@@ -288,7 +288,7 @@ export function RewardsCenter() {
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
                           <Link
                             href={productLink}
-                            className="inline-flex items-center gap-1 font-semibold text-[#ec4899] transition hover:text-[#db2777]"
+                            className="inline-flex items-center gap-1 font-semibold text-[var(--accent-strong)] transition hover:text-[var(--accent-stronger)]"
                           >
                             View details
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
@@ -307,11 +307,11 @@ export function RewardsCenter() {
                             <p className="text-xs text-gray-600 line-clamp-2">{reward.description}</p>
                           )}
                         </div>
-                        <span className="rounded-full bg-pink-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#ec4899]">
+                        <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
                           Voucher
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-sm font-semibold text-[#ec4899]">
+                      <div className="flex items-center justify-between text-sm font-semibold text-[var(--accent-strong)]">
                         <span>{reward.points_required.toLocaleString()} pts</span>
                         {voucherBenefit && <span className="text-xs text-gray-700">{voucherBenefit}</span>}
                       </div>
@@ -337,8 +337,8 @@ export function RewardsCenter() {
                     disabled={shouldDisable}
                     className={`mt-4 inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
                       shouldDisable
-                        ? "cursor-not-allowed bg-pink-100 text-gray-500"
-                        : "bg-[#ec4899] text-white shadow-sm hover:bg-[#db2777]"
+                        ? "cursor-not-allowed bg-[var(--muted)] text-gray-500"
+                        : "bg-[var(--accent-strong)] text-white shadow-sm hover:bg-[var(--accent-stronger)]"
                     }`}
                   >
                     {buttonLabel}

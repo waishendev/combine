@@ -62,7 +62,7 @@ function SocialIcon({
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-pink-100 bg-white/70 px-3 py-1 text-xs text-[var(--foreground)]/80 shadow-sm">
+    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--muted)] bg-white/70 px-3 py-1 text-xs text-[var(--foreground)]/80 shadow-sm">
       <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
       {children}
     </span>
@@ -198,7 +198,7 @@ export function ShopFooter({ footer }: { footer?: HomepageFooter | null }) {
         </div>
 
         {/* Bottom */}
-        <div className="mt-12 border-t border-pink-100 py-5">
+        <div className="mt-12 border-t border-[var(--muted)] py-5">
           <div className="flex flex-col gap-2 text-center text-xs text-[var(--foreground)]/65 md:flex-row md:items-center md:justify-between md:text-left">
             <p>© {year} Gentlegurl Shop. All rights reserved.</p>
           </div>
