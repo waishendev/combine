@@ -14,7 +14,7 @@ export default async function OrderDetailPage({ params }: OrderPageProps) {
     redirect("/login");
   }
 
-  const order = await getOrderDetail(params.id);
+  const order = await getOrderDetail(Number(params.id));
 
   if (!order) {
     notFound();
@@ -45,8 +45,8 @@ export default async function OrderDetailPage({ params }: OrderPageProps) {
               <div className="font-medium">{order.payment_status}</div>
             </div>
             <div>
-              <div className="text-xs uppercase text-gray-500">Created At</div>
-              <div className="font-medium">{new Date(order.created_at).toLocaleString()}</div>
+              <div className="text-xs uppercase text-gray-500">Placed At</div>
+              <div className="font-medium">{order.placed_at ? new Date(order.placed_at).toLocaleString() : "-"}</div>
             </div>
             <div>
               <div className="text-xs uppercase text-gray-500">Subtotal</div>
@@ -104,14 +104,18 @@ export default async function OrderDetailPage({ params }: OrderPageProps) {
             <ul className="mt-3 space-y-2 text-sm text-blue-600">
               {order.slips.map((slip) => (
                 <li key={slip.id}>
-                  <a
-                    href={slip.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:underline"
-                  >
-                    View Payment Slip
-                  </a>
+                  {slip.file_url ? (
+                    <a
+                      href={slip.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      View Payment Slip
+                    </a>
+                  ) : (
+                    <span className="text-gray-500">No file available</span>
+                  )}
                 </li>
               ))}
             </ul>
