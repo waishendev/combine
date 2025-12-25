@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { OrderHeaderClient } from "./OrderHeaderClient";
 
@@ -19,6 +20,8 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   if (!orderId || !order) {
     return notFound();
   }
+
+  const receiptSlip = order.slips?.find((slip) => slip.type === "payment_slip") ?? null;
 
   return (
     <div className="space-y-6">
@@ -139,24 +142,27 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                 {order.bank_account.branch && <p>Branch: {order.bank_account.branch}</p>}
               </div>
             )}
-            {order.slips && order.slips.length > 0 && (
-              <div className="mt-3 space-y-2">
-                <p className="font-semibold">Payment Slips</p>
-                {order.slips.map((slip) => (
-                  <a
-                    key={slip.id}
-                    href={slip.file_url ?? "#"}
-                    className="block text-[var(--accent)] underline"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Slip #{slip.id} {slip.created_at ? `(${slip.created_at})` : ""}
-                  </a>
-                ))}
-              </div>
-            )}
           </div>
         </div>
+
+        {receiptSlip?.file_url && (
+          <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-[var(--foreground)]">Receipt</h3>
+            <div className="mt-3 space-y-2 text-sm text-[var(--foreground)]/80">
+              <a href={receiptSlip.file_url} target="_blank" rel="noreferrer">
+                <Image
+                  src={receiptSlip.file_url}
+                  alt={`Payment slip for order ${order.order_no}`}
+                  width={640}
+                  height={800}
+                  className="h-auto w-full rounded-xl border border-[var(--muted)] object-contain"
+                  unoptimized
+                />
+              </a>
+              {receiptSlip.created_at && <p>Uploaded at: {receiptSlip.created_at}</p>}
+            </div>
+          </div>
+        )}
 
         {order.returns && order.returns.length > 0 && (
           <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm">

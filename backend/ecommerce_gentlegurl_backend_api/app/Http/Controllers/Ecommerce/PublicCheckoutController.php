@@ -22,6 +22,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -425,18 +426,61 @@ class PublicCheckoutController extends Controller
 
         $filePath = $request->file('slip')->store('order-slips', 'public');
 
-        $upload = OrderUpload::create([
-            'order_id' => $order->id,
-            'type' => 'payment_slip',
-            'file_path' => $filePath,
-            'note' => $validated['note'] ?? null,
-            'status' => 'pending',
-        ]);
+        $result = DB::transaction(function () use ($order, $filePath, $validated) {
+            $existingSlips = $order->uploads()
+                ->where('type', 'payment_slip')
+                ->lockForUpdate()
+                ->get();
+            $pathsToDelete = [];
 
-        if ($order->status === 'pending') {
-            $order->status = 'processing';
-            $order->save();
+            $primarySlip = $existingSlips->first();
+            if ($primarySlip) {
+                if ($primarySlip->file_path) {
+                    $pathsToDelete[] = $primarySlip->file_path;
+                }
+
+                $primarySlip->fill([
+                    'file_path' => $filePath,
+                    'note' => $validated['note'] ?? null,
+                    'status' => 'pending',
+                    'reviewed_by' => null,
+                    'reviewed_at' => null,
+                ]);
+                $primarySlip->save();
+            } else {
+                $primarySlip = OrderUpload::create([
+                    'order_id' => $order->id,
+                    'type' => 'payment_slip',
+                    'file_path' => $filePath,
+                    'note' => $validated['note'] ?? null,
+                    'status' => 'pending',
+                ]);
+            }
+
+            $existingSlips->skip(1)->each(function (OrderUpload $slip) use (&$pathsToDelete) {
+                if ($slip->file_path) {
+                    $pathsToDelete[] = $slip->file_path;
+                }
+                $slip->delete();
+            });
+
+            if ($order->status === 'pending') {
+                $order->status = 'processing';
+                $order->save();
+            }
+
+            return [
+                'upload' => $primarySlip->fresh(),
+                'paths' => $pathsToDelete,
+                'status' => $order->status,
+            ];
+        });
+
+        foreach (array_unique($result['paths']) as $path) {
+            Storage::disk('public')->delete($path);
         }
+
+        $upload = $result['upload'];
 
         return $this->respond([
             'upload' => [
@@ -447,7 +491,7 @@ class PublicCheckoutController extends Controller
                 'created_at' => $upload->created_at,
             ],
             'latest_slip_url' => $upload->file_url,
-            'status' => $order->status === 'processing' ? 'processing' : 'pending verification',
+            'status' => $result['status'] === 'processing' ? 'processing' : 'pending verification',
         ], __('Payment slip uploaded.'));
     }
 
