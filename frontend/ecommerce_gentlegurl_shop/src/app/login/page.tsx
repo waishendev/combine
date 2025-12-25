@@ -14,6 +14,7 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const redirectTarget = useMemo(() => {
     const target = getSafeRedirect(searchParams.get("redirect"));
@@ -22,14 +23,17 @@ export default function LoginPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (customer || getAuthFlag()) {
+    if (customer && !isRedirecting) {
+      setIsSubmitting(false); // Reset form submission state
+      setIsRedirecting(true);
+      // Small delay to show loading overlay before redirect
       router.replace(redirectTarget ?? "/");
     }
-  }, [customer, redirectTarget, router]);
+  }, [customer, redirectTarget, router, isRedirecting]);
 
   return (
     <>
-      <LoadingOverlay show={isSubmitting} message="Signing in..." />
+      <LoadingOverlay show={isSubmitting || isRedirecting} message="Signing in..." />
       <div className="min-h-[70vh]">
       <div className="relative mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center px-4 py-14">
         <div className="w-full max-w-md">
