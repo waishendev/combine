@@ -221,19 +221,35 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         const paymentStatusValue = override.payment_status ?? order.payment_status;
         const statusKey = (statusValue || "").toLowerCase();
         const reserveExpiresAt = order.reserve_expires_at ? new Date(order.reserve_expires_at) : null;
-        const isExpired = reserveExpiresAt ? reserveExpiresAt.getTime() < Date.now() : false;
-        const canPay = statusKey === "pending" && paymentStatusValue === "unpaid" && !isExpired;
-        const isProcessing = statusKey === "processing" && !isExpired;
-        const canUploadSlip = order.payment_method === "manual_transfer" && (canPay || isProcessing);
-        const displayStatus = isExpired ? "expired" : statusValue;
+        const remainingMinutes = reserveExpiresAt
+          ? Math.max(0, Math.ceil((reserveExpiresAt.getTime() - Date.now()) / 60000))
+          : null;
+        const isPendingUnpaid = statusKey === "pending" && paymentStatusValue === "unpaid";
+        const isProcessing = statusKey === "processing" && paymentStatusValue === "unpaid";
+        const canPay = isPendingUnpaid;
+        const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
+        const displayStatus =
+          statusKey === "pending" && paymentStatusValue === "unpaid"
+            ? `Pending Payment${remainingMinutes !== null ? ` (${remainingMinutes} min left)` : ""}`
+            : statusKey === "processing" && paymentStatusValue === "unpaid"
+              ? "Waiting for verification"
+              : statusKey === "paid" && paymentStatusValue === "paid"
+                ? "Paid"
+                : statusKey === "completed" && paymentStatusValue === "paid"
+                  ? "Completed"
+                  : statusKey === "cancelled"
+                    ? "Cancelled"
+                    : statusKey === "refunded" || paymentStatusValue === "refunded"
+                      ? "Refunded"
+                      : statusValue;
         const badgeStyle =
-          statusKey === "pending" && !isExpired
+          statusKey === "pending" && paymentStatusValue === "unpaid"
             ? "bg-amber-50 text-amber-700 border-amber-200"
             : statusKey === "paid" || statusKey === "completed"
               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
             : statusKey === "shipped"
               ? "bg-blue-50 text-blue-700 border-blue-200"
-              : statusKey === "cancelled" || isExpired
+              : statusKey === "cancelled"
                 ? "bg-rose-50 text-rose-700 border-rose-200"
                 : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
 
@@ -248,15 +264,9 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 <p className="text-lg font-semibold text-[var(--foreground)]">{order.order_no}</p>
               </div>
               <div className="flex items-center gap-2">
-                {isProcessing ? (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
-                    Waiting for verification
-                  </span>
-                ) : (
-                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
-                    {displayStatus}
-                  </span>
-                )}
+                <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
+                  {displayStatus}
+                </span>
                 <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
                   {paymentStatusValue}
                 </span>

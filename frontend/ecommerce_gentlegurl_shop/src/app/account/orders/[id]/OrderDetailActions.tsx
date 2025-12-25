@@ -10,7 +10,6 @@ type OrderDetailActionsProps = {
   status: string;
   paymentStatus: string;
   paymentMethod?: string | null;
-  reserveExpiresAt?: string | null;
 };
 
 export function OrderDetailActions({
@@ -18,7 +17,6 @@ export function OrderDetailActions({
   status,
   paymentStatus,
   paymentMethod,
-  reserveExpiresAt,
 }: OrderDetailActionsProps) {
   const router = useRouter();
   const [isCancelling, setIsCancelling] = useState(false);
@@ -26,17 +24,14 @@ export function OrderDetailActions({
   const [showSlipModal, setShowSlipModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reserveExpiry = reserveExpiresAt ? new Date(reserveExpiresAt) : null;
-  const isExpired = reserveExpiry ? reserveExpiry.getTime() < Date.now() : false;
   const statusKey = status.toLowerCase();
-  const canPay = statusKey === "pending" && paymentStatus === "unpaid" && !isExpired;
+  const canPay = statusKey === "pending" && paymentStatus === "unpaid";
   const canUploadSlip =
     paymentMethod === "manual_transfer" &&
-    !isExpired &&
     (canPay || (statusKey === "processing" && paymentStatus !== "paid"));
   const isBillplzPayment = paymentMethod?.startsWith("billplz_");
-  const showExpired = statusKey === "cancelled" || isExpired;
-  const showProcessing = statusKey === "processing" && !showExpired;
+  const showCancelled = statusKey === "cancelled";
+  const showProcessing = statusKey === "processing";
 
   const handleCancel = async () => {
     setError(null);
@@ -89,7 +84,7 @@ export function OrderDetailActions({
     }
   };
 
-  if (!canPay && !showExpired && !showProcessing) {
+  if (!canPay && !showCancelled && !showProcessing) {
     return null;
   }
 
@@ -130,7 +125,7 @@ export function OrderDetailActions({
             )}
           </>
         ) : (
-          <span className="text-xs font-semibold uppercase text-rose-600">Expired / Cancelled</span>
+          <span className="text-xs font-semibold uppercase text-rose-600">Cancelled</span>
         )}
       </div>
       {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}

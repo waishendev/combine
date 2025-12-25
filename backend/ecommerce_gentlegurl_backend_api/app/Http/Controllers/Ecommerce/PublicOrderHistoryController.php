@@ -208,18 +208,10 @@ class PublicOrderHistoryController extends Controller
             return $this->respondError(__('Order cannot be cancelled.'), 422);
         }
 
-        if ($this->orderReserveService->isExpired($order)) {
-            return $this->respondError(__('Order reservation has expired.'), 422);
-        }
-
         DB::transaction(function () use ($order) {
             $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
 
             if (!$lockedOrder || $lockedOrder->status !== 'pending' || $lockedOrder->payment_status !== 'unpaid') {
-                return;
-            }
-
-            if ($this->orderReserveService->isExpired($lockedOrder)) {
                 return;
             }
 
@@ -251,10 +243,6 @@ class PublicOrderHistoryController extends Controller
 
         if ($order->status !== 'pending' || $order->payment_status !== 'unpaid') {
             return $this->respondError(__('Order cannot be paid.'), 422);
-        }
-
-        if ($this->orderReserveService->isExpired($order)) {
-            return $this->respondError(__('Order reservation has expired.'), 422);
         }
 
         if (!str_starts_with((string) $order->payment_method, 'billplz_')) {
