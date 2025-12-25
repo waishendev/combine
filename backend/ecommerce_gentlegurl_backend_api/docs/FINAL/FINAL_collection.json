@@ -1461,6 +1461,315 @@
                   "response": []
                 }
               ]
+            },
+            {
+              "name": "List Product Reviews",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/products/{{product_slug}}/reviews",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "products",
+                    "{{product_slug}}",
+                    "reviews"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Review Eligibility",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/products/{{product_slug}}/review-eligibility",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "products",
+                    "{{product_slug}}",
+                    "review-eligibility"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Promotions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/promotions",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "promotions"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Marquees",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/marquees",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "marquees"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Membership Tiers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/membership/tiers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "membership",
+                    "tiers"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Shipping Info",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/shipping",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "shipping"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Store Locations",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/store-locations",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "store-locations"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Show Store Location",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/store-locations/{{store_location_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "store-locations",
+                    "{{store_location_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Review Settings",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/reviews/settings",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "reviews",
+                    "settings"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Page Reviews",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/reviews",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "reviews"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Public Bank Accounts",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/bank-accounts",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "bank-accounts"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Payment Methods",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/payment-methods",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "payment-methods"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Track Order",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/orders/track",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "orders",
+                    "track"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_no\": \"ORDER-0001\",\n  \"email\": \"customer@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
             }
           ]
         },
