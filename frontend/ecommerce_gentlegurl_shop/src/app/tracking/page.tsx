@@ -118,10 +118,15 @@ export default function TrackingPage() {
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-pink-100">
-            <div className="bg-[var(--background-soft)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-              Items
-            </div>
             <div className="divide-y divide-pink-50">
+              {/* Table Header */}
+              <div className="bg-[var(--background-soft)] hidden grid-cols-12 gap-4 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70 sm:grid">
+                <div className="col-span-6">Items</div>
+                <div className="col-span-2 text-right">Unit</div>
+                <div className="col-span-2 text-right">Qty</div>
+                <div className="col-span-2 text-right">Subtotal</div>
+              </div>
+              {/* Table Rows */}
               {result.items.map((item, idx) => {
                 const imageUrl = item.product_image
                   ? normalizeImageUrl(item.product_image)
@@ -130,10 +135,10 @@ export default function TrackingPage() {
                 return (
                   <div
                     key={`${item.product_name}-${idx}`}
-                    className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="grid grid-cols-12 gap-4 px-4 py-3 sm:items-center"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="h-12 w-12 overflow-hidden rounded-lg bg-[var(--muted)]">
+                    <div className="col-span-12 flex items-center gap-3 sm:col-span-6">
+                      <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-[var(--muted)]">
                         <Image
                           src={imageUrl}
                           alt={item.product_name}
@@ -144,11 +149,16 @@ export default function TrackingPage() {
                       </div>
                       <div className="font-medium text-[var(--foreground)]">{item.product_name}</div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--foreground)]/70">
-                      <span>Qty: {item.quantity}</span>
-                      <span>RM {Number(item.unit_price).toFixed(2)}</span>
+                    <div className="col-span-6 text-right text-sm text-[var(--foreground)]/70 sm:col-span-2 sm:text-right">
+                      <span className="sm:hidden">Unit: </span>
+                      RM {Number(item.unit_price).toFixed(2)}
                     </div>
-                    <div className="text-right font-semibold text-[var(--foreground)]">
+                    <div className="col-span-6 text-right text-sm text-[var(--foreground)]/70 sm:col-span-2 sm:text-right">
+                      <span className="sm:hidden">Qty: </span>
+                      {item.quantity}
+                    </div>
+                    <div className="col-span-12 text-right font-semibold text-[var(--foreground)] sm:col-span-2">
+                      <span className="sm:hidden">Subtotal: </span>
                       RM {Number(item.line_total).toFixed(2)}
                     </div>
                   </div>
