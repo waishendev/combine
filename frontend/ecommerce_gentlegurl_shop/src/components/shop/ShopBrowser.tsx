@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ProductGrid from "@/components/products/ProductGrid";
 import { getOrCreateSessionToken } from "@/lib/sessionToken";
@@ -51,71 +51,134 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   const router = useRouter();
   const pathname = usePathname();
 
+  const page = useMemo(() => Number(searchParams?.get("page")) || 1, [searchParams]);
+  const querySearch = searchParams?.get("q") ?? "";
+  const querySort = searchParams?.get("sort") ?? SORT_OPTIONS[0].value;
+  const queryCategory = searchParams?.get("category") ?? null;
+  const queryMinPrice = searchParams?.get("min_price") ?? "";
+  const queryMaxPrice = searchParams?.get("max_price") ?? "";
+
   const [menus, setMenus] = useState<ShopMenu[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [meta, setMeta] = useState<ProductsMeta>({
-    currentPage: Number(searchParams?.get("page")) || 1,
+    currentPage: page,
     lastPage: 1,
     total: 0,
   });
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(
-    () => searchParams?.get("category") ?? null,
-  );
-  const [searchTerm, setSearchTerm] = useState<string>(
-    () => searchParams?.get("q") ?? "",
-  );
-  const [debouncedSearch, setDebouncedSearch] = useState<string>(
-    () => searchParams?.get("q") ?? "",
-  );
-  const [sort, setSort] = useState<string>(
-    () => searchParams?.get("sort") ?? SORT_OPTIONS[0].value,
-  );
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(queryCategory);
+  const [searchTerm, setSearchTerm] = useState<string>(querySearch);
+  const [debouncedSearch, setDebouncedSearch] = useState<string>(querySearch);
+  const [sort, setSort] = useState<string>(querySort);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuNotFound, setMenuNotFound] = useState(false);
-  const [page, setPage] = useState<number>(
-    () => Number(searchParams?.get("page")) || 1,
+  const [minPriceInput, setMinPriceInput] = useState<string>(queryMinPrice);
+  const [maxPriceInput, setMaxPriceInput] = useState<string>(queryMaxPrice);
+  const [appliedMinPrice, setAppliedMinPrice] = useState<string>(queryMinPrice);
+  const [appliedMaxPrice, setAppliedMaxPrice] = useState<string>(queryMaxPrice);
+  const requestIdRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const pushParams = useCallback(
+    ({
+      nextSearch = debouncedSearch,
+      nextSort = sort,
+      nextCategory = selectedCategory,
+      nextMinPrice = appliedMinPrice,
+      nextMaxPrice = appliedMaxPrice,
+      nextPage = page,
+    }: {
+      nextSearch?: string;
+      nextSort?: string;
+      nextCategory?: string | null;
+      nextMinPrice?: string;
+      nextMaxPrice?: string;
+      nextPage?: number;
+    } = {}) => {
+      const params = new URLSearchParams();
+
+      if (nextSearch) params.set("q", nextSearch);
+      if (nextSort && nextSort !== SORT_OPTIONS[0].value) params.set("sort", nextSort);
+      if (nextCategory) params.set("category", nextCategory);
+      if (nextMinPrice) params.set("min_price", nextMinPrice);
+      if (nextMaxPrice) params.set("max_price", nextMaxPrice);
+      if (nextPage > 1) params.set("page", nextPage.toString());
+
+      const queryString = params.toString();
+      const nextUrl = queryString ? `${pathname}?${queryString}` : pathname;
+      const currentQuery = searchParams?.toString() ?? "";
+      const currentUrl = currentQuery ? `${pathname}?${currentQuery}` : pathname;
+
+      if (nextUrl !== currentUrl) {
+        router.push(nextUrl, { scroll: false });
+      }
+    },
+    [
+      appliedMaxPrice,
+      appliedMinPrice,
+      debouncedSearch,
+      page,
+      pathname,
+      router,
+      searchParams,
+      selectedCategory,
+      sort,
+    ],
   );
-  const [minPriceInput, setMinPriceInput] = useState<string>(
-    () => searchParams?.get("min_price") ?? "",
-  );
-  const [maxPriceInput, setMaxPriceInput] = useState<string>(
-    () => searchParams?.get("max_price") ?? "",
-  );
-  const [appliedMinPrice, setAppliedMinPrice] = useState<string>(
-    () => searchParams?.get("min_price") ?? "",
-  );
-  const [appliedMaxPrice, setAppliedMaxPrice] = useState<string>(
-    () => searchParams?.get("max_price") ?? "",
-  );
+
+  useEffect(() => {
+    if (searchTerm !== querySearch) {
+      setSearchTerm(querySearch);
+    }
+    if (debouncedSearch !== querySearch) {
+      setDebouncedSearch(querySearch);
+    }
+    if (sort !== querySort) {
+      setSort(querySort);
+    }
+    if (selectedCategory !== queryCategory) {
+      setSelectedCategory(queryCategory);
+    }
+    if (minPriceInput !== queryMinPrice) {
+      setMinPriceInput(queryMinPrice);
+    }
+    if (maxPriceInput !== queryMaxPrice) {
+      setMaxPriceInput(queryMaxPrice);
+    }
+    if (appliedMinPrice !== queryMinPrice) {
+      setAppliedMinPrice(queryMinPrice);
+    }
+    if (appliedMaxPrice !== queryMaxPrice) {
+      setAppliedMaxPrice(queryMaxPrice);
+    }
+  }, [
+    appliedMaxPrice,
+    appliedMinPrice,
+    debouncedSearch,
+    maxPriceInput,
+    minPriceInput,
+    queryCategory,
+    queryMaxPrice,
+    queryMinPrice,
+    querySearch,
+    querySort,
+    searchTerm,
+    selectedCategory,
+    sort,
+  ]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedSearch(searchTerm.trim());
+      const nextSearch = searchTerm.trim();
+      setDebouncedSearch(nextSearch);
+
+      if (nextSearch !== querySearch) {
+        pushParams({ nextSearch, nextPage: 1 });
+      }
     }, 400);
 
     return () => clearTimeout(handler);
-  }, [searchTerm]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [selectedCategory, debouncedSearch, sort, appliedMinPrice, appliedMaxPrice]);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-
-    if (debouncedSearch) params.set("q", debouncedSearch);
-    if (sort && sort !== SORT_OPTIONS[0].value) params.set("sort", sort);
-    if (selectedCategory) params.set("category", selectedCategory);
-    if (appliedMinPrice) params.set("min_price", appliedMinPrice);
-    if (appliedMaxPrice) params.set("max_price", appliedMaxPrice);
-    if (page > 1) params.set("page", page.toString());
-
-    const queryString = params.toString();
-    router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
-      scroll: false,
-    });
-  }, [debouncedSearch, sort, selectedCategory, appliedMinPrice, appliedMaxPrice, page, pathname, router]);
+  }, [pushParams, querySearch, searchTerm]);
 
   const fetchMenus = useCallback(async () => {
     try {
@@ -148,9 +211,16 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       return;
     }
 
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
       setIsLoading(true);
       setError(null);
+      setProducts([]);
 
       const params = new URLSearchParams();
       params.set("page", page.toString());
@@ -160,24 +230,24 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         params.set("menu_slug", menuSlug);
       }
 
-      if (selectedCategory) {
-        params.set("category_slug", selectedCategory);
+      if (queryCategory) {
+        params.set("category_slug", queryCategory);
       }
 
-      if (debouncedSearch) {
-        params.set("q", debouncedSearch);
+      if (querySearch) {
+        params.set("q", querySearch);
       }
 
-      if (sort) {
-        params.set("sort", sort);
+      if (querySort) {
+        params.set("sort", querySort);
       }
 
-      if (appliedMinPrice) {
-        params.set("min_price", appliedMinPrice);
+      if (queryMinPrice) {
+        params.set("min_price", queryMinPrice);
       }
 
-      if (appliedMaxPrice) {
-        params.set("max_price", appliedMaxPrice);
+      if (queryMaxPrice) {
+        params.set("max_price", queryMaxPrice);
       }
 
       // Add session_token from cookie for wishlist support
@@ -192,6 +262,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         `/api/proxy/public/shop/products?${params.toString()}`,
         {
           cache: "no-store",
+          signal: abortController.signal,
         },
       );
 
@@ -212,16 +283,32 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         total: metaPayload.total ?? items.length,
       };
 
-      setProducts(items);
-      setMeta(resolvedMeta);
+      if (requestIdRef.current === requestId && !abortController.signal.aborted) {
+        setProducts(items);
+        setMeta(resolvedMeta);
+      }
     } catch (err) {
+      if (abortController.signal.aborted) {
+        return;
+      }
       console.error("[ShopBrowser] Products error", err);
       setError("We couldn't load the products right now. Please try again soon.");
       setProducts([]);
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId && !abortController.signal.aborted) {
+        setIsLoading(false);
+      }
     }
-  }, [appliedMaxPrice, appliedMinPrice, debouncedSearch, menuNotFound, menuSlug, page, selectedCategory, sort]);
+  }, [
+    menuNotFound,
+    menuSlug,
+    page,
+    queryCategory,
+    queryMaxPrice,
+    queryMinPrice,
+    querySearch,
+    querySort,
+  ]);
 
   useEffect(() => {
     fetchMenus();
@@ -281,8 +368,11 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   const headerLabel = menuSlug ? `Shop / ${menuTitleLabel}` : "Shop";
 
   const handleApplyPrice = () => {
-    setAppliedMinPrice(minPriceInput.trim());
-    setAppliedMaxPrice(maxPriceInput.trim());
+    const nextMinPrice = minPriceInput.trim();
+    const nextMaxPrice = maxPriceInput.trim();
+    setAppliedMinPrice(nextMinPrice);
+    setAppliedMaxPrice(nextMaxPrice);
+    pushParams({ nextMinPrice, nextMaxPrice, nextPage: 1 });
   };
 
   const handleClearPrice = () => {
@@ -290,10 +380,12 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
     setMaxPriceInput("");
     setAppliedMinPrice("");
     setAppliedMaxPrice("");
+    pushParams({ nextMinPrice: "", nextMaxPrice: "", nextPage: 1 });
   };
 
   const handleSelectAll = () => {
     setSelectedCategory(null);
+    pushParams({ nextCategory: null, nextPage: 1 });
   };
 
   const mobileCategoryValue = selectedCategory
@@ -343,6 +435,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
 
                     const [, categorySlug] = value.split("::");
                     setSelectedCategory(categorySlug ?? null);
+                    pushParams({ nextCategory: categorySlug ?? null, nextPage: 1 });
                   }}
                   className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--ring)]/20"
                 >
@@ -396,6 +489,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                             type="button"
                             onClick={() => {
                               setSelectedCategory(category.slug);
+                              pushParams({ nextCategory: category.slug, nextPage: 1 });
                             }}
                             className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
                               isActive
@@ -435,7 +529,11 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                     </span>
                     <select
                       value={sort}
-                      onChange={(event) => setSort(event.target.value)}
+                      onChange={(event) => {
+                        const nextSort = event.target.value;
+                        setSort(nextSort);
+                        pushParams({ nextSort, nextPage: 1 });
+                      }}
                       className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm font-medium text-[color:var(--text-muted)] outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--ring)]/20"
                       aria-label="Sort products"
                     >
@@ -475,7 +573,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    onClick={() => pushParams({ nextPage: Math.max(1, page - 1) })}
                     disabled={meta.currentPage <= 1 || isLoading}
                     className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                   >
@@ -484,9 +582,9 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                   <button
                     type="button"
                     onClick={() =>
-                      setPage((current) =>
-                        meta.lastPage ? Math.min(meta.lastPage, current + 1) : current + 1,
-                      )
+                      pushParams({
+                        nextPage: meta.lastPage ? Math.min(meta.lastPage, page + 1) : page + 1,
+                      })
                     }
                     disabled={(meta.lastPage && meta.currentPage >= meta.lastPage) || isLoading}
                     className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
