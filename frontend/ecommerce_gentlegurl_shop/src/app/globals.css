@@ -33,31 +33,31 @@
 :root[data-theme="cream"] {
   --background: #fefbe8;
   --background-soft: #f0dfd5;
-  --foreground: #2a1f1a;
-  --accent: #d4b39b;
-  --accent-strong: #c28e73;
-  --accent-stronger: #b3785f;
-  --muted: #f5e6dd;
-  --card: #fffdf4;
-  --card-border: #e5d3c7;
-  --input-bg: #fff9ee;
-  --input-border: #e1cfc4;
+  --foreground: #2b211b;
+  --accent: #c8a686;
+  --accent-strong: #b78363;
+  --accent-stronger: #a97052;
+  --muted: #f6eade;
+  --card: #fffdf1;
+  --card-border: #e6d5c8;
+  --input-bg: #fff8ed;
+  --input-border: #e3d1c4;
   --text-muted: #6f5b50;
-  --ring: #d4b39b;
+  --ring: #d2ae90;
   --shadow: 0 12px 30px -20px rgba(70, 45, 35, 0.35);
-  --status-error: #b97a63;
-  --status-error-bg: #f7e5da;
-  --status-error-border: #e7c9b7;
-  --status-success: #2f7057;
-  --status-success-bg: #e8f3ea;
-  --status-success-border: #cde4d8;
+  --status-error: #b07257;
+  --status-error-bg: #f8e6db;
+  --status-error-border: #e9c9b8;
+  --status-success: #2f6f57;
+  --status-success-bg: #e7f2e9;
+  --status-success-border: #cde2d7;
   --status-warning: #b06a38;
   --status-warning-bg: #f7eadf;
   --status-warning-border: #e8cbb6;
-  --accent-rgb: 212 179 155;
-  --muted-rgb: 245 230 221;
+  --accent-rgb: 200 166 134;
+  --muted-rgb: 246 234 222;
   --background-soft-rgb: 240 223 213;
-  --review-background: #fffdf4;
+  --review-background: #fff9ee;
 }
 
 body {
