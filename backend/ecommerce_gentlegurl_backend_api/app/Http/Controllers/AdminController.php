@@ -13,11 +13,10 @@ class AdminController extends Controller
     {
         $perPage = $request->integer('per_page', 15);
         $search = $request->string('search')->toString();
-        $superAdminRole = $this->superAdminRoleName();
 
         $admins = User::with('roles')
-            ->whereDoesntHave('roles', function ($query) use ($superAdminRole) {
-                $query->where('name', $superAdminRole);
+            ->whereDoesntHave('roles', function ($query) {
+                $query->where('is_system', true);
             })
             ->when($search, function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
@@ -51,7 +50,7 @@ class AdminController extends Controller
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
-        $roleIds = $this->filterSuperAdminRoleIds($validated['role_ids'] ?? []);
+        $roleIds = $this->filterSystemRoleIds($validated['role_ids'] ?? []);
         $user->roles()->sync($roleIds);
 
         return $this->respond($user->load('roles'), __('Admin created successfully.'));
@@ -59,7 +58,7 @@ class AdminController extends Controller
 
     public function show(User $admin)
     {
-        if ($this->isSuperAdmin($admin)) {
+        if ($this->isSystemAdmin($admin)) {
             abort(404);
         }
 
@@ -68,7 +67,7 @@ class AdminController extends Controller
 
     public function update(Request $request, User $admin)
     {
-        if ($this->isSuperAdmin($admin)) {
+        if ($this->isSystemAdmin($admin)) {
             abort(404);
         }
 
@@ -91,7 +90,7 @@ class AdminController extends Controller
         $admin->save();
 
         if ($request->has('role_ids')) {
-            $roleIds = $this->filterSuperAdminRoleIds($validated['role_ids'] ?? []);
+            $roleIds = $this->filterSystemRoleIds($validated['role_ids'] ?? []);
             $admin->roles()->sync($roleIds);
         }
 
@@ -100,7 +99,7 @@ class AdminController extends Controller
 
     public function destroy(User $admin)
     {
-        if ($this->isSuperAdmin($admin)) {
+        if ($this->isSystemAdmin($admin)) {
             abort(404);
         }
 
@@ -109,27 +108,22 @@ class AdminController extends Controller
         return $this->respond(null, __('Admin deleted successfully.'));
     }
 
-    private function superAdminRoleName(): string
+    private function isSystemAdmin(User $admin): bool
     {
-        return config('auth.super_admin_role', 'super_admin');
+        return $admin->roles()->where('is_system', true)->exists();
     }
 
-    private function isSuperAdmin(User $admin): bool
+    private function filterSystemRoleIds(array $roleIds): array
     {
-        return $admin->roles()->where('name', $this->superAdminRoleName())->exists();
-    }
-
-    private function filterSuperAdminRoleIds(array $roleIds): array
-    {
-        $superAdminRoleId = Role::where('name', $this->superAdminRoleName())->value('id');
-
-        if (!$superAdminRoleId) {
+        if (empty($roleIds)) {
             return $roleIds;
         }
 
-        return array_values(array_filter(
-            $roleIds,
-            fn ($roleId) => (int) $roleId !== (int) $superAdminRoleId
-        ));
+        return Role::whereIn('id', $roleIds)
+            ->where('is_system', false)
+            ->pluck('id')
+            ->map(fn ($roleId) => (int) $roleId)
+            ->values()
+            ->all();
     }
 }

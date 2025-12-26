@@ -10,9 +10,8 @@ class RoleController extends Controller
 {
     public function index(Request $request)
     {
-        $superAdminRole = $this->superAdminRoleName();
         $roles = Role::with('permissions')
-            ->where('name', '!=', $superAdminRole)
+            ->where('is_system', false)
             ->paginate($request->integer('per_page', 15));
 
         return $this->respond($roles);
@@ -20,21 +19,21 @@ class RoleController extends Controller
 
     public function store(Request $request)
     {
-        $superAdminRole = $this->superAdminRoleName();
-
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:100', 'unique:roles,name', Rule::notIn([$superAdminRole])],
+            'name' => ['required', 'string', 'max:100', 'unique:roles,name'],
             'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
             'permission_ids' => ['array'],
             'permission_ids.*' => ['integer', 'exists:permissions,id'],
         ]);
 
-        $role = Role::create([
+        $role = new Role([
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
             'is_active' => $validated['is_active'] ?? true,
         ]);
+        $role->is_system = false;
+        $role->save();
 
         $role->permissions()->sync($validated['permission_ids'] ?? []);
 
@@ -43,15 +42,14 @@ class RoleController extends Controller
 
     public function show(Role $role)
     {
-        $this->ensureNotSuperAdminRole($role);
+        $this->ensureNotSystemRole($role);
 
         return $this->respond($role->load('permissions'));
     }
 
     public function update(Request $request, Role $role)
     {
-        $this->ensureNotSuperAdminRole($role);
-        $superAdminRole = $this->superAdminRoleName();
+        $this->ensureNotSystemRole($role);
 
         $validated = $request->validate([
             'name' => [
@@ -59,7 +57,6 @@ class RoleController extends Controller
                 'string',
                 'max:100',
                 Rule::unique('roles', 'name')->ignore($role->id),
-                Rule::notIn([$superAdminRole]),
             ],
             'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
@@ -79,21 +76,16 @@ class RoleController extends Controller
 
     public function destroy(Role $role)
     {
-        $this->ensureNotSuperAdminRole($role);
+        $this->ensureNotSystemRole($role);
 
         $role->delete();
 
         return $this->respond(null, __('Role deleted successfully.'));
     }
 
-    private function superAdminRoleName(): string
+    private function ensureNotSystemRole(Role $role): void
     {
-        return config('auth.super_admin_role', 'super_admin');
-    }
-
-    private function ensureNotSuperAdminRole(Role $role): void
-    {
-        if ($role->name === $this->superAdminRoleName()) {
+        if ($role->is_system) {
             abort(404);
         }
     }
