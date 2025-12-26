@@ -55,10 +55,10 @@ export default function MembershipPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <div className="rounded-2xl border border-pink-50 bg-white/80 p-6 shadow-sm">
+      <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-[#ec4899]">Membership</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-[var(--accent-strong)]">Membership</p>
             <h1 className="mt-2 text-3xl font-semibold text-gray-900">Membership Tiers</h1>
             <p className="mt-1 text-sm text-gray-600">
               Explore membership tiers, earning multipliers, and exclusive benefits
@@ -67,7 +67,7 @@ export default function MembershipPage() {
           <div className="flex items-center gap-3">
             <Link
               href="/rewards"
-              className="inline-flex items-center justify-center rounded-full border border-pink-100 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[#ec4899] hover:text-[#ec4899]"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--muted)] bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
             >
               Rewards Center
             </Link>
@@ -91,7 +91,7 @@ export default function MembershipPage() {
           {tiers.map((tier) => (
             <div
               key={tier.code}
-              className="flex h-full flex-col justify-between rounded-2xl border border-pink-50 bg-white/80 p-4 shadow-sm"
+              className="flex h-full flex-col justify-between rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm"
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
@@ -100,11 +100,11 @@ export default function MembershipPage() {
                     <h3 className="text-lg font-semibold text-gray-900">{tier.name}</h3>
                   </div>
                   {tier.badge_image_url ? (
-                    <div className="relative h-12 w-12 overflow-hidden rounded-full bg-pink-50">
+                    <div className="relative h-12 w-12 overflow-hidden rounded-full bg-[var(--background-soft)]">
                       <Image src={tier.badge_image_url} alt={tier.name} fill className="object-contain" />
                     </div>
                   ) : (
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pink-50 text-xs font-semibold text-[#ec4899]">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--background-soft)] text-xs font-semibold text-[var(--accent-strong)]">
                       {(tier.name || tier.code).charAt(0)}
                     </div>
                   )}
@@ -121,7 +121,7 @@ export default function MembershipPage() {
         </div>
 
         {!loadingTiers && tiers.length === 0 && !error && (
-          <div className="rounded-xl border border-dashed border-pink-100 bg-white/70 px-6 py-8 text-center text-sm text-gray-600">
+          <div className="rounded-xl border border-dashed border-[var(--muted)] bg-white/70 px-6 py-8 text-center text-sm text-gray-600">
             No membership tiers configured yet.
           </div>
         )}

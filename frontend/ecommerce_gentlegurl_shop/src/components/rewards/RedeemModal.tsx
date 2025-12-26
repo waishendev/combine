@@ -30,7 +30,7 @@ export function RedeemModal({ state, onClose, actions = [] }: RedeemModalProps) 
     const className = `inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
       action.variant === "secondary"
         ? "border border-gray-200 bg-white text-gray-700 hover:border-gray-300"
-        : "bg-[#ec4899] text-white shadow-sm hover:bg-[#db2777]"
+        : "bg-[var(--accent-strong)] text-white shadow-sm hover:bg-[var(--accent-stronger)]"
     }`;
 
     if (action.href) {

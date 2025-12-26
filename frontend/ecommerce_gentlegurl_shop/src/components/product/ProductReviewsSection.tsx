@@ -119,7 +119,7 @@ export function ProductReviewsSection({
   const items = reviewsData?.items ?? [];
 
   return (
-    <section id="reviews" className="mt-12 rounded-2xl border border-[var(--muted)] bg-[var(--background)] p-6 shadow-sm">
+    <section id="reviews" className="mt-12 rounded-2xl border border-[var(--muted)] bg-[var(--review-background)] p-6 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-[var(--foreground)]">Reviews</h2>
@@ -247,25 +247,21 @@ export function ProductReviewsSection({
         </div>
       )}
 
-      {reviewsEnabled && (
+      {reviewsEnabled && items.length > 0 && (
         <div className="space-y-3">
-          {items.length === 0 ? (
-            <p className="text-sm text-[var(--foreground)]/70">No reviews yet.</p>
-          ) : (
-            items.map((review) => (
-              <div key={review.id} className="rounded-xl border border-[var(--muted)] bg-[var(--background)] p-4 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <RatingStars value={review.rating} size="sm" />
-                    {review.title && <p className="text-sm font-semibold text-[var(--foreground)]">{review.title}</p>}
-                  </div>
-                  <p className="text-xs text-[var(--foreground)]/60">{formatDate(review.created_at)}</p>
+          {items.map((review) => (
+            <div key={review.id} className="rounded-xl border border-[var(--muted)] bg-[var(--review-background)] p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <RatingStars value={review.rating} size="sm" />
+                  {review.title && <p className="text-sm font-semibold text-[var(--foreground)]">{review.title}</p>}
                 </div>
-                <p className="mt-2 text-sm text-[var(--foreground)]/80">{review.body}</p>
-                <p className="mt-1 text-xs font-semibold text-[var(--foreground)]/70">— {review.customer_name}</p>
+                <p className="text-xs text-[var(--foreground)]/60">{formatDate(review.created_at)}</p>
               </div>
-            ))
-          )}
+              <p className="mt-2 text-sm text-[var(--foreground)]/80">{review.body}</p>
+              <p className="mt-1 text-xs font-semibold text-[var(--foreground)]/70">— {review.customer_name}</p>
+            </div>
+          ))}
         </div>
       )}
     </section>

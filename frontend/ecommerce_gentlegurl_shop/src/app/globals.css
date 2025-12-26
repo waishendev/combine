@@ -1,20 +1,39 @@
 @import "tailwindcss";
 
-:root {
+:root[data-theme="soft"] {
   --background: #fff8f5;
   --background-soft: #ffeef3;
   --foreground: #3c2432;
   --accent: #e7a2ba;
   --accent-strong: #d87ca3;
+  --accent-stronger: #c7638e;
   --muted: #f7dfe9;
+  --accent-rgb: 231 162 186;
+  --muted-rgb: 247 223 233;
+  --background-soft-rgb: 255 238 243;
+  --review-background: #fff8f5;
+}
+
+:root[data-theme="cream"] {
+  --background: #EFD8D2;
+  --background-soft: #fefbe8;
+  --foreground: #1b1512;
+  --accent: #dfaa9b;
+  --accent-strong: #d69685;
+  --accent-stronger: #da8973;
+  --muted: #f0dfd5;
+  --accent-rgb: 240 223 213;
+  --muted-rgb: 240 223 213;
+  --background-soft-rgb: 240 223 213;
+  --review-background: #fff8f5;
 }
 
 body {
   color: var(--foreground);
   font-family: "Inter", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: radial-gradient(circle at 15% 20%, rgba(231, 162, 186, 0.25), transparent 26%),
-    radial-gradient(circle at 80% 10%, rgba(247, 223, 233, 0.7), transparent 30%),
-    radial-gradient(circle at 20% 75%, rgba(255, 238, 243, 0.8), transparent 32%),
+  background: radial-gradient(circle at 15% 20%, rgba(var(--accent-rgb), 0.25), transparent 26%),
+    radial-gradient(circle at 80% 10%, rgba(var(--muted-rgb), 0.7), transparent 30%),
+    radial-gradient(circle at 20% 75%, rgba(var(--background-soft-rgb), 0.8), transparent 32%),
     var(--background);
   min-height: 100vh;
 }
@@ -32,7 +51,7 @@ body {
   0% {
     transform: translate(-50%, -50%) rotate(var(--rotation)) scale(0.9);
     opacity: 1;
-    filter: drop-shadow(0 0 12px rgba(236, 72, 153, 0.5));
+    filter: drop-shadow(0 0 12px rgba(var(--accent-rgb), 0.5));
   }
   30% {
     transform: translate(
@@ -42,7 +61,7 @@ body {
       rotate(calc(var(--rotation) + 8deg))
       scale(0.95);
     opacity: 0.95;
-    filter: drop-shadow(0 4px 12px rgba(236, 72, 153, 0.4));
+    filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.4));
   }
   60% {
     transform: translate(
@@ -52,7 +71,7 @@ body {
       rotate(calc(var(--rotation) + 18deg))
       scale(1);
     opacity: 0.75;
-    filter: drop-shadow(0 8px 16px rgba(219, 39, 119, 0.3));
+    filter: drop-shadow(0 8px 16px rgba(var(--accent-rgb), 0.3));
   }
   100% {
     transform: translate(
@@ -62,6 +81,6 @@ body {
       rotate(calc(var(--rotation) + 35deg))
       scale(1.1);
     opacity: 0;
-    filter: drop-shadow(0 12px 20px rgba(190, 24, 93, 0.2));
+    filter: drop-shadow(0 12px 20px rgba(var(--accent-rgb), 0.2));
   }
 }

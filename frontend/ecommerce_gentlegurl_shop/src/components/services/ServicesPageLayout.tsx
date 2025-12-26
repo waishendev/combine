@@ -108,10 +108,10 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
         <section className="space-y-6" ref={pricingRef}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7c3aed]">Pricing</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Pricing</p>
               <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Transparent rates</h2>
             </div>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#7c3aed]/35 to-transparent sm:ml-6" />
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/35 to-transparent sm:ml-6" />
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-[var(--muted)] bg-white/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
@@ -135,10 +135,10 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
         <section className="space-y-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#fb7185]">FAQ</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">FAQ</p>
               <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">You might be wondering</h2>
             </div>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#fb7185]/45 to-transparent sm:ml-6" />
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/45 to-transparent sm:ml-6" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -171,8 +171,8 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
 
           <ul className="grid gap-3 sm:grid-cols-2">
             {notes.map((note) => (
-              <li key={note} className="flex items-start gap-3 rounded-xl bg-[var(--background-soft)]/70 p-4 text-sm text-[var(--foreground)]/80">
-                <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)]/70 text-white">•</span>
+              <li key={note} className="flex items-center gap-3 rounded-xl bg-[var(--background-soft)]/70 p-4 text-sm text-[var(--foreground)]/80">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)]/70 text-white">•</span>
                 <span>{note}</span>
               </li>
             ))}

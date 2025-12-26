@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ReactElement } from "react";
+import Image from "next/image";
 
 import type { HomepageFooter } from "@/lib/server/getHomepage";
 
@@ -62,7 +63,7 @@ function SocialIcon({
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-pink-100 bg-white/70 px-3 py-1 text-xs text-[var(--foreground)]/80 shadow-sm">
+    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--muted)] bg-white/70 px-3 py-1 text-xs text-[var(--foreground)]/80 shadow-sm">
       <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
       {children}
     </span>
@@ -92,9 +93,17 @@ export function ShopFooter({ footer }: { footer?: HomepageFooter | null }) {
         <div className="grid gap-12 md:grid-cols-12">
           {/* Brand */}
           <div className="md:col-span-4">
-            <h2 className="text-2xl font-semibold text-[var(--accent-strong)]">
-              Gentlegurl Shop
-            </h2>
+                  {/* Logo - Mobile */}
+            <Link href="/" className="flex items-center">
+              <Image
+                src="/images/logo.png"
+                alt="Gentlegurl Shop"
+                width={120}
+                height={40}
+                className="h-10 w-auto object-contain"
+                priority
+              />
+            </Link>
 
             {footer.about_text ? (
               <p className="mt-3 max-w-md text-sm leading-relaxed text-[var(--foreground)]/80">
@@ -198,9 +207,9 @@ export function ShopFooter({ footer }: { footer?: HomepageFooter | null }) {
         </div>
 
         {/* Bottom */}
-        <div className="mt-12 border-t border-pink-100 py-5">
+        <div className="mt-12 border-t border-[var(--muted)] py-5">
           <div className="flex flex-col gap-2 text-center text-xs text-[var(--foreground)]/65 md:flex-row md:items-center md:justify-between md:text-left">
-            <p>© {year} Gentlegurl Shop. All rights reserved.</p>
+            <p>© {year} Gentlegurl. All rights reserved.</p>
           </div>
         </div>
       </div>

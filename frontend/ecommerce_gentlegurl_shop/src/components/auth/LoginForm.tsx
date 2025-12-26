@@ -45,8 +45,8 @@ function Field({
           type={type}
           className={[
             "w-full rounded-xl border bg-white/90 px-3 py-2.5 text-sm text-[var(--foreground)]",
-            "border-pink-100/70",
-            "focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-pink-200/25",
+            "border-[var(--muted)]/70",
+            "focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--muted)]/25",
             icon ? "pl-10" : "",
             rightSlot ? "pr-12" : "",
           ].join(" ")}
@@ -115,7 +115,7 @@ export function LoginForm({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       {error && (
-        <div className="rounded-xl border border-pink-200/50 bg-white/90 px-3 py-2 text-sm text-[#b8527a]">
+        <div className="rounded-xl border border-[var(--muted)]/60 bg-white/90 px-3 py-2 text-sm text-[var(--accent-stronger)]">
           {error}
         </div>
       )}
@@ -154,7 +154,7 @@ export function LoginForm({
           <button
             type="button"
             onClick={() => setShowPw((v) => !v)}
-            className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-pink-50 hover:text-[var(--accent-strong)]"
+            className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-[var(--background-soft)] hover:text-[var(--accent-strong)]"
             aria-label={showPw ? "Hide password" : "Show password"}
           >
             {showPw ? "Hide" : "Show"}

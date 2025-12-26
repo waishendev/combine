@@ -101,13 +101,13 @@ export function WishlistToggleButton({
       aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
       className={`group relative flex items-center justify-center rounded-full bg-white/95 p-2.5 shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-110 hover:bg-white hover:shadow-xl active:scale-95 ${
         isWishlisted
-          ? "text-[#ec4899] hover:text-[#db2777]"
-          : "text-gray-400 hover:text-[#ec4899]"
+          ? "text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
+          : "text-gray-400 hover:text-[var(--accent-strong)]"
       } ${loading ? "opacity-50" : ""} ${className ?? ""}`}
     >
       <HeartIcon filled={isWishlisted} />
       {/* {isWishlisted && (
-        <span className="absolute inset-0 animate-ping rounded-full bg-[#ec4899]/20 opacity-75" />
+        <span className="absolute inset-0 animate-ping rounded-full bg-[var(--accent-strong)]/20 opacity-75" />
       )} */}
     </button>
   );

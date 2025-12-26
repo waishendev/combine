@@ -113,10 +113,10 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
   const isOutOfStock = stock != null && stock <= 0;
 
   return (
-    <div className="space-y-3 rounded-xl border border-pink-100 bg-pink-50/80 p-4">
+    <div className="space-y-3 rounded-xl border border-[var(--muted)] bg-[var(--background-soft)]/80 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.16em] text-[#ec4899]">Reward Redeem</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-[var(--accent-strong)]">Reward Redeem</p>
           <p className="text-lg font-semibold text-gray-900">
             {requiredPoints != null ? `${requiredPoints.toLocaleString()} pts` : "Reward redeem"}
           </p>
@@ -128,7 +128,7 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
         {loadingReward ? (
           <div className="h-10 w-24 animate-pulse rounded-full bg-white/70" />
         ) : (
-          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#ec4899]">
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[var(--accent-strong)]">
             {requiredPoints != null ? `${requiredPoints.toLocaleString()} pts needed` : "Reward available"}
           </span>
         )}
@@ -140,7 +140,7 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
           <button
             type="button"
             onClick={() => router.push("/cart")}
-            className="font-semibold text-[#ec4899] underline-offset-4 hover:underline"
+            className="font-semibold text-[var(--accent-strong)] underline-offset-4 hover:underline"
           >
             Go to cart
           </button>
@@ -161,8 +161,8 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
             disabled={redeeming || (isLoggedIn ? !hasEnoughPoints : false)}
             className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
               !isLoggedIn || hasEnoughPoints
-                ? "bg-[#ec4899] text-white shadow-sm hover:bg-[#db2777]"
-                : "cursor-not-allowed bg-pink-100 text-gray-500"
+                ? "bg-[var(--accent-strong)] text-white shadow-sm hover:bg-[var(--accent-stronger)]"
+                : "cursor-not-allowed bg-[var(--muted)] text-gray-500"
             }`}
           >
             {!isLoggedIn

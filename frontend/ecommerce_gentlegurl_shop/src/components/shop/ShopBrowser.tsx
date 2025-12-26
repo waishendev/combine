@@ -303,8 +303,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
       {menuSlug && menuNotFound ? (
-        <div className="rounded-2xl border border-pink-50 bg-white/80 p-6 text-center shadow-sm">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#ec4899]">Shop</p>
+        <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-6 text-center shadow-sm">
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">Shop</p>
           <h1 className="mt-2 text-2xl font-semibold text-gray-900">Menu not found</h1>
           <p className="mt-2 text-sm text-gray-600">The menu you are looking for does not exist or is unavailable.</p>
         </div>
@@ -312,16 +312,16 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         <>
           <header className="mb-6 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#ec4899]">{headerLabel}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">{headerLabel}</p>
               <h1 className="text-2xl font-semibold text-gray-900">Thoughtfully curated finds</h1>
             </div>
           </header>
 
           <div className="grid gap-6 md:grid-cols-[260px_1fr]">
-            <aside className="rounded-2xl border border-pink-50 bg-white/80 p-4 shadow-sm">
+            <aside className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-gray-900">Categories</h2>
-                <span className="rounded-full bg-pink-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#ec4899]">
+                <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
                   {sidebarMenus.reduce((count, menu) => count + menu.categories.length, 0) || "All"}
                 </span>
               </div>
@@ -344,7 +344,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                     const [, categorySlug] = value.split("::");
                     setSelectedCategory(categorySlug ?? null);
                   }}
-                  className="w-full rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
+                  className="w-full rounded-xl border border-[var(--muted)] bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--muted)]"
                 >
                   <option value="all">{allLabel}</option>
                   {sidebarMenus.map((menu) =>
@@ -373,8 +373,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                   onClick={handleSelectAll}
                   className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
                     selectedCategory === null
-                      ? "bg-gradient-to-r from-pink-50 to-white text-[#ec4899] shadow-sm"
-                      : "text-gray-700 hover:bg-pink-50"
+                      ? "bg-gradient-to-r from-[var(--background-soft)] to-white text-[var(--accent-strong)] shadow-sm"
+                      : "text-gray-700 hover:bg-[var(--background-soft)]"
                   }`}
                 >
                   {allLabel}
@@ -399,8 +399,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                             }}
                             className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
                               isActive
-                                ? "bg-gradient-to-r from-pink-50 to-white text-[#ec4899] shadow-sm"
-                                : "text-gray-700 hover:bg-pink-50"
+                                ? "bg-gradient-to-r from-[var(--background-soft)] to-white text-[var(--accent-strong)] shadow-sm"
+                                : "text-gray-700 hover:bg-[var(--background-soft)]"
                             }`}
                           >
                             {category.name}
@@ -414,17 +414,17 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
             </aside>
 
             <section className="space-y-6">
-              <div className="rounded-2xl border border-pink-50 bg-white/80 p-4 shadow-sm">
+              <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="relative w-full md:max-w-sm">
                     <input
                       value={searchTerm}
                       onChange={(event) => setSearchTerm(event.target.value)}
                       placeholder="Search for products"
-                      className="w-full rounded-xl border border-pink-100 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
+                      className="w-full rounded-xl border border-[var(--muted)] bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--muted)]"
                       aria-label="Search products"
                     />
-                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs uppercase tracking-[0.15em] text-[#ec4899]">
+                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs uppercase tracking-[0.15em] text-[var(--accent-strong)]">
                       Search
                     </span>
                   </div>
@@ -436,7 +436,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                     <select
                       value={sort}
                       onChange={(event) => setSort(event.target.value)}
-                      className="rounded-xl border border-pink-100 bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none transition focus:border-[#ec4899] focus:ring-2 focus:ring-pink-100"
+                      className="rounded-xl border border-[var(--muted)] bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--muted)]"
                       aria-label="Sort products"
                     >
                       {SORT_OPTIONS.map((option) => (
@@ -449,13 +449,13 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-pink-50 bg-white/80 p-4 shadow-sm">
+              <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm">
                 {isLoading ? (
                   <div className="flex h-40 items-center justify-center text-sm text-gray-600">
                     Loading products...
                   </div>
                 ) : error ? (
-                  <div className="rounded-xl bg-pink-50 px-4 py-3 text-sm text-[#be185d]">{error}</div>
+                  <div className="rounded-xl bg-[var(--background-soft)] px-4 py-3 text-sm text-[var(--accent-stronger)]">{error}</div>
                 ) : showEmptyState ? (
                   <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-sm text-gray-600">
                     <p className="font-semibold text-gray-800">No products found</p>
@@ -468,7 +468,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                 )}
               </div>
 
-              <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-pink-50 bg-white/80 p-4 text-sm text-gray-700 shadow-sm md:flex-row">
+              <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 text-sm text-gray-700 shadow-sm md:flex-row">
                 <div className="text-xs uppercase tracking-[0.2em] text-gray-500">
                   Page {meta.currentPage} of {meta.lastPage}
                 </div>
@@ -477,7 +477,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                     type="button"
                     onClick={() => setPage((current) => Math.max(1, current - 1))}
                     disabled={meta.currentPage <= 1 || isLoading}
-                    className="rounded-xl border border-pink-100 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[#ec4899] hover:text-[#ec4899]"
+                    className="rounded-xl border border-[var(--muted)] bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                   >
                     Previous
                   </button>
@@ -489,7 +489,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                       )
                     }
                     disabled={(meta.lastPage && meta.currentPage >= meta.lastPage) || isLoading}
-                    className="rounded-xl border border-pink-100 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[#ec4899] hover:text-[#ec4899]"
+                    className="rounded-xl border border-[var(--muted)] bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                   >
                     Next
                   </button>

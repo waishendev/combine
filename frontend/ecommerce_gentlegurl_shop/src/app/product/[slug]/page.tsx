@@ -99,12 +99,12 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
 
           <div className="flex flex-wrap items-center gap-3">
             {!isRewardOnly && (
-              <div className="text-xl font-bold text-red-600">
+              <div className="text-xl font-bold text-[var(--accent-strong)]">
                 RM {Number(product.price).toFixed(2)}
               </div>
             )}
             {!isRewardOnly && (
-              <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#ec4899]">
+              <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
                 Sold {soldCount}
               </span>
             )}
@@ -162,7 +162,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             {relatedProducts.length > 0 && (
         <section className="mt-12 space-y-6">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-pink-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[var(--accent-strong)]">
               Recommended
             </p>
             <h2 className="text-xl font-semibold text-gray-900">
@@ -184,9 +184,9 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                 <Link
                   key={related.id}
                   href={`/product/${related.slug ?? related.id}`}
-                  className="group relative overflow-hidden rounded-2xl border border-white/70 bg-white/90 shadow-[0_16px_50px_-36px_rgba(15,23,42,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-36px_rgba(236,72,153,0.45)]"
+                  className="group relative overflow-hidden rounded-2xl border border-white/70 bg-white/90 shadow-[0_16px_50px_-36px_rgba(15,23,42,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-36px_rgba(var(--accent-rgb),0.45)]"
                 >
-                  <div className="relative h-36 w-full overflow-hidden bg-gradient-to-b from-[#fff1f7] via-[#fdf6ff] to-white">
+                  <div className="relative h-36 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] via-white/80 to-white">
                     {thumbnail ? (
                       <Image
                         src={thumbnail}
@@ -205,14 +205,10 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                     <h3 className="line-clamp-2 text-sm font-semibold text-gray-900">
                       {related.name}
                     </h3>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-[#ec4899]">
-                        RM {priceLabel}
-                      </span>
-                      <span className="rounded-full bg-rose-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-500">
-                        View
-                      </span>
-                    </div>
+
+                    <span className="text-sm font-semibold text-[var(--accent-strong)]">
+                      RM {priceLabel}
+                    </span>
                   </div>
                 </Link>
               );

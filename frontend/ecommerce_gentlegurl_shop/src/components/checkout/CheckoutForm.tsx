@@ -918,7 +918,7 @@ export default function CheckoutForm() {
           </div>
 
           {error && (
-            <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[#b8527a]">{error}</div>
+            <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[var(--accent-stronger)]">{error}</div>
           )}
 
           <div className="space-y-2 rounded-lg border border-[var(--muted)]/70 bg-[var(--muted)]/10 p-3 text-sm">
@@ -1037,7 +1037,7 @@ export default function CheckoutForm() {
                           <button
                             type="button"
                             onClick={() => handleEditAddress(address)}
-                            className="flex items-center justify-center rounded border border-[#f1a5be] p-1.5 text-[#b8527a] hover:bg-[var(--muted)]/70"
+                            className="flex items-center justify-center rounded border border-[var(--accent)] p-1.5 text-[var(--accent-stronger)] hover:bg-[var(--muted)]/70"
                             title="Edit"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1068,7 +1068,7 @@ export default function CheckoutForm() {
                                 }
                               }
                             }}
-                            className="flex items-center justify-center rounded border border-[#f1a5be] p-1.5 text-[#b8527a] hover:bg-[var(--muted)]/70"
+                            className="flex items-center justify-center rounded border border-[var(--accent)] p-1.5 text-[var(--accent-stronger)] hover:bg-[var(--muted)]/70"
                             title="Delete"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
