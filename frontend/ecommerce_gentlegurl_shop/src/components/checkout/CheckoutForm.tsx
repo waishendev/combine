@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
@@ -40,8 +40,6 @@ export default function CheckoutForm() {
     isApplyingVoucher,
     appliedVoucher,
     shippingLabel,
-    reloadCart,
-    clearSelection,
     removeVoucher,
     clearVoucherFeedback,
     shippingFlatFee,
@@ -50,6 +48,7 @@ export default function CheckoutForm() {
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const hasNavigatedRef = useRef(false);
   const [paymentMethod, setPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
   const [error, setError] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
@@ -366,18 +365,13 @@ export default function CheckoutForm() {
 
       const order = await createOrder(payload);
 
-      await reloadCart();
-      clearSelection();
-      removeVoucher();
-      setVoucherCode("");
-      setSelectedVoucherId(null);
-
       const isBillplzMethod =
         order.payment_method === "billplz_fpx" || order.payment_method === "billplz_card";
       const paymentUrl = order.payment_url ?? order.payment?.billplz_url;
 
       if (isBillplzMethod) {
         if (paymentUrl) {
+          hasNavigatedRef.current = true;
           window.location.href = paymentUrl;
         } else {
           setError("Unable to start Billplz payment. Please try again.");
@@ -394,12 +388,15 @@ export default function CheckoutForm() {
         searchParams.set("provider", order.payment_provider ?? order.payment?.provider ?? "");
       }
 
-      router.push(`/payment-result?${searchParams.toString()}`);
+      hasNavigatedRef.current = true;
+      router.replace(`/payment-result?${searchParams.toString()}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create order.";
       setError(message);
     } finally {
-      setIsSubmitting(false);
+      if (!hasNavigatedRef.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
