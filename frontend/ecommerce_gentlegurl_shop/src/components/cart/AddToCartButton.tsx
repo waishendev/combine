@@ -104,7 +104,7 @@ export default function AddToCartButton({ productId, stock }: AddToCartButtonPro
           {isSubmitting ? "Adding..." : "Add to Cart"}
         </button>
       </div>
-      {notice && <p className="text-xs font-medium text-amber-600">{notice}</p>}
+      {notice && <p className="text-xs font-medium text-[color:var(--status-warning)]">{notice}</p>}
     </div>
   );
 }

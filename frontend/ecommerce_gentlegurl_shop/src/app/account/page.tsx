@@ -48,7 +48,7 @@ function Modal({ open, title, onClose, children, footer }: ModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-xl border border-[var(--muted)] bg-white shadow-xl">
+      <div className="w-full max-w-xl rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] shadow-xl">
         <div className="flex items-center justify-between border-b border-[var(--muted)] px-6 py-4">
           <h3 className="text-lg font-semibold text-[var(--accent-strong)]">{title}</h3>
           <button
@@ -359,7 +359,7 @@ export default function AccountPage() {
               setError(null);
               setChangePasswordModalOpen(true);
             }}
-            className="w-full rounded-lg border border-[var(--muted)] bg-white px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] shadow-sm transition hover:bg-[var(--background-soft)] sm:w-auto"
+            className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] shadow-sm transition hover:bg-[var(--background-soft)] sm:w-auto"
           >
             Change Password
           </button>
@@ -385,7 +385,7 @@ export default function AccountPage() {
       )}
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)]">
-        <section className="rounded-xl border border-[var(--muted)] bg-white/70 p-6 shadow-sm">
+        <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 overflow-hidden rounded-full bg-[var(--background-soft)] ring-2 ring-[var(--muted)]">
               <Image
@@ -403,12 +403,12 @@ export default function AccountPage() {
                   {profile.tier}
                 </span> */}
               </div>
-              <p className="break-words text-sm text-gray-700">{profile.email}</p>
-              {profile.phone && <p className="break-words text-sm text-gray-700">{profile.phone}</p>}
+              <p className="break-words text-sm text-[color:var(--text-muted)]">{profile.email}</p>
+              {profile.phone && <p className="break-words text-sm text-[color:var(--text-muted)]">{profile.phone}</p>}
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 text-sm text-gray-700">
+          <div className="mt-6 grid gap-3 text-sm text-[color:var(--text-muted)]">
             {profile.gender && (
               <div className="flex justify-between">
                 <span>Gender</span>
@@ -424,7 +424,7 @@ export default function AccountPage() {
           </div>
         </section>
 
-        <section className="flex flex-col gap-4 rounded-xl border border-[var(--muted)] bg-white/70 p-6 shadow-sm">
+        <section className="flex flex-col gap-4 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Loyalty Summary</h2>
             {loyalty?.current_tier.badge_image_url && (
@@ -442,12 +442,12 @@ export default function AccountPage() {
 
           {loyalty ? (
             <>
-              <div className="space-y-1 text-sm text-gray-800">
+              <div className="space-y-1 text-sm text-[color:var(--text-muted)]">
                 <p className="flex items-center gap-2">
-                  <span className="text-gray-600">Current tier:</span>
+                  <span className="text-[color:var(--text-muted)]">Current tier:</span>
                   <span className="font-semibold text-[var(--accent-stronger)]">{loyalty.current_tier.name}</span>
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-[color:var(--text-muted)]">
                   Multiplier: x{loyalty.current_tier.multiplier} • Min spend: RM {loyalty.current_tier.min_spend.toFixed(2)}
                 </p>
               </div>
@@ -470,7 +470,7 @@ export default function AccountPage() {
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-[color:var(--text-muted)]">
                   {nextTier ? (
                     <>
                       Spend RM {amountToNextTier} more in next {daysRemaining} days to upgrade to {nextTier.name}
@@ -482,16 +482,16 @@ export default function AccountPage() {
               </div>
             </>
           ) : (
-            <p className="text-sm text-gray-500">Loyalty summary is unavailable right now.</p>
+            <p className="text-sm text-[color:var(--text-muted)]">Loyalty summary is unavailable right now.</p>
           )}
         </section>
       </div>
 
-      <section className="rounded-xl border border-[var(--muted)] bg-white/70 p-6 shadow-sm">
+      <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Address Book</h2>
-            <p className="text-xs text-gray-600">Manage your shipping and billing details.</p>
+            <p className="text-xs text-[color:var(--text-muted)]">Manage your shipping and billing details.</p>
           </div>
           <button
             type="button"
@@ -503,18 +503,18 @@ export default function AccountPage() {
         </div>
 
         {profile.addresses.length === 0 ? (
-          <p className="text-sm text-gray-500">You have not added any address yet.</p>
+          <p className="text-sm text-[color:var(--text-muted)]">You have not added any address yet.</p>
         ) : (
           <div className="space-y-4">
             {profile.addresses.map((addr) => (
               <div
                 key={addr.id}
-                className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] p-4 text-sm text-gray-800 shadow-sm"
+                className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] p-4 text-sm text-[color:var(--text-muted)] shadow-sm"
               >
                 <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <div className="font-medium text-[var(--accent-stronger)]">{addr.label || "Address"}</div>
-                    {/* <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
+                    {/* <span className="rounded-full bg-[var(--card)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
                       {addr.type}
                     </span> */}
                     {addr.is_default && (
@@ -542,7 +542,7 @@ export default function AccountPage() {
                       <button
                         type="button"
                         onClick={() => handleMakeDefault(addr.id)}
-                        className="rounded-md border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                        className="rounded-md border border-[var(--status-success-border)] px-3 py-1 text-xs font-semibold text-[color:var(--status-success)] hover:bg-[var(--status-success-bg)]"
                       >
                         Make Default
                       </button>
@@ -550,12 +550,12 @@ export default function AccountPage() {
                   </div>
                 </div>
                 <div className="font-semibold text-[var(--accent-stronger)]">{addr.name}</div>
-                <div className="text-sm text-gray-700">{addr.phone}</div>
-                <div className="mt-1 text-sm text-gray-800">
+                <div className="text-sm text-[color:var(--text-muted)]">{addr.phone}</div>
+                <div className="mt-1 text-sm text-[color:var(--text-muted)]">
                   {addr.line1}
                   {addr.line2 && `, ${addr.line2}`}
                 </div>
-                <div className="text-xs text-gray-600">
+                <div className="text-xs text-[color:var(--text-muted)]">
                   {addr.postcode} {addr.city}
                   {addr.state && `, ${addr.state}`}
                   {addr.country && `, ${addr.country}`}
@@ -581,7 +581,7 @@ export default function AccountPage() {
                 setProfileModalOpen(false);
                 setPhotoPreview(null);
               }}
-              className="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+              className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/40"
             >
               Cancel
             </button>
@@ -631,7 +631,7 @@ export default function AccountPage() {
                   Upload Photo
                 </div>
               </label>
-              <p className="text-xs text-gray-600 text-center">
+              <p className="text-xs text-[color:var(--text-muted)] text-center">
                 Upload a new photo to update your avatar.
               </p>
             </div>
@@ -643,7 +643,7 @@ export default function AccountPage() {
                 type="text"
                 value={profileForm.name}
                 onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               />
             </label>
             <label className="block space-y-1 text-sm">
@@ -652,7 +652,7 @@ export default function AccountPage() {
                 type="text"
                 value={profileForm.phone}
                 onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               />
             </label>
           </div>
@@ -688,7 +688,7 @@ export default function AccountPage() {
                   showConfirm: false,
                 });
               }}
-              className="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+              className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/40"
             >
               Cancel
             </button>
@@ -722,7 +722,7 @@ export default function AccountPage() {
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })
                 }
-                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--muted)]/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--muted)]/25"
+                className="w-full rounded-xl border bg-[var(--card)]/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--input-border)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25"
                 placeholder="Current password"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -757,7 +757,7 @@ export default function AccountPage() {
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })
                 }
-                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--muted)]/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--muted)]/25"
+                className="w-full rounded-xl border bg-[var(--card)]/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--input-border)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25"
                 placeholder="New password"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -790,7 +790,7 @@ export default function AccountPage() {
                 onChange={(e) =>
                   setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })
                 }
-                className="w-full rounded-xl border bg-white/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--muted)]/70 focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--muted)]/25"
+                className="w-full rounded-xl border bg-[var(--card)]/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--input-border)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25"
                 placeholder="Confirm new password"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -819,7 +819,7 @@ export default function AccountPage() {
             <button
               type="button"
               onClick={() => setAddressModalOpen(false)}
-              className="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+              className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/40"
             >
               Cancel
             </button>
@@ -842,7 +842,7 @@ export default function AccountPage() {
                 type="text"
                 value={addressForm.label ?? ""}
                 onChange={(e) => setAddressForm({ ...addressForm, label: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
                 placeholder="e.g. Home"
               />
             </label>
@@ -851,7 +851,7 @@ export default function AccountPage() {
               <select
                 value={addressForm.type}
                 onChange={(e) => setAddressForm({ ...addressForm, type: e.target.value as AddressFormState["type"] })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               >
                 <option value="shipping">Shipping</option>
                 {/* <option value="billing">Billing</option> */}
@@ -866,7 +866,7 @@ export default function AccountPage() {
                 type="text"
                 value={addressForm.name}
                 onChange={(e) => setAddressForm({ ...addressForm, name: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -875,7 +875,7 @@ export default function AccountPage() {
                 type="text"
                 value={addressForm.phone}
                 onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               />
             </label>
           </div>
@@ -887,7 +887,7 @@ export default function AccountPage() {
               type="text"
               value={addressForm.line1}
               onChange={(e) => setAddressForm({ ...addressForm, line1: e.target.value })}
-              className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+              className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
             />
           </label>
 
@@ -897,7 +897,7 @@ export default function AccountPage() {
               type="text"
               value={addressForm.line2 ?? ""}
               onChange={(e) => setAddressForm({ ...addressForm, line2: e.target.value })}
-              className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+              className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
             />
           </label>
           </div>
@@ -909,7 +909,7 @@ export default function AccountPage() {
                 type="text"
                 value={addressForm.city}
                 onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -918,7 +918,7 @@ export default function AccountPage() {
                 type="text"
                 value={addressForm.state ?? ""}
                 onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -927,7 +927,7 @@ export default function AccountPage() {
                 type="text"
                 value={addressForm.postcode ?? ""}
                 onChange={(e) => setAddressForm({ ...addressForm, postcode: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               />
             </label>
           </div>
@@ -939,7 +939,7 @@ export default function AccountPage() {
                 type="text"
                 value={addressForm.country}
                 onChange={(e) => setAddressForm({ ...addressForm, country: e.target.value })}
-                className="w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
               />
             </label>
             <label className="mt-6 flex items-center gap-2 text-sm text-[var(--accent-stronger)]">

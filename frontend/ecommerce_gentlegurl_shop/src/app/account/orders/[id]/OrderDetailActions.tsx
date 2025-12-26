@@ -116,7 +116,7 @@ export function OrderDetailActions({
               type="button"
               onClick={handleCancel}
               disabled={isCancelling}
-              className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold uppercase text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--status-error-border)] px-4 py-2 text-xs font-semibold uppercase text-[color:var(--status-error)] transition hover:border-[var(--status-error)] hover:bg-[var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isCancelling ? "Cancelling..." : "Cancel"}
             </button>
@@ -134,10 +134,10 @@ export function OrderDetailActions({
             )}
           </>
         ) : (
-          <span className="text-xs font-semibold uppercase text-rose-600">Cancelled</span>
+          <span className="text-xs font-semibold uppercase text-[color:var(--status-error)]">Cancelled</span>
         )}
       </div>
-      {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-[color:var(--status-error)]">{error}</p>}
       <UploadReceiptModal
         isOpen={showSlipModal}
         orderId={orderId}

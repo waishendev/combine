@@ -77,7 +77,7 @@ export default function UploadSlipForm({ orderId, mode = "page", onClose, onSucc
         <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[var(--accent-stronger)]">{error}</div>
       )}
       {successMessage && (
-        <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[#7a4d63]">
+        <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[color:var(--text-muted)]">
           {successMessage}
         </div>
       )}
@@ -132,7 +132,7 @@ export default function UploadSlipForm({ orderId, mode = "page", onClose, onSucc
         Order ID: <span className="font-mono">{orderId}</span>
       </p>
 
-      <div className="mt-6 space-y-4 rounded-lg border border-[var(--muted)] bg-white/80 p-4 shadow-sm">
+      <div className="mt-6 space-y-4 rounded-lg border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm">
         {content}
       </div>
     </main>

@@ -28,7 +28,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
         return (
           <div
             key={product.id}
-            className="group relative overflow-hidden rounded-2xl border border-white/70 bg-white/80 shadow-[0_12px_45px_-30px_rgba(17,24,39,0.65)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_70px_-32px_rgba(109,40,217,0.35)]"
+            className="group relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_12px_45px_-30px_rgba(17,24,39,0.65)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_70px_-32px_rgba(109,40,217,0.35)]"
           >
             <div className="absolute right-3 top-3 z-10">
               <WishlistToggleButton
@@ -39,7 +39,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
 
             <Link href={`/product/${productSlug}`} className="block">
               {image && (
-                <div className="relative h-44 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-white">
+                <div className="relative h-44 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">
                   <Image
                     // src={image}
                     src={"/images/placeholder.png"}
@@ -50,7 +50,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
                 </div>
               )}
               <div className="space-y-2 p-4">
-                <h3 className="text-sm font-semibold leading-snug text-gray-900 md:text-base">
+                <h3 className="text-sm font-semibold leading-snug text-[var(--foreground)] md:text-base">
                   {product.name}
                 </h3>
 
@@ -58,7 +58,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
                   RM {priceLabel}
                 </span>
 
-                <p className="text-xs font-medium text-gray-500">
+                <p className="text-xs font-medium text-[color:var(--text-muted)]">
                   Sold {soldCount}
                 </p>
               </div>

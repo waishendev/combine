@@ -124,9 +124,9 @@ export default function Slider({ items }: SliderProps) {
   };
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-white/70 bg-gradient-to-br from-[#fdf2f8] via-white to-[#f5f3ff] shadow-[0_24px_80px_-42px_rgba(109,40,217,0.4)]">
-      <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32 rounded-full bg-[#fce7f3]/70 blur-3xl" />
-      <div className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 rounded-full bg-[#ede9fe]/70 blur-3xl" />
+    <div className="relative overflow-hidden rounded-[28px] border border-[var(--card-border)]/80 bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[var(--shadow)]">
+      <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32 rounded-full bg-[color:var(--accent)]/30 blur-3xl" />
+      <div className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 rounded-full bg-[color:var(--muted)]/70 blur-3xl" />
 
       <div
         className="relative h-[380px] sm:h-[420px] lg:h-[480px] cursor-grab active:cursor-grabbing"
@@ -177,8 +177,8 @@ export default function Slider({ items }: SliderProps) {
 
               <div className="relative z-10 flex h-full items-center px-6 py-10 sm:px-10 lg:px-14">
                 <div className="max-w-xl space-y-4 text-white sm:space-y-6">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] backdrop-blur">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#a78bfa]" />
+                  <div className="inline-flex items-center gap-2 rounded-full bg-[var(--card)]/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] backdrop-blur">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-strong)]" />
                     Signature Edit
                   </div>
 
@@ -202,7 +202,7 @@ export default function Slider({ items }: SliderProps) {
                           e.preventDefault();
                         }
                       }}
-                      className="inline-flex items-center gap-2 rounded-full bg-white/90 px-5 py-3 text-sm font-semibold text-gray-900 shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-white"
+                      className="inline-flex items-center gap-2 rounded-full bg-[var(--card)]/90 px-5 py-3 text-sm font-semibold text-[var(--foreground)] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-[var(--card)]"
                     >
                       {item.button_label}
                       <span aria-hidden className="text-base">
@@ -224,7 +224,9 @@ export default function Slider({ items }: SliderProps) {
                 type="button"
                 onClick={() => goTo(index)}
                 className={`h-2.5 rounded-full transition ${
-                  index === activeIndex ? "w-7 bg-white" : "w-2.5 bg-white/50 hover:bg-white/70"
+                  index === activeIndex
+                    ? "w-7 bg-[var(--card)]"
+                    : "w-2.5 bg-[var(--card)]/60 hover:bg-[var(--card)]/80"
                 }`}
                 aria-label={`Go to slide ${index + 1}`}
               />

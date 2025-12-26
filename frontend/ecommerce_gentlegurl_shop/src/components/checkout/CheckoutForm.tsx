@@ -522,7 +522,7 @@ export default function CheckoutForm() {
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[2fr,1fr]">
         <div className="space-y-4">
           {!isSelfPickup ? (
-            <section className="rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
+            <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Contact &amp; Address</h2>
                 {isLoggedIn && (
@@ -656,7 +656,7 @@ export default function CheckoutForm() {
               )}
             </section>
           ) : (
-            <section className="rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
+            <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Pickup Contact</h2>
               </div>
@@ -686,7 +686,7 @@ export default function CheckoutForm() {
             </section>
           )}
 
-          <section className="rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
+          <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">Items in this order</h2>
               <p className="text-xs text-[var(--foreground)]/60">{selectedItems.length} item(s)</p>
@@ -700,7 +700,7 @@ export default function CheckoutForm() {
                 return (
                   <div
                     key={item.id}
-                    className="flex flex-col gap-3 rounded-lg border border-[var(--muted)]/60 bg-white/70 p-3 sm:flex-row sm:items-center"
+                    className="flex flex-col gap-3 rounded-lg border border-[var(--card-border)]/60 bg-[var(--card)]/70 p-3 sm:flex-row sm:items-center"
                   >
                     <div className="relative h-20 w-full overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/20 sm:h-20 sm:w-20">
                       {imageUrl ? (
@@ -731,7 +731,7 @@ export default function CheckoutForm() {
           </section>
         </div>
 
-        <aside className="space-y-4 rounded-xl border border-[var(--muted)] bg-white/80 p-4 shadow-sm sm:p-5">
+        <aside className="space-y-4 rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
           <h2 className="text-lg font-semibold">Order Summary</h2>
 
           <div className="flex items-start justify-between gap-3 rounded-lg border border-[var(--muted)]/70 bg-[var(--muted)]/10 p-3 text-sm">
@@ -873,7 +873,7 @@ export default function CheckoutForm() {
                             <div className="text-[var(--foreground)]/60">Branch: {bank.branch}</div>
                           )} */}
                           {bank.qr_image_url && (
-                            <div className="mt-2 h-20 w-20 overflow-hidden rounded border border-[var(--muted)] bg-white">
+                            <div className="mt-2 h-20 w-20 overflow-hidden rounded border border-[var(--card-border)] bg-[var(--card)]">
                               <Image
                                 src={bank.qr_image_url}
                                 alt={`${bank.bank_name} QR`}
@@ -953,14 +953,14 @@ export default function CheckoutForm() {
       {showAddressModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           {isConfirmingAddress && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/90 backdrop-blur-sm">
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--card)]/90 backdrop-blur-sm">
               <div className="flex flex-col items-center gap-4">
                 <div className="h-12 w-12 animate-spin rounded-full border-4 border-[var(--muted)] border-t-[var(--accent)]"></div>
                 <p className="text-sm font-medium text-[var(--foreground)]/70">Updating address...</p>
               </div>
             </div>
           )}
-          <div className="w-full max-w-2xl rounded-lg bg-white p-4 text-[var(--foreground)] shadow-lg sm:p-5">
+          <div className="w-full max-w-2xl rounded-lg bg-[var(--card)] p-4 text-[var(--foreground)] shadow-lg sm:p-5">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold">
                 {addressMode === "form" ? (editingAddress ? "Edit Address" : "Add Address") : "Manage Addresses"}
@@ -1232,7 +1232,7 @@ export default function CheckoutForm() {
 
       {showVoucherModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-5 text-[var(--foreground)] shadow-lg">
+          <div className="w-full max-w-lg rounded-lg bg-[var(--card)] p-5 text-[var(--foreground)] shadow-lg">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold">Apply Voucher</h3>
@@ -1269,7 +1269,9 @@ export default function CheckoutForm() {
                     {isApplyingVoucher ? "Applying..." : "Apply"}
                   </button>
                 </div>
-                {voucherErrorMessage && <p className="mt-2 text-xs text-[#c26686]">{voucherErrorMessage}</p>}
+                {voucherErrorMessage && (
+                  <p className="mt-2 text-xs text-[color:var(--status-error)]">{voucherErrorMessage}</p>
+                )}
               </div>
 
               <div className="flex items-center gap-3 text-xs text-[var(--foreground)]/60">
@@ -1297,7 +1299,7 @@ export default function CheckoutForm() {
                           className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition ${
                             isSelected
                               ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                              : "border-[var(--muted)]/70 bg-white"
+                              : "border-[var(--muted)]/70 bg-[var(--card)]"
                           } ${isDisabled ? "cursor-not-allowed opacity-50 grayscale" : "hover:border-[var(--accent)]/60"}`}
                         >
                           <input
@@ -1336,7 +1338,7 @@ export default function CheckoutForm() {
                               </div>
                             </div>
                             {!entry.minSpendMet && (
-                              <p className="mt-2 text-[11px] font-semibold text-amber-600">
+                              <p className="mt-2 text-[11px] font-semibold text-[color:var(--status-warning)]">
                                 Min spend not met
                               </p>
                             )}

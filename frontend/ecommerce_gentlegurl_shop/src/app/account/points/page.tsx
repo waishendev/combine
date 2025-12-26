@@ -131,10 +131,10 @@ export default function AccountPointsPage() {
           <div
             className={`rounded-lg border px-4 py-3 text-sm shadow-sm ${
               toast.type === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                ? "border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[color:var(--status-success)]"
                 : toast.type === "info"
                   ? "border-blue-200 bg-blue-50 text-blue-800"
-                  : "border-rose-200 bg-rose-50 text-rose-800"
+                  : "border-[var(--status-error-border)] bg-[var(--status-error-bg)] text-[color:var(--status-error)]"
             }`}
             role="status"
             aria-live="polite"

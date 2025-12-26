@@ -55,19 +55,19 @@ export default function MembershipPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-6 shadow-sm">
+      <div className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-[var(--accent-strong)]">Membership</p>
-            <h1 className="mt-2 text-3xl font-semibold text-gray-900">Membership Tiers</h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <h1 className="mt-2 text-3xl font-semibold text-[var(--foreground)]">Membership Tiers</h1>
+            <p className="mt-1 text-sm text-[color:var(--text-muted)]">
               Explore membership tiers, earning multipliers, and exclusive benefits
             </p>
           </div>
           <div className="flex items-center gap-3">
             <Link
               href="/rewards"
-              className="inline-flex items-center justify-center rounded-full border border-[var(--muted)] bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
             >
               Rewards Center
             </Link>
@@ -77,12 +77,12 @@ export default function MembershipPage() {
 
       <section className="mt-8 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Tier Benefits</h2>
-          {loadingTiers && <span className="text-xs text-gray-500">Loading tiers…</span>}
+          <h2 className="text-xl font-semibold text-[var(--foreground)]">Tier Benefits</h2>
+          {loadingTiers && <span className="text-xs text-[color:var(--text-muted)]">Loading tiers…</span>}
         </div>
 
         {error && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[color:var(--status-warning)]">
             {error}
           </div>
         )}
@@ -91,13 +91,13 @@ export default function MembershipPage() {
           {tiers.map((tier) => (
             <div
               key={tier.code}
-              className="flex h-full flex-col justify-between rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm"
+              className="flex h-full flex-col justify-between rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm"
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">{tier.code}</p>
-                    <h3 className="text-lg font-semibold text-gray-900">{tier.name}</h3>
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-muted)]">{tier.code}</p>
+                    <h3 className="text-lg font-semibold text-[var(--foreground)]">{tier.name}</h3>
                   </div>
                   {tier.badge_image_url ? (
                     <div className="relative h-12 w-12 overflow-hidden rounded-full bg-[var(--background-soft)]">
@@ -109,10 +109,10 @@ export default function MembershipPage() {
                     </div>
                   )}
                 </div>
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-[color:var(--text-muted)]">
                   Multiplier <span className="font-semibold">x{tier.multiplier.toFixed(2)}</span>
                 </p>
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-[color:var(--text-muted)]">
                   Min spend: <span className="font-semibold">{formatCurrency(tier.min_spend)}</span>
                 </p>
               </div>
@@ -121,7 +121,7 @@ export default function MembershipPage() {
         </div>
 
         {!loadingTiers && tiers.length === 0 && !error && (
-          <div className="rounded-xl border border-dashed border-[var(--muted)] bg-white/70 px-6 py-8 text-center text-sm text-gray-600">
+          <div className="rounded-xl border border-dashed border-[var(--card-border)] bg-[var(--card)]/70 px-6 py-8 text-center text-sm text-[color:var(--text-muted)]">
             No membership tiers configured yet.
           </div>
         )}

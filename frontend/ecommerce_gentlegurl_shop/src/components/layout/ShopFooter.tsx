@@ -51,7 +51,7 @@ function SocialIcon({
   return (
     <Link
       href={href}
-      className="flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-[var(--accent-strong)] shadow-sm transition hover:-translate-y-0.5 hover:shadow"
+      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--card)]/80 text-[var(--accent-strong)] shadow-sm transition hover:-translate-y-0.5 hover:shadow"
       aria-label={type}
       target="_blank"
       rel="noreferrer"
@@ -63,7 +63,7 @@ function SocialIcon({
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--muted)] bg-white/70 px-3 py-1 text-xs text-[var(--foreground)]/80 shadow-sm">
+    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)]/70 px-3 py-1 text-xs text-[var(--foreground)]/80 shadow-sm">
       <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
       {children}
     </span>

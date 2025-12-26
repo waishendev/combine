@@ -204,7 +204,7 @@ export default function ReviewsPage() {
   if (loadingSettings) {
     return (
       <main className="mx-auto max-w-5xl px-4 py-10">
-        <p className="text-center text-sm text-gray-600">Loading reviews...</p>
+        <p className="text-center text-sm text-[color:var(--text-muted)]">Loading reviews...</p>
       </main>
     );
   }
@@ -212,9 +212,9 @@ export default function ReviewsPage() {
   if (settings && !settings.enabled) {
     return (
       <main className="mx-auto max-w-5xl px-4 py-10">
-        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-          <h1 className="text-2xl font-semibold text-gray-900">Reviews</h1>
-          <p className="mt-4 text-sm text-gray-600">Reviews is currently disabled.</p>
+        <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-8 text-center shadow-sm">
+          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Reviews</h1>
+          <p className="mt-4 text-sm text-[color:var(--text-muted)]">Reviews is currently disabled.</p>
         </div>
       </main>
     );
@@ -225,14 +225,14 @@ export default function ReviewsPage() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Community</p>
-          <h1 className="text-3xl font-semibold text-gray-900">Store Reviews</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <h1 className="text-3xl font-semibold text-[var(--foreground)]">Store Reviews</h1>
+          <p className="mt-2 text-sm text-[color:var(--text-muted)]">
             Read what other customers say and share your experience for each location.
           </p>
         </div>
       </div>
 
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mt-6 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm">
         {storeDetail?.images && storeDetail.images.length > 0 ? (
           <div className="mb-4 overflow-hidden rounded-lg">
             <div className="flex gap-3 overflow-x-auto">
@@ -247,15 +247,15 @@ export default function ReviewsPage() {
             </div>
           </div>
         ) : (
-          <div className="mb-4 flex h-48 items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-500">
+          <div className="mb-4 flex h-48 items-center justify-center rounded-lg bg-[var(--muted)]/40 text-sm text-[color:var(--text-muted)]">
             {loadingStoreDetail ? "Loading store photos..." : "No store photos available"}
           </div>
         )}
 
-        <label className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-[color:var(--text-muted)]">
           Select Store Location
           <select
-            className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-strong)]"
+            className="mt-2 w-full rounded-lg border border-[var(--input-border)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-strong)]"
             value={selectedLocationId ?? ""}
             onChange={(e) => setSelectedLocationId(Number(e.target.value))}
             disabled={loadingLocations}
@@ -269,14 +269,14 @@ export default function ReviewsPage() {
         </label>
 
         {storeDetail && (
-          <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-4">
+          <div className="mt-4 rounded-lg border border-[var(--card-border)]/60 bg-[var(--muted)]/40 p-4">
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h3 className="text-lg font-semibold text-[var(--foreground)]">
                   {storeDetail.name} {storeDetail.code ? `(${storeDetail.code})` : ""}
                 </h3>
               </div>
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-[color:var(--text-muted)]">
                 {[
                   storeDetail.address_line1,
                   storeDetail.address_line2,
@@ -288,11 +288,11 @@ export default function ReviewsPage() {
                   .filter(Boolean)
                   .join(", ")}
               </p>
-              {storeDetail.phone && <p className="text-sm text-gray-700">📞 {storeDetail.phone}</p>}
+              {storeDetail.phone && <p className="text-sm text-[color:var(--text-muted)]">📞 {storeDetail.phone}</p>}
               {storeDetail.opening_hours && (
-                <div className="text-sm text-gray-700">
+                <div className="text-sm text-[color:var(--text-muted)]">
                   <p className="font-medium">Opening Hours</p>
-                  <ul className="mt-1 space-y-1 text-gray-600">
+                  <ul className="mt-1 space-y-1 text-[color:var(--text-muted)]">
                     {Object.entries(storeDetail.opening_hours).map(([key, value]) => (
                       <li key={key} className="flex justify-between">
                         <span className="capitalize">{key.replace("_", " ")}:</span>
@@ -310,11 +310,11 @@ export default function ReviewsPage() {
 
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="flex max-h-[600px] flex-col rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="flex max-h-[600px] flex-col rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold text-gray-900">Recent Reviews</h2>
+            <h2 className="text-xl font-semibold text-[var(--foreground)]">Recent Reviews</h2>
             {pagination && (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-[color:var(--text-muted)]">
                 Page {pagination.page} • {pagination.total} reviews total
               </p>
             )}
@@ -322,28 +322,28 @@ export default function ReviewsPage() {
 
           <div className="mt-4 max-h-[550px] flex-1 overflow-y-auto pr-2">
             {loadingReviews ? (
-              <p className="text-sm text-gray-500">Loading reviews...</p>
+              <p className="text-sm text-[color:var(--text-muted)]">Loading reviews...</p>
             ) : reviews.length === 0 ? (
-              <p className="text-sm text-gray-500">No reviews yet for this store.</p>
+              <p className="text-sm text-[color:var(--text-muted)]">No reviews yet for this store.</p>
             ) : (
               <div className="space-y-4">
                 {reviews.map((review) => (
-                  <article key={review.id} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                  <article key={review.id} className="rounded-lg border border-[var(--card-border)]/60 bg-[var(--muted)]/40/60 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-gray-900">{review.name}</p>
-                        <p className="text-xs text-gray-500">{formatDate(review.created_at)}</p>
+                        <p className="text-sm font-semibold text-[var(--foreground)]">{review.name}</p>
+                        <p className="text-xs text-[color:var(--text-muted)]">{formatDate(review.created_at)}</p>
                       </div>
-                      <div className="flex items-center gap-1 text-yellow-400">
+                      <div className="flex items-center gap-1 text-[color:var(--status-warning)]">
                         {Array.from({ length: 5 }).map((_, index) => (
-                          <span key={index} className={index < review.rating ? "text-yellow-400" : "text-gray-300"}>
+                          <span key={index} className={index < review.rating ? "text-[color:var(--status-warning)]" : "text-[var(--muted)]"}>
                             ★
                           </span>
                         ))}
                       </div>
                     </div>
-                    {review.title && <p className="mt-2 text-sm font-medium text-gray-900">{review.title}</p>}
-                    <p className="mt-1 text-sm text-gray-700">{review.body}</p>
+                    {review.title && <p className="mt-2 text-sm font-medium text-[var(--foreground)]">{review.title}</p>}
+                    <p className="mt-1 text-sm text-[color:var(--text-muted)]">{review.body}</p>
                     {review.photos && review.photos.length > 0 && (
                       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {review.photos.map((photo) => (
@@ -363,16 +363,16 @@ export default function ReviewsPage() {
           </div>
 
           {pagination && pagination.total > pagination.per_page && (
-            <div className="mt-4 flex items-center gap-3 border-t border-gray-100 pt-4">
+            <div className="mt-4 flex items-center gap-3 border-t border-[var(--card-border)]/60 pt-4">
               <button
-                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-[color:var(--text-muted)] hover:bg-[var(--muted)]/40 disabled:cursor-not-allowed disabled:text-[color:var(--text-muted)]"
                 disabled={loadingReviews || (pagination?.page ?? 1) <= 1}
                 onClick={() => handlePageChange((pagination?.page ?? 1) - 1)}
               >
                 Previous
               </button>
               <button
-                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-[color:var(--text-muted)] hover:bg-[var(--muted)]/40 disabled:cursor-not-allowed disabled:text-[color:var(--text-muted)]"
                 disabled={
                   loadingReviews ||
                   !pagination ||
@@ -386,9 +386,9 @@ export default function ReviewsPage() {
           )}
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-gray-900">Add a Review</h2>
-          <p className="mt-1 text-sm text-gray-600">Share your experience with this store.</p>
+        <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm">
+          <h2 className="text-xl font-semibold text-[var(--foreground)]">Add a Review</h2>
+          <p className="mt-1 text-sm text-[color:var(--text-muted)]">Share your experience with this store.</p>
 
           {error && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -405,22 +405,22 @@ export default function ReviewsPage() {
           <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
             {!customer && (
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-[color:var(--text-muted)]">
                   Name
                   <input
                     type="text"
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
+                    className="mt-2 w-full rounded-lg border border-[var(--input-border)] px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
                     value={form.name}
                     onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                     required
                     placeholder="Your name"
                   />
                 </label>
-                <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-[color:var(--text-muted)]">
                   Email (optional)
                   <input
                     type="email"
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
+                    className="mt-2 w-full rounded-lg border border-[var(--input-border)] px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
                     value={form.email}
                     onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
                     placeholder="you@example.com"
@@ -430,7 +430,7 @@ export default function ReviewsPage() {
             )}
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Rating</label>
+              <label className="text-sm font-medium text-[color:var(--text-muted)]">Rating</label>
               <div className="mt-2 flex items-center gap-4">
                 <div className="flex items-center gap-1">
                   {Array.from({ length: 5 }).map((_, index) => (
@@ -439,32 +439,32 @@ export default function ReviewsPage() {
                       type="button"
                       onClick={() => setForm((prev) => ({ ...prev, rating: index + 1 }))}
                       className={`text-2xl transition hover:scale-110 ${
-                        index < form.rating ? "text-yellow-400" : "text-gray-300"
+                        index < form.rating ? "text-[color:var(--status-warning)]" : "text-[var(--muted)]"
                       }`}
                     >
                       ★
                     </button>
                   ))}
                 </div>
-                <span className="text-sm font-semibold text-gray-700">{form.rating} out of 5</span>
+                <span className="text-sm font-semibold text-[color:var(--text-muted)]">{form.rating} out of 5</span>
               </div>
             </div>
 
-            <label className="text-sm font-medium text-gray-700">
+            <label className="text-sm font-medium text-[color:var(--text-muted)]">
               Title (optional)
               <input
                 type="text"
-                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
+                className="mt-2 w-full rounded-lg border border-[var(--input-border)] px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
                 value={form.title}
                 onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
                 placeholder="Great service!"
               />
             </label>
 
-            <label className="text-sm font-medium text-gray-700">
+            <label className="text-sm font-medium text-[color:var(--text-muted)]">
               Your Review
               <textarea
-                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
+                className="mt-2 w-full rounded-lg border border-[var(--input-border)] px-3 py-2.5 text-sm transition focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-strong)]/20"
                 rows={4}
                 value={form.body}
                 onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
@@ -475,11 +475,11 @@ export default function ReviewsPage() {
             </label>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Upload photos (optional)</label>
+              <label className="text-sm font-medium text-[color:var(--text-muted)]">Upload photos (optional)</label>
               <div className="mt-2 flex flex-wrap items-start gap-3">
                 {/* Add button - only show if less than 3 photos */}
                 {form.photos.length < 3 && (
-                  <label className="group relative flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 transition hover:border-[var(--accent-strong)] hover:bg-[var(--background-soft)]/30">
+                  <label className="group relative flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[var(--input-border)] bg-[var(--muted)]/40 transition hover:border-[var(--accent-strong)] hover:bg-[var(--background-soft)]/30">
                     <input
                       type="file"
                       multiple
@@ -511,7 +511,7 @@ export default function ReviewsPage() {
                       }}
                     />
                     <svg
-                      className="h-8 w-8 text-gray-400 transition group-hover:text-[var(--accent-strong)]"
+                      className="h-8 w-8 text-[color:var(--text-muted)] transition group-hover:text-[var(--accent-strong)]"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -523,13 +523,13 @@ export default function ReviewsPage() {
                         d="M12 4v16m8-8H4"
                       />
                     </svg>
-                    <span className="mt-1 text-xs font-medium text-gray-600">Add</span>
+                    <span className="mt-1 text-xs font-medium text-[color:var(--text-muted)]">Add</span>
                   </label>
                 )}
 
                 {/* Photo previews */}
                 {form.photos.map((photo, index) => (
-                  <div key={index} className="group relative h-24 w-24 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+                  <div key={index} className="group relative h-24 w-24 overflow-hidden rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/40">
                     <img
                       src={photoPreviews[index] || URL.createObjectURL(photo)}
                       alt={`Preview ${index + 1}`}
@@ -564,7 +564,7 @@ export default function ReviewsPage() {
                 ))}
               </div>
               {form.photos.length > 0 && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-[color:var(--text-muted)]">
                   {form.photos.length} of 3 photos selected
                 </p>
               )}

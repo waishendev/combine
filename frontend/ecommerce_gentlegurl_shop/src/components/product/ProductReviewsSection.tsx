@@ -151,7 +151,7 @@ export function ProductReviewsSection({
                   <div key={ratingValue} className="flex items-center gap-2 text-sm text-[var(--foreground)]/80">
                     <div className="w-5 font-semibold">{ratingValue}</div>
                     <div className="h-2 flex-1 rounded-full bg-[var(--muted)]/70">
-                      <div className="h-2 rounded-full bg-amber-500" style={{ width: `${percent}%` }} />
+                      <div className="h-2 rounded-full bg-[var(--status-warning)]" style={{ width: `${percent}%` }} />
                     </div>
                     <div className="w-12 text-right text-xs text-[var(--foreground)]/70">{count} review(s)</div>
                   </div>
@@ -186,7 +186,7 @@ export function ProductReviewsSection({
                   </label>
                   <div className="mt-1 flex items-center gap-2">
                     <select
-                      className="w-24 rounded-lg border border-[var(--muted)] bg-[var(--background)] px-2 py-2 text-sm"
+                      className="w-24 rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-2 text-sm"
                       value={rating}
                       onChange={(e) => setRating(Number(e.target.value))}
                       disabled={submitting}
@@ -210,7 +210,7 @@ export function ProductReviewsSection({
                     value={title}
                     maxLength={120}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--muted)] bg-[var(--background)] px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
                     placeholder="Summarize your review"
                     disabled={submitting}
                   />
@@ -223,7 +223,7 @@ export function ProductReviewsSection({
                   <textarea
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
-                    className="h-28 w-full rounded-lg border border-[var(--muted)] bg-[var(--background)] px-3 py-2 text-sm"
+                    className="h-28 w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
                     placeholder="Share your experience with this product"
                     maxLength={2000}
                     required
@@ -231,8 +231,8 @@ export function ProductReviewsSection({
                   />
                 </div>
 
-                {error && <p className="text-sm text-rose-600">{error}</p>}
-                {success && <p className="text-sm text-emerald-600">{success}</p>}
+                {error && <p className="text-sm text-[color:var(--status-error)]">{error}</p>}
+                {success && <p className="text-sm text-[color:var(--status-success)]">{success}</p>}
 
                 <button
                   type="submit"

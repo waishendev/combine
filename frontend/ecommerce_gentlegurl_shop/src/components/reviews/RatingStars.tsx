@@ -8,7 +8,7 @@ export function RatingStars({ value, size = "md" }: RatingStarsProps) {
   const iconSize = size === "sm" ? "h-4 w-4" : "h-5 w-5";
 
   return (
-    <div className="flex items-center gap-1 text-amber-500" aria-label={`${clamped} out of 5 stars`}>
+    <div className="flex items-center gap-1 text-[color:var(--status-warning)]" aria-label={`${clamped} out of 5 stars`}>
       {Array.from({ length: 5 }).map((_, index) => {
         const isActive = index < Math.round(clamped);
         return (
@@ -19,7 +19,7 @@ export function RatingStars({ value, size = "md" }: RatingStarsProps) {
             fill={isActive ? "currentColor" : "none"}
             stroke="currentColor"
             strokeWidth={1.5}
-            className={iconSize}
+            className={`${iconSize} ${isActive ? "" : "opacity-30"}`}
           >
             <path
               strokeLinecap="round"

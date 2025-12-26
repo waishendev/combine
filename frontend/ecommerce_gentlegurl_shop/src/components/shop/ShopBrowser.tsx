@@ -303,31 +303,31 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
       {menuSlug && menuNotFound ? (
-        <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-6 text-center shadow-sm">
+        <div className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-6 text-center shadow-sm">
           <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">Shop</p>
-          <h1 className="mt-2 text-2xl font-semibold text-gray-900">Menu not found</h1>
-          <p className="mt-2 text-sm text-gray-600">The menu you are looking for does not exist or is unavailable.</p>
+          <h1 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">Menu not found</h1>
+          <p className="mt-2 text-sm text-[color:var(--text-muted)]">The menu you are looking for does not exist or is unavailable.</p>
         </div>
       ) : (
         <>
           <header className="mb-6 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">{headerLabel}</p>
-              <h1 className="text-2xl font-semibold text-gray-900">Thoughtfully curated finds</h1>
+              <h1 className="text-2xl font-semibold text-[var(--foreground)]">Thoughtfully curated finds</h1>
             </div>
           </header>
 
           <div className="grid gap-6 md:grid-cols-[260px_1fr]">
-            <aside className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm">
+            <aside className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-gray-900">Categories</h2>
+                <h2 className="text-sm font-semibold text-[var(--foreground)]">Categories</h2>
                 <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
                   {sidebarMenus.reduce((count, menu) => count + menu.categories.length, 0) || "All"}
                 </span>
               </div>
 
               <div className="mt-3 md:hidden">
-                <label className="mb-1 block text-xs font-medium text-gray-600" htmlFor="category-mobile">
+                <label className="mb-1 block text-xs font-medium text-[color:var(--text-muted)]" htmlFor="category-mobile">
                   Select category
                 </label>
                 <select
@@ -344,7 +344,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                     const [, categorySlug] = value.split("::");
                     setSelectedCategory(categorySlug ?? null);
                   }}
-                  className="w-full rounded-xl border border-[var(--muted)] bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--muted)]"
+                  className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--ring)]/20"
                 >
                   <option value="all">{allLabel}</option>
                   {sidebarMenus.map((menu) =>
@@ -373,8 +373,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                   onClick={handleSelectAll}
                   className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
                     selectedCategory === null
-                      ? "bg-gradient-to-r from-[var(--background-soft)] to-white text-[var(--accent-strong)] shadow-sm"
-                      : "text-gray-700 hover:bg-[var(--background-soft)]"
+                      ? "bg-gradient-to-r from-[var(--background-soft)] to-[var(--card)] text-[var(--accent-strong)] shadow-sm"
+                      : "text-[color:var(--text-muted)] hover:bg-[var(--background-soft)]"
                   }`}
                 >
                   {allLabel}
@@ -383,7 +383,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                 {sidebarMenus.map((menu) => (
                   <div key={menu.slug} className="space-y-2">
                     {!menuSlug && (
-                      <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">
+                      <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--text-muted)]">
                         {menu.title}
                       </p>
                     )}
@@ -399,8 +399,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                             }}
                             className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
                               isActive
-                                ? "bg-gradient-to-r from-[var(--background-soft)] to-white text-[var(--accent-strong)] shadow-sm"
-                                : "text-gray-700 hover:bg-[var(--background-soft)]"
+                                ? "bg-gradient-to-r from-[var(--background-soft)] to-[var(--card)] text-[var(--accent-strong)] shadow-sm"
+                                : "text-[color:var(--text-muted)] hover:bg-[var(--background-soft)]"
                             }`}
                           >
                             {category.name}
@@ -414,14 +414,14 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
             </aside>
 
             <section className="space-y-6">
-              <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm">
+              <div className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="relative w-full md:max-w-sm">
                     <input
                       value={searchTerm}
                       onChange={(event) => setSearchTerm(event.target.value)}
                       placeholder="Search for products"
-                      className="w-full rounded-xl border border-[var(--muted)] bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--muted)]"
+                      className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--ring)]/20"
                       aria-label="Search products"
                     />
                     <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs uppercase tracking-[0.15em] text-[var(--accent-strong)]">
@@ -430,13 +430,13 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                       Sort
                     </span>
                     <select
                       value={sort}
                       onChange={(event) => setSort(event.target.value)}
-                      className="rounded-xl border border-[var(--muted)] bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--muted)]"
+                      className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm font-medium text-[color:var(--text-muted)] outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--ring)]/20"
                       aria-label="Sort products"
                     >
                       {SORT_OPTIONS.map((option) => (
@@ -449,17 +449,17 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm">
+              <div className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm">
                 {isLoading ? (
-                  <div className="flex h-40 items-center justify-center text-sm text-gray-600">
+                  <div className="flex h-40 items-center justify-center text-sm text-[color:var(--text-muted)]">
                     Loading products...
                   </div>
                 ) : error ? (
                   <div className="rounded-xl bg-[var(--background-soft)] px-4 py-3 text-sm text-[var(--accent-stronger)]">{error}</div>
                 ) : showEmptyState ? (
-                  <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-sm text-gray-600">
-                    <p className="font-semibold text-gray-800">No products found</p>
-                    <p className="max-w-md text-xs text-gray-500">
+                  <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-sm text-[color:var(--text-muted)]">
+                    <p className="font-semibold text-[color:var(--text-muted)]">No products found</p>
+                    <p className="max-w-md text-xs text-[color:var(--text-muted)]">
                       Try adjusting your search, switching categories, or exploring another sort option.
                     </p>
                   </div>
@@ -468,8 +468,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                 )}
               </div>
 
-              <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 text-sm text-gray-700 shadow-sm md:flex-row">
-                <div className="text-xs uppercase tracking-[0.2em] text-gray-500">
+              <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 text-sm text-[color:var(--text-muted)] shadow-sm md:flex-row">
+                <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                   Page {meta.currentPage} of {meta.lastPage}
                 </div>
                 <div className="flex items-center gap-2">
@@ -477,7 +477,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                     type="button"
                     onClick={() => setPage((current) => Math.max(1, current - 1))}
                     disabled={meta.currentPage <= 1 || isLoading}
-                    className="rounded-xl border border-[var(--muted)] bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                    className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                   >
                     Previous
                   </button>
@@ -489,7 +489,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                       )
                     }
                     disabled={(meta.lastPage && meta.currentPage >= meta.lastPage) || isLoading}
-                    className="rounded-xl border border-[var(--muted)] bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                    className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition disabled:cursor-not-allowed disabled:opacity-50 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                   >
                     Next
                   </button>

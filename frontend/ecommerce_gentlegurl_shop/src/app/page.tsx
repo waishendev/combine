@@ -10,7 +10,7 @@ export default async function HomePage() {
     return (
       <main className="p-6">
         <h1 className="text-xl font-bold">Homepage</h1>
-        <p className="mt-4 text-sm text-gray-600">
+        <p className="mt-4 text-sm text-[color:var(--text-muted)]">
           Failed to load homepage data. Please check API /public/shop/homepage.
         </p>
       </main>
@@ -18,13 +18,13 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="bg-gradient-to-b from-transparent via-white/60 to-transparent pb-16">
+    <main className="bg-gradient-to-b from-transparent via-[var(--card)]/60 to-transparent pb-16">
       <div className="mx-auto max-w-6xl space-y-14 px-4 pt-8 sm:px-6 lg:px-8">
         {data.sliders && data.sliders.length > 0 && (
           <section className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="mt-2 text-3xl font-semibold leading-tight text-gray-900 sm:text-4xl">
+                <h1 className="mt-2 text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
                   Effortless silhouettes, luxe textures, everyday confidence.
                 </h1>
               </div>
@@ -37,11 +37,11 @@ export default async function HomePage() {
         {data.announcements?.length > 0 && <AnnouncementModal items={data.announcements} />}
 
         {data.featured_products && data.featured_products.length > 0 && (
-          <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
+          <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Featured</p>
-                <h2 className="text-2xl font-semibold text-gray-900 sm:text-3xl">Featured Products</h2>
+                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Featured Products</h2>
               </div>
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/40 to-transparent sm:ml-6" />
             </div>
@@ -52,11 +52,11 @@ export default async function HomePage() {
         )}
 
         {data.new_products && data.new_products.length > 0 && (
-          <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
+          <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">New Arrivals</p>
-                <h2 className="text-2xl font-semibold text-gray-900 sm:text-3xl">New Products</h2>
+                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">New Products</h2>
               </div>
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/35 to-transparent sm:ml-6" />
             </div>
@@ -67,11 +67,11 @@ export default async function HomePage() {
         )}
 
         {data.best_sellers && data.best_sellers.length > 0 && (
-          <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
+          <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Community Favorites</p>
-                <h2 className="text-2xl font-semibold text-gray-900 sm:text-3xl">Best Sellers</h2>
+                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Best Sellers</h2>
               </div>
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/40 to-transparent sm:ml-6" />
             </div>

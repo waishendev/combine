@@ -69,11 +69,11 @@ export function OrderHeaderClient({
 
   const badgeStyle =
     isPendingUnpaidExpired || statusKey === "cancelled"
-      ? "bg-rose-50 text-rose-700 border-rose-200"
+      ? "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]"
       : (statusKey === "pending" || statusKey === "processing") && paymentStatus === "unpaid"
-        ? "bg-amber-50 text-amber-700 border-amber-200"
+        ? "bg-[var(--status-warning-bg)] text-[color:var(--status-warning)] border-[var(--status-warning-border)]"
         : statusKey === "paid" || statusKey === "completed"
-          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+          ? "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]"
           : statusKey === "shipped"
             ? "bg-blue-50 text-blue-700 border-blue-200"
             : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";

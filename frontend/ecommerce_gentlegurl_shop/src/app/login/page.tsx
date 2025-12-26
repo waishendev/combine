@@ -48,7 +48,7 @@ export default function LoginPage() {
           </div>
 
           {/* Card */}
-          <div className="rounded-3xl border border-[var(--muted)]/60 bg-white/80 p-7 shadow-[0_12px_40px_-24px_rgba(var(--accent-rgb),0.25)] backdrop-blur-sm md:p-8">
+        <div className="rounded-3xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-7 shadow-[0_12px_40px_-24px_rgba(var(--accent-rgb),0.25)] backdrop-blur-sm md:p-8">
             <LoginForm redirectTarget={redirectTarget} onSubmittingChange={setIsSubmitting} />
           </div>
 

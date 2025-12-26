@@ -201,22 +201,22 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   return (
     <div className="space-y-4">
       {eligibilityError && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[color:var(--status-warning)]">
           {eligibilityError}
         </div>
       )}
       {cancelError && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[color:var(--status-error)]">
           {cancelError}
         </div>
       )}
       {paymentError && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[color:var(--status-error)]">
           {paymentError}
         </div>
       )}
       {submitSuccess && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[color:var(--status-success)]">
           {submitSuccess}
         </div>
       )}
@@ -258,11 +258,11 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                         : statusValue;
         const badgeStyle =
           isPendingUnpaidExpired || statusKey === "cancelled"
-            ? "bg-rose-50 text-rose-700 border-rose-200"
+            ? "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]"
             : (statusKey === "pending" || statusKey === "processing") && paymentStatusValue === "unpaid"
-              ? "bg-amber-50 text-amber-700 border-amber-200"
+              ? "bg-[var(--status-warning-bg)] text-[color:var(--status-warning)] border-[var(--status-warning-border)]"
               : statusKey === "paid" || statusKey === "completed"
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                ? "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]"
                 : statusKey === "shipped"
                   ? "bg-blue-50 text-blue-700 border-blue-200"
                   : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
@@ -338,7 +338,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                         type="button"
                         onClick={() => handleCancel(order.id)}
                         disabled={cancellingOrderId === order.id}
-                        className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold uppercase text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-full border border-[var(--status-error-border)] px-4 py-2 text-xs font-semibold uppercase text-[color:var(--status-error)] transition hover:border-[var(--status-error)] hover:bg-[var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {cancellingOrderId === order.id ? "Cancelling..." : "Cancel"}
                       </button>
@@ -413,16 +413,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
 
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-lg rounded-2xl bg-[var(--card)] p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Write a Review</h3>
-                <p className="text-sm text-gray-600">{modal.item.name}</p>
+                <h3 className="text-lg font-semibold text-[var(--foreground)]">Write a Review</h3>
+                <p className="text-sm text-[color:var(--text-muted)]">{modal.item.name}</p>
               </div>
               <button
                 type="button"
                 onClick={closeModal}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-[color:var(--text-muted)] hover:text-[color:var(--text-muted)]"
                 aria-label="Close"
               >
                 ✕
@@ -431,10 +431,10 @@ export function OrdersClient({ orders }: OrdersClientProps) {
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
               <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Rating</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Rating</label>
                 <div className="mt-1 flex items-center gap-2">
                   <select
-                    className="w-28 rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm"
+                    className="w-28 rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-2 text-sm"
                     value={rating}
                     onChange={(e) => setRating(Number(e.target.value))}
                     disabled={submitting}
@@ -450,24 +450,24 @@ export function OrdersClient({ orders }: OrdersClientProps) {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Title (optional)</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Title (optional)</label>
                 <input
                   type="text"
                   value={title}
                   maxLength={120}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
                   placeholder="Summarize your review"
                   disabled={submitting}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Your Review</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Your Review</label>
                 <textarea
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
-                  className="h-28 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                  className="h-28 w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
                   placeholder="Share your experience with this product"
                   maxLength={2000}
                   required
@@ -475,13 +475,13 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 />
               </div>
 
-              {submitError && <p className="text-sm text-rose-600">{submitError}</p>}
+              {submitError && <p className="text-sm text-[color:var(--status-error)]">{submitError}</p>}
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="rounded-full px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                  className="rounded-full px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] hover:bg-[var(--muted)]/40"
                   disabled={submitting}
                 >
                   Cancel

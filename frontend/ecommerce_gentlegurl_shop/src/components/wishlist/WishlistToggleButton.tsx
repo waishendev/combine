@@ -73,7 +73,7 @@ export function WishlistToggleButton({
         type="button"
         onClick={handleClick}
         disabled={loading}
-        className={`rounded-full border px-3 py-1 text-xs hover:border-gray-400 ${className ?? ""}`}
+        className={`rounded-full border border-[var(--card-border)] px-3 py-1 text-xs hover:border-[var(--accent)] ${className ?? ""}`}
       >
         {loading ? "..." : isWishlisted ? "Remove from Wishlist" : "Add to Wishlist"}
       </button>
@@ -86,7 +86,7 @@ export function WishlistToggleButton({
         type="button"
         onClick={handleClick}
         disabled={loading}
-        className={`text-xs text-red-500 hover:underline ${className ?? ""}`}
+        className={`text-xs text-[var(--accent-strong)] hover:underline ${className ?? ""}`}
       >
         {loading ? "..." : isWishlisted ? "Remove" : "Add to wishlist"}
       </button>
@@ -99,10 +99,10 @@ export function WishlistToggleButton({
       onClick={handleClick}
       disabled={loading}
       aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-      className={`group relative flex items-center justify-center rounded-full bg-white/95 p-2.5 shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-110 hover:bg-white hover:shadow-xl active:scale-95 ${
+      className={`group relative flex items-center justify-center rounded-full bg-[var(--card)]/95 p-2.5 shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-110 hover:bg-[var(--card)] hover:shadow-xl active:scale-95 ${
         isWishlisted
           ? "text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
-          : "text-gray-400 hover:text-[var(--accent-strong)]"
+          : "text-[color:var(--text-muted)] hover:text-[var(--accent-strong)]"
       } ${loading ? "opacity-50" : ""} ${className ?? ""}`}
     >
       <HeartIcon filled={isWishlisted} />

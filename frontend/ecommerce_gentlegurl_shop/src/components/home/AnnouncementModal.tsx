@@ -52,11 +52,11 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 m-0 flex items-center justify-center bg-[var(--foreground)]/25 px-4 backdrop-blur-sm">
-      <div className="relative w-[90%] max-w-lg overflow-hidden rounded-3xl border border-[var(--muted)] bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-white p-8 shadow-[0_25px_90px_-45px_rgba(var(--accent-rgb),0.55)]">
+      <div className="relative w-[90%] max-w-lg overflow-hidden rounded-3xl border border-[var(--card-border)] bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] p-8 shadow-[0_25px_90px_-45px_rgba(var(--accent-rgb),0.55)]">
         <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent" aria-hidden />
 
         <button
-          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--muted)] bg-white/80 text-[var(--foreground)]/70 shadow-sm transition hover:-translate-y-0.5 hover:text-[var(--foreground)]"
+          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 text-[var(--foreground)]/70 shadow-sm transition hover:-translate-y-0.5 hover:text-[var(--foreground)]"
           onClick={() => setOpen(false)}
           aria-label="Close announcement"
         >
@@ -75,7 +75,7 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
         )}
 
         {item.image_path && (
-          <div className="relative mt-5 h-56 w-full overflow-hidden rounded-2xl border border-[var(--muted)] bg-[var(--muted)]">
+          <div className="relative mt-5 h-56 w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]">
             <Image
               // src={item.image_path}
               src={"/images/placeholder.png"}
@@ -83,7 +83,7 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
               fill
               className="object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[var(--accent)]/15 via-transparent to-white/60" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[var(--accent)]/15 via-transparent to-[var(--card)]/70" />
           </div>
         )}
 

@@ -74,11 +74,11 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
   };
 
   const inputClass =
-    "w-full rounded border border-[var(--muted)] bg-white/70 px-3 py-2 text-sm focus:border-[var(--accent)] focus:outline-none";
+    "w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent)] focus:outline-none";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--foreground)]/30 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md  rounded-lg border border-[var(--muted)] bg-white/90 p-6 shadow-xl">
+      <div className="w-full max-w-md rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex gap-3 text-sm font-medium">
             <button
