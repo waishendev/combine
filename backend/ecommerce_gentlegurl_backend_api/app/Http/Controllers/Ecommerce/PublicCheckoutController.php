@@ -810,13 +810,21 @@ class PublicCheckoutController extends Controller
 
     protected function removeOrderedCartItems(?Customer $customer, ?string $sessionToken, array $items): void
     {
-        $productIds = collect($items)
+        $itemsCollection = collect($items);
+        $rewardRedemptionIds = $itemsCollection
+            ->pluck('reward_redemption_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $productIds = $itemsCollection
+            ->filter(fn($item) => empty($item['reward_redemption_id']))
             ->pluck('product_id')
             ->filter()
             ->unique()
             ->values();
 
-        if ($productIds->isEmpty()) {
+        if ($productIds->isEmpty() && $rewardRedemptionIds->isEmpty()) {
             return;
         }
 
@@ -839,7 +847,22 @@ class PublicCheckoutController extends Controller
         }
 
         $cart->items()
-            ->whereIn('product_id', $productIds)
+            ->where(function ($query) use ($productIds, $rewardRedemptionIds) {
+                if ($productIds->isNotEmpty()) {
+                    $query->where(function ($subQuery) use ($productIds) {
+                        $subQuery->whereNull('reward_redemption_id')
+                            ->whereIn('product_id', $productIds);
+                    });
+                }
+
+                if ($rewardRedemptionIds->isNotEmpty()) {
+                    if ($productIds->isNotEmpty()) {
+                        $query->orWhereIn('reward_redemption_id', $rewardRedemptionIds);
+                    } else {
+                        $query->whereIn('reward_redemption_id', $rewardRedemptionIds);
+                    }
+                }
+            })
             ->delete();
 
         $cart->customer_id = $cart->customer_id ?: $customer?->id;

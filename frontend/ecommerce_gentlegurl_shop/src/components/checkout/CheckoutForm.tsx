@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
@@ -50,6 +50,7 @@ export default function CheckoutForm() {
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const hasNavigatedRef = useRef(false);
   const [paymentMethod, setPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
   const [error, setError] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
@@ -378,6 +379,7 @@ export default function CheckoutForm() {
 
       if (isBillplzMethod) {
         if (paymentUrl) {
+          hasNavigatedRef.current = true;
           window.location.href = paymentUrl;
         } else {
           setError("Unable to start Billplz payment. Please try again.");
@@ -394,12 +396,15 @@ export default function CheckoutForm() {
         searchParams.set("provider", order.payment_provider ?? order.payment?.provider ?? "");
       }
 
-      router.push(`/payment-result?${searchParams.toString()}`);
+      hasNavigatedRef.current = true;
+      router.replace(`/payment-result?${searchParams.toString()}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create order.";
       setError(message);
     } finally {
-      setIsSubmitting(false);
+      if (!hasNavigatedRef.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -507,9 +512,12 @@ export default function CheckoutForm() {
     }
   };
 
-  if (isLoading || !hasLoadedCart ) {
+  if (isSubmitting || isLoading || !hasLoadedCart ) {
     return (
-      <LoadingOverlay message="Loading checkout..." show={isInitialLoad} />
+      <LoadingOverlay
+        message={isSubmitting ? "Placing order..." : "Loading checkout..."}
+        show={isSubmitting || isInitialLoad || isLoading}
+      />
     );
   }
 
