@@ -60,7 +60,7 @@ export default function PointsHistoryPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[color:var(--status-warning)]">
+        <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[color:var(--status-warning-text)]">
           {error}
         </div>
       )}

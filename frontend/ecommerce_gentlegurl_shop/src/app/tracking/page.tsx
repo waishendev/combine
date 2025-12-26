@@ -167,9 +167,9 @@ export default function TrackingPage() {
             </div>
           </div>
 
-          <p className="text-xs text-[var(--foreground)]/60">
+          {/* <p className="text-xs text-[var(--foreground)]/60">
             Need help? Contact us via <Link href="/contact" className="text-[var(--accent-strong)] underline">support</Link>.
-          </p>
+          </p> */}
         </div>
       )}
     </div>

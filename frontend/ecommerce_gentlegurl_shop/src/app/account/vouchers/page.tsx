@@ -65,7 +65,7 @@ export default function AccountVouchersPage() {
                       ? "bg-[var(--status-success-bg)] text-[color:var(--status-success)]"
                       : voucher.status === "used"
                         ? "bg-[var(--muted)] text-[var(--foreground)]/80"
-                        : "bg-[var(--status-warning-bg)] text-[color:var(--status-warning)]"
+                        : "bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)]"
                   }`}
                 >
                   {voucher.status}

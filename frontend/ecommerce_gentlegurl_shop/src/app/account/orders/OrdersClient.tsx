@@ -260,7 +260,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
           isPendingUnpaidExpired || statusKey === "cancelled"
             ? "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]"
             : (statusKey === "pending" || statusKey === "processing") && paymentStatusValue === "unpaid"
-              ? "bg-[var(--status-warning-bg)] text-[color:var(--status-warning)] border-[var(--status-warning-border)]"
+              ? "bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)] border-[var(--status-warning-border)]"
               : statusKey === "paid" || statusKey === "completed"
                 ? "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]"
                 : statusKey === "shipped"
@@ -270,7 +270,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         return (
           <div
             key={order.id}
-            className="rounded-xl border border-[var(--muted)] bg-[var(--background)] p-5 shadow-sm transition hover:shadow-md"
+            className="rounded-xl border border-[var(--muted)] bg-[var(--myorder-background)] p-5 shadow-sm transition hover:shadow-md"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -370,7 +370,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       return (
                         <div
                           key={item.id}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--background)] px-3 py-2"
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                         >
                           <div className="flex items-center gap-3">
                             {item.product_image ? (
