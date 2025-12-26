@@ -8,6 +8,7 @@ export type RedeemModalState = {
   description?: string;
   rewardType?: "product" | "voucher";
   voucherCode?: string | null;
+  details?: Array<{ label: string; value: string }>;
 };
 
 type RedeemModalAction = {
@@ -56,11 +57,14 @@ export function RedeemModal({ state, onClose, actions = [] }: RedeemModalProps) 
     );
   };
 
+  const isProduct = state.rewardType === "product";
+  const isVoucher = state.rewardType === "voucher";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" role="dialog" aria-modal>
-      <div className="w-full max-w-md rounded-2xl bg-[var(--card)] p-6 shadow-xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
+      <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] p-5 shadow-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
             <p
               className={`text-xs font-semibold uppercase tracking-[0.16em] ${
                 isSuccess ? "text-[color:var(--status-success)]" : "text-[color:var(--status-error)]"
@@ -68,19 +72,46 @@ export function RedeemModal({ state, onClose, actions = [] }: RedeemModalProps) 
             >
               {isSuccess ? "Redeem Successful" : "Redeem Failed"}
             </p>
-            <h3 className="mt-1 text-xl font-semibold text-[var(--foreground)]">{state.title}</h3>
-            {state.description && <p className="mt-1 text-sm text-[color:var(--text-muted)]">{state.description}</p>}
-            {state.voucherCode && (
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--status-success-bg)] px-3 py-1 text-xs font-semibold text-[color:var(--status-success)]">
-                <span>Voucher Code</span>
-                <span className="rounded bg-[var(--card)] px-2 py-1 text-[13px] text-[color:var(--status-success)]">{state.voucherCode}</span>
+            
+            {/* For PRODUCT: description first, then title */}
+            {isProduct && (
+              <>
+                {state.description && <p className="mt-2 text-sm text-[color:var(--text-muted)]">{state.description}</p>}
+                <h3 className="mt-1 text-lg font-semibold text-[var(--foreground)]">{state.title}</h3>
+              </>
+            )}
+            
+            {/* For VOUCHER: description first, then title */}
+            {isVoucher && (
+              <>
+                {state.description && <p className="mt-2 text-sm text-[color:var(--text-muted)]">{state.description}</p>}
+                <h3 className="mt-1 text-lg font-semibold text-[var(--foreground)]">{state.title}</h3>
+              </>
+            )}
+            
+            {/* For other types: title first, then description */}
+            {!isProduct && !isVoucher && (
+              <>
+                <h3 className="mt-1 text-lg font-semibold text-[var(--foreground)]">{state.title}</h3>
+                {state.description && <p className="mt-1 text-sm text-[color:var(--text-muted)]">{state.description}</p>}
+              </>
+            )}
+            
+            {state.details && state.details.length > 0 && (
+              <div className="mt-1 space-y-2 text-sm text-[color:var(--text-muted)]">
+                {state.details.map((detail) => (
+                  <div key={detail.label} className="flex items-center justify-between gap-3">
+                    <span className="text-xs uppercase tracking-[0.08em] text-[var(--accent-strong)]">{detail.label}</span>
+                    <span className="text-sm font-semibold text-[var(--foreground)]">{detail.value}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+            className="rounded-full p-1.5 text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
             aria-label="Close redeem modal"
           >
             <svg
@@ -89,7 +120,7 @@ export function RedeemModal({ state, onClose, actions = [] }: RedeemModalProps) 
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
-              className="h-5 w-5"
+              className="h-4 w-4"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
@@ -97,7 +128,7 @@ export function RedeemModal({ state, onClose, actions = [] }: RedeemModalProps) 
         </div>
 
         {actions.length > 0 && (
-          <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
             {actions.map((action, index) => renderAction(action, index))}
           </div>
         )}

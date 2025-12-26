@@ -82,9 +82,12 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
       await Promise.all([refreshProfile(), reloadCart()]);
       setRedeemModal({
         status: "success",
-        title: "Reward item claimed",
+        title: reward.title || "Product",
         description: "Item added to your cart.",
         rewardType: "product",
+        details: [
+          { label: "Points spent", value: `${requiredPoints?.toLocaleString() ?? 0} pts` },
+        ],
       });
     } catch (error) {
       const apiError = error as ApiError;

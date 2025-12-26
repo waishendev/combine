@@ -115,24 +115,55 @@ export function RewardsCenter() {
             },
           };
         });
-        await refreshProfile();
-        await fetchRewards();
+        setRewards((current) =>
+          current.map((item) => {
+            if (item.id !== reward.id) return item;
+            if (typeof item.remaining === "number") {
+              const nextRemaining = Math.max(item.remaining - 1, 0);
+              return {
+                ...item,
+                remaining: nextRemaining,
+                is_available: nextRemaining > 0,
+              };
+            }
+            return item;
+          }),
+        );
 
         if (reward.type === "product") {
           await reloadCart();
           setRedeemModal({
             status: "success",
-            title: "Reward item claimed",
+            title: reward.title,
             description: "Item added to your cart.",
             rewardType: "product",
+            details: [
+              { label: "Points spent", value: `${reward.points_required.toLocaleString()} pts` },
+            ],
           });
         } else if (reward.type === "voucher") {
+          const voucherBenefit = reward.voucher
+            ? reward.voucher.type === "percent"
+              ? `${reward.voucher.value}% off`
+              : reward.voucher.amount
+                ? formatAmount(reward.voucher.amount)
+                : reward.voucher.value
+                  ? formatAmount(reward.voucher.value)
+                  : "Benefit available"
+            : "Reward voucher";
+          const minSpend = reward.voucher?.min_order_amount
+            ? formatAmount(reward.voucher.min_order_amount)
+            : "None";
           setRedeemModal({
             status: "success",
-            title: "Voucher claimed",
-            description: "Your voucher is ready to use at checkout.",
+            title: reward.title,
+            description: "Voucher added to your account.",
             rewardType: "voucher",
-            voucherCode: reward.voucher_code ?? reward.voucher?.code,
+            details: [
+              { label: "Benefit", value: voucherBenefit },
+              { label: "Min spend", value: minSpend },
+              { label: "Points spent", value: `${reward.points_required.toLocaleString()} pts` },
+            ],
           });
         } else {
           setRedeemModal({ status: "success", title: "Reward redeemed", description: "Reward redeemed successfully." });
@@ -150,7 +181,7 @@ export function RewardsCenter() {
         setRedeemingId((current) => (current === reward.id ? null : current));
       }
     },
-    [availablePoints, customer, fetchRewards, refreshProfile, reloadCart, router],
+    [availablePoints, customer, formatAmount, reloadCart, router],
   );
 
   return (
@@ -256,7 +287,7 @@ export function RewardsCenter() {
                   className="flex h-full flex-col justify-between rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
                 >
                   {isProduct ? (
-                    <div className="space-y-3">
+                    <div className="space-y-1">
                       <div className="relative h-40 w-full overflow-hidden rounded-xl bg-[var(--background-soft)]/70">
                         <Image
                           src={imageUrl}
@@ -275,10 +306,10 @@ export function RewardsCenter() {
                         <p className="text-sm text-[color:var(--text-muted)] line-clamp-3">{reward.description}</p>
                       )}
 
-                      <div className="flex items-center justify-between text-sm font-semibold text-[var(--accent-strong)]">
+                      <div className="text-sm font-semibold text-[var(--accent-strong)]">
                         <span>{reward.points_required.toLocaleString()} pts</span>
-                        <span className="text-xs font-medium text-[color:var(--text-muted)]">Product reward</span>
                       </div>
+
                       <div className="text-xs text-[color:var(--text-muted)]">{remainingLabel}</div>
                       {!isAvailable && (
                         <span className="text-xs font-semibold text-[color:var(--status-error)]">Out of stock</span>
@@ -300,23 +331,21 @@ export function RewardsCenter() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-[var(--foreground)]">{reward.title}</p>
-                          {reward.description && (
-                            <p className="text-xs text-[color:var(--text-muted)] line-clamp-2">{reward.description}</p>
-                          )}
-                        </div>
-                        <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
-                          Voucher
-                        </span>
+                     <div>
+                        <p className="text-sm font-semibold text-[var(--foreground)]">
+                          {reward.title}
+                        </p>
+                        {reward.description && (
+                          <p className="text-xs text-[color:var(--text-muted)] line-clamp-2">
+                            {reward.description}
+                          </p>
+                        )}
                       </div>
-                      <div className="flex items-center justify-between text-sm font-semibold text-[var(--accent-strong)]">
+                      <div className="text-sm font-semibold text-[var(--accent-strong)]">
                         <span>{reward.points_required.toLocaleString()} pts</span>
-                        {voucherBenefit && <span className="text-xs text-[color:var(--text-muted)]">{voucherBenefit}</span>}
                       </div>
                       <div className="flex items-center justify-between text-xs text-[color:var(--text-muted)]">
-                        <span>Benefit: {voucherBenefit ?? "Reward voucher"}</span>
+                        <span>Discount: {voucherBenefit ?? "Reward voucher"}</span>
                         <span>
                           Min spend:{" "}
                           {reward.voucher?.min_order_amount
@@ -362,16 +391,9 @@ export function RewardsCenter() {
           onClose={() => setRedeemModal(null)}
           actions={
             redeemModal.status === "success"
-              ? redeemModal.rewardType === "product"
-                ? [
-                    { label: "Go to Cart", href: "/cart" },
-                  ]
-                : redeemModal.rewardType === "voucher"
-                  ? [
-                      { label: "Go to Checkout", href: "/checkout" },
-                      { label: "Go to Cart", href: "/cart", variant: "secondary" },
-                    ]
-                  : []
+              ? redeemModal.rewardType === "product" || redeemModal.rewardType === "voucher"
+                ? [{ label: "Confirm" }]
+                : []
               : [
                   { label: "Close", onClick: () => setRedeemModal(null), variant: "secondary" },
                 ]
