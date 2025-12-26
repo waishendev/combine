@@ -587,7 +587,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_name}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_name: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                     <div>
@@ -596,7 +596,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_phone}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_phone: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                   </div>
@@ -608,7 +608,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_address_line1}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_address_line1: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                     <div>
@@ -616,7 +616,7 @@ export default function CheckoutForm() {
                       <input
                         value={form.shipping_address_line2}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_address_line2: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                   </div>
@@ -628,7 +628,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_city}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_city: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                     <div>
@@ -637,7 +637,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_state}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_state: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                     <div>
@@ -646,7 +646,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_postcode}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_postcode: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                   </div>
@@ -657,7 +657,7 @@ export default function CheckoutForm() {
                       required
                       value={form.shipping_country}
                       onChange={(e) => setForm((prev) => ({ ...prev, shipping_country: e.target.value }))}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                 </div>
@@ -675,7 +675,7 @@ export default function CheckoutForm() {
                     required
                     value={form.shipping_name}
                     onChange={(e) => setForm((prev) => ({ ...prev, shipping_name: e.target.value }))}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
                 <div>
@@ -684,7 +684,7 @@ export default function CheckoutForm() {
                     required
                     value={form.shipping_phone}
                     onChange={(e) => setForm((prev) => ({ ...prev, shipping_phone: e.target.value }))}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
               </div>
@@ -1115,7 +1115,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.label ?? ""}
                       onChange={(e) => updateAddressForm("label", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                   <div>
@@ -1123,7 +1123,7 @@ export default function CheckoutForm() {
                     <select
                       value={addressForm.type}
                       onChange={(e) => updateAddressForm("type", e.target.value as AddressPayload["type"])}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                     >
                       <option value="shipping">Shipping</option>
                       <option value="billing">Billing</option>
@@ -1137,7 +1137,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.name}
                       onChange={(e) => updateAddressForm("name", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                   <div>
@@ -1145,7 +1145,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.phone}
                       onChange={(e) => updateAddressForm("phone", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                 </div>
@@ -1155,7 +1155,7 @@ export default function CheckoutForm() {
                   <input
                     value={addressForm.line1}
                     onChange={(e) => updateAddressForm("line1", e.target.value)}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
                 <div>
@@ -1163,7 +1163,7 @@ export default function CheckoutForm() {
                   <input
                     value={addressForm.line2 ?? ""}
                     onChange={(e) => updateAddressForm("line2", e.target.value)}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
 
@@ -1173,7 +1173,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.city}
                       onChange={(e) => updateAddressForm("city", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                   <div>
@@ -1181,7 +1181,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.state ?? ""}
                       onChange={(e) => updateAddressForm("state", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                   <div>
@@ -1189,7 +1189,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.postcode ?? ""}
                       onChange={(e) => updateAddressForm("postcode", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                 </div>
@@ -1199,7 +1199,7 @@ export default function CheckoutForm() {
                   <input
                     value={addressForm.country}
                     onChange={(e) => updateAddressForm("country", e.target.value)}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
 
@@ -1266,7 +1266,7 @@ export default function CheckoutForm() {
                     value={voucherCode}
                     onChange={(e) => handleVoucherChange(e.target.value)}
                     placeholder="Enter voucher code"
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
                   />
                   <button
                     type="button"
@@ -1313,7 +1313,7 @@ export default function CheckoutForm() {
                           <input
                             type="radio"
                             name="voucher_choice"
-                            className="mt-1"
+                            className="mt-1 ios-input"
                             checked={isSelected}
                             disabled={isDisabled}
                             onChange={() => {

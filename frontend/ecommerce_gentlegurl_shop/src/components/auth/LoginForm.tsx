@@ -47,6 +47,7 @@ function Field({
             "w-full rounded-xl border bg-[var(--input-bg)] px-3 py-2.5 text-sm text-[var(--foreground)]",
             "border-[var(--input-border)]",
             "focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25",
+            "ios-input",
             icon ? "pl-10" : "",
             rightSlot ? "pr-12" : "",
           ].join(" ")}
