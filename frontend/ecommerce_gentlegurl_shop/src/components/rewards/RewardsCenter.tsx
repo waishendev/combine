@@ -261,7 +261,7 @@ export function RewardsCenter() {
                 : isRedeeming
                   ? "Redeeming..."
                   : !isAvailable
-                    ? "Unavailable"
+                    ? "Out of stock"
                     : hasEnoughPoints
                     ? "Redeem"
                     : "Not enough points";
@@ -311,9 +311,9 @@ export function RewardsCenter() {
                       </div>
 
                       <div className="text-xs text-[color:var(--text-muted)]">{remainingLabel}</div>
-                      {!isAvailable && (
+                      {/* {!isAvailable && (
                         <span className="text-xs font-semibold text-[color:var(--status-error)]">Out of stock</span>
-                      )}
+                      )} */}
 
                       {productLink && (
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[color:var(--text-muted)]">

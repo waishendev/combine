@@ -122,7 +122,7 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
                     <p className="text-base font-semibold text-[var(--foreground)]">{item.label}</p>
                     <p className="text-sm text-[var(--foreground)]/70">Beautiful results, no hidden fees.</p>
                   </div>
-                  <p className="rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
+                  <p className="w-fit rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
                     {item.price}
                   </p>
                 </div>
