@@ -40,6 +40,8 @@ export default function CheckoutForm() {
     isApplyingVoucher,
     appliedVoucher,
     shippingLabel,
+    reloadCart,
+    clearSelection,
     removeVoucher,
     clearVoucherFeedback,
     shippingFlatFee,
@@ -365,6 +367,12 @@ export default function CheckoutForm() {
 
       const order = await createOrder(payload);
 
+      await reloadCart();
+      clearSelection();
+      removeVoucher();
+      setVoucherCode("");
+      setSelectedVoucherId(null);
+
       const isBillplzMethod =
         order.payment_method === "billplz_fpx" || order.payment_method === "billplz_card";
       const paymentUrl = order.payment_url ?? order.payment?.billplz_url;
@@ -504,9 +512,12 @@ export default function CheckoutForm() {
     }
   };
 
-  if (isLoading || !hasLoadedCart ) {
+  if (isSubmitting || isLoading || !hasLoadedCart ) {
     return (
-      <LoadingOverlay message="Loading checkout..." show={isInitialLoad} />
+      <LoadingOverlay
+        message={isSubmitting ? "Placing order..." : "Loading checkout..."}
+        show={isSubmitting || isInitialLoad || isLoading}
+      />
     );
   }
 
