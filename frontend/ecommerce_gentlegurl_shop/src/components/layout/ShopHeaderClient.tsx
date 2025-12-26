@@ -345,7 +345,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                   </button>
 
                   {mobileUserMenuOpen && (
-                    <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-[var(--muted)]/60 bg-white/95 p-2 shadow-lg backdrop-blur-sm">
+                    <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-[var(--card-border)]/60 bg-[var(--card)]/95 p-2 shadow-lg backdrop-blur-sm">
                       <div className="mb-2 border-b border-[var(--muted)]/50 pb-2">
                         <div className="px-3 py-1.5">
                           <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
@@ -479,7 +479,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
               <div className="relative" data-menu>
                 <button
                   onClick={() => setUserMenuOpen((prev) => !prev)}
-                  className="flex items-center gap-2 rounded-lg border border-[var(--muted)]/60 bg-white/50 px-3 py-1.5 transition-colors hover:border-[var(--accent-strong)]/50 hover:bg-[var(--muted)]/30"
+                  className="flex items-center gap-2 rounded-lg border border-[var(--card-border)]/60 bg-[var(--card)]/50 px-3 py-1.5 transition-colors hover:border-[var(--accent-strong)]/50 hover:bg-[var(--muted)]/30"
                 >
                   <div className="h-8 w-8 overflow-hidden rounded-full border border-[var(--muted)] bg-[var(--muted)]/30">
                     <Image
@@ -504,7 +504,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-[var(--muted)]/60 bg-white/95 p-2 shadow-lg backdrop-blur-sm">
+                <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-[var(--card-border)]/60 bg-[var(--card)]/95 p-2 shadow-lg backdrop-blur-sm">
                   <div className="mb-2 border-b border-[var(--muted)]/50 pb-2">
                       <div className="px-3 py-1.5">
                         <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
@@ -636,7 +636,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
           />
 
           {/* Menu Panel */}
-          <div data-mobile-menu className="fixed left-0 top-0 z-40 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-[var(--muted)]/50 bg-white/95 backdrop-blur-sm shadow-xl md:hidden">
+          <div data-mobile-menu className="fixed left-0 top-0 z-40 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-[var(--card-border)]/50 bg-[var(--card)]/95 backdrop-blur-sm shadow-xl md:hidden">
             <div className="flex h-16 items-center justify-between border-b border-[var(--muted)]/50 px-4">
               <span className="text-sm font-semibold text-[var(--foreground)]">Menu</span>
               <button

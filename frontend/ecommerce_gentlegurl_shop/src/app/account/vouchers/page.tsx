@@ -31,17 +31,17 @@ export default function AccountVouchersPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
+        <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[color:var(--status-error)]">{error}</div>
       )}
 
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, idx) => (
-            <div key={idx} className="h-16 rounded-lg border border-[var(--muted)]/60 bg-[var(--muted)]/30" />
+            <div key={idx} className="h-16 rounded-lg border border-[var(--card-border)]/60 bg-[var(--muted)]/30" />
           ))}
         </div>
       ) : vouchers.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[var(--muted)] bg-[var(--background)] px-5 py-8 text-center text-sm text-[var(--foreground)]/70">
+        <div className="rounded-lg border border-dashed border-[var(--card-border)] bg-[var(--background)] px-5 py-8 text-center text-sm text-[var(--foreground)]/70">
           {customer ? "You have no vouchers yet." : "Login to view your vouchers."}
         </div>
       ) : (
@@ -49,7 +49,7 @@ export default function AccountVouchersPage() {
           {vouchers.map((voucher) => (
             <div
               key={voucher.id}
-              className="flex flex-col gap-3 rounded-xl border border-[var(--muted)] bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
                 <p className="text-sm font-semibold text-[var(--foreground)]">{voucher.voucher?.code ?? "Voucher"}</p>
@@ -62,10 +62,10 @@ export default function AccountVouchersPage() {
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
                     voucher.status === "active"
-                      ? "bg-emerald-100 text-emerald-700"
+                      ? "bg-[var(--status-success-bg)] text-[color:var(--status-success)]"
                       : voucher.status === "used"
                         ? "bg-[var(--muted)] text-[var(--foreground)]/80"
-                        : "bg-amber-100 text-amber-700"
+                        : "bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)]"
                   }`}
                 >
                   {voucher.status}

@@ -40,11 +40,11 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
     <main className="bg-gradient-to-b from-transparent via-white/60 to-transparent pb-16">
       <div className="mx-auto max-w-6xl space-y-12 px-4 pt-10 sm:px-6 lg:px-8">
         {/* Hero */}
-        <section className="relative overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
+        <section className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
           <div className="relative grid gap-10 p-8 sm:p-10 lg:grid-cols-2 lg:items-center">
             <div className="space-y-6">
-              <div className="inline-flex items-center gap-2 rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-semibold tracking-[0.2em] text-[var(--accent-strong)]">
+              <div className="inline-flex items-center gap-2 rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs font-semibold tracking-[0.2em] text-[var(--accent-strong)]">
                 <span className="h-2 w-2 rounded-full bg-[var(--accent-strong)]" />
                 GENTLE CARE
               </div>
@@ -64,7 +64,7 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
             </div>
 
             <div className="flex justify-center lg:justify-end">
-              <div className="relative h-64 w-full max-w-md overflow-hidden rounded-2xl border border-[var(--muted)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)]">
+              <div className="relative h-64 w-full max-w-md overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)]">
                 <Image
                   src={heroImage || "/images/slideshow_placeholder.jpg"}
                   alt={`${title} hero visual`}
@@ -92,11 +92,11 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
             {services.map((item) => (
               <div
                 key={item.title}
-                className="h-full rounded-2xl border border-[var(--muted)] bg-white/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
+                className="h-full rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="text-lg font-semibold text-[var(--foreground)]">{item.title}</h3>
-                  <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-medium text-[var(--foreground)]/70">Included</span>
+                  <span className="rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs font-medium text-[var(--foreground)]/70">Included</span>
                 </div>
                 <p className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">{item.description}</p>
               </div>
@@ -114,7 +114,7 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/35 to-transparent sm:ml-6" />
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-[var(--muted)] bg-white/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
+          <div className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
             <div className="divide-y divide-[var(--muted)]">
               {pricing.map((item) => (
                 <div key={item.label} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -122,7 +122,7 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
                     <p className="text-base font-semibold text-[var(--foreground)]">{item.label}</p>
                     <p className="text-sm text-[var(--foreground)]/70">Beautiful results, no hidden fees.</p>
                   </div>
-                  <p className="rounded-full bg-[var(--background-soft)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
+                  <p className="rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
                     {item.price}
                   </p>
                 </div>
@@ -145,11 +145,11 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
             {faqs.map((item) => (
               <details
                 key={item.question}
-                className="group rounded-2xl border border-[var(--muted)] bg-white/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
+                className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-[var(--foreground)]">
                   {item.question}
-                  <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs text-[var(--foreground)]/70 transition group-open:rotate-45">
+                  <span className="rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs text-[var(--foreground)]/70 transition group-open:rotate-45">
                     +
                   </span>
                 </summary>
@@ -160,7 +160,7 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
         </section>
 
         {/* Policy / Notes */}
-        <section className="space-y-4 rounded-2xl border border-[var(--muted)] bg-white/80 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
+        <section className="space-y-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">Notes</p>

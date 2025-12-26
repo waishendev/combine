@@ -70,11 +70,11 @@ export default function UploadReceiptModal({ isOpen, orderId, onClose, onSuccess
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6">
-      <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+      <div className="w-full max-w-2xl rounded-lg bg-[var(--card)] shadow-xl">
         <div className="flex items-center justify-between border-b border-[var(--muted)] px-6 py-4">
           <div>
             <h3 className="text-lg font-semibold text-[var(--accent-strong)]">Upload Payment Slip</h3>
-            <p className="text-xs text-gray-500">Order #{orderId}</p>
+            <p className="text-xs text-[color:var(--text-muted)]">Order #{orderId}</p>
           </div>
           <button
             type="button"
@@ -142,9 +142,9 @@ export default function UploadReceiptModal({ isOpen, orderId, onClose, onSuccess
                   </div>
                 </label>
                 {selectedFile && (
-                  <p className="break-words break-all px-2 text-center text-xs text-gray-600">{selectedFile.name}</p>
+                  <p className="break-words break-all px-2 text-center text-xs text-[color:var(--text-muted)]">{selectedFile.name}</p>
                 )}
-                <p className="text-center text-xs text-[#FF0000]/70">
+                <p className="text-center text-xs text-[color:var(--status-error)] opacity-70">
                   * Accepted: jpg, jpeg, png, webp, pdf (max 5MB)
                 </p>
               </div>
@@ -159,14 +159,14 @@ export default function UploadReceiptModal({ isOpen, orderId, onClose, onSuccess
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="Add any additional notes about your payment..."
-                    className="mt-1 h-32 w-full resize-none rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm leading-relaxed focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)]"
+                    className="mt-1 h-32 w-full resize-none rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm leading-relaxed focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
                   />
                 </label>
               </div>
 
               {uploadError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-                  <p className="text-xs text-red-600">{uploadError}</p>
+                <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2">
+                  <p className="text-xs text-[color:var(--status-error)]">{uploadError}</p>
                 </div>
               )}
             </div>
@@ -178,7 +178,7 @@ export default function UploadReceiptModal({ isOpen, orderId, onClose, onSuccess
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+            className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/50"
             disabled={isUploading}
           >
             Cancel

@@ -155,12 +155,12 @@ export function RewardsCenter() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <div className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-6 shadow-sm">
+      <div className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-[var(--accent-strong)]">Rewards</p>
-            <h1 className="mt-2 text-3xl font-semibold text-gray-900">Rewards Center</h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <h1 className="mt-2 text-3xl font-semibold text-[var(--foreground)]">Rewards Center</h1>
+            <p className="mt-1 text-sm text-[color:var(--text-muted)]">
               Discover vouchers, products, and more. Redeem when you have enough points.
             </p>
           </div>
@@ -180,7 +180,7 @@ export function RewardsCenter() {
               className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                 isActive
                   ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white shadow-sm"
-                  : "border-[var(--muted)] bg-white text-gray-700 hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                  : "border-[var(--card-border)] bg-[var(--card)] text-[color:var(--text-muted)] hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
               }`}
             >
               {item.label}
@@ -191,7 +191,7 @@ export function RewardsCenter() {
 
       <section className="mt-6">
         {rewardsError && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[color:var(--status-warning)]">
             {rewardsError}
           </div>
         )}
@@ -199,7 +199,7 @@ export function RewardsCenter() {
         {loadingRewards ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, idx) => (
-              <div key={idx} className="rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm">
+              <div key={idx} className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm">
                 <div className="h-36 w-full rounded-xl bg-[var(--background-soft)]" />
                 <div className="mt-3 h-5 w-1/2 rounded bg-[var(--background-soft)]" />
                 <div className="mt-2 h-4 w-2/3 rounded bg-[var(--background-soft)]" />
@@ -208,7 +208,7 @@ export function RewardsCenter() {
             ))}
           </div>
         ) : filteredRewards.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[var(--muted)] bg-white/70 px-6 py-10 text-center text-sm text-gray-600">
+          <div className="rounded-xl border border-dashed border-[var(--card-border)] bg-[var(--card)]/70 px-6 py-10 text-center text-sm text-[color:var(--text-muted)]">
             No rewards available for this filter right now. Please check back later.
           </div>
         ) : (
@@ -253,7 +253,7 @@ export function RewardsCenter() {
               return (
                 <div
                   key={reward.id}
-                  className="flex h-full flex-col justify-between rounded-2xl border border-[var(--muted)]/60 bg-white/80 p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+                  className="flex h-full flex-col justify-between rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
                 >
                   {isProduct ? (
                     <div className="space-y-3">
@@ -268,24 +268,24 @@ export function RewardsCenter() {
                       </div>
 
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-lg font-semibold text-gray-900">{reward.title}</p>
+                        <p className="text-lg font-semibold text-[var(--foreground)]">{reward.title}</p>
                       </div>
 
                       {reward.description && (
-                        <p className="text-sm text-gray-600 line-clamp-3">{reward.description}</p>
+                        <p className="text-sm text-[color:var(--text-muted)] line-clamp-3">{reward.description}</p>
                       )}
 
                       <div className="flex items-center justify-between text-sm font-semibold text-[var(--accent-strong)]">
                         <span>{reward.points_required.toLocaleString()} pts</span>
-                        <span className="text-xs font-medium text-gray-500">Product reward</span>
+                        <span className="text-xs font-medium text-[color:var(--text-muted)]">Product reward</span>
                       </div>
-                      <div className="text-xs text-gray-600">{remainingLabel}</div>
+                      <div className="text-xs text-[color:var(--text-muted)]">{remainingLabel}</div>
                       {!isAvailable && (
-                        <span className="text-xs font-semibold text-rose-600">Out of stock</span>
+                        <span className="text-xs font-semibold text-[color:var(--status-error)]">Out of stock</span>
                       )}
 
                       {productLink && (
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[color:var(--text-muted)]">
                           <Link
                             href={productLink}
                             className="inline-flex items-center gap-1 font-semibold text-[var(--accent-strong)] transition hover:text-[var(--accent-stronger)]"
@@ -302,9 +302,9 @@ export function RewardsCenter() {
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">{reward.title}</p>
+                          <p className="text-sm font-semibold text-[var(--foreground)]">{reward.title}</p>
                           {reward.description && (
-                            <p className="text-xs text-gray-600 line-clamp-2">{reward.description}</p>
+                            <p className="text-xs text-[color:var(--text-muted)] line-clamp-2">{reward.description}</p>
                           )}
                         </div>
                         <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
@@ -313,9 +313,9 @@ export function RewardsCenter() {
                       </div>
                       <div className="flex items-center justify-between text-sm font-semibold text-[var(--accent-strong)]">
                         <span>{reward.points_required.toLocaleString()} pts</span>
-                        {voucherBenefit && <span className="text-xs text-gray-700">{voucherBenefit}</span>}
+                        {voucherBenefit && <span className="text-xs text-[color:var(--text-muted)]">{voucherBenefit}</span>}
                       </div>
-                      <div className="flex items-center justify-between text-xs text-gray-600">
+                      <div className="flex items-center justify-between text-xs text-[color:var(--text-muted)]">
                         <span>Benefit: {voucherBenefit ?? "Reward voucher"}</span>
                         <span>
                           Min spend:{" "}
@@ -324,9 +324,9 @@ export function RewardsCenter() {
                             : "None"}
                         </span>
                       </div>
-                      <div className="text-xs text-gray-600">{remainingLabel}</div>
+                      <div className="text-xs text-[color:var(--text-muted)]">{remainingLabel}</div>
                       {!isAvailable && (
-                        <span className="text-xs font-semibold text-rose-600">Fully redeemed</span>
+                        <span className="text-xs font-semibold text-[color:var(--status-error)]">Fully redeemed</span>
                       )}
                     </div>
                   )}
@@ -337,7 +337,7 @@ export function RewardsCenter() {
                     disabled={shouldDisable}
                     className={`mt-4 inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
                       shouldDisable
-                        ? "cursor-not-allowed bg-[var(--muted)] text-gray-500"
+                        ? "cursor-not-allowed bg-[var(--muted)] text-[color:var(--text-muted)]"
                         : "bg-[var(--accent-strong)] text-white shadow-sm hover:bg-[var(--accent-stronger)]"
                     }`}
                   >
@@ -345,7 +345,7 @@ export function RewardsCenter() {
                   </button>
 
                   {!customer && (
-                    <p className="mt-2 text-center text-[12px] text-gray-500">
+                    <p className="mt-2 text-center text-[12px] text-[color:var(--text-muted)]">
                       Login required to redeem.
                     </p>
                   )}

@@ -60,7 +60,7 @@ export default function PointsHistoryPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[color:var(--status-warning-text)]">
           {error}
         </div>
       )}
@@ -91,7 +91,7 @@ export default function PointsHistoryPage() {
                 <div className="text-sm text-[var(--foreground)]/60 sm:text-right">
                   {new Date(entry.created_at).toLocaleString()}
                 </div>
-                <div className={`text-right text-lg font-semibold ${entry.points_change >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                <div className={`text-right text-lg font-semibold ${entry.points_change >= 0 ? "text-[color:var(--status-success)]" : "text-[color:var(--status-error)]"}`}>
                   {entry.points_change >= 0 ? "+" : ""}
                   {entry.points_change}
                 </div>

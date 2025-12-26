@@ -164,8 +164,8 @@ export default function CartPageClient() {
       <main className="mx-auto max-w-6xl px-4 py-8 text-[var(--foreground)]">
         <div className="h-8 w-40 animate-pulse rounded bg-[var(--muted)]" />
         <div className="mt-6 space-y-3">
-          <div className="h-24 rounded bg-white/70 shadow-sm" />
-          <div className="h-24 rounded bg-white/70 shadow-sm" />
+          <div className="h-24 rounded bg-[var(--card)]/70 shadow-sm" />
+          <div className="h-24 rounded bg-[var(--card)]/70 shadow-sm" />
         </div>
       </main>
     );
@@ -203,8 +203,8 @@ export default function CartPageClient() {
         {/* Left */}
         <div className="space-y-4">
           {/* Desktop / Tablet table */}
-          <div className="hidden md:block overflow-hidden rounded-lg border border-[var(--muted)] bg-white/85 shadow-sm">
-            <div className="bg-white/90 px-3 py-2 lg:px-4 lg:py-3">
+          <div className="hidden md:block overflow-hidden rounded-lg border border-[var(--card-border)] bg-[var(--card)]/85 shadow-sm">
+            <div className="bg-[var(--card)]/90 px-3 py-2 lg:px-4 lg:py-3">
               <div className={`grid items-center gap-3 md:gap-3 lg:gap-4 ${gridColsMd} ${gridColsLg}`}>
                 <div className="flex items-center justify-center">
                   <input
@@ -247,7 +247,7 @@ export default function CartPageClient() {
                 const maxStock = getItemStock(item);
 
                 return (
-                  <div key={item.id} className="bg-white/70 px-3 py-2 lg:px-4 lg:py-4">
+                  <div key={item.id} className="bg-[var(--card)]/70 px-3 py-2 lg:px-4 lg:py-4">
                     <div className={`grid items-center gap-3 md:gap-3 lg:gap-4 ${gridColsMd} ${gridColsLg}`}>
                       <div className="flex items-center justify-center">
                         <input
@@ -283,10 +283,10 @@ export default function CartPageClient() {
                             <div className="line-clamp-2 text-sm font-semibold lg:line-clamp-none">{name}</div>
                           )}
                           {quantityNotices[item.id] && (
-                            <p className="text-xs text-amber-600">{quantityNotices[item.id]}</p>
+                            <p className="text-xs text-[color:var(--status-warning)]">{quantityNotices[item.id]}</p>
                           )}
                           {isReward && (
-                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                            <span className="inline-flex items-center rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
                               Reward item
                             </span>
                           )}
@@ -309,7 +309,7 @@ export default function CartPageClient() {
                             Locked
                           </div>
                         ) : (
-                          <div className="flex items-center rounded border border-[var(--muted)] bg-white/70 text-sm">
+                          <div className="flex items-center rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 text-sm">
                             <button
                               type="button"
                               className="px-2 py-1 lg:px-3"
@@ -322,7 +322,7 @@ export default function CartPageClient() {
                               type="number"
                               min={1}
                               max={maxStock ?? undefined}
-                              className="w-12 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
+                              className="w-12 border-x border-[var(--input-border)] px-2 py-1 text-center outline-none"
                               value={item.quantity}
                               onChange={(e) =>
                                 handleQuantityChange(item, Number(e.target.value) || 1)
@@ -359,7 +359,7 @@ export default function CartPageClient() {
                           <button
                             type="button"
                             onClick={() => removeItem(item.id)}
-                            className="rounded-md px-2 py-1 text-xs font-semibold text-[#c26686] transition hover:bg-[#c26686]/10 hover:text-[var(--accent-strong)]"
+                            className="rounded-md px-2 py-1 text-xs font-semibold text-[color:var(--status-error)] transition hover:bg-[var(--status-error-bg)]"
                             title="Remove"
                           >
                             Remove
@@ -390,7 +390,7 @@ export default function CartPageClient() {
               const maxStock = getItemStock(item);
 
               return (
-                <div key={item.id} className="rounded-xl border border-[var(--muted)] bg-white/90 p-3 shadow-sm">
+                <div key={item.id} className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/90 p-3 shadow-sm">
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
@@ -423,7 +423,11 @@ export default function CartPageClient() {
                         <div className="text-xs text-[var(--foreground)]/60">
                           {sku && <span>SKU: {sku}</span>}
                           {variantLabel && <span className="ml-2">{variantLabel}</span>}
-                          {isReward && <span className=" rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">Reward</span>}
+                          {isReward && (
+                            <span className="rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
+                              Reward
+                            </span>
+                          )}
                         </div>
 
                         <div className="text-sm font-medium text-[var(--foreground)]">
@@ -431,8 +435,8 @@ export default function CartPageClient() {
                           {isReward && <span className="ml-2 text-[11px] text-[var(--foreground)]/60">Locked</span>}
                         </div>
                         {quantityNotices[item.id] && (
-                            <p className="text-xs text-amber-600">{quantityNotices[item.id]}</p>
-                          )}
+                          <p className="text-xs text-[color:var(--status-warning)]">{quantityNotices[item.id]}</p>
+                        )}
 
                         <div className="flex items-center gap-2 pt-1">
                           {isReward ? (
@@ -440,7 +444,7 @@ export default function CartPageClient() {
                               Locked
                             </div>
                           ) : (
-                            <div className="flex items-center rounded border border-[var(--muted)] bg-white/70 text-sm">
+                            <div className="flex items-center rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 text-sm">
                               <button
                                 type="button"
                                 className="px-3 py-1"
@@ -453,7 +457,7 @@ export default function CartPageClient() {
                                 type="number"
                                 min={1}
                                 max={maxStock ?? undefined}
-                                className="w-14 border-x border-[var(--muted)] px-2 py-1 text-center outline-none"
+                                className="w-14 border-x border-[var(--input-border)] px-2 py-1 text-center outline-none"
                                 value={item.quantity}
                                 onChange={(e) =>
                                   handleQuantityChange(item, Number(e.target.value) || 1)
@@ -485,7 +489,7 @@ export default function CartPageClient() {
                               <button
                                 type="button"
                                 onClick={() => removeItem(item.id)}
-                                className="rounded-md bg-[#c26686]/10 px-3 py-2 text-xs font-semibold text-[#c26686] transition hover:bg-[#c26686]/20"
+                                className="rounded-md bg-[var(--status-error-bg)] px-3 py-2 text-xs font-semibold text-[color:var(--status-error)] transition hover:bg-[var(--status-error-bg)]/80"
                               >
                                 Remove
                               </button>
@@ -504,7 +508,7 @@ export default function CartPageClient() {
 
         {/* Right summary (Desktop sticky) */}
         <aside className="hidden md:block">
-          <div className="sticky top-24 rounded-lg border border-[var(--muted)] bg-white/90 p-4 shadow-sm">
+          <div className="sticky top-24 rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Order Summary</h2>
@@ -540,7 +544,7 @@ export default function CartPageClient() {
                     removeVoucher();
                     setVoucherCode("");
                   }}
-                  className="rounded-md border border-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-white"
+                  className="rounded-md border border-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--card)]"
                 >
                   Remove
                 </button>
@@ -589,7 +593,7 @@ export default function CartPageClient() {
       </div>
 
       {/* Mobile bottom checkout bar */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--muted)] bg-white/95 p-3 shadow-[0_-6px_20px_rgba(0,0,0,0.06)] md:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--card-border)] bg-[var(--card)]/95 p-3 shadow-[0_-6px_20px_rgba(0,0,0,0.06)] md:hidden">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-1">
           {/* Left: total info */}
           <div className="min-w-0">
@@ -640,7 +644,7 @@ export default function CartPageClient() {
             if (e.target === e.currentTarget) setShowVoucherModal(false);
           }}
         >
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 text-[var(--foreground)] shadow-lg">
+          <div className="w-full max-w-lg rounded-xl bg-[var(--card)] p-5 text-[var(--foreground)] shadow-lg">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold">Apply Voucher</h3>
@@ -679,7 +683,7 @@ export default function CartPageClient() {
                   </button>
                 </div>
                 {voucherErrorMessage && (
-                  <div className="mt-2 rounded-lg border border-[#c26686]/30 bg-[#c26686]/10 px-3 py-2 text-xs text-[#c26686]">
+                  <div className="mt-2 rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2 text-xs text-[color:var(--status-error)]">
                     {voucherErrorMessage}
                   </div>
                 )}
@@ -711,7 +715,7 @@ export default function CartPageClient() {
                           className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition ${
                             isSelected
                               ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                              : "border-[var(--muted)]/70 bg-white"
+                              : "border-[var(--muted)]/70 bg-[var(--card)]"
                           } ${isDisabled ? "cursor-not-allowed opacity-50 grayscale" : "hover:border-[var(--accent)]/60"}`}
                         >
                           <input
@@ -750,7 +754,7 @@ export default function CartPageClient() {
                               </div>
                             </div>
                             {!entry.minSpendMet && (
-                              <p className="mt-2 text-[11px] font-semibold text-amber-600">
+                              <p className="mt-2 text-[11px] font-semibold text-[color:var(--status-warning)]">
                                 Min spend not met
                               </p>
                             )}

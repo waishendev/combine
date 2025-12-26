@@ -121,11 +121,11 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
       </p>
 
       {isLoading && <p className="mt-4 text-sm text-[var(--foreground)]/70">Loading order details...</p>}
-      {error && <p className="mt-4 text-sm text-[#c26686]">{error}</p>}
+      {error && <p className="mt-4 text-sm text-[color:var(--status-error)]">{error}</p>}
 
       {order && (
         <div className="mt-6 space-y-4 text-left text-sm text-[var(--foreground)]">
-          <div className="rounded-lg border border-[var(--muted)] bg-white/80 p-4 shadow-sm">
+          <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
             <p className="font-medium">Order Summary</p>
             <div className="mt-2 space-y-2 text-[var(--foreground)]/80">
               <div className="flex items-center justify-between">
@@ -141,7 +141,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Status</span>
                 {order.status?.toLowerCase() === "processing" ? (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                  <span className="rounded-full border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--status-warning)]">
                     Waiting for verification
                   </span>
                 ) : (
@@ -175,7 +175,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
           </div>
 
           {isManualTransfer && (
-            <div className="rounded-lg border border-[var(--muted)] bg-white/80 p-4 shadow-sm">
+            <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
               <p className="font-medium">Manual Bank Transfer</p>
               {order.bank_account ? (
                 <div className="mt-2 space-y-1 text-[var(--foreground)]/80">
@@ -199,7 +199,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                     </p>
                   )} */}
                   {order.bank_account.qr_image_url && (
-                    <div className="mt-3 h-32 w-32 overflow-hidden rounded border border-[var(--muted)] bg-white">
+                    <div className="mt-3 h-32 w-32 overflow-hidden rounded border border-[var(--card-border)] bg-[var(--card)]">
                       <Image
                         src={order.bank_account.qr_image_url}
                         alt="Bank QR"
@@ -259,7 +259,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
       <div className="mt-8 flex justify-center gap-3 text-sm">
         <Link
           href="/shop"
-          className="rounded border border-[var(--accent)] bg-white/70 px-4 py-2 text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
+          className="rounded border border-[var(--accent)] bg-[var(--card)]/80 px-4 py-2 text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
         >
           Continue Shopping
         </Link>
@@ -273,7 +273,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6">
-          <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+          <div className="w-full max-w-2xl rounded-lg bg-[var(--card)] shadow-xl">
             <div className="flex items-center justify-between border-b border-[var(--muted)] px-6 py-4">
               <h3 className="text-lg font-semibold text-[var(--accent-strong)]">Upload Payment Slip</h3>
               <button
@@ -339,11 +339,11 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                     </div>
                   </label>
                   {selectedFile && (
-                    <p className="text-xs text-gray-600 text-center break-words break-all px-2">
+                    <p className="text-center text-xs text-[color:var(--text-muted)] break-words break-all px-2">
                       {selectedFile.name}
                     </p>
                   )}
-                  <p className="text-xs text-[#FF0000]/70 text-center">
+                  <p className="text-center text-xs text-[color:var(--status-error)] opacity-70">
                     * Accepted: jpg, jpeg, png, webp, pdf (max 5MB)
                   </p>
                 </div>
@@ -358,14 +358,14 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
                       placeholder="Add any additional notes about your payment..."
-                      className="mt-1 h-32 w-full rounded-lg border border-[var(--muted)] bg-white px-3 py-2 text-sm leading-relaxed focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--muted)] resize-none"
+                      className="mt-1 h-32 w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm leading-relaxed focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20 resize-none"
                     />
                   </label>
                 </div>
 
                 {uploadError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-                    <p className="text-xs text-red-600">{uploadError}</p>
+                  <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2">
+                    <p className="text-xs text-[color:var(--status-error)]">{uploadError}</p>
                   </div>
                 )}
               </div>
@@ -377,7 +377,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               <button
                 type="button"
                 onClick={closeModal}
-                className="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+                className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/40"
                 disabled={isUploading}
               >
                 Cancel

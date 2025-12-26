@@ -19,7 +19,7 @@ export function ProductGallery({ images, initialIndex = 0, alt }: ProductGallery
 
   if (!safeImages.length) {
     return (
-      <div className="flex aspect-square items-center justify-center rounded-lg bg-gray-100 text-gray-400">
+      <div className="flex aspect-square items-center justify-center rounded-lg bg-[var(--muted)]/40 text-[color:var(--text-muted)]">
         No Image
       </div>
     );
@@ -27,7 +27,7 @@ export function ProductGallery({ images, initialIndex = 0, alt }: ProductGallery
 
   return (
     <div>
-      <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-gray-100">
+      <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-[var(--muted)]/40">
         <Image 
         // src={activeImage} 
         src={"/images/placeholder.png"}
@@ -42,7 +42,9 @@ export function ProductGallery({ images, initialIndex = 0, alt }: ProductGallery
               type="button"
               onClick={() => setActiveIndex(index)}
               className={`relative h-16 w-16 shrink-0 overflow-hidden rounded border transition ${
-                index === activeIndex ? "border-black" : "border-gray-200 hover:border-gray-300"
+                index === activeIndex
+                  ? "border-[var(--accent-strong)]"
+                  : "border-[var(--card-border)] hover:border-[var(--accent)]"
               }`}
             >
               <Image 

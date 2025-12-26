@@ -47,7 +47,7 @@ export function AccountWishlistGrid({ initialItems }: AccountWishlistGridProps) 
         return (
           <div
             key={key}
-            className="group flex h-full flex-col rounded-xl border border-[var(--muted)] bg-[var(--background)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            className="group flex h-full flex-col rounded-xl border border-[var(--muted)] bg-[var(--whilist-background)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
           >
             <Link href={`/product/${productSlug}`} className="relative mb-3 block h-48 overflow-hidden rounded-lg bg-[var(--muted)]/40">
               {image ? (

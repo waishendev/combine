@@ -44,7 +44,7 @@ export default function WishlistPage() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-3 rounded-xl border border-[var(--muted)] bg-white p-6 shadow-sm">
+        <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm">
           <div className="h-5 w-32 animate-pulse rounded bg-[var(--muted)]/60" />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[...Array(3)].map((_, index) => (

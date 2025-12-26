@@ -17,7 +17,7 @@ export default function Marquee({ items }: MarqueeProps) {
             key={`${item.id}-${index}`}
             className="inline-flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.25em] text-white/80"
           >
-            <span className="h-px w-6 bg-white/40" aria-hidden />
+            <span className="h-px w-6 bg-[var(--card)]/40" aria-hidden />
             {item.text}
           </span>
         ))}

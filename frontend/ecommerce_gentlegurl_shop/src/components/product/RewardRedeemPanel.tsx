@@ -117,25 +117,25 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.16em] text-[var(--accent-strong)]">Reward Redeem</p>
-          <p className="text-lg font-semibold text-gray-900">
+          <p className="text-lg font-semibold text-[var(--foreground)]">
             {requiredPoints != null ? `${requiredPoints.toLocaleString()} pts` : "Reward redeem"}
           </p>
-          <p className="text-xs text-gray-600">Redeem with your points to get this item.</p>
+          <p className="text-xs text-[color:var(--text-muted)]">Redeem with your points to get this item.</p>
           {stock != null && (
-            <p className="mt-1 text-xs text-gray-600">Stock left: {stock}</p>
+            <p className="mt-1 text-xs text-[color:var(--text-muted)]">Stock left: {stock}</p>
           )}
         </div>
         {loadingReward ? (
-          <div className="h-10 w-24 animate-pulse rounded-full bg-white/70" />
+          <div className="h-10 w-24 animate-pulse rounded-full bg-[var(--card)]/70" />
         ) : (
-          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[var(--accent-strong)]">
+          <span className="rounded-full bg-[var(--card)] px-3 py-1 text-xs font-semibold text-[var(--accent-strong)]">
             {requiredPoints != null ? `${requiredPoints.toLocaleString()} pts needed` : "Reward available"}
           </span>
         )}
       </div>
 
       {claimed && (
-        <div className="rounded-lg bg-white px-3 py-2 text-sm text-emerald-700">
+        <div className="rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2 text-sm text-[color:var(--status-success)]">
           Reward item added to your cart.{" "}
           <button
             type="button"
@@ -148,7 +148,7 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
       )}
 
       {isOutOfStock && (
-        <div className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-600">
+        <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2 text-sm font-semibold text-[color:var(--status-error)]">
           Out of stock
         </div>
       )}
@@ -162,7 +162,7 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
             className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
               !isLoggedIn || hasEnoughPoints
                 ? "bg-[var(--accent-strong)] text-white shadow-sm hover:bg-[var(--accent-stronger)]"
-                : "cursor-not-allowed bg-[var(--muted)] text-gray-500"
+                : "cursor-not-allowed bg-[var(--muted)] text-[color:var(--text-muted)]"
             }`}
           >
             {!isLoggedIn
@@ -175,7 +175,7 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
           </button>
         )}
         {!isRewardOnly && (
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-[color:var(--text-muted)]">
             Reward redemption available. Standard purchase also applies when not redeeming.
           </p>
         )}

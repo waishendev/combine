@@ -44,9 +44,9 @@ function Field({
           id={id}
           type={type}
           className={[
-            "w-full rounded-xl border bg-white/90 px-3 py-2.5 text-sm text-[var(--foreground)]",
-            "border-[var(--muted)]/70",
-            "focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--muted)]/25",
+            "w-full rounded-xl border bg-[var(--input-bg)] px-3 py-2.5 text-sm text-[var(--foreground)]",
+            "border-[var(--input-border)]",
+            "focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25",
             icon ? "pl-10" : "",
             rightSlot ? "pr-12" : "",
           ].join(" ")}
@@ -115,7 +115,7 @@ export function LoginForm({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       {error && (
-        <div className="rounded-xl border border-[var(--muted)]/60 bg-white/90 px-3 py-2 text-sm text-[var(--accent-stronger)]">
+        <div className="rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2 text-sm text-[color:var(--status-error)]">
           {error}
         </div>
       )}

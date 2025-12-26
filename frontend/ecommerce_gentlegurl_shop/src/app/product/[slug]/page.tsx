@@ -109,32 +109,32 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               </span>
             )}
           {isRewardOnly && (
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+            <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
               Reward Item
             </span>
           )}
         </div>
 
         {isRewardOnly && product.stock != null && (
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-[color:var(--text-muted)]">
             <p>Stock left: {product.stock}</p>
             {product.stock <= 0 && (
-              <p className="mt-1 font-semibold text-rose-600">Out of stock</p>
+              <p className="mt-1 font-semibold text-[color:var(--status-error)]">Out of stock</p>
             )}
           </div>
         )}
 
         {!isRewardOnly && product.stock != null && (
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-[color:var(--text-muted)]">
             <p>Stock left: {product.stock}</p>
             {product.stock <= 0 && (
-              <p className="mt-1 font-semibold text-rose-600">Out of stock</p>
+              <p className="mt-1 font-semibold text-[color:var(--status-error)]">Out of stock</p>
             )}
             </div>
           )}
 
           {product.description && (
-            <div className="prose max-w-none text-sm text-gray-700">
+            <div className="prose max-w-none text-sm text-[color:var(--text-muted)]">
               {product.description}
             </div>
           )}
@@ -165,7 +165,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[var(--accent-strong)]">
               Recommended
             </p>
-            <h2 className="text-xl font-semibold text-gray-900">
+            <h2 className="text-xl font-semibold text-[var(--foreground)]">
               You May Also Like
             </h2>
           </div>
@@ -184,7 +184,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                 <Link
                   key={related.id}
                   href={`/product/${related.slug ?? related.id}`}
-                  className="group relative overflow-hidden rounded-2xl border border-white/70 bg-white/90 shadow-[0_16px_50px_-36px_rgba(15,23,42,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-36px_rgba(var(--accent-rgb),0.45)]"
+                  className="group relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/90 shadow-[0_16px_50px_-36px_rgba(15,23,42,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-36px_rgba(var(--accent-rgb),0.45)]"
                 >
                   <div className="relative h-36 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] via-white/80 to-white">
                     {thumbnail ? (
@@ -195,14 +195,14 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                         className="object-cover transition duration-500 ease-out group-hover:scale-110"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                      <div className="flex h-full w-full items-center justify-center text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                         No Image
                       </div>
                     )}
                     <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-white/80 to-transparent" />
                   </div>
                   <div className="space-y-2 p-3">
-                    <h3 className="line-clamp-2 text-sm font-semibold text-gray-900">
+                    <h3 className="line-clamp-2 text-sm font-semibold text-[var(--foreground)]">
                       {related.name}
                     </h3>
 
