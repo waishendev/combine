@@ -21,7 +21,7 @@ class LoyaltyRewardSeeder extends Seeder
                 'min_order_amount' => 0,
                 'is_active' => true,
                 'usage_limit_total' => null,
-                'usage_limit_per_customer' => 1,
+                'usage_limit_per_customer' => null,
                 'is_reward_only' => true,
             ]
         );
