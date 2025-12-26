@@ -171,8 +171,8 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
 
           <ul className="grid gap-3 sm:grid-cols-2">
             {notes.map((note) => (
-              <li key={note} className="flex items-start gap-3 rounded-xl bg-[var(--background-soft)]/70 p-4 text-sm text-[var(--foreground)]/80">
-                <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)]/70 text-white">•</span>
+              <li key={note} className="flex items-center gap-3 rounded-xl bg-[var(--background-soft)]/70 p-4 text-sm text-[var(--foreground)]/80">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)]/70 text-white">•</span>
                 <span>{note}</span>
               </li>
             ))}

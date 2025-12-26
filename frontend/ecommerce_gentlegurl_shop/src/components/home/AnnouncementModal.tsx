@@ -90,8 +90,8 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
         {item.button_link && (
           <a
             href={item.button_link}
-            className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[var(--accent)] via-[var(--background-soft)] to-white px-5 py-3 text-sm font-semibold text-[var(--foreground)] shadow-[0_12px_30px_-18px_rgba(var(--accent-rgb),0.35)] transition hover:translate-y-[-2px] hover:shadow-[0_18px_40px_-22px_rgba(var(--accent-rgb),0.45)]"
-          >
+            className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white shadow-[0_12px_30px_-18px_rgba(var(--accent-rgb),0.35)] transition hover:translate-y-[-2px] hover:shadow-[0_18px_40px_-22px_rgba(var(--accent-rgb),0.45)]"
+            >
             {item.button_label ?? "Shop the edit"}
             <span aria-hidden className="text-base">→</span>
           </a>

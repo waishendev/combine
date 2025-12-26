@@ -53,11 +53,14 @@ export default function ProductGrid({ items }: ProductGridProps) {
                 <h3 className="text-sm font-semibold leading-snug text-gray-900 md:text-base">
                   {product.name}
                 </h3>
-                <div className="flex items-center justify-between text-sm text-gray-700">
-                  <span className="font-semibold text-[var(--accent-strong)]">RM {priceLabel}</span>
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-gray-400">View</span>
-                </div>
-                <p className="text-xs font-medium text-gray-500">Sold {soldCount}</p>
+
+                <span className="text-sm font-semibold text-[var(--accent-strong)]">
+                  RM {priceLabel}
+                </span>
+
+                <p className="text-xs font-medium text-gray-500">
+                  Sold {soldCount}
+                </p>
               </div>
             </Link>
           </div>

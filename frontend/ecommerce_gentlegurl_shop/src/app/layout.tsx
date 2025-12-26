@@ -14,7 +14,7 @@ import { getUser } from "@/lib/server/getUser";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Gentlegurl Shop",
+  title: "Gentlegurl",
 };
 
 export default async function RootLayout({
@@ -22,8 +22,18 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const colorMode = process.env.COLOR ?? process.env.NEXT_PUBLIC_COLOR ?? "1";
+  // Prioritize NEXT_PUBLIC_COLOR to avoid system env variable override
+  // System env variables can override .env.local, but NEXT_PUBLIC_* vars are handled differently
+  const colorMode = process.env.NEXT_PUBLIC_COLOR ?? "1";
   const theme = colorMode === "2" ? "cream" : "soft";
+  
+  // Debug: Log theme selection (remove in production)
+  if (process.env.NODE_ENV === "development") {
+    console.log("[Theme Debug] COLOR env:", process.env.COLOR);
+    console.log("[Theme Debug] NEXT_PUBLIC_COLOR env:", process.env.NEXT_PUBLIC_COLOR);
+    console.log("[Theme Debug] colorMode:", colorMode);
+    console.log("[Theme Debug] selected theme:", theme);
+  }
   const headerList = await headers();
   const pathname = headerList.get("x-pathname") ?? "";
   const isAuthRoute = pathname === "/login" || pathname === "/register";

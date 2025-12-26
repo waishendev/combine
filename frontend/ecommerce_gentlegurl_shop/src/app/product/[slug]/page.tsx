@@ -205,14 +205,10 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                     <h3 className="line-clamp-2 text-sm font-semibold text-gray-900">
                       {related.name}
                     </h3>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-[var(--accent-strong)]">
-                        RM {priceLabel}
-                      </span>
-                      <span className="rounded-full bg-[var(--background-soft)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">
-                        View
-                      </span>
-                    </div>
+
+                    <span className="text-sm font-semibold text-[var(--accent-strong)]">
+                      RM {priceLabel}
+                    </span>
                   </div>
                 </Link>
               );
