@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ProductGrid from "@/components/products/ProductGrid";
 import { getOrCreateSessionToken } from "@/lib/sessionToken";
@@ -76,6 +76,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   const [maxPriceInput, setMaxPriceInput] = useState<string>(queryMaxPrice);
   const [appliedMinPrice, setAppliedMinPrice] = useState<string>(queryMinPrice);
   const [appliedMaxPrice, setAppliedMaxPrice] = useState<string>(queryMaxPrice);
+  const requestIdRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const pushParams = useCallback(
     ({
@@ -209,9 +211,16 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       return;
     }
 
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
       setIsLoading(true);
       setError(null);
+      setProducts([]);
 
       const params = new URLSearchParams();
       params.set("page", page.toString());
@@ -253,6 +262,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         `/api/proxy/public/shop/products?${params.toString()}`,
         {
           cache: "no-store",
+          signal: abortController.signal,
         },
       );
 
@@ -273,14 +283,21 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         total: metaPayload.total ?? items.length,
       };
 
-      setProducts(items);
-      setMeta(resolvedMeta);
+      if (requestIdRef.current === requestId && !abortController.signal.aborted) {
+        setProducts(items);
+        setMeta(resolvedMeta);
+      }
     } catch (err) {
+      if (abortController.signal.aborted) {
+        return;
+      }
       console.error("[ShopBrowser] Products error", err);
       setError("We couldn't load the products right now. Please try again soon.");
       setProducts([]);
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId && !abortController.signal.aborted) {
+        setIsLoading(false);
+      }
     }
   }, [appliedMaxPrice, appliedMinPrice, debouncedSearch, menuNotFound, menuSlug, page, selectedCategory, sort]);
 
