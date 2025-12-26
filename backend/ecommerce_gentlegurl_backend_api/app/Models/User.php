@@ -70,6 +70,18 @@ class User extends Authenticatable
             ->values();
     }
 
+    public function getNonSystemPermissions(): Collection
+    {
+        return $this->roles()
+            ->where('is_system', false)
+            ->with('permissions')
+            ->get()
+            ->flatMap(fn (Role $role) => $role->permissions)
+            ->pluck('slug')
+            ->unique()
+            ->values();
+    }
+
     /**
      * Prepare a date for array / JSON serialization.
      *

@@ -37,6 +37,14 @@ class AuthController extends Controller
             return $this->respond(null, __('This account is inactive.'), false, 403);
         }
 
+        if (! $this->hasNonSystemRole($user)) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return $this->respond(null, __('This account does not have access.'), false, 403);
+        }
+
         $user->forceFill([
             'last_login_at' => Date::now(),
             'last_login_ip' => $request->ip(),
@@ -60,15 +68,15 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         /** @var User $user */
-        $user = $request->user()->loadMissing('roles.permissions');
+        $user = $request->user();
 
         return $this->respond([
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'username' => $user->username,
-            'roles' => $user->roles->pluck('name')->values()->toArray(),
-            'permissions' => $user->getAllPermissions()->toArray(),
+            'roles' => $this->getNonSystemRoles($user)->pluck('name')->values()->toArray(),
+            'permissions' => $user->getNonSystemPermissions()->toArray(),
         ]);
     }
 
@@ -78,7 +86,7 @@ class AuthController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        return $this->respond($this->transformUser($user->loadMissing('roles.permissions')));
+        return $this->respond($this->transformUser($user));
     }
 
     public function loginWithToken(Request $request)
@@ -97,6 +105,10 @@ class AuthController extends Controller
 
         if (! $user->is_active) {
             return response()->json(['error' => __('This account is inactive.')], 403);
+        }
+
+        if (! $this->hasNonSystemRole($user)) {
+            return response()->json(['error' => __('This account does not have access.')], 403);
         }
 
         Auth::login($user);
@@ -123,7 +135,8 @@ class AuthController extends Controller
 
     private function transformUser(User $user): array
     {
-        $permissions = $user->getAllPermissions();
+        $permissions = $user->getNonSystemPermissions();
+        $roles = $this->getNonSystemRoles($user);
 
         return [
             'id' => $user->id,
@@ -131,11 +144,21 @@ class AuthController extends Controller
             'email' => $user->email,
             'username' => $user->username,
             'is_active' => $user->is_active,
-            'roles' => $user->roles->map(fn ($role) => [
+            'roles' => $roles->map(fn ($role) => [
                 'id' => $role->id,
                 'name' => $role->name,
             ])->values(),
             'permissions' => $permissions,
         ];
+    }
+
+    private function hasNonSystemRole(User $user): bool
+    {
+        return $user->roles()->where('is_system', false)->exists();
+    }
+
+    private function getNonSystemRoles(User $user)
+    {
+        return $user->roles()->where('is_system', false)->get();
     }
 }

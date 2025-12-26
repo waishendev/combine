@@ -11,6 +11,8 @@ class RbacSeeder extends Seeder
         $this->call([
             PermissionSeeder::class,
             SystemRoleSeeder::class,
+            AdminRoleSeeder::class,
+            AdminAccountSeeder::class,
             RoleSeeder::class,
         ]);
     }
