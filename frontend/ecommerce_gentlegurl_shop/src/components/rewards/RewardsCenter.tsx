@@ -372,12 +372,6 @@ export function RewardsCenter() {
                   >
                     {buttonLabel}
                   </button>
-
-                  {!customer && (
-                    <p className="mt-2 text-center text-[12px] text-[color:var(--text-muted)]">
-                      Login required to redeem.
-                    </p>
-                  )}
                 </div>
               );
             })}
