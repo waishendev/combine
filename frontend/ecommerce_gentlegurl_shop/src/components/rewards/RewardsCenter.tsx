@@ -115,24 +115,57 @@ export function RewardsCenter() {
             },
           };
         });
-        await refreshProfile();
-        await fetchRewards();
+        setRewards((current) =>
+          current.map((item) => {
+            if (item.id !== reward.id) return item;
+            if (typeof item.remaining === "number") {
+              const nextRemaining = Math.max(item.remaining - 1, 0);
+              return {
+                ...item,
+                remaining: nextRemaining,
+                is_available: nextRemaining > 0,
+              };
+            }
+            return item;
+          }),
+        );
 
         if (reward.type === "product") {
           await reloadCart();
           setRedeemModal({
             status: "success",
-            title: "Reward item claimed",
+            title: reward.title,
             description: "Item added to your cart.",
             rewardType: "product",
+            details: [
+              { label: "Points spent", value: `${reward.points_required.toLocaleString()} pts` },
+              { label: "Status", value: "Added to cart" },
+            ],
           });
         } else if (reward.type === "voucher") {
+          const voucherBenefit = reward.voucher
+            ? reward.voucher.type === "percent"
+              ? `${reward.voucher.value}% off`
+              : reward.voucher.amount
+                ? formatAmount(reward.voucher.amount)
+                : reward.voucher.value
+                  ? formatAmount(reward.voucher.value)
+                  : "Benefit available"
+            : "Reward voucher";
+          const minSpend = reward.voucher?.min_order_amount
+            ? formatAmount(reward.voucher.min_order_amount)
+            : "None";
           setRedeemModal({
             status: "success",
-            title: "Voucher claimed",
+            title: reward.title,
             description: "Your voucher is ready to use at checkout.",
             rewardType: "voucher",
             voucherCode: reward.voucher_code ?? reward.voucher?.code,
+            details: [
+              { label: "Benefit", value: voucherBenefit },
+              { label: "Min spend", value: minSpend },
+              { label: "Points spent", value: `${reward.points_required.toLocaleString()} pts` },
+            ],
           });
         } else {
           setRedeemModal({ status: "success", title: "Reward redeemed", description: "Reward redeemed successfully." });
@@ -150,7 +183,7 @@ export function RewardsCenter() {
         setRedeemingId((current) => (current === reward.id ? null : current));
       }
     },
-    [availablePoints, customer, fetchRewards, refreshProfile, reloadCart, router],
+    [availablePoints, customer, formatAmount, reloadCart, router],
   );
 
   return (
@@ -362,16 +395,9 @@ export function RewardsCenter() {
           onClose={() => setRedeemModal(null)}
           actions={
             redeemModal.status === "success"
-              ? redeemModal.rewardType === "product"
-                ? [
-                    { label: "Go to Cart", href: "/cart" },
-                  ]
-                : redeemModal.rewardType === "voucher"
-                  ? [
-                      { label: "Go to Checkout", href: "/checkout" },
-                      { label: "Go to Cart", href: "/cart", variant: "secondary" },
-                    ]
-                  : []
+              ? redeemModal.rewardType === "product" || redeemModal.rewardType === "voucher"
+                ? [{ label: "Confirm" }]
+                : []
               : [
                   { label: "Close", onClick: () => setRedeemModal(null), variant: "secondary" },
                 ]

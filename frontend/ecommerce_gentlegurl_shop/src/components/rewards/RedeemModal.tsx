@@ -8,6 +8,7 @@ export type RedeemModalState = {
   description?: string;
   rewardType?: "product" | "voucher";
   voucherCode?: string | null;
+  details?: Array<{ label: string; value: string }>;
 };
 
 type RedeemModalAction = {
@@ -74,6 +75,16 @@ export function RedeemModal({ state, onClose, actions = [] }: RedeemModalProps) 
               <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--status-success-bg)] px-3 py-1 text-xs font-semibold text-[color:var(--status-success)]">
                 <span>Voucher Code</span>
                 <span className="rounded bg-[var(--card)] px-2 py-1 text-[13px] text-[color:var(--status-success)]">{state.voucherCode}</span>
+              </div>
+            )}
+            {state.details && state.details.length > 0 && (
+              <div className="mt-4 space-y-2 text-sm text-[color:var(--text-muted)]">
+                {state.details.map((detail) => (
+                  <div key={detail.label} className="flex items-center justify-between gap-3">
+                    <span className="text-xs uppercase tracking-[0.08em] text-[var(--accent-strong)]">{detail.label}</span>
+                    <span className="text-sm font-semibold text-[var(--foreground)]">{detail.value}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
