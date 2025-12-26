@@ -438,7 +438,7 @@ export default function ReviewsPage() {
                       key={index}
                       type="button"
                       onClick={() => setForm((prev) => ({ ...prev, rating: index + 1 }))}
-                      className={`text-2xl transition hover:scale-110 ${
+                      className={`text-3xl transition hover:scale-110 ${
                         index < form.rating ? "text-[color:var(--status-warning)]" : "text-[var(--muted)]"
                       }`}
                     >
@@ -446,7 +446,7 @@ export default function ReviewsPage() {
                     </button>
                   ))}
                 </div>
-                <span className="text-sm font-semibold text-[color:var(--text-muted)]">{form.rating} out of 5</span>
+               <span className="text-sm font-semibold text-[color:var(--text-muted)]">{form.rating} out of 5</span>
               </div>
             </div>
 

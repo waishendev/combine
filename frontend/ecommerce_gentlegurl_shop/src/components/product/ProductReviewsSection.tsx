@@ -184,20 +184,23 @@ export function ProductReviewsSection({
                   <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
                     Rating
                   </label>
-                  <div className="mt-1 flex items-center gap-2">
-                    <select
-                      className="w-24 rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-2 text-sm"
-                      value={rating}
-                      onChange={(e) => setRating(Number(e.target.value))}
-                      disabled={submitting}
-                    >
-                      {[5, 4, 3, 2, 1].map((value) => (
-                        <option key={value} value={value}>
-                          {value} Star{value > 1 ? "s" : ""}
-                        </option>
+                  <div className="mt-1 flex items-center gap-4">
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: 5 }).map((_, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => setRating(index + 1)}
+                          disabled={submitting}
+                          className={`text-3xl transition hover:scale-110 disabled:cursor-not-allowed disabled:opacity-70 ${
+                            index < rating ? "text-[color:var(--status-warning)]" : "text-[var(--muted)]"
+                          }`}
+                        >
+                          ★
+                        </button>
                       ))}
-                    </select>
-                    <RatingStars value={rating} />
+                    </div>
+                    <span className="text-sm font-semibold text-[color:var(--text-muted)]">{rating} out of 5</span>
                   </div>
                 </div>
 
