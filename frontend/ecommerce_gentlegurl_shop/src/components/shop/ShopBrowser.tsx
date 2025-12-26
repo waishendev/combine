@@ -230,24 +230,24 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         params.set("menu_slug", menuSlug);
       }
 
-      if (selectedCategory) {
-        params.set("category_slug", selectedCategory);
+      if (queryCategory) {
+        params.set("category_slug", queryCategory);
       }
 
-      if (debouncedSearch) {
-        params.set("q", debouncedSearch);
+      if (querySearch) {
+        params.set("q", querySearch);
       }
 
-      if (sort) {
-        params.set("sort", sort);
+      if (querySort) {
+        params.set("sort", querySort);
       }
 
-      if (appliedMinPrice) {
-        params.set("min_price", appliedMinPrice);
+      if (queryMinPrice) {
+        params.set("min_price", queryMinPrice);
       }
 
-      if (appliedMaxPrice) {
-        params.set("max_price", appliedMaxPrice);
+      if (queryMaxPrice) {
+        params.set("max_price", queryMaxPrice);
       }
 
       // Add session_token from cookie for wishlist support
@@ -299,7 +299,16 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         setIsLoading(false);
       }
     }
-  }, [appliedMaxPrice, appliedMinPrice, debouncedSearch, menuNotFound, menuSlug, page, selectedCategory, sort]);
+  }, [
+    menuNotFound,
+    menuSlug,
+    page,
+    queryCategory,
+    queryMaxPrice,
+    queryMinPrice,
+    querySearch,
+    querySort,
+  ]);
 
   useEffect(() => {
     fetchMenus();
