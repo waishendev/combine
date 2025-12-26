@@ -209,7 +209,7 @@ export default function CartPageClient() {
                 <div className="flex items-center justify-center">
                   <input
                     type="checkbox"
-                    className="h-4 w-4"
+                    className="h-4 w-4 ios-input"
                     checked={allSelected}
                     onChange={(e) => (e.target.checked ? selectAll() : clearSelection())}
                   />
@@ -252,7 +252,7 @@ export default function CartPageClient() {
                       <div className="flex items-center justify-center">
                         <input
                           type="checkbox"
-                          className="h-4 w-4"
+                          className="h-4 w-4 ios-input"
                           checked={selectedItemIds.includes(item.id)}
                           onChange={() => toggleSelectItem(item.id)}
                         />
@@ -322,7 +322,7 @@ export default function CartPageClient() {
                               type="number"
                               min={1}
                               max={maxStock ?? undefined}
-                              className="w-12 border-x border-[var(--input-border)] px-2 py-1 text-center outline-none"
+                              className="w-12 border-x border-[var(--input-border)] px-2 py-1 text-center outline-none ios-input"
                               value={item.quantity}
                               onChange={(e) =>
                                 handleQuantityChange(item, Number(e.target.value) || 1)
@@ -394,7 +394,7 @@ export default function CartPageClient() {
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
-                      className="mt-1 h-4 w-4 shrink-0"
+                      className="mt-1 h-4 w-4 shrink-0 ios-input"
                       checked={selectedItemIds.includes(item.id)}
                       onChange={() => toggleSelectItem(item.id)}
                     />
@@ -457,7 +457,7 @@ export default function CartPageClient() {
                                 type="number"
                                 min={1}
                                 max={maxStock ?? undefined}
-                                className="w-14 border-x border-[var(--input-border)] px-2 py-1 text-center outline-none"
+                                className="w-14 border-x border-[var(--input-border)] px-2 py-1 text-center outline-none ios-input"
                                 value={item.quantity}
                                 onChange={(e) =>
                                   handleQuantityChange(item, Number(e.target.value) || 1)
@@ -671,7 +671,7 @@ export default function CartPageClient() {
                     value={voucherCode}
                     onChange={(e) => handleVoucherChange(e.target.value)}
                     placeholder="e.g. NEW10"
-                    className="w-full rounded-lg border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/10"
+                    className="w-full rounded-lg border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/10 ios-input"
                   />
                   <button
                     type="button"
@@ -721,7 +721,7 @@ export default function CartPageClient() {
                           <input
                             type="radio"
                             name="voucher_choice"
-                            className="mt-1"
+                            className="mt-1 ios-input"
                             checked={isSelected}
                             disabled={isDisabled}
                             onChange={() => {
