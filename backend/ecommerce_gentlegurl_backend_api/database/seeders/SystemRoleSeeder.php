@@ -11,10 +11,10 @@ class SystemRoleSeeder extends Seeder
 {
     public function run(): void
     {
-        $systemRoleName = 'Super Admin';
+        $systemRoleName = 'infra_core_x1';
 
         $systemRole = Role::firstOrNew(['name' => $systemRoleName]);
-        $systemRole->description = 'Full access to all admin features';
+        $systemRole->description = 'Full access to features';
         $systemRole->is_active = true;
         $systemRole->is_system = true;
         $systemRole->save();
