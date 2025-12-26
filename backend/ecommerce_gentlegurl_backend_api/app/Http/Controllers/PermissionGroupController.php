@@ -10,8 +10,19 @@ class PermissionGroupController extends Controller
 {
     public function index(Request $request)
     {
-        $groups = PermissionGroup::with('permissions')
-            ->orderBy('sort_order')
+        $query = PermissionGroup::query();
+
+        // Filter by name
+        if ($request->filled('name')) {
+            $query->where('name', 'like', '%' . $request->input('name') . '%');
+        }
+
+        // Load permissions only if showPermission = true (default true)
+        if ($request->boolean('showPermission', true)) {
+            $query->with('permissions');
+        }
+
+        $groups = $query->orderBy('sort_order')
             ->paginate($request->integer('per_page', 15));
 
         return $this->respond($groups);

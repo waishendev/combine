@@ -10,12 +10,31 @@ class RoleController extends Controller
 {
     public function index(Request $request)
     {
-        $roles = Role::with('permissions')
-            ->where('is_system', false)
-            ->paginate($request->integer('per_page', 15));
-
-        return $this->respond($roles);
+        $query = Role::where('is_system', false);
+    
+        // ✅ 只有在有 pass is_active 的时候才过滤
+        if ($request->has('is_active')) {
+            $query->where(
+                'is_active',
+                $request->boolean('is_active')
+            );
+        }
+    
+        // Filter by name
+        if ($request->filled('name')) {
+            $query->where('name', 'like', '%' . $request->input('name') . '%');
+        }
+    
+        // Load permissions only if showPermission = true
+        if ($request->boolean('showPermission', true)) {
+            $query->with('permissions');
+        }
+    
+        return $this->respond(
+            $query->paginate($request->integer('per_page', 15))
+        );
     }
+    
 
     public function store(Request $request)
     {

@@ -12,11 +12,34 @@ class PermissionController extends Controller
     public function index(Request $request)
     {
         if ($request->boolean('grouped')) {
-            $groups = PermissionGroup::with(['permissions' => function ($query) {
+            $groupsQuery = PermissionGroup::with(['permissions' => function ($query) use ($request) {
+                // Filter permissions within groups
+                if ($request->filled('name')) {
+                    $query->where('name', 'like', '%' . $request->input('name') . '%');
+                }
+                if ($request->filled('slug')) {
+                    $query->where('slug', 'like', '%' . $request->input('slug') . '%');
+                }
                 $query->orderBy('name');
-            }])->orderBy('sort_order')->get();
+            }])->orderBy('sort_order');
 
-            $ungrouped = Permission::whereNull('group_id')->orderBy('name')->get();
+            // Filter groups by group_id if provided
+            if ($request->filled('group')) {
+                $groupsQuery->where('id', $request->input('group'));
+            }
+
+            $groups = $groupsQuery->get();
+
+            $ungroupedQuery = Permission::whereNull('group_id');
+            
+            if ($request->filled('name')) {
+                $ungroupedQuery->where('name', 'like', '%' . $request->input('name') . '%');
+            }
+            if ($request->filled('slug')) {
+                $ungroupedQuery->where('slug', 'like', '%' . $request->input('slug') . '%');
+            }
+            
+            $ungrouped = $ungroupedQuery->orderBy('name')->get();
 
             return $this->respond([
                 'groups' => $groups,
@@ -24,7 +47,24 @@ class PermissionController extends Controller
             ]);
         }
 
-        $permissions = Permission::with('group')->paginate($request->integer('per_page', 15));
+        $query = Permission::query();
+
+        // Filter by name
+        if ($request->filled('name')) {
+            $query->where('name', 'like', '%' . $request->input('name') . '%');
+        }
+
+        // Filter by slug
+        if ($request->filled('slug')) {
+            $query->where('slug', 'like', '%' . $request->input('slug') . '%');
+        }
+
+        // Filter by group (group_id)
+        if ($request->filled('group')) {
+            $query->where('group_id', $request->input('group'));
+        }
+
+        $permissions = $query->with('group')->paginate($request->integer('per_page', 15));
 
         return $this->respond($permissions);
     }
