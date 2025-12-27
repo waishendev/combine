@@ -29,13 +29,12 @@ export default async function CompletedOrdersPage() {
   // Define initial status filters for Completed Orders
   // Completed Orders should include:
   // - Completed (status: 'completed')
-  // - Cancelled (status: 'cancelled', but not refunded)
-  // - Refunded (status: 'cancelled', payment_status: 'refunded')
-  // Note: We need to get both cancelled (non-refunded) and refunded orders
-  // So we pass status: ['completed', 'cancelled'] and let backend handle it
-  // When user filters by Refunded, show_cancelled_only=1 will be added automatically
+  // - Cancelled (status: 'cancelled', including both refunded and non-refunded)
+  // Note: When status includes multiple values (not just 'cancelled'), backend shows all matching orders
+  // including cancelled orders with refunded payment_status. When user filters by "Cancelled" only,
+  // backend will exclude refunded orders to show only cancelled (non-refunded) orders.
   const initialStatusFilters = {
-    status: ['completed', 'cancelled', 'refunded'],
+    status: ['completed', 'cancelled'],
   }
 
   // Define allowed status options for filter dropdown
