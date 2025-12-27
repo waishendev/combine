@@ -240,7 +240,7 @@ export default function OrderViewPanel({
     const showImage = Boolean(resolvedUrl) && !hasError
 
     return (
-      <div className="flex h-16 w-16 items-center justify-center rounded border border-gray-200 bg-gray-100 text-gray-400">
+      <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-400">
         {showImage ? (
           <img
             src={resolvedUrl || ''}
@@ -256,10 +256,10 @@ export default function OrderViewPanel({
   }
 
   const BrokenImagePlaceholder = () => (
-    <div className="flex h-64 w-full items-center justify-center rounded border-2 border-dashed border-gray-300 bg-gray-50">
+    <div className="flex h-64 w-full items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50">
       <div className="text-center">
-        <i className="fa-regular fa-image text-4xl text-gray-400 mb-2" aria-hidden="true" />
-        <p className="text-xs text-gray-500">Image failed to load</p>
+        <i className="fa-regular fa-image mb-2 text-4xl text-slate-400" aria-hidden="true" />
+        <p className="text-xs text-slate-500">Image failed to load</p>
       </div>
     </div>
   )
@@ -281,7 +281,7 @@ export default function OrderViewPanel({
         <img
           src={imageUrl}
           alt={alt}
-          className="w-full max-h-64 object-contain rounded border border-gray-200 hover:opacity-90 transition-opacity cursor-pointer"
+          className="w-full max-h-64 cursor-pointer rounded-lg border border-slate-200 object-contain transition-opacity hover:opacity-90"
           onError={() => setHasError(true)}
         />
       </a>
@@ -293,19 +293,19 @@ export default function OrderViewPanel({
       <div className="fixed inset-0 z-50 flex bg-black/40">
         <div className="hidden flex-1 bg-black/40 md:block" />
         <aside className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-            <h3 className="text-sm font-semibold text-gray-900">Order Details</h3>
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <h3 className="text-sm font-semibold text-slate-900">Order Details</h3>
             <button
               type="button"
-              className="text-gray-500 hover:text-gray-700"
+              className="text-slate-500 hover:text-slate-700"
               onClick={onClose}
               aria-label="Close"
             >
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto px-5 py-4">
-            <div className="py-8 text-center text-sm text-gray-500">Loading...</div>
+          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
+            <div className="py-8 text-center text-sm text-slate-500">Loading...</div>
           </div>
         </aside>
       </div>
@@ -317,18 +317,18 @@ export default function OrderViewPanel({
       <div className="fixed inset-0 z-50 flex bg-black/40">
         <div className="hidden flex-1 bg-black/40 md:block" />
         <aside className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-            <h3 className="text-sm font-semibold text-gray-900">Order Details</h3>
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <h3 className="text-sm font-semibold text-slate-900">Order Details</h3>
             <button
               type="button"
-              className="text-gray-500 hover:text-gray-700"
+              className="text-slate-500 hover:text-slate-700"
               onClick={onClose}
               aria-label="Close"
             >
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
             <div className="py-8 text-center text-sm text-red-600">{error || 'Order not found'}</div>
           </div>
         </aside>
@@ -349,17 +349,17 @@ export default function OrderViewPanel({
       <div className="fixed inset-0 z-50 flex bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
         <div className="hidden flex-1 bg-black/40 md:block" />
         <aside
-          className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl relative"
+          className="relative ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl"
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Order Details</h3>
-              <p className="text-sm text-gray-500">{order.order_no || order.order_number}</p>
+              <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
+              <p className="text-sm text-slate-500">{order.order_no || order.order_number}</p>
             </div>
             <button
               type="button"
-              className="text-gray-500 hover:text-gray-700"
+              className="text-slate-500 hover:text-slate-700"
               onClick={onClose}
               aria-label="Close"
             >
@@ -367,42 +367,44 @@ export default function OrderViewPanel({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 py-4 pb-24">
+          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4 pb-24">
             <div className="space-y-5">
 
               {/* Order Items */}
               {order.items && order.items.length > 0 && (
-                <section className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Order Items</p>
+                <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Order Items</p>
                   </div>
                   <div className="px-4 py-3">
                     <table className="min-w-full text-sm">
                       <thead>
-                        <tr className="border-b">
-                          <th className="text-left py-2 px-2">Product</th>
-                          <th className="text-right py-2 px-2">Quantity</th>
-                          <th className="text-right py-2 px-2">Unit Price</th>
-                          <th className="text-right py-2 px-2">Total</th>
+                        <tr className="border-b border-slate-200 text-slate-600">
+                          <th className="px-2 py-2 text-left font-medium">Product</th>
+                          <th className="px-2 py-2 text-right font-medium">Quantity</th>
+                          <th className="px-2 py-2 text-right font-medium">Unit Price</th>
+                          <th className="px-2 py-2 text-right font-medium">Total</th>
                         </tr>
                       </thead>
                       <tbody>
                         {order.items.map((item, idx) => (
-                          <tr key={idx} className="border-b">
+                          <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
                             <td className="py-2 px-2">
                               <div className="flex items-center gap-3">
                                 <ProductImage
                                   imagePath={item.product_image}
                                   alt={item.product_name}
                                 />
-                                <span>{item.product_name}</span>
+                                <span className="font-medium text-slate-900">{item.product_name}</span>
                               </div>
                             </td>
-                            <td className="text-right py-2 px-2">{item.quantity}</td>
-                            <td className="text-right py-2 px-2">
+                            <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
+                            <td className="px-2 py-2 text-right text-slate-700">
                               {item.unit_price ? `RM ${formatAmount(item.unit_price)}` : '-'}
                             </td>
-                            <td className="text-right py-2 px-2">RM {formatAmount(item.line_total)}</td>
+                            <td className="px-2 py-2 text-right font-medium text-slate-900">
+                              RM {formatAmount(item.line_total)}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -412,26 +414,26 @@ export default function OrderViewPanel({
               )}
 
               {/* Order Summary */}
-              <section className="rounded border border-gray-200">
-                <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-gray-900">Order Summary</p>
+              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-slate-900">Order Summary</p>
                 </div>
-                <div className="px-4 py-3 space-y-2 text-sm">
+                <div className="space-y-2 px-4 py-3 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Subtotal</span>
-                    <span className="font-medium">RM {formatAmount(order.subtotal)}</span>
+                    <span className="text-slate-500">Subtotal</span>
+                    <span className="font-medium text-slate-900">RM {formatAmount(order.subtotal)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Discount</span>
-                    <span className="font-medium">RM {formatAmount(order.discount_total)}</span>
+                    <span className="text-slate-500">Discount</span>
+                    <span className="font-medium text-slate-900">RM {formatAmount(order.discount_total)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Shipping Fee</span>
-                    <span className="font-medium">RM {formatAmount(order.shipping_fee)}</span>
+                    <span className="text-slate-500">Shipping Fee</span>
+                    <span className="font-medium text-slate-900">RM {formatAmount(order.shipping_fee)}</span>
                   </div>
-                  <div className="flex justify-between border-t pt-2 font-semibold">
-                    <span>Grand Total</span>
-                    <span>RM {formatAmount(order.grand_total)}</span>
+                  <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold">
+                    <span className="text-slate-900">Grand Total</span>
+                    <span className="text-slate-900">RM {formatAmount(order.grand_total)}</span>
                   </div>
                 </div>
               </section>
@@ -439,11 +441,11 @@ export default function OrderViewPanel({
               {/* Payment Proof and Refund Proof - Flex Layout */}
               <div className="flex gap-5">
                 {/* Payment Proof */}
-                <section className="flex-1 rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Payment Proof</p>
+                <section className="flex-1 rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Payment Proof</p>
                   </div>
-                  <div className="px-4 py-3 space-y-3 text-sm">
+                  <div className="space-y-3 px-4 py-3 text-sm">
                     {order.payment_info?.payment_proof_path && order.payment_info.payment_proof_path.length > 0 ? (
                       <div className="space-y-3">
                         {order.payment_info.payment_proof_path.map((proof) => (
@@ -453,21 +455,21 @@ export default function OrderViewPanel({
                         ))}
                       </div>
                     ) : (
-                      <div className="text-gray-500">-</div>
+                      <div className="text-slate-500">-</div>
                     )}
-                    <div className="pt-2 border-t">
-                      <p className="text-xs text-gray-500">Notes</p>
-                      <p className="font-medium text-gray-900">{order.notes || '-'}</p>
+                    <div className="border-t border-slate-200 pt-2">
+                      <p className="text-xs text-slate-500">Notes</p>
+                      <p className="font-medium text-slate-900">{order.notes || '-'}</p>
                     </div>
                   </div>
                 </section>
 
                 {/* Admin Refund Proof */}
-                <section className="flex-1 rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Admin Refund Proof</p>
+                <section className="flex-1 rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Admin Refund Proof</p>
                   </div>
-                  <div className="px-4 py-3 space-y-3 text-sm">
+                  <div className="space-y-3 px-4 py-3 text-sm">
                     {order.payment_info?.refund_proof_path ? (
                       <div>
                         <ProofImage 
@@ -476,40 +478,40 @@ export default function OrderViewPanel({
                         />
                       </div>
                     ) : (
-                      <div className="text-gray-500">-</div>
+                      <div className="text-slate-500">-</div>
                     )}
-                    <div className="pt-2 border-t">
-                      <p className="text-xs text-gray-500">Admin Note</p>
-                      <p className="font-medium text-gray-900">{order.admin_note || '-'}</p>
+                    <div className="border-t border-slate-200 pt-2">
+                      <p className="text-xs text-slate-500">Admin Note</p>
+                      <p className="font-medium text-slate-900">{order.admin_note || '-'}</p>
                     </div>
                   </div>
                 </section>
               </div>
 
               {/* Order Information */}
-              <section className="rounded border border-gray-200">
-                <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-gray-900">Order Information</p>
+              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-slate-900">Order Information</p>
                 </div>
-                <div className="px-4 py-3 space-y-3 text-sm">
+                <div className="space-y-3 px-4 py-3 text-sm">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-xs text-gray-500">Order Number</p>
-                      <p className="font-medium text-gray-900">{order.order_no || order.order_number}</p>
+                      <p className="text-xs text-slate-500">Order Number</p>
+                      <p className="font-medium text-slate-900">{order.order_no || order.order_number}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Status</p>
+                      <p className="mb-1 text-xs text-slate-500">Status</p>
                       <StatusBadge status={displayStatus.toLowerCase()} label={displayStatus} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-xs text-gray-500">Payment Method</p>
-                      <p className="font-medium text-gray-900">{formatPaymentMethod(order.payment_info?.payment_method)}</p>
+                      <p className="text-xs text-slate-500">Payment Method</p>
+                      <p className="font-medium text-slate-900">{formatPaymentMethod(order.payment_info?.payment_method)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Shipping Method</p>
-                      <p className="font-medium text-gray-900 capitalize">{order.shipping_method || '-'}</p>
+                      <p className="text-xs text-slate-500">Shipping Method</p>
+                      <p className="font-medium text-slate-900 capitalize">{order.shipping_method || '-'}</p>
                     </div>
                   </div>
                 </div>
@@ -517,30 +519,30 @@ export default function OrderViewPanel({
 
               {/* Customer Information */}
               {order.customer && (
-                <section className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Customer Information</p>
+                <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Customer Information</p>
                   </div>
-                  <div className="px-4 py-3 space-y-3 text-sm">
+                  <div className="space-y-3 px-4 py-3 text-sm">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-xs text-gray-500">Name</p>
-                        <p className="font-medium text-gray-900">{order.customer.name}</p>
+                        <p className="text-xs text-slate-500">Name</p>
+                        <p className="font-medium text-slate-900">{order.customer.name}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500">Email</p>
-                        <p className="font-medium text-gray-900">{order.customer.email}</p>
+                        <p className="text-xs text-slate-500">Email</p>
+                        <p className="font-medium text-slate-900">{order.customer.email}</p>
                       </div>
                       {order.customer.phone && (
                         <div>
-                          <p className="text-xs text-gray-500">Phone</p>
-                          <p className="font-medium text-gray-900">{order.customer.phone}</p>
+                          <p className="text-xs text-slate-500">Phone</p>
+                          <p className="font-medium text-slate-900">{order.customer.phone}</p>
                         </div>
                       )}
                       {order.customer.tier && (
                         <div>
-                          <p className="text-xs text-gray-500">Tier</p>
-                          <p className="font-medium text-gray-900 capitalize">{order.customer.tier}</p>
+                          <p className="text-xs text-slate-500">Tier</p>
+                          <p className="font-medium text-slate-900 capitalize">{order.customer.tier}</p>
                         </div>
                       )}
                     </div>
@@ -550,48 +552,48 @@ export default function OrderViewPanel({
 
               {/* Shipping Address */}
               {order.address && (
-                <section className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Shipping Address</p>
+                <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Shipping Address</p>
                   </div>
-                  <div className="px-4 py-3 space-y-3 text-sm">
+                  <div className="space-y-3 px-4 py-3 text-sm">
                     <div>
-                      <p className="text-xs text-gray-500">Name</p>
-                      <p className="font-medium text-gray-900">{order.address.shipping_name || '-'}</p>
+                      <p className="text-xs text-slate-500">Name</p>
+                      <p className="font-medium text-slate-900">{order.address.shipping_name || '-'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Phone</p>
-                      <p className="font-medium text-gray-900">{order.address.shipping_phone || '-'}</p>
+                      <p className="text-xs text-slate-500">Phone</p>
+                      <p className="font-medium text-slate-900">{order.address.shipping_phone || '-'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Address</p>
-                      <p className="font-medium text-gray-900">
+                      <p className="text-xs text-slate-500">Address</p>
+                      <p className="font-medium text-slate-900">
                         {order.address.shipping_address_line1 || ''}
                         {order.address.shipping_address_line2 ? `, ${order.address.shipping_address_line2}` : ''}
                       </p>
-                      <p className="font-medium text-gray-900">
+                      <p className="font-medium text-slate-900">
                         {order.address.shipping_city || ''}
                         {order.address.shipping_state ? `, ${order.address.shipping_state}` : ''}
                         {order.address.shipping_postcode ? ` ${order.address.shipping_postcode}` : ''}
                       </p>
-                      <p className="font-medium text-gray-900">{order.address.shipping_country || '-'}</p>
+                      <p className="font-medium text-slate-900">{order.address.shipping_country || '-'}</p>
                     </div>
                     {order.shipping_courier && (
                       <div>
-                        <p className="text-xs text-gray-500">Courier</p>
-                        <p className="font-medium text-gray-900">{order.shipping_courier}</p>
+                        <p className="text-xs text-slate-500">Courier</p>
+                        <p className="font-medium text-slate-900">{order.shipping_courier}</p>
                       </div>
                     )}
                     {order.shipping_tracking_no && (
                       <div>
-                        <p className="text-xs text-gray-500">Tracking Number</p>
-                        <p className="font-medium text-gray-900">{order.shipping_tracking_no}</p>
+                        <p className="text-xs text-slate-500">Tracking Number</p>
+                        <p className="font-medium text-slate-900">{order.shipping_tracking_no}</p>
                       </div>
                     )}
                     {order.shipped_at && (
                       <div>
-                        <p className="text-xs text-gray-500">Shipped At</p>
-                        <p className="font-medium text-gray-900">{formatDate(order.shipped_at)}</p>
+                        <p className="text-xs text-slate-500">Shipped At</p>
+                        <p className="font-medium text-slate-900">{formatDate(order.shipped_at)}</p>
                       </div>
                     )}
                   </div>
@@ -600,15 +602,15 @@ export default function OrderViewPanel({
 
               {/* Vouchers */}
               {order.vouchers && order.vouchers.length > 0 && (
-                <section className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Vouchers</p>
+                <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Vouchers</p>
                   </div>
-                  <div className="px-4 py-3 space-y-2 text-sm">
+                  <div className="space-y-2 px-4 py-3 text-sm">
                     {order.vouchers.map((voucher, idx) => (
                       <div key={idx} className="flex justify-between">
-                        <span className="font-medium">{voucher.code}</span>
-                        <span>RM {formatAmount(voucher.discount_amount)}</span>
+                        <span className="font-medium text-slate-900">{voucher.code}</span>
+                        <span className="text-slate-700">RM {formatAmount(voucher.discount_amount)}</span>
                       </div>
                     ))}
                   </div>
@@ -618,7 +620,7 @@ export default function OrderViewPanel({
           </div>
 
           {/* Fixed Bottom Action Buttons */}
-          <div className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-5 py-4 shadow-lg">
+          <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg">
             <div className="flex flex-wrap gap-2">
               {canConfirmPayment && (
                 <button
@@ -728,4 +730,3 @@ export default function OrderViewPanel({
     </>
   )
 }
-
