@@ -24,6 +24,7 @@ interface OrderFiltersProps {
   onChange: (values: OrderFilterValues) => void
   onSubmit: (values: OrderFilterValues) => void
   onReset: () => void
+  allowedStatusOptions?: string[]
 }
 
 export default function OrderFilters({
@@ -31,8 +32,32 @@ export default function OrderFilters({
   onChange,
   onSubmit,
   onReset,
+  allowedStatusOptions,
 }: OrderFiltersProps) {
   const { t } = useI18n()
+
+  // Define all available status options
+  const allStatusOptions = [
+    { value: '', label: 'All' },
+    { value: 'Awaiting Payment', label: 'Awaiting Payment' },
+    { value: 'Waiting for Verification', label: 'Waiting for Verification' },
+    { value: 'Payment Proof Rejected', label: 'Payment Proof Rejected' },
+    { value: 'Payment Failed', label: 'Payment Failed' },
+    { value: 'Cancelled', label: 'Cancelled' },
+    { value: 'Refunded', label: 'Refunded' },
+    { value: 'Payment Confirmed', label: 'Payment Confirmed' },
+    { value: 'Preparing', label: 'Preparing' },
+    { value: 'Ready for Pickup', label: 'Ready for Pickup' },
+    { value: 'Shipped', label: 'Shipped' },
+    { value: 'Completed', label: 'Completed' },
+  ]
+
+  // Filter status options if allowedStatusOptions is provided
+  const statusOptions = allowedStatusOptions
+    ? allStatusOptions.filter(option => 
+        option.value === '' || allowedStatusOptions.includes(option.value)
+      )
+    : allStatusOptions
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -123,18 +148,11 @@ export default function OrderFilters({
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="">All</option>
-            <option value="Awaiting Payment">Awaiting Payment</option>
-            <option value="Waiting for Verification">Waiting for Verification</option>
-            <option value="Payment Proof Rejected">Payment Proof Rejected</option>
-            <option value="Payment Failed">Payment Failed</option>
-            <option value="Cancelled">Cancelled</option>
-            <option value="Refunded">Refunded</option>
-            <option value="Payment Confirmed">Payment Confirmed</option>
-            <option value="Preparing">Preparing</option>
-            <option value="Ready for Pickup">Ready for Pickup</option>
-            <option value="Shipped">Shipped</option>
-            <option value="Completed">Completed</option>
+            {statusOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
 

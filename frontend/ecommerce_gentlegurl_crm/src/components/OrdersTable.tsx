@@ -22,6 +22,11 @@ import { useI18n } from '@/lib/i18n'
 
 interface OrdersTableProps {
   permissions: string[]
+  initialStatusFilters?: {
+    status?: string[]
+    payment_status?: string[]
+  }
+  allowedStatusOptions?: string[]
 }
 
 type Meta = {
@@ -49,6 +54,8 @@ type OrderApiResponse = {
 
 export default function OrdersTable({
   permissions,
+  initialStatusFilters,
+  allowedStatusOptions,
 }: OrdersTableProps) {
   const { t } = useI18n()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
@@ -117,6 +124,8 @@ export default function OrdersTable({
         if (filters.orderNo) qs.set('order_no', filters.orderNo)
         if (filters.customerName) qs.set('customer_name', filters.customerName)
         if (filters.customerEmail) qs.set('customer_email', filters.customerEmail)
+        
+        // Apply filters: user filters take precedence over initial filters
         if (filters.status) {
           // Map display status to API filter parameters
           const apiFilters = mapDisplayStatusToApiFilters(filters.status)
@@ -133,6 +142,14 @@ export default function OrdersTable({
               ? apiFilters.payment_status
               : [apiFilters.payment_status]
             paymentStatusArray.forEach(paymentStatus => qs.append('payment_status[]', paymentStatus))
+          }
+        } else if (initialStatusFilters) {
+          // Use initial filters when no user filter is applied
+          if (initialStatusFilters.status && initialStatusFilters.status.length > 0) {
+            initialStatusFilters.status.forEach(status => qs.append('status[]', status))
+          }
+          if (initialStatusFilters.payment_status && initialStatusFilters.payment_status.length > 0) {
+            initialStatusFilters.payment_status.forEach(paymentStatus => qs.append('payment_status[]', paymentStatus))
           }
         }
 
@@ -362,6 +379,7 @@ export default function OrdersTable({
           onReset={handleFilterReset}
           onClose={() => setIsFilterModalOpen(false)}
           disabled={loading}
+          allowedStatusOptions={allowedStatusOptions}
         />
       )}
 

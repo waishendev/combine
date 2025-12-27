@@ -167,6 +167,18 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             requiredPermission: 'ecommerce.orders.view',
           },
           {
+            key: 'orders-new',
+            label: 'New Orders',
+            href: '/orders/new',
+            requiredPermission: 'ecommerce.orders.view',
+          },
+          {
+            key: 'orders-completed',
+            label: 'Completed Orders',
+            href: '/orders/completed',
+            requiredPermission: 'ecommerce.orders.view',
+          },
+          {
             key: 'orders-returns',
             label: 'Return Orders',
             href: '/returns',
