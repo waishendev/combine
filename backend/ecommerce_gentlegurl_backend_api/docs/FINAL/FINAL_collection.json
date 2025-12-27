@@ -3412,15 +3412,14 @@
                     "method": "PUT",
                     "header": [],
                     "url": {
-                      "raw": "{{base_url}}/ecommerce/orders/{{order_id}}/status",
+                      "raw": "{{base_url}}/ecommerce/orders/{{order_id}}",
                       "host": [
                         "{{base_url}}"
                       ],
                       "path": [
                         "ecommerce",
                         "orders",
-                        "{{order_id}}",
-                        "status"
+                        "{{order_id}}"
                       ]
                     },
                     "auth": {
@@ -3457,7 +3456,127 @@
                     },
                     "auth": {
                       "type": "inherit"
-                    }
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"paid_at\": null,\n  \"admin_note\": \"Payment confirmed by admin\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "description": "Confirm payment for an order. paid_at is optional (defaults to now). admin_note is optional."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Reject Payment Proof",
+                  "request": {
+                    "method": "PUT",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/orders/{{order_id}}/reject-payment-proof",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "orders",
+                        "{{order_id}}",
+                        "reject-payment-proof"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"admin_note\": \"Payment proof rejected: reason here\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "description": "Reject payment proof for an order. Sets status to 'reject_payment_proof' and records rejection time. admin_note is required."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Cancel Order",
+                  "request": {
+                    "method": "PUT",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/orders/{{order_id}}/cancel-order",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "orders",
+                        "{{order_id}}",
+                        "cancel-order"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"admin_note\": \"Order cancelled: reason here\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "description": "Cancel an order. Only works if order is not paid. Sets status to 'cancelled'. admin_note is required."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Refund Order",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/orders/{{order_id}}/refund",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "orders",
+                        "{{order_id}}",
+                        "refund"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "_method",
+                          "value": "PUT",
+                          "type": "text"
+                        },
+                        {
+                          "key": "admin_note",
+                          "value": "Refund processed: reason here",
+                          "type": "text"
+                        },
+                        {
+                          "key": "refund_proof_path",
+                          "type": "file",
+                          "src": []
+                        }
+                      ]
+                    },
+                    "description": "Refund an order. Uses POST with _method=PUT for reliable multipart/form-data file upload support. Sets status to 'cancelled' and payment_status to 'refunded'. admin_note is required. refund_proof_path (file) is optional - if provided, refunded_at will be automatically set to current time. Supported file types: jpg, jpeg, png, webp, pdf (max 5MB)."
                   },
                   "response": []
                 }

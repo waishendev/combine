@@ -5,6 +5,7 @@ namespace App\Models\Ecommerce;
 use App\Models\BankAccount;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class Order extends Model
 {
@@ -44,6 +45,9 @@ class Order extends Model
         'paid_at',
         'completed_at',
         'shipped_at',
+        'pickup_ready_at',
+        'refund_proof_path',
+        'refunded_at',
     ];
 
     protected function casts(): array
@@ -58,7 +62,22 @@ class Order extends Model
             'paid_at' => 'datetime',
             'completed_at' => 'datetime',
             'shipped_at' => 'datetime',
+            'pickup_ready_at' => 'datetime',
+            'refunded_at' => 'datetime',
         ];
+    }
+
+    protected $appends = [
+        'refunded_photo_url',
+    ];
+
+    public function getRefundedPhotoUrlAttribute(): ?string
+    {
+        if (!$this->refund_proof_path) {
+            return null;
+        }
+
+        return Storage::disk('public')->url($this->refund_proof_path);
     }
 
     public function customer()

@@ -155,7 +155,8 @@ Route::prefix('/public/shop')->group(function () {
 
         // Order History
         Route::get('/orders', [PublicOrderHistoryController::class, 'index']);
-        Route::get('/orders/{id}', [PublicOrderHistoryController::class, 'showById']);
+        Route::get('/orders/{id}', [PublicOrderHistoryController::class, 
+        'showById']);
         Route::post('/orders/{order}/cancel', [PublicOrderHistoryController::class, 'cancel']);
         Route::post('/orders/{order}/pay', [PublicOrderHistoryController::class, 'pay']);
 
@@ -390,11 +391,23 @@ $protectedRoutes = function () {
         Route::get('/orders/{order}', [OrderController::class, 'show'])
             ->middleware('permission:ecommerce.orders.view');
 
-        Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus'])
+        Route::put('/orders/{order}', [OrderController::class, 'update'])
             ->middleware('permission:ecommerce.orders.update');
+
 
         Route::put('/orders/{order}/confirm-payment', [OrderController::class, 'confirmPayment'])
             ->middleware('permission:ecommerce.orders.confirm-payment');
+
+        Route::put('/orders/{order}/reject-payment-proof', [OrderController::class, 'RejectPaymentProof'])
+            ->middleware('permission:ecommerce.orders.update');
+
+        Route::put('/orders/{order}/cancel-order', [OrderController::class, 'cancelOrder'])
+            ->middleware('permission:ecommerce.orders.update');
+
+        Route::put('/orders/{order}/refund', [OrderController::class, 'refund'])
+            ->middleware('permission:ecommerce.orders.update');
+        Route::post('/orders/{order}/refund', [OrderController::class, 'refund'])
+            ->middleware('permission:ecommerce.orders.update');
 
         Route::get('/returns', [ReturnRequestController::class, 'index'])
             ->middleware('permission:ecommerce.returns.view');

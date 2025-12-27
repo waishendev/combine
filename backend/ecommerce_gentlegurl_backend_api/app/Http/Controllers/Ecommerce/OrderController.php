@@ -9,6 +9,8 @@ use App\Services\Ecommerce\OrderPaymentService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class OrderController extends Controller
 {
@@ -29,6 +31,8 @@ class OrderController extends Controller
             ->when($request->filled('date_from'), fn($q) => $q->whereDate('created_at', '>=', $request->date('date_from')))
             ->when($request->filled('date_to'), fn($q) => $q->whereDate('created_at', '<=', $request->date('date_to')))
             ->when($request->filled('store_location_id'), fn($q) => $q->where('pickup_store_id', $request->integer('store_location_id')))
+            ->when($request->filled('pickup_ready_at_from'), fn($q) => $q->whereDate('pickup_ready_at', '>=', $request->date('pickup_ready_at_from')))
+            ->when($request->filled('pickup_ready_at_to'), fn($q) => $q->whereDate('pickup_ready_at', '<=', $request->date('pickup_ready_at_to')))
             ->orderByDesc('created_at')
             ->paginate($perPage)
             ->through(function (Order $order) {
@@ -56,7 +60,7 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        $order->load(['items', 'customer', 'vouchers', 'vouchers.voucher']);
+        $order->load(['items.product.images', 'customer', 'vouchers', 'vouchers.voucher']);
 
         return $this->respond([
             'id' => $order->id,
@@ -84,12 +88,23 @@ class OrderController extends Controller
             ],
             'customer' => $order->customer,
             'items' => $order->items->map(function ($item) {
+                $images = $item->product?->images
+                    ? $item->product->images
+                        ->sortBy('id')
+                        ->sortBy('sort_order')
+                    : collect();
+
+                $thumbnail = optional(
+                    $images->firstWhere('is_main', true) ?? $images->first()
+                )->image_path;
+
                 return [
                     'product_id' => $item->product_id,
-                    'product_name' => $item->product_name ?? $item->product?->name,
+                    'product_name' => $item->product_name_snapshot ?? $item->product_name ?? $item->product?->name,
                     'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
+                    'unit_price' => $item->price_snapshot ?? $item->unit_price,
                     'line_total' => $item->line_total,
+                    'product_image' => $thumbnail,
                 ];
             }),
             'vouchers' => $order->vouchers->map(function ($voucher) {
@@ -114,7 +129,7 @@ class OrderController extends Controller
         ]);
     }
 
-    public function updateStatus(Request $request, Order $order)
+    public function update(Request $request, Order $order)
     {
         $validated = $request->validate([
             'status' => ['required', 'string'],
@@ -132,6 +147,10 @@ class OrderController extends Controller
             $order->completed_at = Carbon::now();
         }
 
+        if ($validated['status'] === 'ready_for_pickup' && $order->pickup_ready_at === null) {
+            $order->pickup_ready_at = Carbon::now();
+        }
+
         $order->save();
 
         return $this->respond($order, __('Order status updated.'));
@@ -145,14 +164,15 @@ class OrderController extends Controller
 
         $validated = $request->validate([
             'paid_at' => ['nullable', 'date'],
-            'note' => ['nullable', 'string'],
+            'admin_note' => ['nullable', 'string'],
         ]);
 
         DB::transaction(function () use ($order, $validated) {
             $order->payment_status = 'paid';
+            $order->status = 'confirmed';
             $order->paid_at = !empty($validated['paid_at']) ? Carbon::parse($validated['paid_at']) : Carbon::now();
-            if (!empty($validated['note'])) {
-                $order->notes = trim($order->notes . "\n" . $validated['note']);
+            if (!empty($validated['admin_note'])) {
+                $order->admin_note = trim(($order->admin_note ?? '') . "\n" . $validated['admin_note']);
             }
             $order->save();
 
@@ -161,4 +181,90 @@ class OrderController extends Controller
 
         return $this->respond($order->fresh(['items', 'customer']), __('Payment confirmed.'));
     }
+
+    public function RejectPaymentProof(Request $request, Order $order)
+    {
+        if ($order->payment_status === 'paid') {
+            return $this->respond($order, __('Order already paid.'), false, 422);
+        }
+
+        $validated = $request->validate([
+            'admin_note' => ['required', 'string'],
+        ]);
+
+        DB::transaction(function () use ($order, $validated) {
+            $order->status = 'reject_payment_proof';
+            $order->payment_proof_rejected_at =  Carbon::now();
+            if (!empty($validated['admin_note'])) {
+                $order->admin_note = trim(($order->admin_note ?? '') . "\n" . $validated['admin_note']);
+            }
+            $order->save();
+
+        });
+
+        return $this->respond($order->fresh(['items', 'customer']), __('Payment Proof Rejected.'));
+    }
+
+
+    public function cancelOrder(Request $request, Order $order)
+    {
+        if ($order->payment_status === 'paid') {
+            return $this->respond($order, __('Order already paid.'), false, 422);
+        }
+
+        $validated = $request->validate([
+            'admin_note' => ['required', 'string'],
+        ]);
+
+        DB::transaction(function () use ($order, $validated) {
+            $order->status = 'cancelled';
+            if (!empty($validated['admin_note'])) {
+                $order->admin_note = trim(($order->admin_note ?? '') . "\n" . $validated['admin_note']);
+            }
+            $order->save();
+        });
+
+        return $this->respond($order->fresh(['items', 'customer']), __('Order cancelled.'));
+    }
+
+    public function refund(Request $request, Order $order)
+    {
+        // Debug: Log all request data
+        Log::info('Refund request data:', [
+            'method' => $request->method(),
+            'content_type' => $request->header('Content-Type'),
+            'all' => $request->all(),
+            'input' => $request->input(),
+            'files' => $request->allFiles(),
+            'admin_note' => $request->input('admin_note'),
+            'has_file' => $request->hasFile('refund_proof_path'),
+            'raw_content' => $request->getContent(),
+        ]);
+
+        $validated = $request->validate([
+            'admin_note' => ['required', 'string', 'min:1'],
+            'refund_proof_path' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+        ]);
+
+        DB::transaction(function () use ($order, $validated, $request) {
+            $order->status = 'cancelled';
+            $order->payment_status = 'refunded';
+            
+            if (!empty($validated['admin_note'])) {
+                $order->admin_note = trim(($order->admin_note ?? '') . "\n" . $validated['admin_note']);
+            }
+
+            // Handle file upload if provided
+            if ($request->hasFile('refund_proof_path')) {
+                $filePath = $request->file('refund_proof_path')->store('refund-photos', 'public');
+                $order->refund_proof_path = $filePath;
+                $order->refunded_at = Carbon::now();
+            }
+
+            $order->save();
+        });
+
+        return $this->respond($order->fresh(['items', 'customer']), __('Order Refunded.'));
+    }
+
 }

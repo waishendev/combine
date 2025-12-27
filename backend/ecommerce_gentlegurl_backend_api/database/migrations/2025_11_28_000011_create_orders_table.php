@@ -34,6 +34,11 @@ return new class extends Migration {
             $table->timestamp('placed_at')->nullable();
             $table->timestamp('paid_at')->nullable();
             $table->timestamp('completed_at')->nullable();
+            $table->timestamp('pickup_ready_at')->nullable();
+            $table->timestamp('payment_proof_rejected_at')->nullable();
+            $table->text('admin_note')->nullable();
+            $table->string('refund_proof_path', 255)->nullable();
+            $table->timestamp('refunded_at')->nullable();
             $table->timestamps();
         });
     }

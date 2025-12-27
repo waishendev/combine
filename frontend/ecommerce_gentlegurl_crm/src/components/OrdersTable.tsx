@@ -2,204 +2,454 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import OrderFiltersWrapper from './OrderFiltersWrapper'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import PaginationControls from './PaginationControls'
+import OrderRow, { OrderRowData } from './OrderRow'
+import {
+  OrderFilterValues,
+  emptyOrderFilters,
+} from './OrderFilters'
+import OrderViewPanel from './OrderViewPanel'
+import {
+  type OrderApiItem,
+  mapOrderApiItemToRow,
+} from './orderUtils'
+import { useI18n } from '@/lib/i18n'
 
-interface OrdersApiResponse {
-  data?: unknown
-  meta?: {
+interface OrdersTableProps {
+  permissions: string[]
+}
+
+type Meta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+type OrderApiResponse = {
+  data?: OrderApiItem[] | {
     current_page?: number
+    data?: OrderApiItem[]
     last_page?: number
     per_page?: number
     total?: number
+    from?: number
+    to?: number
+    [key: string]: unknown
   }
+  meta?: Partial<Meta>
   success?: boolean
   message?: string
 }
 
-interface OrderRow {
-  id: string
-  number: string
-  customer: string
-  status: string
-  total: string
-  date: string
-}
+export default function OrdersTable({
+  permissions,
+}: OrdersTableProps) {
+  const { t } = useI18n()
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
+  const [inputs, setInputs] = useState<OrderFilterValues>({ ...emptyOrderFilters })
+  const [filters, setFilters] = useState<OrderFilterValues>({ ...emptyOrderFilters })
+  const [rows, setRows] = useState<OrderRowData[]>([])
+  const [pageSize, setPageSize] = useState(15)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortColumn, setSortColumn] = useState<keyof OrderRowData | null>(
+    'createdAt',
+  )
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
+    'desc',
+  )
+  const [viewingOrderId, setViewingOrderId] = useState<number | null>(null)
 
-const fallbackValue = (value: unknown, fallback = '—') => {
-  if (value === null || value === undefined || value === '') {
-    return fallback
-  }
-  return String(value)
-}
+  const canView = permissions.includes('ecommerce.orders.view')
+  const showActions = canView
 
-const formatAmount = (value: unknown) => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  }
-  if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) {
-    const numericValue = Number(value)
-    return numericValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  }
-  return fallbackValue(value)
-}
-
-const formatDate = (value: unknown) => {
-  if (!value) return '—'
-  const date = new Date(String(value))
-  if (Number.isNaN(date.getTime())) {
-    return fallbackValue(value)
-  }
-  return date.toLocaleString()
-}
-
-const extractItems = (response: OrdersApiResponse): unknown[] => {
-  if (!response?.data) return []
-  if (Array.isArray(response.data)) return response.data
-  if (typeof response.data === 'object' && response.data !== null && 'data' in response.data) {
-    const nested = response.data as { data?: unknown }
-    if (Array.isArray(nested.data)) return nested.data
-  }
-  return []
-}
-
-export default function OrdersTable() {
-  const [rows, setRows] = useState<OrderRow[]>([])
+  const [meta, setMeta] = useState<Meta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 15,
+    total: 0,
+  })
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [total, setTotal] = useState<number | null>(null)
+
+  function DualSortIcons({
+    active,
+    dir,
+    className = 'ml-1',
+  }: {
+    active: boolean
+    dir: 'asc' | 'desc' | null
+    className?: string
+  }) {
+    const activeColor = '#122350ff'
+    const inactiveColor = '#afb2b8ff'
+    const up = active && dir === 'asc' ? activeColor : inactiveColor
+    const down = active && dir === 'desc' ? activeColor : inactiveColor
+
+    return (
+      <svg
+        className={`${className} inline-block align-middle`}
+        width="15"
+        height="15"
+        viewBox="0 0 10 12"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M5 1 L9 5 H1 Z" fill={up} />
+        <path d="M5 11 L1 7 H9 Z" fill={down} />
+      </svg>
+    )
+  }
 
   useEffect(() => {
     const controller = new AbortController()
     const fetchOrders = async () => {
       setLoading(true)
-      setError(null)
-
       try {
-        const res = await fetch('/api/proxy/ecommerce/orders', {
+        const qs = new URLSearchParams()
+        qs.set('page', String(currentPage))
+        qs.set('per_page', String(pageSize))
+        if (filters.orderNo) qs.set('order_no', filters.orderNo)
+        if (filters.customerName) qs.set('customer_name', filters.customerName)
+        if (filters.customerEmail) qs.set('customer_email', filters.customerEmail)
+        if (filters.status) {
+          // Map display status back to API filters if needed
+          // For now, we'll filter client-side or add status filter to API
+          qs.set('status', filters.status)
+        }
+        if (filters.paymentStatus) qs.set('payment_status', filters.paymentStatus)
+
+        const res = await fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
 
         if (!res.ok) {
           setRows([])
-          setTotal(null)
-          setError('Unable to load orders.')
+          setMeta((prev) => ({ ...prev, total: 0 }))
           return
         }
 
-        const response: OrdersApiResponse = await res
+        const response: OrderApiResponse = await res
           .json()
-          .catch(() => ({} as OrdersApiResponse))
-
+          .catch(() => ({} as OrderApiResponse))
         if (response?.success === false && response?.message === 'Unauthorized') {
           window.location.replace('/dashboard')
           return
         }
 
-        const items = extractItems(response)
-        const mappedRows = items.map((item) => {
-          const record = item as Record<string, unknown>
-          const customer =
-            (record.customer && typeof record.customer === 'object' && (record.customer as { name?: string }).name) ||
-            record.customer_name ||
-            record.customer ||
-            record.user_name ||
-            record.user
+        // Handle nested data structure: { data: { data: [...], current_page: 1, ... } }
+        let orderItems: OrderApiItem[] = []
+        let paginationData: Partial<Meta> = {}
 
-          return {
-            id: fallbackValue(record.id ?? record.order_id),
-            number: fallbackValue(record.order_number ?? record.number ?? record.code),
-            customer: fallbackValue(customer),
-            status: fallbackValue(record.status ?? record.payment_status ?? record.order_status),
-            total: formatAmount(record.total ?? record.total_amount ?? record.grand_total ?? record.amount),
-            date: formatDate(record.created_at ?? record.createdAt ?? record.order_date ?? record.date),
+        if (response?.data) {
+          if (Array.isArray(response.data)) {
+            // Direct array format
+            orderItems = response.data
+          } else if (typeof response.data === 'object' && 'data' in response.data) {
+            // Nested format: { data: { data: [...], current_page: 1, ... } }
+            const nestedData = response.data as {
+              data?: OrderApiItem[]
+              current_page?: number
+              last_page?: number
+              per_page?: number
+              total?: number
+            }
+            orderItems = Array.isArray(nestedData.data) ? nestedData.data : []
+            paginationData = {
+              current_page: nestedData.current_page,
+              last_page: nestedData.last_page,
+              per_page: nestedData.per_page,
+              total: nestedData.total,
+            }
           }
-        })
-
-        setRows(mappedRows)
-
-        if (response?.meta?.total !== undefined) {
-          setTotal(response.meta.total ?? null)
-        } else if (
-          response?.data &&
-          typeof response.data === 'object' &&
-          response.data !== null &&
-          'total' in response.data
-        ) {
-          const nestedTotal = (response.data as { total?: number }).total
-          setTotal(nestedTotal ?? null)
-        } else {
-          setTotal(mappedRows.length)
         }
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return
-        setRows([])
-        setTotal(null)
-        setError('Unable to load orders.')
+
+        // Fallback to meta if available
+        if (response?.meta) {
+          paginationData = { ...paginationData, ...response.meta }
+        }
+
+        const list: OrderRowData[] = orderItems.map((item) => mapOrderApiItemToRow(item))
+
+        // Apply client-side status filter if needed
+        let filteredList = list
+        if (filters.status) {
+          filteredList = list.filter((item) => item.status === filters.status)
+        }
+
+        setRows(filteredList)
+        setMeta({
+          current_page: Number(paginationData.current_page ?? currentPage) || 1,
+          last_page: Number(paginationData.last_page ?? 1) || 1,
+          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
+          total: Number(paginationData.total ?? filteredList.length) || filteredList.length,
+        })
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setRows([])
+          setMeta((prev) => ({ ...prev, total: 0 }))
+        }
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchOrders()
-
     return () => controller.abort()
-  }, [])
+  }, [filters, currentPage, pageSize])
 
-  const colCount = 6
+  const handleSort = (column: keyof OrderRowData) => {
+    if (sortColumn === column) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else if (sortDirection === 'desc') {
+        setSortColumn(null)
+        setSortDirection(null)
+      } else {
+        setSortDirection('asc')
+      }
+      return
+    }
 
-  const summary = useMemo(() => {
-    if (total === null) return null
-    return `${total} order${total === 1 ? '' : 's'}`
-  }, [total])
+    setSortColumn(column)
+    setSortDirection('asc')
+  }
+
+  const sortedRows = useMemo(() => {
+    if (!sortColumn || !sortDirection) return rows
+
+    const compare = (a: OrderRowData, b: OrderRowData) => {
+      const valueA = a[sortColumn]
+      const valueB = b[sortColumn]
+
+      const normalize = (value: unknown) => {
+        if (value == null) return ''
+        if (typeof value === 'string') return value.toLowerCase()
+        if (typeof value === 'number') return value
+        if (typeof value === 'boolean') return value ? 1 : 0
+        return value
+      }
+
+      const normalizedA = normalize(valueA)
+      const normalizedB = normalize(valueB)
+
+      if (typeof normalizedA === 'number' && typeof normalizedB === 'number') {
+        return normalizedA - normalizedB
+      }
+
+      return String(normalizedA).localeCompare(String(normalizedB))
+    }
+
+    const sorted = [...rows].sort(compare)
+    return sortDirection === 'asc' ? sorted : sorted.reverse()
+  }, [rows, sortColumn, sortDirection])
+
+  const handleFilterChange = (values: OrderFilterValues) => {
+    setInputs(values)
+  }
+
+  const handleFilterSubmit = (values: OrderFilterValues) => {
+    setFilters(values)
+    setInputs(values)
+    setCurrentPage(1)
+  }
+
+  const handleFilterReset = () => {
+    setInputs({ ...emptyOrderFilters })
+    setFilters({ ...emptyOrderFilters })
+    setCurrentPage(1)
+  }
+
+  const handleBadgeRemove = (field: keyof OrderFilterValues) => {
+    const next = { ...filters, [field]: '' }
+    setFilters(next)
+    setInputs(next)
+    setCurrentPage(1)
+  }
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > (meta.last_page || 1)) return
+    setCurrentPage(page)
+  }
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
+  }
+
+  const colCount = showActions ? 7 : 6
+
+  const totalPages = meta.last_page || 1
+
+  const activeFilters = useMemo(() => {
+    return (Object.entries(filters) as [keyof OrderFilterValues, string][]) 
+      .filter(([, value]) => Boolean(value))
+  }, [filters])
+
+  const filterLabels: Record<keyof OrderFilterValues, string> = {
+    orderNo: 'Order Number',
+    customerName: 'Customer Name',
+    customerEmail: 'Customer Email',
+    status: 'Status',
+    paymentStatus: 'Payment Status',
+  }
+
+  const renderFilterValue = (key: keyof OrderFilterValues, value: string) => {
+    return value
+  }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-800">All Orders</h3>
-          {summary && <p className="text-sm text-gray-500">{summary}</p>}
+    <div>
+      {isFilterModalOpen && (
+        <OrderFiltersWrapper
+          inputs={inputs}
+          onChange={handleFilterChange}
+          onSubmit={handleFilterSubmit}
+          onReset={handleFilterReset}
+          onClose={() => setIsFilterModalOpen(false)}
+          disabled={loading}
+        />
+      )}
+
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+            onClick={() => setIsFilterModalOpen(true)}
+            disabled={loading}
+          >
+            <i className="fa-solid fa-filter" />
+            {t('common.filter')}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label htmlFor="pageSize" className="text-sm text-gray-700">
+            {t('common.show')}
+          </label>
+          <select
+            id="pageSize"
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            {[15, 50, 100, 150, 200].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {activeFilters.map(([key, value]) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs"
+            >
+              <span className="font-medium">{filterLabels[key]}</span>
+              <span>{renderFilterValue(key, value)}</span>
+              <button
+                type="button"
+                className="text-blue-600 hover:text-blue-800"
+                onClick={() => handleBadgeRemove(key)}
+                aria-label={`${t('common.removeFilter')} ${filterLabels[key]}`}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-3">Order ID</th>
-              <th className="px-4 py-3">Order Number</th>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Total</th>
-              <th className="px-4 py-3">Date</th>
+              {(
+                [
+                  { key: 'orderNo', label: 'Order Number' },
+                  { key: 'customerName', label: 'Customer Name' },
+                  { key: 'customerEmail', label: 'Customer Email' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'grandTotal', label: 'Total' },
+                  { key: 'createdAt', label: t('common.createdAt') },
+                ] as const
+              ).map(({ key, label }) => (
+                <th
+                  key={key}
+                  className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
+                >
+                  <button
+                    type="button"
+                    className="flex items-center gap-1"
+                    onClick={() => handleSort(key)}
+                  >
+                    <span>{label}</span>
+                    <DualSortIcons
+                      active={sortColumn === key && sortDirection !== null}
+                      dir={sortColumn === key ? sortDirection : null}
+                    />
+                  </button>
+                </th>
+              ))}
+              {showActions && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                  {t('common.actions')}
+                </th>
+              )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {loading ? (
               <TableLoadingRow colSpan={colCount} />
-            ) : error ? (
-              <TableEmptyState colSpan={colCount} message={error} />
-            ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={colCount} message="No orders found." />
-            ) : (
-              rows.map((row) => (
-                <tr key={`${row.id}-${row.number}`} className="text-gray-700">
-                  <td className="px-4 py-3 font-medium text-gray-900">{row.id}</td>
-                  <td className="px-4 py-3">{row.number}</td>
-                  <td className="px-4 py-3">{row.customer}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                      {row.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">{row.total}</td>
-                  <td className="px-4 py-3">{row.date}</td>
-                </tr>
+            ) : rows.length > 0 ? (
+              sortedRows.map((order) => (
+                <OrderRow
+                  key={order.id}
+                  order={order}
+                  showActions={showActions}
+                  canView={canView}
+                  onView={() => {
+                    if (canView) {
+                      setViewingOrderId(order.id)
+                    }
+                  }}
+                />
               ))
+            ) : (
+              <TableEmptyState colSpan={colCount} />
             )}
           </tbody>
         </table>
       </div>
+
+      {viewingOrderId !== null && (
+        <OrderViewPanel
+          orderId={viewingOrderId}
+          onClose={() => setViewingOrderId(null)}
+          onOrderUpdated={() => {
+            // Trigger a refetch by updating a dependency
+            setCurrentPage((prev) => prev)
+          }}
+        />
+      )}
+
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        disabled={loading}
+      />
     </div>
   )
 }

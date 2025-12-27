@@ -22,7 +22,56 @@ export default function StatusBadge({
       bgColor: 'bg-gray-100',
       dotColor: 'bg-gray-500',
     },
-
+    'awaiting payment': {
+      textColor: 'text-yellow-700',
+      bgColor: 'bg-yellow-100',
+      dotColor: 'bg-yellow-500',
+    },
+    'waiting for verification': {
+      textColor: 'text-yellow-700',
+      bgColor: 'bg-yellow-100',
+      dotColor: 'bg-yellow-500',
+    },
+    'payment proof rejected': {
+      textColor: 'text-red-700',
+      bgColor: 'bg-red-100',
+      dotColor: 'bg-red-500',
+    },
+    'payment failed': {
+      textColor: 'text-red-700',
+      bgColor: 'bg-red-100',
+      dotColor: 'bg-red-500',
+    },
+    cancelled: {
+      textColor: 'text-red-700',
+      bgColor: 'bg-red-100',
+      dotColor: 'bg-red-500',
+    },
+    'payment confirmed': {
+      textColor: 'text-blue-700',
+      bgColor: 'bg-blue-100',
+      dotColor: 'bg-blue-500',
+    },
+    preparing: {
+      textColor: 'text-blue-700',
+      bgColor: 'bg-blue-100',
+      dotColor: 'bg-blue-500',
+    },
+    'ready for pickup': {
+      textColor: 'text-blue-700',
+      bgColor: 'bg-blue-100',
+      dotColor: 'bg-blue-500',
+    },
+    shipped: {
+      textColor: 'text-green-700',
+      bgColor: 'bg-green-100',
+      dotColor: 'bg-green-500',
+    },
+    completed: {
+      textColor: 'text-green-700',
+      bgColor: 'bg-green-100',
+      dotColor: 'bg-green-500',
+    },
   }
 
   const { textColor, bgColor, dotColor } = statusMap[key] ?? {

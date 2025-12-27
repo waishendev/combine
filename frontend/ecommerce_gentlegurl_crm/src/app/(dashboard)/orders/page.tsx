@@ -41,7 +41,9 @@ export default async function OrdersPage() {
       <h2 className="text-3xl font-semibold mb-6">
         All Orders
       </h2>
-      <OrdersTable />
+      <OrdersTable
+        permissions={user.permissions}
+      />
     </div>
   )
 }

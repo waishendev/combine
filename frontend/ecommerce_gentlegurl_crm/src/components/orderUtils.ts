@@ -1,0 +1,117 @@
+import type { OrderRowData } from './OrderRow'
+
+export type OrderApiItem = {
+  id: number | string
+  order_no?: string | null
+  order_number?: string | null
+  customer?: {
+    id?: number | string
+    name?: string | null
+    email?: string | null
+  } | null
+  status?: string | null
+  payment_status?: string | null
+  subtotal?: string | number | null
+  discount_total?: string | number | null
+  shipping_fee?: string | number | null
+  grand_total?: string | number | null
+  shipping_method?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export const mapOrderApiItemToRow = (item: OrderApiItem): OrderRowData => {
+  const idValue =
+    typeof item.id === 'number'
+      ? item.id
+      : Number(item.id) || Number.parseInt(String(item.id), 10)
+  const normalizedId = Number.isFinite(idValue) ? Number(idValue) : 0
+
+  const orderNo = item.order_no ?? item.order_number ?? '-'
+  const customerName = item.customer?.name ?? '-'
+  const customerEmail = item.customer?.email ?? '-'
+
+  // Calculate status based on payment_status and status
+  const status = calculateOrderStatus(item.status, item.payment_status)
+
+  const grandTotal = item.grand_total
+    ? typeof item.grand_total === 'string'
+      ? Number.parseFloat(item.grand_total)
+      : Number(item.grand_total)
+    : 0
+
+  return {
+    id: normalizedId,
+    orderNo: String(orderNo),
+    customerName,
+    customerEmail,
+    status,
+    paymentStatus: item.payment_status ?? '',
+    orderStatus: item.status ?? '',
+    grandTotal,
+    createdAt: item.created_at ?? '',
+    updatedAt: item.updated_at ?? '',
+  }
+}
+
+export function calculateOrderStatus(
+  orderStatus: string | null | undefined,
+  paymentStatus: string | null | undefined
+): string {
+  const status = orderStatus?.toLowerCase() ?? ''
+  const payment = paymentStatus?.toLowerCase() ?? ''
+
+  // Awaiting Payment
+  if (payment === 'unpaid' && status === 'pending') {
+    return 'Awaiting Payment'
+  }
+
+  // Waiting for Verification
+  if (payment === 'unpaid' && status === 'processing') {
+    return 'Waiting for Verification'
+  }
+
+  // Payment Proof Rejected
+  if (status === 'reject_payment_proof' && payment === 'unpaid') {
+    return 'Payment Proof Rejected'
+  }
+
+  // Payment Failed
+  if (payment === 'failed') {
+    return 'Payment Failed'
+  }
+
+  // Cancelled
+  if (status === 'cancelled') {
+    return 'Cancelled'
+  }
+
+  // Payment Confirmed
+  if (status === 'confirmed' && payment === 'paid') {
+    return 'Payment Confirmed'
+  }
+
+  // Preparing
+  if (status === 'processing' && payment === 'paid') {
+    return 'Preparing'
+  }
+
+  // Ready for Pickup
+  if (status === 'ready_for_pickup' && payment === 'paid') {
+    return 'Ready for Pickup'
+  }
+
+  // Shipped
+  if (status === 'shipped') {
+    return 'Shipped'
+  }
+
+  // Completed
+  if (status === 'completed') {
+    return 'Completed'
+  }
+
+  // Default fallback
+  return status || payment || 'Unknown'
+}
+
