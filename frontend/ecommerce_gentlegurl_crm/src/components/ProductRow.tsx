@@ -23,6 +23,7 @@ export interface ProductRowData {
   lowStockThreshold: number
   isActive: boolean
   isFeatured: boolean
+  isRewardOnly: boolean
   metaTitle: string
   metaDescription: string
   metaKeywords: string
@@ -52,12 +53,26 @@ export default function ProductRow({
   onDelete,
 }: ProductRowProps) {
   const { t } = useI18n()
+  const mainImage = product.images.find((image) => image.isMain) ?? product.images[0]
 
   return (
     <tr className="text-sm">
-      <td className="px-4 py-2 border border-gray-200">{product.name}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        <div className="flex items-center gap-3">
+          {mainImage?.path ? (
+            <img
+              src={mainImage.path}
+              alt={product.name}
+              className="h-10 w-10 rounded object-cover border border-gray-200 bg-gray-50"
+              loading="lazy"
+            />
+          ) : (
+            <div className="h-10 w-10 rounded border border-dashed border-gray-300 bg-gray-50" />
+          )}
+          <span className="text-gray-900">{product.name}</span>
+        </div>
+      </td>
       <td className="px-4 py-2 border border-gray-200">{product.sku}</td>
-      <td className="px-4 py-2 border border-gray-200">{product.type}</td>
       <td className="px-4 py-2 border border-gray-200">{product.categories}</td>
       <td className="px-4 py-2 border border-gray-200">{product.price.toFixed(2)}</td>
       <td className="px-4 py-2 border border-gray-200">{product.stock}</td>
@@ -67,8 +82,6 @@ export default function ProductRow({
           label={product.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
-      <td className="px-4 py-2 border border-gray-200">{product.createdAt}</td>
-      <td className="px-4 py-2 border border-gray-200">{product.updatedAt}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

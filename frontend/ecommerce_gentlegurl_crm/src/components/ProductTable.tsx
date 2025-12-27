@@ -220,7 +220,15 @@ export default function ProductTable({ permissions }: ProductTableProps) {
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 10 : 9
+  const columns = [
+    { key: 'name', label: 'Product' },
+    { key: 'sku', label: 'SKU' },
+    { key: 'categories', label: 'Categories' },
+    { key: 'price', label: 'Price' },
+    { key: 'stock', label: 'Stock' },
+    { key: 'isActive', label: t('common.status') },
+  ] as const
+  const colCount = columns.length + (showActions ? 1 : 0)
 
   const totalPages = meta.last_page || 1
 
@@ -348,19 +356,7 @@ export default function ProductTable({ permissions }: ProductTableProps) {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              {(
-                [
-                  { key: 'name', label: 'Name' },
-                  { key: 'sku', label: 'SKU' },
-                  { key: 'type', label: 'Type' },
-                  { key: 'categories', label: 'Categories' },
-                  { key: 'price', label: 'Price' },
-                  { key: 'stock', label: 'Stock' },
-                  { key: 'isActive', label: t('common.status') },
-                  { key: 'createdAt', label: t('common.createdAt') },
-                  { key: 'updatedAt', label: t('common.updatedAt') },
-                ] as const
-              ).map(({ key, label }) => (
+              {columns.map(({ key, label }) => (
                 <th
                   key={key}
                   className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
