@@ -209,6 +209,9 @@ export default function RoleTable({
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
         if (filters.name) qs.set('name', filters.name)
+        if (filters.isActive) {
+          qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
+        }
 
         const res = await fetch(`/api/proxy/roles?${qs.toString()}`, {
           cache: 'no-store',
@@ -311,8 +314,29 @@ export default function RoleTable({
     setSortDirection('asc')
   }
 
+  const filteredRows = useMemo(() => {
+    const nameFilter = filters.name.trim().toLowerCase()
+    const statusFilter = filters.isActive
+
+    return rows.filter((role) => {
+      if (nameFilter && !role.name.toLowerCase().includes(nameFilter)) {
+        return false
+      }
+
+      if (statusFilter) {
+        const isActiveMatch =
+          statusFilter === 'active' ? role.isActive : !role.isActive
+        if (!isActiveMatch) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [filters.isActive, filters.name, rows])
+
   const sortedRows = useMemo(() => {
-    if (!sortColumn || !sortDirection) return rows
+    if (!sortColumn || !sortDirection) return filteredRows
 
     const compare = (a: RoleRowData, b: RoleRowData) => {
       const valueA = a[sortColumn]
@@ -336,9 +360,9 @@ export default function RoleTable({
       return String(normalizedA).localeCompare(String(normalizedB))
     }
 
-    const sorted = [...rows].sort(compare)
+    const sorted = [...filteredRows].sort(compare)
     return sortDirection === 'asc' ? sorted : sorted.reverse()
-  }, [rows, sortColumn, sortDirection])
+  }, [filteredRows, sortColumn, sortDirection])
 
   const handleFilterChange = (values: RoleFilterValues) => {
     setInputs(values)
@@ -384,9 +408,13 @@ export default function RoleTable({
 
   const filterLabels: Record<keyof RoleFilterValues, string> = {
     name: t('common.name'),
+    isActive: t('common.status'),
   }
 
   const renderFilterValue = (key: keyof RoleFilterValues, value: string) => {
+    if (key === 'isActive') {
+      return value === 'active' ? t('common.active') : t('common.inactive')
+    }
     return value
   }
 
@@ -650,4 +678,3 @@ export default function RoleTable({
     </div>
   )
 }
-

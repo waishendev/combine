@@ -90,15 +90,17 @@ export default function AdminEditModal({
         const mappedAdmin = mapAdminApiItemToRow(admin)
         setLoadedAdmin(mappedAdmin)
 
+        const primaryRoleId =
+          admin.role?.id ??
+          (Array.isArray(admin.roles) && admin.roles[0]?.id != null
+            ? admin.roles[0].id
+            : null)
+
         setForm({
-          username:
-            typeof admin.username === 'string' ? admin.username : '',
+          username: typeof admin.username === 'string' ? admin.username : '',
           password: '',
           email: typeof admin.email === 'string' ? admin.email : '',
-          roleId:
-            admin.role && typeof admin.role === 'object' && admin.role?.id != null
-              ? String(admin.role.id)
-              : '',
+          roleId: primaryRoleId != null ? String(primaryRoleId) : '',
           isActive:
             admin.is_active === true || admin.is_active === 'true' || admin.is_active === 1
               ? 'true'

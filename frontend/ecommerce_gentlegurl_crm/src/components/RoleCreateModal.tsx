@@ -166,14 +166,12 @@ const mapApiRoleToRow = (item: RoleApiItem): RoleRowData => {
 interface FormState {
   name: string
   description: string
-  isActive: boolean
   permissionIds: string[]
 }
 
 const initialFormState: FormState = {
   name: '',
   description: '',
-  isActive: true,
   permissionIds: [],
 }
 
@@ -191,17 +189,19 @@ export default function RoleCreateModal({
     () => groupPermissionsBySlug(permissions),
     [permissions],
   )
+  const allPermissionIds = useMemo(
+    () => permissions.map((permission) => String(permission.id)),
+    [permissions],
+  )
+  const allSelected =
+    allPermissionIds.length > 0 &&
+    allPermissionIds.every((id) => form.permissionIds.includes(id))
 
   const handleInputChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
-    const { name, value, type } = event.target
-    if (type === 'checkbox') {
-      const checked = (event.target as HTMLInputElement).checked
-      setForm((prev) => ({ ...prev, [name]: checked }))
-    } else {
-      setForm((prev) => ({ ...prev, [name]: value }))
-    }
+    const { name, value } = event.target
+    setForm((prev) => ({ ...prev, [name]: value }))
   }
 
   const handlePermissionToggle = (event: ChangeEvent<HTMLInputElement>) => {
@@ -215,6 +215,14 @@ export default function RoleCreateModal({
       }
       return { ...prev, permissionIds: Array.from(next) }
     })
+  }
+
+  const handleSelectAllToggle = (event: ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target
+    setForm((prev) => ({
+      ...prev,
+      permissionIds: checked ? [...allPermissionIds] : [],
+    }))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -238,7 +246,7 @@ export default function RoleCreateModal({
         body: JSON.stringify({
           name: trimmedName,
           description: form.description.trim() || null,
-          is_active: form.isActive,
+          is_active: true,
           permission_ids: form.permissionIds.map((id) => Number(id)),
         }),
       })
@@ -354,21 +362,6 @@ export default function RoleCreateModal({
                 disabled={submitting}
               />
             </div>
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="isActive"
-                  checked={form.isActive}
-                  onChange={handleInputChange}
-                  disabled={submitting}
-                  className="rounded border-gray-300"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  {t('common.active')}
-                </span>
-              </label>
-            </div>
           </div>
 
           <div>
@@ -376,9 +369,21 @@ export default function RoleCreateModal({
               <label className="block text-sm font-medium text-gray-700">
                 {t('role.permissionsLabel')}
               </label>
-              <span className="text-xs text-gray-500">
-                {t('role.selectedCount')} {form.permissionIds.length}
-              </span>
+              <div className="flex items-center gap-4 text-xs text-gray-500">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={handleSelectAllToggle}
+                    disabled={submitting || permissionsLoading || permissions.length === 0}
+                    className="rounded border-gray-300"
+                  />
+                  <span>Select All</span>
+                </label>
+                <span>
+                  {t('role.selectedCount')} {form.permissionIds.length}
+                </span>
+              </div>
             </div>
             <div className="max-h-[60vh] space-y-3 overflow-y-auto rounded border border-gray-200 p-3">
               {permissionsLoading ? (

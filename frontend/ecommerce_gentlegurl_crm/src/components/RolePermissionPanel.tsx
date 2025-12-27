@@ -78,7 +78,11 @@ export default function RolePermissionPanel({
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-gray-500">{t('table.no_data')}</p>
+                  <div className="px-4 py-8 text-center text-gray-500">
+                    <div className="flex flex-col items-center gap-3">
+                      <span>{t('table.no_data')}</span>
+                    </div>
+                  </div>
                 )}
               </div>
             </section>

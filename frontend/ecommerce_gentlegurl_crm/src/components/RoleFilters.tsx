@@ -6,12 +6,14 @@ import { useI18n } from '@/lib/i18n'
 
 export interface RoleFilterValues {
   name: string
+  isActive: '' | 'active' | 'inactive'
 }
 
 export const roleFiltersFormId = 'role-filters-form'
 
 export const emptyRoleFilters: RoleFilterValues = {
   name: '',
+  isActive: '',
 }
 
 interface RoleFiltersProps {
@@ -66,6 +68,26 @@ export default function RoleFilters({
             placeholder={t('common.name')}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
           />
+        </div>
+
+        <div>
+          <label
+            htmlFor="isActive"
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            {t('common.status')}
+          </label>
+          <select
+            id="isActive"
+            name="isActive"
+            value={values.isActive}
+            onChange={handleChange}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+          >
+            <option value="">{t('common.all')}</option>
+            <option value="active">{t('common.active')}</option>
+            <option value="inactive">{t('common.inactive')}</option>
+          </select>
         </div>
 
       </div>
