@@ -286,8 +286,42 @@ export default function AdminTable({
     setSortDirection('asc')
   }
 
+  const filteredRows = useMemo(() => {
+    const usernameFilter = filters.username.trim().toLowerCase()
+    const emailFilter = filters.email.trim().toLowerCase()
+    const roleFilter = filters.roleId
+    const statusFilter = filters.isActive
+
+    return rows.filter((admin) => {
+      if (
+        usernameFilter &&
+        !admin.username.toLowerCase().includes(usernameFilter)
+      ) {
+        return false
+      }
+
+      if (emailFilter && !admin.email.toLowerCase().includes(emailFilter)) {
+        return false
+      }
+
+      if (roleFilter && String(admin.roleId ?? '') !== roleFilter) {
+        return false
+      }
+
+      if (statusFilter) {
+        const statusMatches =
+          statusFilter === 'active' ? admin.isActive : !admin.isActive
+        if (!statusMatches) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [filters.email, filters.isActive, filters.roleId, filters.username, rows])
+
   const sortedRows = useMemo(() => {
-    if (!sortColumn || !sortDirection) return rows
+    if (!sortColumn || !sortDirection) return filteredRows
 
     const compare = (a: AdminRowData, b: AdminRowData) => {
       const valueA = a[sortColumn]
@@ -311,9 +345,9 @@ export default function AdminTable({
       return String(normalizedA).localeCompare(String(normalizedB))
     }
 
-    const sorted = [...rows].sort(compare)
+    const sorted = [...filteredRows].sort(compare)
     return sortDirection === 'asc' ? sorted : sorted.reverse()
-  }, [rows, sortColumn, sortDirection])
+  }, [filteredRows, sortColumn, sortDirection])
 
   const handleFilterChange = (values: AdminFilterValues) => {
     setInputs(values)

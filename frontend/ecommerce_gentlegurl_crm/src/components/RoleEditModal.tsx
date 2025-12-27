@@ -95,6 +95,13 @@ export default function RoleEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const allPermissionIds = useMemo(
+    () => permissions.map((permission) => String(permission.id)),
+    [permissions],
+  )
+  const allSelected =
+    allPermissionIds.length > 0 &&
+    allPermissionIds.every((id) => form.permissionIds.includes(id))
 
   useEffect(() => {
     const controller = new AbortController()
@@ -186,13 +193,13 @@ export default function RoleEditModal({
   const handleInputChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
-    const { name, value, type } = event.target
-    if (type === 'checkbox') {
-      const checked = (event.target as HTMLInputElement).checked
-      setForm((prev) => ({ ...prev, [name]: checked }))
-    } else {
-      setForm((prev) => ({ ...prev, [name]: value }))
-    }
+    const { name, value } = event.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleStatusChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const { value } = event.target
+    setForm((prev) => ({ ...prev, isActive: value === 'active' }))
   }
 
   const handlePermissionToggle = (event: ChangeEvent<HTMLInputElement>) => {
@@ -206,6 +213,14 @@ export default function RoleEditModal({
       }
       return { ...prev, permissionIds: Array.from(next) }
     })
+  }
+
+  const handleSelectAllToggle = (event: ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target
+    setForm((prev) => ({
+      ...prev,
+      permissionIds: checked ? [...allPermissionIds] : [],
+    }))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -353,19 +368,23 @@ export default function RoleEditModal({
                 />
               </div>
               <div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="isActive"
-                    checked={form.isActive}
-                    onChange={handleInputChange}
-                    disabled={disableForm}
-                    className="rounded border-gray-300"
-                  />
-                  <span className="text-sm font-medium text-gray-700">
-                    {t('common.active')}
-                  </span>
+                <label
+                  htmlFor="role-edit-status"
+                  className="mb-1 block text-sm font-medium text-gray-700"
+                >
+                  {t('common.status')}
                 </label>
+                <select
+                  id="role-edit-status"
+                  name="status"
+                  value={form.isActive ? 'active' : 'inactive'}
+                  onChange={handleStatusChange}
+                  disabled={disableForm}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                >
+                  <option value="active">{t('common.active')}</option>
+                  <option value="inactive">{t('common.inactive')}</option>
+                </select>
               </div>
             </div>
 
@@ -374,9 +393,19 @@ export default function RoleEditModal({
                 <label className="block text-sm font-medium text-gray-700">
                   Permissions
                 </label>
-                <span className="text-xs text-gray-500">
-                  Selected {form.permissionIds.length}
-                </span>
+                <div className="flex items-center gap-4 text-xs text-gray-500">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={handleSelectAllToggle}
+                      disabled={disableForm || permissionsLoading || permissions.length === 0}
+                      className="rounded border-gray-300"
+                    />
+                    <span>Select All</span>
+                  </label>
+                  <span>Selected {form.permissionIds.length}</span>
+                </div>
               </div>
               <div className="max-h-[60vh] space-y-3 overflow-y-auto rounded border border-gray-200 p-3">
                 {permissionsLoading ? (

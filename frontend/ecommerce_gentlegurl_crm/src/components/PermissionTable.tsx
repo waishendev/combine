@@ -277,8 +277,30 @@ export default function PermissionTable({
     setSortDirection('asc')
   }
 
+  const filteredRows = useMemo(() => {
+    const nameFilter = filters.name.trim().toLowerCase()
+    const slugFilter = filters.slug.trim().toLowerCase()
+    const groupFilter = filters.groupId
+
+    return rows.filter((permission) => {
+      if (nameFilter && !permission.name.toLowerCase().includes(nameFilter)) {
+        return false
+      }
+
+      if (slugFilter && !permission.slug.toLowerCase().includes(slugFilter)) {
+        return false
+      }
+
+      if (groupFilter && String(permission.groupId ?? '') !== groupFilter) {
+        return false
+      }
+
+      return true
+    })
+  }, [filters.groupId, filters.name, filters.slug, rows])
+
   const sortedRows = useMemo(() => {
-    if (!sortColumn || !sortDirection) return rows
+    if (!sortColumn || !sortDirection) return filteredRows
 
     const compare = (a: PermissionRowData, b: PermissionRowData) => {
       const valueA = a[sortColumn]
@@ -302,9 +324,9 @@ export default function PermissionTable({
       return String(normalizedA).localeCompare(String(normalizedB))
     }
 
-    const sorted = [...rows].sort(compare)
+    const sorted = [...filteredRows].sort(compare)
     return sortDirection === 'asc' ? sorted : sorted.reverse()
-  }, [rows, sortColumn, sortDirection])
+  }, [filteredRows, sortColumn, sortDirection])
 
   const handleFilterChange = (values: PermissionFilterValues) => {
     setInputs(values)
@@ -612,4 +634,3 @@ export default function PermissionTable({
     </div>
   )
 }
-
