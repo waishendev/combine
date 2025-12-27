@@ -21,10 +21,22 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 15);
-
+    
+        $status = $request->filled('status') ? $request->string('status')->toString() : null;
+        $paymentStatus = $request->filled('payment_status') ? $request->string('payment_status')->toString() : null;
+    
         $orders = Order::with(['customer:id,name,email'])
-            ->when($request->filled('status'), fn($q) => $q->where('status', $request->string('status')))
-            ->when($request->filled('payment_status'), fn($q) => $q->where('payment_status', $request->string('payment_status')))
+            ->when($status, fn($q) => $q->where('status', $status))
+            ->when($paymentStatus, fn($q) => $q->where('payment_status', $paymentStatus))
+    
+            // ✅ 只要 status=cancelled，就排除 refunded（除非你明确指定 payment_status=refunded）
+            ->when($status === 'cancelled' && $paymentStatus !== 'refunded', function ($q) {
+                $q->where(function ($query) {
+                    $query->where('payment_status', '!=', 'refunded')
+                          ->orWhereNull('payment_status');
+                });
+            })
+    
             ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->integer('customer_id')))
             ->when($request->filled('order_no'), fn($q) => $q->where('order_number', 'like', '%' . $request->string('order_no')->toString() . '%'))
             ->when($request->filled('reference'), fn($q) => $q->where('order_number', 'like', '%' . $request->string('reference')->toString() . '%'))
@@ -54,9 +66,10 @@ class OrderController extends Controller
                     'created_at' => $order->created_at,
                 ];
             });
-
+    
         return $this->respond($orders);
     }
+    
 
     public function show(Order $order)
     {
@@ -75,7 +88,9 @@ class OrderController extends Controller
             'shipping_courier' => $order->shipping_courier,
             'shipping_tracking_no' => $order->shipping_tracking_no,
             'shipped_at' => $order->shipped_at,
+            'pickup_ready_at' => $order->pickup_ready_at,
             'notes' => $order->notes,
+            'admin_note' => $order->admin_note,
             'address' => [
                 'shipping_name' => $order->shipping_name,
                 'shipping_phone' => $order->shipping_phone,
@@ -117,15 +132,18 @@ class OrderController extends Controller
                 'payment_status' => $order->payment_status,
                 'paid_at' => $order->paid_at,
                 'payment_method' => $order->payment_method,
+                'payment_proof_rejected_at' => $order->payment_proof_rejected_at,
+                'refund_proof_path' => $order->refund_proof_path,
+                'refunded_at' => $order->refunded_at,
+                'payment_proof_path' => OrderUpload::where('order_id', $order->id)
+                    ->get()
+                    ->map(fn($upload) => [
+                        'id' => $upload->id,
+                        'type' => $upload->type,
+                        'payment_proof_path' => $upload->file_url,
+                        'created_at' => $upload->created_at,
+                    ]),
             ],
-            'uploads' => OrderUpload::where('order_id', $order->id)
-                ->get()
-                ->map(fn($upload) => [
-                    'id' => $upload->id,
-                    'type' => $upload->type,
-                    'file_url' => $upload->file_url,
-                    'created_at' => $upload->created_at,
-                ]),
         ]);
     }
 

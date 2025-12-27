@@ -65,15 +65,17 @@ type OrderDetailData = {
     payment_status: string
     paid_at?: string | null
     payment_method: string
+    payment_proof_rejected_at?: string | null
+    refund_proof_path?: string | null
+    refunded_at?: string | null
+    payment_proof_path?: Array<{
+      id: number
+      type: string
+      payment_proof_path: string
+      created_at: string
+    }>
   }
-  uploads?: Array<{
-    id: number
-    path: string
-    url?: string
-  }>
   admin_note?: string | null
-  refund_proof_path?: string | null
-  refunded_at?: string | null
 }
 
 export default function OrderViewPanel({
@@ -195,6 +197,20 @@ export default function OrderViewPanel({
     })
   }
 
+  const formatPaymentMethod = (method: string | null | undefined) => {
+    if (!method) return '-'
+    switch (method) {
+      case 'billplz_fpx':
+        return 'Online Banking'
+      case 'billplz_card':
+        return 'Credit Card'
+      case 'manual_transfer':
+        return 'Manual Transfer'
+      default:
+        return method
+    }
+  }
+
   const getImageUrl = (imagePath: string | null | undefined) => {
     if (!imagePath) return null
     // If it's already a full URL, return as is
@@ -210,6 +226,66 @@ export default function OrderViewPanel({
     }
     // Otherwise, prepend /storage/
     return `${baseUrl}/storage/${imagePath}`
+  }
+
+  const ProductImage = ({
+    imagePath,
+    alt,
+  }: {
+    imagePath?: string | null
+    alt: string
+  }) => {
+    const [hasError, setHasError] = useState(false)
+    const resolvedUrl = getImageUrl(imagePath)
+    const showImage = Boolean(resolvedUrl) && !hasError
+
+    return (
+      <div className="flex h-16 w-16 items-center justify-center rounded border border-gray-200 bg-gray-100 text-gray-400">
+        {showImage ? (
+          <img
+            src={resolvedUrl || ''}
+            alt={alt}
+            className="h-full w-full rounded object-cover"
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <i className="fa-regular fa-image text-lg" aria-hidden="true" />
+        )}
+      </div>
+    )
+  }
+
+  const BrokenImagePlaceholder = () => (
+    <div className="flex h-64 w-full items-center justify-center rounded border-2 border-dashed border-gray-300 bg-gray-50">
+      <div className="text-center">
+        <i className="fa-regular fa-image text-4xl text-gray-400 mb-2" aria-hidden="true" />
+        <p className="text-xs text-gray-500">Image failed to load</p>
+      </div>
+    </div>
+  )
+
+  const ProofImage = ({ imageUrl, alt }: { imageUrl: string; alt: string }) => {
+    const [hasError, setHasError] = useState(false)
+    
+    if (hasError) {
+      return <BrokenImagePlaceholder />
+    }
+
+    return (
+      <a
+        href={imageUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block"
+      >
+        <img
+          src={imageUrl}
+          alt={alt}
+          className="w-full max-h-64 object-contain rounded border border-gray-200 hover:opacity-90 transition-opacity cursor-pointer"
+          onError={() => setHasError(true)}
+        />
+      </a>
+    )
   }
 
   if (loading) {
@@ -273,7 +349,7 @@ export default function OrderViewPanel({
       <div className="fixed inset-0 z-50 flex bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
         <div className="hidden flex-1 bg-black/40 md:block" />
         <aside
-          className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl"
+          className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl relative"
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
@@ -291,83 +367,124 @@ export default function OrderViewPanel({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="flex-1 overflow-y-auto px-5 py-4 pb-24">
             <div className="space-y-5">
-              {/* Status and Actions */}
+
+              {/* Order Items */}
+              {order.items && order.items.length > 0 && (
+                <section className="rounded border border-gray-200">
+                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-gray-900">Order Items</p>
+                  </div>
+                  <div className="px-4 py-3">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-2">Product</th>
+                          <th className="text-right py-2 px-2">Quantity</th>
+                          <th className="text-right py-2 px-2">Unit Price</th>
+                          <th className="text-right py-2 px-2">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {order.items.map((item, idx) => (
+                          <tr key={idx} className="border-b">
+                            <td className="py-2 px-2">
+                              <div className="flex items-center gap-3">
+                                <ProductImage
+                                  imagePath={item.product_image}
+                                  alt={item.product_name}
+                                />
+                                <span>{item.product_name}</span>
+                              </div>
+                            </td>
+                            <td className="text-right py-2 px-2">{item.quantity}</td>
+                            <td className="text-right py-2 px-2">
+                              {item.unit_price ? `RM ${formatAmount(item.unit_price)}` : '-'}
+                            </td>
+                            <td className="text-right py-2 px-2">RM {formatAmount(item.line_total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {/* Order Summary */}
               <section className="rounded border border-gray-200">
                 <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-gray-900">Status & Actions</p>
+                  <p className="text-sm font-semibold text-gray-900">Order Summary</p>
                 </div>
-                <div className="px-4 py-3 space-y-3 text-sm">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Status</p>
-                    <StatusBadge status={displayStatus.toLowerCase()} label={displayStatus} />
+                <div className="px-4 py-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span className="font-medium">RM {formatAmount(order.subtotal)}</span>
                   </div>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {canConfirmPayment && (
-                      <button
-                        onClick={() => setShowConfirmPayment(true)}
-                        className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700"
-                      >
-                        Confirm Payment
-                      </button>
-                    )}
-                    {canRejectPayment && (
-                      <button
-                        onClick={() => setShowRejectPayment(true)}
-                        className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                      >
-                        Reject Payment Proof
-                      </button>
-                    )}
-                    {canCancel && (
-                      <button
-                        onClick={() => setShowCancel(true)}
-                        className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                      >
-                        Cancel Order
-                      </button>
-                    )}
-                    {canShip && (
-                      <button
-                        onClick={() => setShowShip(true)}
-                        className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Mark as Shipped
-                      </button>
-                    )}
-                    {canMarkReadyForPickup && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ status: 'ready_for_pickup' }),
-                            })
-                            if (res.ok) {
-                              handleOrderUpdated()
-                            }
-                          } catch (err) {
-                            console.error('Failed to mark ready for pickup:', err)
-                          }
-                        }}
-                        className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Mark as Ready for Pickup
-                      </button>
-                    )}
-                    {canRefund && (
-                      <button
-                        onClick={() => setShowRefund(true)}
-                        className="px-4 py-2 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
-                      >
-                        Refund
-                      </button>
-                    )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Discount</span>
+                    <span className="font-medium">RM {formatAmount(order.discount_total)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Shipping Fee</span>
+                    <span className="font-medium">RM {formatAmount(order.shipping_fee)}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-2 font-semibold">
+                    <span>Grand Total</span>
+                    <span>RM {formatAmount(order.grand_total)}</span>
                   </div>
                 </div>
               </section>
+
+              {/* Payment Proof and Refund Proof - Flex Layout */}
+              <div className="flex gap-5">
+                {/* Payment Proof */}
+                <section className="flex-1 rounded border border-gray-200">
+                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-gray-900">Payment Proof</p>
+                  </div>
+                  <div className="px-4 py-3 space-y-3 text-sm">
+                    {order.payment_info?.payment_proof_path && order.payment_info.payment_proof_path.length > 0 ? (
+                      <div className="space-y-3">
+                        {order.payment_info.payment_proof_path.map((proof) => (
+                          <div key={proof.id}>
+                            <ProofImage imageUrl={proof.payment_proof_path} alt="Payment Proof" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-gray-500">-</div>
+                    )}
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-gray-500">Notes</p>
+                      <p className="font-medium text-gray-900">{order.notes || '-'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Admin Refund Proof */}
+                <section className="flex-1 rounded border border-gray-200">
+                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-gray-900">Admin Refund Proof</p>
+                  </div>
+                  <div className="px-4 py-3 space-y-3 text-sm">
+                    {order.payment_info?.refund_proof_path ? (
+                      <div>
+                        <ProofImage 
+                          imageUrl={getImageUrl(order.payment_info.refund_proof_path) || ''} 
+                          alt="Refund Proof" 
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-gray-500">-</div>
+                    )}
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-gray-500">Admin Note</p>
+                      <p className="font-medium text-gray-900">{order.admin_note || '-'}</p>
+                    </div>
+                  </div>
+                </section>
+              </div>
 
               {/* Order Information */}
               <section className="rounded border border-gray-200">
@@ -381,30 +498,20 @@ export default function OrderViewPanel({
                       <p className="font-medium text-gray-900">{order.order_no || order.order_number}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Payment Status</p>
-                      <p className="font-medium text-gray-900 capitalize">{order.payment_status}</p>
+                      <p className="text-xs text-gray-500 mb-1">Status</p>
+                      <StatusBadge status={displayStatus.toLowerCase()} label={displayStatus} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500">Payment Method</p>
+                      <p className="font-medium text-gray-900">{formatPaymentMethod(order.payment_info?.payment_method)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Shipping Method</p>
                       <p className="font-medium text-gray-900 capitalize">{order.shipping_method || '-'}</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Payment Method</p>
-                      <p className="font-medium text-gray-900">{order.payment_info?.payment_method || '-'}</p>
-                    </div>
                   </div>
-                  {order.notes && (
-                    <div>
-                      <p className="text-xs text-gray-500">Notes</p>
-                      <p className="font-medium text-gray-900">{order.notes}</p>
-                    </div>
-                  )}
-                  {order.admin_note && (
-                    <div>
-                      <p className="text-xs text-gray-500">Admin Note</p>
-                      <p className="font-medium text-gray-900">{order.admin_note}</p>
-                    </div>
-                  )}
                 </div>
               </section>
 
@@ -491,54 +598,6 @@ export default function OrderViewPanel({
                 </section>
               )}
 
-              {/* Order Items */}
-              {order.items && order.items.length > 0 && (
-                <section className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Order Items</p>
-                  </div>
-                  <div className="px-4 py-3">
-                    <table className="min-w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left py-2 px-2">Product</th>
-                          <th className="text-right py-2 px-2">Quantity</th>
-                          <th className="text-right py-2 px-2">Unit Price</th>
-                          <th className="text-right py-2 px-2">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {order.items.map((item, idx) => (
-                          <tr key={idx} className="border-b">
-                            <td className="py-2 px-2">
-                              <div className="flex items-center gap-3">
-                                {getImageUrl(item.product_image) && (
-                                  <img
-                                    src={getImageUrl(item.product_image) || ''}
-                                    alt={item.product_name}
-                                    className="w-16 h-16 object-cover rounded border border-gray-200"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement
-                                      target.style.display = 'none'
-                                    }}
-                                  />
-                                )}
-                                <span>{item.product_name}</span>
-                              </div>
-                            </td>
-                            <td className="text-right py-2 px-2">{item.quantity}</td>
-                            <td className="text-right py-2 px-2">
-                              {item.unit_price ? `RM ${formatAmount(item.unit_price)}` : '-'}
-                            </td>
-                            <td className="text-right py-2 px-2">RM {formatAmount(item.line_total)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              )}
-
               {/* Vouchers */}
               {order.vouchers && order.vouchers.length > 0 && (
                 <section className="rounded border border-gray-200">
@@ -555,85 +614,72 @@ export default function OrderViewPanel({
                   </div>
                 </section>
               )}
+            </div>
+          </div>
 
-              {/* Payment Uploads */}
-              {order.uploads && order.uploads.length > 0 && (
-                <section className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Payment Proof</p>
-                  </div>
-                  <div className="px-4 py-3 space-y-2 text-sm">
-                    {order.uploads.map((upload) => (
-                      <div key={upload.id}>
-                        {upload.url ? (
-                          <a
-                            href={upload.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:underline"
-                          >
-                            View Payment Proof
-                          </a>
-                        ) : (
-                          <span>{upload.path}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </section>
+          {/* Fixed Bottom Action Buttons */}
+          <div className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-5 py-4 shadow-lg">
+            <div className="flex flex-wrap gap-2">
+              {canConfirmPayment && (
+                <button
+                  onClick={() => setShowConfirmPayment(true)}
+                  className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                >
+                  Confirm Payment
+                </button>
               )}
-
-              {/* Order Summary */}
-              <section className="rounded border border-gray-200">
-                <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-gray-900">Order Summary</p>
-                </div>
-                <div className="px-4 py-3 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Subtotal</span>
-                    <span className="font-medium">RM {formatAmount(order.subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Discount</span>
-                    <span className="font-medium">RM {formatAmount(order.discount_total)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Shipping Fee</span>
-                    <span className="font-medium">RM {formatAmount(order.shipping_fee)}</span>
-                  </div>
-                  <div className="flex justify-between border-t pt-2 font-semibold">
-                    <span>Grand Total</span>
-                    <span>RM {formatAmount(order.grand_total)}</span>
-                  </div>
-                </div>
-              </section>
-
-              {/* Refund Information */}
-              {order.refunded_at && (
-                <section className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-gray-900">Refund Information</p>
-                  </div>
-                  <div className="px-4 py-3 space-y-3 text-sm">
-                    <div>
-                      <p className="text-xs text-gray-500">Refunded At</p>
-                      <p className="font-medium text-gray-900">{formatDate(order.refunded_at)}</p>
-                    </div>
-                    {order.refund_proof_path && (
-                      <div>
-                        <p className="text-xs text-gray-500">Refund Proof</p>
-                        <a
-                          href={order.refund_proof_path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
-                        >
-                          View Refund Proof
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                </section>
+              {canRejectPayment && (
+                <button
+                  onClick={() => setShowRejectPayment(true)}
+                  className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Reject Payment Proof
+                </button>
+              )}
+              {canCancel && (
+                <button
+                  onClick={() => setShowCancel(true)}
+                  className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Cancel Order
+                </button>
+              )}
+              {canShip && (
+                <button
+                  onClick={() => setShowShip(true)}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Mark as Shipped
+                </button>
+              )}
+              {canMarkReadyForPickup && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'ready_for_pickup' }),
+                      })
+                      if (res.ok) {
+                        handleOrderUpdated()
+                      }
+                    } catch (err) {
+                      console.error('Failed to mark ready for pickup:', err)
+                    }
+                  }}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Mark as Ready for Pickup
+                </button>
+              )}
+              {canRefund && (
+                <button
+                  onClick={() => setShowRefund(true)}
+                  className="px-4 py-2 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
+                >
+                  Refund
+                </button>
               )}
             </div>
           </div>

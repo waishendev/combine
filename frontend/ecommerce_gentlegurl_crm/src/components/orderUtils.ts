@@ -157,3 +157,65 @@ export function calculateOrderStatus(
   return status || payment || 'Unknown'
 }
 
+// Convert display status back to API filter parameters
+export function mapDisplayStatusToApiFilters(displayStatus: string): {
+  status?: string
+  payment_status?: string
+} {
+  switch (displayStatus) {
+    case 'Awaiting Payment':
+      return {
+        status: 'pending',
+        payment_status: 'unpaid',
+      }
+    case 'Waiting for Verification':
+      return {
+        status: 'processing',
+        payment_status: 'unpaid',
+      }
+    case 'Payment Proof Rejected':
+      return {
+        status: 'reject_payment_proof',
+        payment_status: 'unpaid',
+      }
+    case 'Payment Failed':
+      return {
+        payment_status: 'failed',
+      }
+    case 'Cancelled':
+      return {
+        status: 'cancelled',
+      }
+    case 'Refunded':
+      return {
+        status: 'cancelled',
+        payment_status: 'refunded',
+      }
+    case 'Payment Confirmed':
+      return {
+        status: 'confirmed',
+        payment_status: 'paid',
+      }
+    case 'Preparing':
+      return {
+        status: 'processing',
+        payment_status: 'paid',
+      }
+    case 'Ready for Pickup':
+      return {
+        status: 'ready_for_pickup',
+        payment_status: 'paid',
+      }
+    case 'Shipped':
+      return {
+        status: 'shipped',
+      }
+    case 'Completed':
+      return {
+        status: 'completed',
+      }
+    default:
+      return {}
+  }
+}
+

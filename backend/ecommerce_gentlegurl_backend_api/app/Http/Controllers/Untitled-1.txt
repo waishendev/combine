@@ -6,10 +6,6 @@ Backend (Laravel): backend/ecommerce_gentlegurl_backend_api
 Ingore OTHER PROJECT/ FILE  
 
 
-C:\Users\WS\Desktop\test\ccc\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\orders\page.tsx
-目前我们在里面 点了 ACTION
-
-
 
 
 
@@ -166,9 +162,6 @@ payment_status = failed
 
 Cancelled 
 status=cancelled
-
-Refunded
-status=cancelled + payment_status = refunded 
 
 Payment Confirmed
 status = confirmed AND payment_status = paid
