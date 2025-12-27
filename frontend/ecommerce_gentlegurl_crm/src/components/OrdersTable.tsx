@@ -16,6 +16,7 @@ import {
   type OrderApiItem,
   mapOrderApiItemToRow,
   convertOrderDetailToApiItem,
+  mapDisplayStatusToApiFilters,
 } from './orderUtils'
 import { useI18n } from '@/lib/i18n'
 
@@ -117,11 +118,15 @@ export default function OrdersTable({
         if (filters.customerName) qs.set('customer_name', filters.customerName)
         if (filters.customerEmail) qs.set('customer_email', filters.customerEmail)
         if (filters.status) {
-          // Map display status back to API filters if needed
-          // For now, we'll filter client-side or add status filter to API
-          qs.set('status', filters.status)
+          // Map display status to API filter parameters
+          const apiFilters = mapDisplayStatusToApiFilters(filters.status)
+          if (apiFilters.status) {
+            qs.set('status', apiFilters.status)
+          }
+          if (apiFilters.payment_status) {
+            qs.set('payment_status', apiFilters.payment_status)
+          }
         }
-        if (filters.paymentStatus) qs.set('payment_status', filters.paymentStatus)
 
         const res = await fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, {
           cache: 'no-store',
@@ -176,18 +181,13 @@ export default function OrdersTable({
 
         const list: OrderRowData[] = orderItems.map((item) => mapOrderApiItemToRow(item))
 
-        // Apply client-side status filter if needed
-        let filteredList = list
-        if (filters.status) {
-          filteredList = list.filter((item) => item.status === filters.status)
-        }
-
-        setRows(filteredList)
+        // No need for client-side status filtering since we're filtering via API
+        setRows(list)
         setMeta({
           current_page: Number(paginationData.current_page ?? currentPage) || 1,
           last_page: Number(paginationData.last_page ?? 1) || 1,
           per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? filteredList.length) || filteredList.length,
+          total: Number(paginationData.total ?? list.length) || list.length,
         })
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
@@ -338,7 +338,6 @@ export default function OrdersTable({
     customerName: 'Customer Name',
     customerEmail: 'Customer Email',
     status: 'Status',
-    paymentStatus: 'Payment Status',
   }
 
   const renderFilterValue = (key: keyof OrderFilterValues, value: string) => {
@@ -428,7 +427,7 @@ export default function OrdersTable({
               {(
                 [
                   { key: 'orderNo', label: 'Order Number' },
-                  { key: 'customerName', label: 'Customer Name' },
+                  { key: 'customerName', label: 'Customer' },
                   { key: 'status', label: 'Status' },
                   { key: 'grandTotal', label: 'Total' },
                   { key: 'createdAt', label: t('common.createdAt') },

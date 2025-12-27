@@ -51,7 +51,12 @@ export default function OrderRow({
   return (
     <tr className="text-sm">
       <td className="px-4 py-2 border border-gray-200 font-medium">{order.orderNo}</td>
-      <td className="px-4 py-2 border border-gray-200">{order.customerName}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        <div className="flex flex-col">
+          <span className="font-medium">{order.customerName}</span>
+          <span className="text-xs text-gray-500">{order.customerEmail}</span>
+        </div>
+      </td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge status={order.status.toLowerCase()} label={order.status} />
       </td>
