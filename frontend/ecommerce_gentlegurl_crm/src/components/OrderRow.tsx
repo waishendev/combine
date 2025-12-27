@@ -52,7 +52,6 @@ export default function OrderRow({
     <tr className="text-sm">
       <td className="px-4 py-2 border border-gray-200 font-medium">{order.orderNo}</td>
       <td className="px-4 py-2 border border-gray-200">{order.customerName}</td>
-      <td className="px-4 py-2 border border-gray-200">{order.customerEmail}</td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge status={order.status.toLowerCase()} label={order.status} />
       </td>
@@ -78,4 +77,3 @@ export default function OrderRow({
     </tr>
   )
 }
-

@@ -324,7 +324,7 @@ export default function OrdersTable({
     })
   }
 
-  const colCount = showActions ? 7 : 6
+  const colCount = showActions ? 6 : 5
 
   const totalPages = meta.last_page || 1
 
@@ -429,7 +429,6 @@ export default function OrdersTable({
                 [
                   { key: 'orderNo', label: 'Order Number' },
                   { key: 'customerName', label: 'Customer Name' },
-                  { key: 'customerEmail', label: 'Customer Email' },
                   { key: 'status', label: 'Status' },
                   { key: 'grandTotal', label: 'Total' },
                   { key: 'createdAt', label: t('common.createdAt') },

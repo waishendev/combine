@@ -212,6 +212,33 @@ export default function OrderViewPanel({
     return `${baseUrl}/storage/${imagePath}`
   }
 
+  const ProductImage = ({
+    imagePath,
+    alt,
+  }: {
+    imagePath?: string | null
+    alt: string
+  }) => {
+    const [hasError, setHasError] = useState(false)
+    const resolvedUrl = getImageUrl(imagePath)
+    const showImage = Boolean(resolvedUrl) && !hasError
+
+    return (
+      <div className="flex h-16 w-16 items-center justify-center rounded border border-gray-200 bg-gray-100 text-gray-400">
+        {showImage ? (
+          <img
+            src={resolvedUrl || ''}
+            alt={alt}
+            className="h-full w-full rounded object-cover"
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <i className="fa-regular fa-image text-lg" aria-hidden="true" />
+        )}
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex bg-black/40">
@@ -512,17 +539,10 @@ export default function OrderViewPanel({
                           <tr key={idx} className="border-b">
                             <td className="py-2 px-2">
                               <div className="flex items-center gap-3">
-                                {getImageUrl(item.product_image) && (
-                                  <img
-                                    src={getImageUrl(item.product_image) || ''}
-                                    alt={item.product_name}
-                                    className="w-16 h-16 object-cover rounded border border-gray-200"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement
-                                      target.style.display = 'none'
-                                    }}
-                                  />
-                                )}
+                                <ProductImage
+                                  imagePath={item.product_image}
+                                  alt={item.product_name}
+                                />
                                 <span>{item.product_name}</span>
                               </div>
                             </td>
@@ -682,4 +702,3 @@ export default function OrderViewPanel({
     </>
   )
 }
-
