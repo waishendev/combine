@@ -377,7 +377,8 @@ export default function OrderViewPanel({
                     <p className="text-sm font-semibold text-slate-900">Order Items</p>
                   </div>
                   <div className="px-4 py-3">
-                    <table className="min-w-full text-sm">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[560px] w-full text-sm">
                       <thead>
                         <tr className="border-b border-slate-200 text-slate-600">
                           <th className="px-2 py-2 text-left font-medium">Product</th>
@@ -408,7 +409,8 @@ export default function OrderViewPanel({
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                      </table>
+                    </div>
                   </div>
                 </section>
               )}
@@ -439,7 +441,7 @@ export default function OrderViewPanel({
               </section>
 
               {/* Payment Proof and Refund Proof - Flex Layout */}
-              <div className="flex gap-5">
+              <div className="flex flex-col gap-5 lg:flex-row">
                 {/* Payment Proof */}
                 <section className="flex-1 rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -494,7 +496,7 @@ export default function OrderViewPanel({
                   <p className="text-sm font-semibold text-slate-900">Order Information</p>
                 </div>
                 <div className="space-y-3 px-4 py-3 text-sm">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <p className="text-xs text-slate-500">Order Number</p>
                       <p className="font-medium text-slate-900">{order.order_no || order.order_number}</p>
@@ -504,7 +506,7 @@ export default function OrderViewPanel({
                       <StatusBadge status={displayStatus.toLowerCase()} label={displayStatus} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <p className="text-xs text-slate-500">Payment Method</p>
                       <p className="font-medium text-slate-900">{formatPaymentMethod(order.payment_info?.payment_method)}</p>
@@ -524,7 +526,7 @@ export default function OrderViewPanel({
                     <p className="text-sm font-semibold text-slate-900">Customer Information</p>
                   </div>
                   <div className="space-y-3 px-4 py-3 text-sm">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
                         <p className="text-xs text-slate-500">Name</p>
                         <p className="font-medium text-slate-900">{order.customer.name}</p>
