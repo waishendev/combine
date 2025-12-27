@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             BankAccountSeeder::class,
             LoyaltyRewardSeeder::class,
             LoyaltyDemoCustomerSeeder::class,
+            SalesReportSeeder::class,
         ]);
 
         $customer = Customer::first();
