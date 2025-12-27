@@ -41,7 +41,23 @@ class OrderController extends Controller
         }
     
         $orders = Order::with(['customer:id,name,email'])
-            ->when($status, fn($q) => $q->whereIn('status', $status))
+            ->when($status, function ($q) use ($status, $paymentStatus) {
+                // If filtering ONLY by cancelled status (no other statuses) and payment_status is not specified 
+                // (or doesn't include 'refunded'), exclude refunded orders to show only cancelled (non-refunded) orders
+                // This ensures that when user selects "Cancelled" filter, refunded orders are not shown
+                $onlyCancelled = count($status) === 1 && $status[0] === 'cancelled';
+                if ($onlyCancelled && (!$paymentStatus || !in_array('refunded', $paymentStatus))) {
+                    $q->where('status', 'cancelled')
+                        ->where(function ($notRefundQuery) {
+                            $notRefundQuery->where('payment_status', '!=', 'refunded')
+                                ->orWhereNull('payment_status');
+                        });
+                } else {
+                    // For multiple statuses or when cancelled is not the only status, use normal whereIn
+                    // This allows Completed Orders page to show completed, cancelled (non-refunded), and refunded
+                    $q->whereIn('status', $status);
+                }
+            })
             ->when($paymentStatus, fn($q) => $q->whereIn('payment_status', $paymentStatus))
     
             ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->integer('customer_id')))

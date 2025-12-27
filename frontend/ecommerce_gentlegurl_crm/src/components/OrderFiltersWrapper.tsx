@@ -14,6 +14,7 @@ interface Props {
   onReset: () => void
   onClose: () => void
   disabled?: boolean
+  allowedStatusOptions?: string[]
 }
 
 export default function OrderFiltersWrapper({
@@ -23,6 +24,7 @@ export default function OrderFiltersWrapper({
   onReset,
   onClose,
   disabled = false,
+  allowedStatusOptions,
 }: Props) {
   const { t } = useI18n()
 
@@ -62,6 +64,7 @@ export default function OrderFiltersWrapper({
             onChange={onChange}
             onSubmit={handleSubmit}
             onReset={handleReset}
+            allowedStatusOptions={allowedStatusOptions}
           />
         </div>
 
