@@ -166,14 +166,12 @@ const mapApiRoleToRow = (item: RoleApiItem): RoleRowData => {
 interface FormState {
   name: string
   description: string
-  isActive: boolean
   permissionIds: string[]
 }
 
 const initialFormState: FormState = {
   name: '',
   description: '',
-  isActive: true,
   permissionIds: [],
 }
 
@@ -195,13 +193,8 @@ export default function RoleCreateModal({
   const handleInputChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
-    const { name, value, type } = event.target
-    if (type === 'checkbox') {
-      const checked = (event.target as HTMLInputElement).checked
-      setForm((prev) => ({ ...prev, [name]: checked }))
-    } else {
-      setForm((prev) => ({ ...prev, [name]: value }))
-    }
+    const { name, value } = event.target
+    setForm((prev) => ({ ...prev, [name]: value }))
   }
 
   const handlePermissionToggle = (event: ChangeEvent<HTMLInputElement>) => {
@@ -238,7 +231,7 @@ export default function RoleCreateModal({
         body: JSON.stringify({
           name: trimmedName,
           description: form.description.trim() || null,
-          is_active: form.isActive,
+          is_active: true,
           permission_ids: form.permissionIds.map((id) => Number(id)),
         }),
       })
@@ -353,21 +346,6 @@ export default function RoleCreateModal({
                 rows={3}
                 disabled={submitting}
               />
-            </div>
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="isActive"
-                  checked={form.isActive}
-                  onChange={handleInputChange}
-                  disabled={submitting}
-                  className="rounded border-gray-300"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  {t('common.active')}
-                </span>
-              </label>
             </div>
           </div>
 
