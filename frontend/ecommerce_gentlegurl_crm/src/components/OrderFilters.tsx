@@ -131,6 +131,7 @@ export default function OrderFilters({
             <option value="Payment Proof Rejected">Payment Proof Rejected</option>
             <option value="Payment Failed">Payment Failed</option>
             <option value="Cancelled">Cancelled</option>
+            <option value="Refunded">Refunded</option>
             <option value="Payment Confirmed">Payment Confirmed</option>
             <option value="Preparing">Preparing</option>
             <option value="Ready for Pickup">Ready for Pickup</option>

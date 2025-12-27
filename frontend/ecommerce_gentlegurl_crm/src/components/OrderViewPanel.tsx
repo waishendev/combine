@@ -13,7 +13,7 @@ import OrderRefundModal from './OrderRefundModal'
 interface OrderViewPanelProps {
   orderId: number
   onClose: () => void
-  onOrderUpdated?: () => void
+  onOrderUpdated?: (updatedOrder?: OrderDetailData) => void
 }
 
 type OrderDetailData = {
@@ -151,31 +151,30 @@ export default function OrderViewPanel({
     return () => controller.abort()
   }, [orderId])
 
-  const handleOrderUpdated = () => {
+  const handleOrderUpdated = async () => {
     // Reload order data
     const controller = new AbortController()
-    const loadOrder = async () => {
-      try {
-        const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-          headers: {
-            Accept: 'application/json',
-            'Accept-Language': 'en',
-          },
-        })
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'en',
+        },
+      })
 
-        const data = await res.json().catch(() => null)
-        if (data?.data) {
-          setOrder(data.data as OrderDetailData)
-        }
-      } catch (err) {
-        console.error('Failed to reload order:', err)
+      const data = await res.json().catch(() => null)
+      if (data?.data) {
+        const updatedOrder = data.data as OrderDetailData
+        setOrder(updatedOrder)
+        // Pass updated order data to parent for table update
+        onOrderUpdated?.(updatedOrder)
       }
+    } catch (err) {
+      console.error('Failed to reload order:', err)
+      onOrderUpdated?.()
     }
-
-    loadOrder()
-    onOrderUpdated?.()
   }
 
   const formatDate = (dateString: string | null | undefined) => {

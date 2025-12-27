@@ -15,6 +15,7 @@ import OrderViewPanel from './OrderViewPanel'
 import {
   type OrderApiItem,
   mapOrderApiItemToRow,
+  convertOrderDetailToApiItem,
 } from './orderUtils'
 import { useI18n } from '@/lib/i18n'
 
@@ -62,6 +63,7 @@ export default function OrdersTable({
     'desc',
   )
   const [viewingOrderId, setViewingOrderId] = useState<number | null>(null)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const canView = permissions.includes('ecommerce.orders.view')
   const showActions = canView
@@ -201,7 +203,7 @@ export default function OrdersTable({
 
     fetchOrders()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, refreshTrigger])
 
   const handleSort = (column: keyof OrderRowData) => {
     if (sortColumn === column) {
@@ -282,6 +284,46 @@ export default function OrdersTable({
     setCurrentPage(1)
   }
 
+  const handleManualRefresh = () => {
+    setRefreshTrigger((prev) => prev + 1)
+  }
+
+  const handleOrderUpdated = (updatedOrder?: {
+    id: number
+    order_no?: string
+    order_number?: string
+    status?: string
+    payment_status?: string
+    grand_total?: string | number
+    shipping_method?: string
+    created_at?: string
+    updated_at?: string
+    customer?: {
+      id?: number
+      name?: string
+      email?: string
+    }
+  }) => {
+    if (!updatedOrder) {
+      // If no order data provided, do a full refresh
+      setRefreshTrigger((prev) => prev + 1)
+      return
+    }
+
+    // Convert OrderDetailData to OrderApiItem and update the specific order in the table
+    const apiItem = convertOrderDetailToApiItem(updatedOrder)
+    setRows((prevRows) => {
+      const updatedRows = prevRows.map((row) => {
+        if (row.id === updatedOrder.id) {
+          // Map the updated order API item to row data
+          return mapOrderApiItemToRow(apiItem)
+        }
+        return row
+      })
+      return updatedRows
+    })
+  }
+
   const colCount = showActions ? 7 : 6
 
   const totalPages = meta.last_page || 1
@@ -325,6 +367,15 @@ export default function OrdersTable({
           >
             <i className="fa-solid fa-filter" />
             {t('common.filter')}
+          </button>
+          <button
+            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+            onClick={handleManualRefresh}
+            disabled={loading}
+            title="Refresh orders"
+          >
+            <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-rotate-right'}`} />
+            Refresh
           </button>
         </div>
 
@@ -436,10 +487,7 @@ export default function OrdersTable({
         <OrderViewPanel
           orderId={viewingOrderId}
           onClose={() => setViewingOrderId(null)}
-          onOrderUpdated={() => {
-            // Trigger a refetch by updating a dependency
-            setCurrentPage((prev) => prev)
-          }}
+          onOrderUpdated={handleOrderUpdated}
         />
       )}
 

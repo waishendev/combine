@@ -54,6 +54,43 @@ export const mapOrderApiItemToRow = (item: OrderApiItem): OrderRowData => {
   }
 }
 
+// Convert OrderDetailData to OrderApiItem for table update
+export function convertOrderDetailToApiItem(orderDetail: {
+  id: number
+  order_no?: string
+  order_number?: string
+  status?: string
+  payment_status?: string
+  grand_total?: string | number
+  shipping_method?: string
+  created_at?: string
+  updated_at?: string
+  customer?: {
+    id?: number
+    name?: string
+    email?: string
+  }
+}): OrderApiItem {
+  return {
+    id: orderDetail.id,
+    order_no: orderDetail.order_no ?? orderDetail.order_number ?? null,
+    order_number: orderDetail.order_number ?? orderDetail.order_no ?? null,
+    status: orderDetail.status ?? null,
+    payment_status: orderDetail.payment_status ?? null,
+    grand_total: orderDetail.grand_total ?? null,
+    shipping_method: orderDetail.shipping_method ?? null,
+    created_at: orderDetail.created_at ?? null,
+    updated_at: orderDetail.updated_at ?? null,
+    customer: orderDetail.customer
+      ? {
+          id: orderDetail.customer.id ?? undefined,
+          name: orderDetail.customer.name ?? null,
+          email: orderDetail.customer.email ?? null,
+        }
+      : null,
+  }
+}
+
 export function calculateOrderStatus(
   orderStatus: string | null | undefined,
   paymentStatus: string | null | undefined
@@ -79,6 +116,11 @@ export function calculateOrderStatus(
   // Payment Failed
   if (payment === 'failed') {
     return 'Payment Failed'
+  }
+
+  // Refunded (must check before Cancelled)
+  if (status === 'cancelled' && payment === 'refunded') {
+    return 'Refunded'
   }
 
   // Cancelled

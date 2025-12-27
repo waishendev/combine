@@ -6,6 +6,15 @@ Backend (Laravel): backend/ecommerce_gentlegurl_backend_api
 Ingore OTHER PROJECT/ FILE  
 
 
+C:\Users\WS\Desktop\test\ccc\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\orders\page.tsx
+目前我们在里面 点了 ACTION
+
+
+
+
+
+
+
 C:\Users\WS\Desktop\test\ccc\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\orders\page.tsx 目前是一个最普通的 帮我改一下 
 跟着  C:\Users\WS\Desktop\test\ccc\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\customers\page.tsx  就是有 INCLUDE COMPONENT   那些的 
 只是 API 换吧 ~
@@ -158,6 +167,9 @@ payment_status = failed
 Cancelled 
 status=cancelled
 
+Refunded
+status=cancelled + payment_status = refunded 
+
 Payment Confirmed
 status = confirmed AND payment_status = paid
 
@@ -182,7 +194,7 @@ RESPONSE API
         "id": 2,
         "order_number": "ORD20251227112523232",
         "customer_id": 1,
-        "status": "comfirmed",
+        "status": "confirmed",
         "payment_status": "paid",
         "payment_method": "manual_transfer",
         "payment_gateway_id": null,
@@ -355,7 +367,7 @@ Waiting for Verification 和  Ready for Pickup 也可以CANCEL
 RETURN 都是一样跟  reject-payment-proof 的只是 Status 换了去 cancelled
 
 Payment Confirmed  后就可以 有 
-{{base_url}}/ecommerce/orders/{{order_id}} 
+{{base_url}}/ecommerce/orders/{{order_id}}  (PUT)
 
  如果他是         "pickup_or_shipping": "shipping", 你就给他放
              'shipping_courier' => ['nullable', 'string', 'max:100'],

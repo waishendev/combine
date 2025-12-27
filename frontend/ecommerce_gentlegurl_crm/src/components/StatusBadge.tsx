@@ -47,6 +47,11 @@ export default function StatusBadge({
       bgColor: 'bg-red-100',
       dotColor: 'bg-red-500',
     },
+    refunded: {
+      textColor: 'text-orange-700',
+      bgColor: 'bg-orange-100',
+      dotColor: 'bg-orange-500',
+    },
     'payment confirmed': {
       textColor: 'text-blue-700',
       bgColor: 'bg-blue-100',
