@@ -189,6 +189,13 @@ export default function RoleCreateModal({
     () => groupPermissionsBySlug(permissions),
     [permissions],
   )
+  const allPermissionIds = useMemo(
+    () => permissions.map((permission) => String(permission.id)),
+    [permissions],
+  )
+  const allSelected =
+    allPermissionIds.length > 0 &&
+    allPermissionIds.every((id) => form.permissionIds.includes(id))
 
   const handleInputChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -208,6 +215,14 @@ export default function RoleCreateModal({
       }
       return { ...prev, permissionIds: Array.from(next) }
     })
+  }
+
+  const handleSelectAllToggle = (event: ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target
+    setForm((prev) => ({
+      ...prev,
+      permissionIds: checked ? [...allPermissionIds] : [],
+    }))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -354,9 +369,21 @@ export default function RoleCreateModal({
               <label className="block text-sm font-medium text-gray-700">
                 {t('role.permissionsLabel')}
               </label>
-              <span className="text-xs text-gray-500">
-                {t('role.selectedCount')} {form.permissionIds.length}
-              </span>
+              <div className="flex items-center gap-4 text-xs text-gray-500">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={handleSelectAllToggle}
+                    disabled={submitting || permissionsLoading || permissions.length === 0}
+                    className="rounded border-gray-300"
+                  />
+                  <span>Select All</span>
+                </label>
+                <span>
+                  {t('role.selectedCount')} {form.permissionIds.length}
+                </span>
+              </div>
             </div>
             <div className="max-h-[60vh] space-y-3 overflow-y-auto rounded border border-gray-200 p-3">
               {permissionsLoading ? (

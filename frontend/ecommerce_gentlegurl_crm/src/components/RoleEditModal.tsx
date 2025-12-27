@@ -95,6 +95,13 @@ export default function RoleEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const allPermissionIds = useMemo(
+    () => permissions.map((permission) => String(permission.id)),
+    [permissions],
+  )
+  const allSelected =
+    allPermissionIds.length > 0 &&
+    allPermissionIds.every((id) => form.permissionIds.includes(id))
 
   useEffect(() => {
     const controller = new AbortController()
@@ -206,6 +213,14 @@ export default function RoleEditModal({
       }
       return { ...prev, permissionIds: Array.from(next) }
     })
+  }
+
+  const handleSelectAllToggle = (event: ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target
+    setForm((prev) => ({
+      ...prev,
+      permissionIds: checked ? [...allPermissionIds] : [],
+    }))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -378,9 +393,19 @@ export default function RoleEditModal({
                 <label className="block text-sm font-medium text-gray-700">
                   Permissions
                 </label>
-                <span className="text-xs text-gray-500">
-                  Selected {form.permissionIds.length}
-                </span>
+                <div className="flex items-center gap-4 text-xs text-gray-500">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={handleSelectAllToggle}
+                      disabled={disableForm || permissionsLoading || permissions.length === 0}
+                      className="rounded border-gray-300"
+                    />
+                    <span>Select All</span>
+                  </label>
+                  <span>Selected {form.permissionIds.length}</span>
+                </div>
               </div>
               <div className="max-h-[60vh] space-y-3 overflow-y-auto rounded border border-gray-200 p-3">
                 {permissionsLoading ? (
