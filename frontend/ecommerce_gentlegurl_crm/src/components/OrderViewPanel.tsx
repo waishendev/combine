@@ -367,7 +367,7 @@ export default function OrderViewPanel({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4 pb-24">
+          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4 pb-32 md:pb-24">
             <div className="space-y-5">
 
               {/* Order Items */}
@@ -622,7 +622,7 @@ export default function OrderViewPanel({
           </div>
 
           {/* Fixed Bottom Action Buttons */}
-          <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg">
+          <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg z-10 max-h-32 overflow-y-auto">
             <div className="flex flex-wrap gap-2">
               {canConfirmPayment && (
                 <button
