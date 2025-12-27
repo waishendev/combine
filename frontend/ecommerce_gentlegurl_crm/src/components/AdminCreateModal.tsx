@@ -72,7 +72,7 @@ export default function AdminCreateModal({
           username: trimmedUsername,
           password: form.password,
           email: trimmedEmail,
-          role_id: roleIdNumber,
+          role_ids: [roleIdNumber],
           is_active: true,
         }),
       })
