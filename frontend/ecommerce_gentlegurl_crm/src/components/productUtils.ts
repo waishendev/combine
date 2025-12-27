@@ -26,6 +26,7 @@ export type ProductApiItem = {
   low_stock_threshold?: number | string | null
   is_active?: boolean | number | string | null
   is_featured?: boolean | number | string | null
+  is_reward_only?: boolean | number | string | null
   meta_title?: string | null
   meta_description?: string | null
   meta_keywords?: string | null
@@ -88,6 +89,7 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     lowStockThreshold: Number.isFinite(lowStockValue) ? lowStockValue : 0,
     isActive: toBoolean(item.is_active),
     isFeatured: toBoolean(item.is_featured),
+    isRewardOnly: toBoolean(item.is_reward_only),
     metaTitle: item.meta_title ?? '-',
     metaDescription: item.meta_description ?? '-',
     metaKeywords: item.meta_keywords ?? '-',
