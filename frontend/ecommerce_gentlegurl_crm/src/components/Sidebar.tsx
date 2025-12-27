@@ -65,6 +65,37 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         requiredPermission: 'roles.view',
       },
       {
+        key: 'orders',
+        label: 'Orders',
+        icon: 'fa-solid fa-bag-shopping',
+        children: [
+          {
+            key: 'orders-all',
+            label: 'All Orders',
+            href: '/orders',
+            requiredPermission: 'ecommerce.orders.view',
+          },
+          {
+            key: 'orders-new',
+            label: 'New Orders',
+            href: '/orders/new',
+            requiredPermission: 'ecommerce.orders.view',
+          },
+          {
+            key: 'orders-completed',
+            label: 'Completed Orders',
+            href: '/orders/completed',
+            requiredPermission: 'ecommerce.orders.view',
+          },
+          {
+            key: 'orders-returns',
+            label: 'Return Orders',
+            href: '/returns',
+            requiredPermission: 'ecommerce.returns.view',
+          },
+        ],
+      },
+      {
         key: 'customers',
         label: 'Customers',
         icon: 'fa-solid fa-users',
@@ -92,6 +123,7 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         href: '/product',
         requiredPermission: 'ecommerce.products.view',
       },
+      
       {
         key: 'store',
         label: 'Store',
@@ -155,37 +187,7 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         href: '/slides',
         requiredPermission: 'ecommerce.sliders.view',
       },
-      {
-        key: 'orders',
-        label: 'Orders',
-        icon: 'fa-solid fa-bag-shopping',
-        children: [
-          {
-            key: 'orders-all',
-            label: 'All Orders',
-            href: '/orders',
-            requiredPermission: 'ecommerce.orders.view',
-          },
-          {
-            key: 'orders-new',
-            label: 'New Orders',
-            href: '/orders/new',
-            requiredPermission: 'ecommerce.orders.view',
-          },
-          {
-            key: 'orders-completed',
-            label: 'Completed Orders',
-            href: '/orders/completed',
-            requiredPermission: 'ecommerce.orders.view',
-          },
-          {
-            key: 'orders-returns',
-            label: 'Return Orders',
-            href: '/returns',
-            requiredPermission: 'ecommerce.returns.view',
-          },
-        ],
-      },
+
     ],
     [],
   )
