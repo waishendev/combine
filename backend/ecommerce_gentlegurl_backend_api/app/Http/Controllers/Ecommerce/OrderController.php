@@ -22,20 +22,27 @@ class OrderController extends Controller
     {
         $perPage = $request->integer('per_page', 15);
     
-        $status = $request->filled('status') ? $request->string('status')->toString() : null;
-        $paymentStatus = $request->filled('payment_status') ? $request->string('payment_status')->toString() : null;
+        // Accept both array and single value for status
+        $status = null;
+        if ($request->has('status')) {
+            $statusInput = $request->input('status');
+            $status = is_array($statusInput) ? $statusInput : [$statusInput];
+            $status = array_filter($status, fn($s) => !empty($s)); // Remove empty values
+            $status = !empty($status) ? $status : null;
+        }
+        
+        // Accept both array and single value for payment_status
+        $paymentStatus = null;
+        if ($request->has('payment_status')) {
+            $paymentStatusInput = $request->input('payment_status');
+            $paymentStatus = is_array($paymentStatusInput) ? $paymentStatusInput : [$paymentStatusInput];
+            $paymentStatus = array_filter($paymentStatus, fn($ps) => !empty($ps)); // Remove empty values
+            $paymentStatus = !empty($paymentStatus) ? $paymentStatus : null;
+        }
     
         $orders = Order::with(['customer:id,name,email'])
-            ->when($status, fn($q) => $q->where('status', $status))
-            ->when($paymentStatus, fn($q) => $q->where('payment_status', $paymentStatus))
-    
-            // ✅ 只要 status=cancelled，就排除 refunded（除非你明确指定 payment_status=refunded）
-            ->when($status === 'cancelled' && $paymentStatus !== 'refunded', function ($q) {
-                $q->where(function ($query) {
-                    $query->where('payment_status', '!=', 'refunded')
-                          ->orWhereNull('payment_status');
-                });
-            })
+            ->when($status, fn($q) => $q->whereIn('status', $status))
+            ->when($paymentStatus, fn($q) => $q->whereIn('payment_status', $paymentStatus))
     
             ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->integer('customer_id')))
             ->when($request->filled('order_no'), fn($q) => $q->where('order_number', 'like', '%' . $request->string('order_no')->toString() . '%'))
