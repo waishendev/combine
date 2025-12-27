@@ -121,10 +121,18 @@ export default function OrdersTable({
           // Map display status to API filter parameters
           const apiFilters = mapDisplayStatusToApiFilters(filters.status)
           if (apiFilters.status) {
-            qs.set('status', apiFilters.status)
+            // Pass as array - convert single value to array
+            const statusArray = Array.isArray(apiFilters.status) 
+              ? apiFilters.status 
+              : [apiFilters.status]
+            statusArray.forEach(status => qs.append('status[]', status))
           }
           if (apiFilters.payment_status) {
-            qs.set('payment_status', apiFilters.payment_status)
+            // Pass as array - convert single value to array
+            const paymentStatusArray = Array.isArray(apiFilters.payment_status)
+              ? apiFilters.payment_status
+              : [apiFilters.payment_status]
+            paymentStatusArray.forEach(paymentStatus => qs.append('payment_status[]', paymentStatus))
           }
         }
 
