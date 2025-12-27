@@ -6,7 +6,8 @@ Backend (Laravel): backend/ecommerce_gentlegurl_backend_api
 Ingore OTHER PROJECT/ FILE  
 
 
-
+billplz_fpx
+billplz_card
 
 
 

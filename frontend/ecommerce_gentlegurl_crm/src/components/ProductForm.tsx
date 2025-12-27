@@ -951,7 +951,7 @@ export default function ProductForm({
               </div>
               <div className="space-y-2 md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  {t('product.categories')}
+                  {t('product.categories')} <span className="text-red-500">*</span>
                   {form.categoryIds.length > 0 && (
                     <span className="ml-2 text-xs font-normal text-gray-500">
                       ({t('product.categoriesSelected').replace('{count}', String(form.categoryIds.length))})
@@ -1191,10 +1191,10 @@ export default function ProductForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700" htmlFor="price">
-              {t('product.price')}
+              {t('product.price')} <span className="text-red-500">*</span>
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
               <input
                 id="price"
                 name="price"
@@ -1202,17 +1202,17 @@ export default function ProductForm({
                 step="0.01"
                 value={form.price}
                 onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 pl-7 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 placeholder="0.00"
               />
             </div>
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700" htmlFor="costPrice">
-              {t('product.costPrice')}
+              {t('product.costPrice')} 
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
               <input
                 id="costPrice"
                 name="costPrice"
@@ -1220,14 +1220,14 @@ export default function ProductForm({
                 step="0.01"
                 value={form.costPrice}
                 onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 pl-7 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 placeholder="0.00"
               />
             </div>
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700" htmlFor="stock">
-              {t('product.stockQuantity')}
+              {t('product.stockQuantity')} <span className="text-red-500">*</span>
             </label>
             <input
               id="stock"

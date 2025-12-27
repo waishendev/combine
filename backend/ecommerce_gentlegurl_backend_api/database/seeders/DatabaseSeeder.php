@@ -20,13 +20,13 @@ class DatabaseSeeder extends Seeder
             AdminSeeder::class,
             SettingSeeder::class,
             ShippingSettingSeeder::class,
-            ReturnRequestSeeder::class,
             // ShopContactWidgetSeeder::class,
             FrontendTestDataSeeder::class,
             BankAccountSeeder::class,
             LoyaltyRewardSeeder::class,
             LoyaltyDemoCustomerSeeder::class,
             SalesReportSeeder::class,
+            ReturnRequestSeeder::class,
         ]);
 
         $customer = Customer::first();

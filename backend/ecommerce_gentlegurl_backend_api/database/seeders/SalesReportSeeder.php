@@ -28,7 +28,7 @@ class SalesReportSeeder extends Seeder
             [
                 'order_number' => 'REPORT-0001',
                 'customer' => $customers[0],
-                'status' => 'paid',
+                'status' => 'pending',
                 'placed_at' => $baseDate->copy()->addDays(1)->setTime(10, 15),
                 'items' => [
                     [$products[0], 1],
@@ -38,7 +38,7 @@ class SalesReportSeeder extends Seeder
             [
                 'order_number' => 'REPORT-0002',
                 'customer' => $customers[1],
-                'status' => 'packed',
+                'status' => 'pending',
                 'placed_at' => $baseDate->copy()->addDays(3)->setTime(15, 45),
                 'items' => [
                     [$products[2] ?? $products[0], 1],

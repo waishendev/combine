@@ -126,8 +126,8 @@ class CategoryController extends Controller
             'children' => $category->relationLoaded('children')
                 ? $category->children->map(fn (Category $child) => $this->formatCategory($child))->all()
                 : [],
-            'created_at' => $category->created_at,
-            'updated_at' => $category->updated_at,
+            'created_at' => $category->created_at ? $category->created_at->format('Y-m-d H:i:s') : null,
+            'updated_at' => $category->updated_at ? $category->updated_at->format('Y-m-d H:i:s') : null,
         ];
     }
 }
