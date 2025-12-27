@@ -65,7 +65,7 @@ export default function ReturnOrdersTable() {
       setError(null)
 
       try {
-        const res = await fetch('/api/proxy/returns', {
+        const res = await fetch('/api/proxy/ecommerce/returns', {
           cache: 'no-store',
           signal: controller.signal,
         })

@@ -76,7 +76,7 @@ export default function OrdersTable() {
       setError(null)
 
       try {
-        const res = await fetch('/api/proxy/orders', {
+        const res = await fetch('/api/proxy/ecommerce/orders', {
           cache: 'no-store',
           signal: controller.signal,
         })

@@ -34,6 +34,8 @@ class PermissionSeeder extends Seeder
             'ecommerce.reports.sales' => 'Ecommerce Sales Reports',
             'ecommerce.notifications.templates' => 'Ecommerce Notification Templates',
             'ecommerce.settings' => 'Ecommerce Settings',
+            'ecommerce.orders' => 'Ecommerce Orders',
+            'ecommerce.returns' => 'Ecommerce Returns',
         ];
 
         $groupModels = [];
@@ -60,6 +62,8 @@ class PermissionSeeder extends Seeder
             'ecommerce.stores' => ['view', 'create', 'update', 'delete'],
             'ecommerce.seo' => ['view', 'update'],
             'ecommerce.announcements' => ['view', 'create', 'update', 'delete'],
+            'ecommerce.orders' => ['view', 'update','confirm-payment'],
+            'ecommerce.returns' => ['view', 'update'],
             'ecommerce.loyalty' => ['settings', 'tiers'],
             'ecommerce.loyalty.settings' => ['view', 'create', 'update', 'delete', 'settings', 'tiers'],
             'ecommerce.loyalty.tiers' => ['view', 'edit', 'update', 'delete'],
