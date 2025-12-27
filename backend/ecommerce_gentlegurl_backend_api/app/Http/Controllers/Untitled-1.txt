@@ -1,0 +1,6 @@
+TASK: Fix (1) Checkout → Thank You page flicker + (2) Reward claim cart overwrite bug
+
+Repo root: combine/
+// Frontend (Next.js): frontend/ecommerce_gentlegurl_shop
+Frontend CRM (Next.js): frontend/ecommerce_gentlegurl_crm
+Backend (Laravel): backend/ecommerce_gentlegurl_backend_api

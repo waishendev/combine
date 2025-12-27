@@ -598,7 +598,7 @@ export default function AdminTable({
           <tbody>
             {loading ? (
               <TableLoadingRow colSpan={colCount} />
-            ) : rows.length > 0 ? (
+            ) : sortedRows.length > 0 ? (
               sortedRows.map((admin) => (
                 <AdminRow
                   key={admin.id}
