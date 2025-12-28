@@ -50,12 +50,8 @@ export default function SliderTable({
   const [rows, setRows] = useState<SliderRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof SliderRowData | null>(
-    'title',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof SliderRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingSliderId, setEditingSliderId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SliderRowData | null>(null)
   const [movingSliderId, setMovingSliderId] = useState<number | null>(null)
@@ -244,7 +240,7 @@ export default function SliderTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 11 : 10
+  const colCount = showActions ? 9 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -558,8 +554,6 @@ export default function SliderTable({
                   { key: 'end_at', label: 'End Date' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'sort_order', label: 'Sort Order' },
-                  { key: 'createdAt', label: t('common.createdAt') },
-                  { key: 'updatedAt', label: t('common.updatedAt') },
                 ] as const
               ).map(({ key, label }) => (
                 <th
@@ -672,4 +666,3 @@ export default function SliderTable({
     </div>
   )
 }
-

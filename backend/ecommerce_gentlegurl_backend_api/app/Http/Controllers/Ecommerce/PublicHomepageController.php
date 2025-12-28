@@ -24,7 +24,7 @@ class PublicHomepageController extends Controller
 
     public function show(Request $request)
     {
-        $data = Cache::remember('public_homepage_v1', 300, function () {
+        $data = Cache::remember('public_homepage_v2', 300, function () {
             $now = Carbon::now();
 
             $sliders = HomeSlider::query()
@@ -209,6 +209,34 @@ class PublicHomepageController extends Controller
             'currency' => 'MYR',
             'label' => 'Shipping fees',
         ];
+    }
+
+    /**
+     * Clear homepage cache
+     */
+    public function flushCache(Request $request)
+    {
+        try {
+            // Clear the homepage cache
+            Cache::forget('public_homepage_v2');
+            
+            // Optionally clear all homepage related caches
+            Cache::forget('public_homepage_v1');
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Homepage cache cleared successfully',
+                'data' => [
+                    'cleared_keys' => ['public_homepage_v2', 'public_homepage_v1'],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to clear cache: ' . $e->getMessage(),
+                'data' => null,
+            ], 500);
+        }
     }
 
     protected function resolveWishlistProductIds(Request $request): array

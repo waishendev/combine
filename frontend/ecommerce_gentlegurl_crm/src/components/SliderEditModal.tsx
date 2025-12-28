@@ -219,11 +219,6 @@ export default function SliderEditModal({
     const trimmedStartAt = form.start_at.trim()
     const trimmedEndAt = form.end_at.trim()
 
-    if (!trimmedTitle || !trimmedSubtitle || !trimmedStartAt || !trimmedEndAt) {
-      setError(t('common.allFieldsRequired'))
-      return
-    }
-
     // Image is required - either existing or new upload
     if (!imagePreview && !imageFile) {
       setError('Desktop image is required')
@@ -244,12 +239,8 @@ export default function SliderEditModal({
       if (mobileImageFile) {
         formData.append('mobile_image_file', mobileImageFile)
       }
-      if (trimmedButtonLabel) {
-        formData.append('button_label', trimmedButtonLabel)
-      }
-      if (trimmedButtonLink) {
-        formData.append('button_link', trimmedButtonLink)
-      }
+      formData.append('button_label', trimmedButtonLabel)
+      formData.append('button_link', trimmedButtonLink)
       formData.append('start_at', trimmedStartAt)
       formData.append('end_at', trimmedEndAt)
       formData.append('is_active', form.isActive === 'active' ? '1' : '0')
@@ -463,7 +454,7 @@ export default function SliderEditModal({
                       htmlFor="edit-title"
                       className="block text-sm font-medium text-gray-700 mb-1"
                     >
-                      Title <span className="text-red-500">*</span>
+                      Title
                     </label>
                     <input
                       id="edit-title"
@@ -482,7 +473,7 @@ export default function SliderEditModal({
                       htmlFor="edit-subtitle"
                       className="block text-sm font-medium text-gray-700 mb-1"
                     >
-                      Subtitle <span className="text-red-500">*</span>
+                      Subtitle
                     </label>
                     <input
                       id="edit-subtitle"
@@ -539,7 +530,7 @@ export default function SliderEditModal({
                       htmlFor="edit-start_at"
                       className="block text-sm font-medium text-gray-700 mb-1"
                     >
-                      Start Date <span className="text-red-500">*</span>
+                      Start Date
                     </label>
                     <input
                       id="edit-start_at"
@@ -557,7 +548,7 @@ export default function SliderEditModal({
                       htmlFor="edit-end_at"
                       className="block text-sm font-medium text-gray-700 mb-1"
                     >
-                      End Date <span className="text-red-500">*</span>
+                      End Date
                     </label>
                     <input
                       id="edit-end_at"
@@ -575,7 +566,7 @@ export default function SliderEditModal({
                       htmlFor="edit-isActive"
                       className="block text-sm font-medium text-gray-700 mb-1"
                     >
-                      Status <span className="text-red-500">*</span>
+                      Status
                     </label>
                     <select
                       id="edit-isActive"

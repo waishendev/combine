@@ -34,7 +34,7 @@ class HomeSliderController extends Controller
         }
 
         $data = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
+            'title' => ['nullable', 'string', 'max:255'],
             'subtitle' => ['nullable', 'string', 'max:255'],
             'image_path' => ['nullable', 'string', 'max:255'],
             'image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'], // 最大 5MB
@@ -84,7 +84,7 @@ class HomeSliderController extends Controller
     public function update(Request $request, HomeSlider $slider)
     {
         $data = $request->validate([
-            'title' => ['sometimes', 'required', 'string', 'max:255'],
+            'title' => ['sometimes', 'nullable', 'string', 'max:255'],
             'subtitle' => ['sometimes', 'nullable', 'string', 'max:255'],
             'image_path' => ['sometimes', 'nullable', 'string', 'max:255'],
             'image_file' => ['sometimes', 'nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],

@@ -45,13 +45,17 @@ class HomeSlider extends Model
             return $this->image_path;
         }
 
+        // Normalize path: remove leading slash to avoid double slashes
+        $normalizedPath = ltrim($this->image_path, '/');
+
         // If it's a storage path, return the full URL
-        if (Storage::disk('public')->exists($this->image_path)) {
-            return Storage::disk('public')->url($this->image_path);
+        if (Storage::disk('public')->exists($normalizedPath)) {
+            return Storage::disk('public')->url($normalizedPath);
         }
 
-        // Fallback: construct URL manually
-        return url('storage/' . $this->image_path);
+        // Fallback: construct URL manually (ensure no double slashes)
+        $path = ltrim($this->image_path, '/');
+        return url('storage/' . $path);
     }
 
     /**
@@ -68,12 +72,16 @@ class HomeSlider extends Model
             return $this->mobile_image_path;
         }
 
+        // Normalize path: remove leading slash to avoid double slashes
+        $normalizedPath = ltrim($this->mobile_image_path, '/');
+
         // If it's a storage path, return the full URL
-        if (Storage::disk('public')->exists($this->mobile_image_path)) {
-            return Storage::disk('public')->url($this->mobile_image_path);
+        if (Storage::disk('public')->exists($normalizedPath)) {
+            return Storage::disk('public')->url($normalizedPath);
         }
 
-        // Fallback: construct URL manually
-        return url('storage/' . $this->mobile_image_path);
+        // Fallback: construct URL manually (ensure no double slashes)
+        $path = ltrim($this->mobile_image_path, '/');
+        return url('storage/' . $path);
     }
 }

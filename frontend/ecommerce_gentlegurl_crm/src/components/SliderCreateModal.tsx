@@ -109,8 +109,8 @@ export default function SliderCreateModal({
     const trimmedStartAt = form.start_at.trim()
     const trimmedEndAt = form.end_at.trim()
 
-    if (!trimmedTitle || !trimmedSubtitle || !imageFile || !trimmedStartAt || !trimmedEndAt) {
-      setError(t('common.allFieldsRequired'))
+    if (!imageFile) {
+      setError('Desktop image is required')
       return
     }
 
@@ -125,12 +125,8 @@ export default function SliderCreateModal({
       if (mobileImageFile) {
         formData.append('mobile_image_file', mobileImageFile)
       }
-      if (trimmedButtonLabel) {
-        formData.append('button_label', trimmedButtonLabel)
-      }
-      if (trimmedButtonLink) {
-        formData.append('button_link', trimmedButtonLink)
-      }
+      formData.append('button_label', trimmedButtonLabel)
+      formData.append('button_link', trimmedButtonLink)
       formData.append('start_at', trimmedStartAt)
       formData.append('end_at', trimmedEndAt)
       formData.append('is_active', '1')
@@ -331,7 +327,7 @@ export default function SliderCreateModal({
               htmlFor="title"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Title <span className="text-red-500">*</span>
+              Title
             </label>
             <input
               id="title"
@@ -350,7 +346,7 @@ export default function SliderCreateModal({
               htmlFor="subtitle"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Subtitle <span className="text-red-500">*</span>
+              Subtitle
             </label>
             <input
               id="subtitle"
@@ -407,7 +403,7 @@ export default function SliderCreateModal({
               htmlFor="start_at"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Start Date <span className="text-red-500">*</span>
+              Start Date
             </label>
             <input
               id="start_at"
@@ -425,7 +421,7 @@ export default function SliderCreateModal({
               htmlFor="end_at"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              End Date <span className="text-red-500">*</span>
+              End Date
             </label>
             <input
               id="end_at"
@@ -470,4 +466,3 @@ export default function SliderCreateModal({
     </div>
   )
 }
-
