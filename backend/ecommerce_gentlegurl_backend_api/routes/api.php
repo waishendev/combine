@@ -109,6 +109,7 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/sliders', [PublicHomeSliderController::class, 'index']);
     Route::get('/homepage', [PublicHomepageController::class, 'show'])
         ->middleware('api.session');
+    Route::post('/homepage/flush-cache', [PublicHomepageController::class, 'flushCache']);
     Route::get('/loyalty/rewards', [PublicLoyaltyController::class, 'rewards'])
         ->middleware('api.session');
     Route::get('/membership/tiers', [PublicLoyaltyController::class, 'membershipTiers']);

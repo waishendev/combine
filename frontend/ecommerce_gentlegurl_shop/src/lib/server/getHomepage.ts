@@ -9,6 +9,8 @@ export type HomepageSlider = {
   button_label: string | null;
   button_link: string | null;
   sort_order: number;
+  image_url?: string | null;
+  mobile_image_url?: string | null;
 };
 
 export type HomepageMarquee = {

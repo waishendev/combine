@@ -5,7 +5,6 @@ import { getHomepage } from "@/lib/server/getHomepage";
 
 export default async function HomePage() {
   const data = await getHomepage();
-
   if (!data) {
     return (
       <main className="p-6">

@@ -15,6 +15,20 @@ const nextConfig: NextConfig = {
         port: "8000",
         pathname: "/**",
       },
+      // Also allow 127.0.0.1 for localhost resolution
+      {
+        protocol: "http",
+        hostname: "127.0.0.1",
+        port: "8000",
+        pathname: "/**",
+      },
+      // Also allow IPv6 localhost
+      {
+        protocol: "http",
+        hostname: "[::1]",
+        port: "8000",
+        pathname: "/**",
+      },
 
       // production / staging images
       {
@@ -23,6 +37,9 @@ const nextConfig: NextConfig = {
         pathname: "/**",
       },
     ],
+    // Disable image optimization in development to avoid private IP issues with localhost
+    // This allows loading images from http://localhost:8000 without the "resolved to private ip" error
+    unoptimized: process.env.NODE_ENV === "development",
   },
 };
 
