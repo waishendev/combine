@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useState } from "react";
 
 type ProductGalleryProps = {
@@ -9,11 +8,22 @@ type ProductGalleryProps = {
   alt: string;
 };
 
+const PLACEHOLDER_IMAGE = "/images/placeholder.png";
+
 export function ProductGallery({ images, initialIndex = 0, alt }: ProductGalleryProps) {
   const safeImages = images.filter(Boolean);
   const [activeIndex, setActiveIndex] = useState(
     initialIndex >= 0 && initialIndex < safeImages.length ? initialIndex : 0,
   );
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  const handleImageError = (imageSrc: string) => {
+    setImageErrors((prev) => new Set(prev).add(imageSrc));
+  };
+
+  const getImageSrc = (imageSrc: string) => {
+    return imageErrors.has(imageSrc) ? PLACEHOLDER_IMAGE : imageSrc;
+  };
 
   const activeImage = safeImages[activeIndex] ?? safeImages[0];
 
@@ -28,10 +38,18 @@ export function ProductGallery({ images, initialIndex = 0, alt }: ProductGallery
   return (
     <div>
       <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-[var(--muted)]/40">
-        <Image 
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img 
+          src={getImageSrc(activeImage)} 
+          alt={alt} 
+          className="h-full w-full object-cover"
+          onError={() => handleImageError(activeImage)}
+        />
+
+{/* <Image 
         // src={activeImage} 
         src={"/images/placeholder.png"}
-        alt={alt} fill className="object-cover" />
+        alt={alt} fill className="object-cover" /> */}
       </div>
 
       {safeImages.length > 1 && (
@@ -47,10 +65,19 @@ export function ProductGallery({ images, initialIndex = 0, alt }: ProductGallery
                   : "border-[var(--card-border)] hover:border-[var(--accent)]"
               }`}
             >
-              <Image 
+
+{/* <Image 
               // src={img}
               src={"/images/placeholder.png"}
               alt={`${alt} thumbnail ${index + 1}`} fill className="object-cover" />
+               */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src={getImageSrc(img)}
+                alt={`${alt} thumbnail ${index + 1}`} 
+                className="h-full w-full object-cover"
+                onError={() => handleImageError(img)}
+              />
             </button>
           ))}
         </div>

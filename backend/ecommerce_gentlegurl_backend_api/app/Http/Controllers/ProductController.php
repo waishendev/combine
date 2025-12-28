@@ -151,15 +151,19 @@ class ProductController extends Controller
     {
         // 删除产品时，同时删除所有图片文件
         foreach ($product->images as $image) {
-            if (Storage::disk('public')->exists($image->image_path)) {
-                Storage::disk('public')->delete($image->image_path);
+            // 使用原始属性值（相对路径），而不是 accessor 返回的 URL
+            $imagePath = $image->getRawOriginal('image_path');
+            if ($imagePath && Storage::disk('public')->exists($imagePath)) {
+                Storage::disk('public')->delete($imagePath);
             }
         }
 
         // 删除 meta_og_image 文件（如果是上传的文件）
-        if ($product->meta_og_image && str_starts_with($product->meta_og_image, 'products/')) {
-            if (Storage::disk('public')->exists($product->meta_og_image)) {
-                Storage::disk('public')->delete($product->meta_og_image);
+        // 使用原始属性值（相对路径），而不是 accessor 返回的 URL
+        $metaOgImage = $product->getRawOriginal('meta_og_image');
+        if ($metaOgImage && str_starts_with($metaOgImage, 'products/')) {
+            if (Storage::disk('public')->exists($metaOgImage)) {
+                Storage::disk('public')->delete($metaOgImage);
             }
         }
 
@@ -223,9 +227,12 @@ class ProductController extends Controller
         $images = $product->images()->whereIn('id', $imageIds)->get();
 
         foreach ($images as $image) {
+            // 使用原始属性值（相对路径），而不是 accessor 返回的 URL
+            $imagePath = $image->getRawOriginal('image_path');
+            
             // 删除文件
-            if (Storage::disk('public')->exists($image->image_path)) {
-                Storage::disk('public')->delete($image->image_path);
+            if ($imagePath && Storage::disk('public')->exists($imagePath)) {
+                Storage::disk('public')->delete($imagePath);
             }
 
             // 删除数据库记录
@@ -243,9 +250,11 @@ class ProductController extends Controller
             $file = $request->file('meta_og_image_file');
 
             // 删除旧的 meta_og_image 文件（如果是之前上传的文件）
-            if ($product->meta_og_image && str_starts_with($product->meta_og_image, 'products/')) {
-                if (Storage::disk('public')->exists($product->meta_og_image)) {
-                    Storage::disk('public')->delete($product->meta_og_image);
+            // 使用原始属性值（相对路径），而不是 accessor 返回的 URL
+            $oldMetaOgImage = $product->getRawOriginal('meta_og_image');
+            if ($oldMetaOgImage && str_starts_with($oldMetaOgImage, 'products/')) {
+                if (Storage::disk('public')->exists($oldMetaOgImage)) {
+                    Storage::disk('public')->delete($oldMetaOgImage);
                 }
             }
 
@@ -262,22 +271,25 @@ class ProductController extends Controller
             // 如果提供了字符串路径，直接使用
             $metaOgImage = $request->input('meta_og_image');
 
+            // 使用原始属性值进行比较和删除
+            $oldMetaOgImage = $product->getRawOriginal('meta_og_image');
+
             // 如果传入的是空字符串，删除旧的文件
             if (empty($metaOgImage)) {
                 // 删除旧的 meta_og_image 文件（如果是之前上传的文件）
-                if ($product->meta_og_image && str_starts_with($product->meta_og_image, 'products/')) {
-                    if (Storage::disk('public')->exists($product->meta_og_image)) {
-                        Storage::disk('public')->delete($product->meta_og_image);
+                if ($oldMetaOgImage && str_starts_with($oldMetaOgImage, 'products/')) {
+                    if (Storage::disk('public')->exists($oldMetaOgImage)) {
+                        Storage::disk('public')->delete($oldMetaOgImage);
                     }
                 }
                 $product->meta_og_image = null;
                 $product->save();
-            } elseif ($metaOgImage !== $product->meta_og_image) {
+            } elseif ($metaOgImage !== $oldMetaOgImage) {
                 // 如果路径不同，且不是上传的文件路径，直接更新
                 // 如果是从上传的文件路径改为外部 URL，删除旧文件
-                if ($product->meta_og_image && str_starts_with($product->meta_og_image, 'products/')) {
-                    if (Storage::disk('public')->exists($product->meta_og_image)) {
-                        Storage::disk('public')->delete($product->meta_og_image);
+                if ($oldMetaOgImage && str_starts_with($oldMetaOgImage, 'products/')) {
+                    if (Storage::disk('public')->exists($oldMetaOgImage)) {
+                        Storage::disk('public')->delete($oldMetaOgImage);
                     }
                 }
                 $product->meta_og_image = $metaOgImage;

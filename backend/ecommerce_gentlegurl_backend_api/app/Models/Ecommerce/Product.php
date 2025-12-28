@@ -5,6 +5,8 @@ namespace App\Models\Ecommerce;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Ecommerce\ProductReview;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use DateTimeInterface;
 
 class Product extends Model
@@ -70,6 +72,29 @@ class Product extends Model
     public function reviews()
     {
         return $this->hasMany(ProductReview::class);
+    }
+
+    /**
+     * Get the meta OG image URL
+     */
+    public function getMetaOgImageAttribute(?string $value): ?string
+    {
+        if (empty($value)) {
+            return $value;
+        }
+
+        // 如果已经是完整的 URL，直接返回
+        if (Str::startsWith($value, ['http://', 'https://'])) {
+            return $value;
+        }
+
+        // 如果是以 products/ 开头的相对路径（表示是上传的文件），使用 Storage 生成 URL
+        if (Str::startsWith($value, 'products/')) {
+            return Storage::disk('public')->url($value);
+        }
+
+        // 其他情况（如外部 URL 或其他路径格式），直接返回
+        return $value;
     }
 
     /**

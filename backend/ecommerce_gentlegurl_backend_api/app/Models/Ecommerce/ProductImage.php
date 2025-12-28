@@ -4,6 +4,7 @@ namespace App\Models\Ecommerce;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ProductImage extends Model
@@ -35,17 +36,12 @@ class ProductImage extends Model
             return $value;
         }
 
+        // 如果已经是完整的 URL，直接返回
         if (Str::startsWith($value, ['http://', 'https://'])) {
             return $value;
         }
 
-        $appUrl = rtrim(config('app.url'), '/');
-        if ($appUrl === '') {
-            return $value;
-        }
-
-        $normalizedPath = Str::startsWith($value, '/') ? $value : '/' . $value;
-
-        return $appUrl . $normalizedPath;
+        // 使用 Storage 来生成正确的 URL（会自动添加 /storage 前缀）
+        return Storage::disk('public')->url($value);
     }
 }

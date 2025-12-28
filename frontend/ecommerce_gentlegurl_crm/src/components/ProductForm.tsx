@@ -111,20 +111,26 @@ export default function ProductForm({
   const [existingImages, setExistingImages] = useState<ProductImage[]>(
     product?.images ?? [],
   )
+  const [deletedImageIds, setDeletedImageIds] = useState<number[]>([])
   const [galleryPreviews, setGalleryPreviews] = useState<
     { file: File; preview: string }[]
   >([])
   const galleryPreviewsRef = useRef<{ file: File; preview: string }[]>([])
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
+  const [draggingType, setDraggingType] = useState<'new' | 'existing' | null>(null)
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
   const [categorySearchQuery, setCategorySearchQuery] = useState('')
+  const [isSeoMetadataOpen, setIsSeoMetadataOpen] = useState(false)
   const categoryDropdownRef = useRef<HTMLDivElement>(null)
   const categorySearchRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const metaOgImageFileInputRef = useRef<HTMLInputElement>(null)
+  const [metaOgImagePreview, setMetaOgImagePreview] = useState<string | null>(null)
+  const metaOgImagePreviewRef = useRef<string | null>(null)
   const [previewImage, setPreviewImage] = useState<{
     type: 'new' | 'existing'
     src: string
@@ -207,6 +213,7 @@ export default function ProductForm({
 
   useEffect(() => {
     setExistingImages(product?.images ?? [])
+    setDeletedImageIds([])
     if (mode === 'edit' && product) {
       const mainIdx = product.images.findIndex((img) => img.isMain)
       setForm((prev) => ({
@@ -221,6 +228,11 @@ export default function ProductForm({
     galleryPreviewsRef.current = galleryPreviews
   }, [galleryPreviews])
 
+  // Keep track of meta OG image preview for cleanup
+  useEffect(() => {
+    metaOgImagePreviewRef.current = metaOgImagePreview
+  }, [metaOgImagePreview])
+
   // Clean up object URLs on unmount
   useEffect(() => {
     return () => {
@@ -229,6 +241,9 @@ export default function ProductForm({
           URL.revokeObjectURL(item.preview)
         }
       })
+      if (metaOgImagePreviewRef.current) {
+        URL.revokeObjectURL(metaOgImagePreviewRef.current)
+      }
     }
   }, [])
 
@@ -300,7 +315,30 @@ export default function ProductForm({
 
   const handleMetaFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] || null
-    setForm((prev) => ({ ...prev, metaOgImageFile: file }))
+    if (file) {
+      // Clean up old preview
+      if (metaOgImagePreview) {
+        URL.revokeObjectURL(metaOgImagePreview)
+      }
+      // Create new preview
+      const preview = URL.createObjectURL(file)
+      setMetaOgImagePreview(preview)
+      setForm((prev) => ({ ...prev, metaOgImageFile: file, metaOgImage: '' }))
+    }
+  }
+
+  const handleMetaImageRemove = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation()
+    }
+    if (metaOgImagePreview) {
+      URL.revokeObjectURL(metaOgImagePreview)
+      setMetaOgImagePreview(null)
+    }
+    setForm((prev) => ({ ...prev, metaOgImageFile: null, metaOgImage: '' }))
+    if (metaOgImageFileInputRef.current) {
+      metaOgImageFileInputRef.current.value = ''
+    }
   }
 
   const MAX_IMAGES = 6
@@ -348,52 +386,86 @@ export default function ProductForm({
     }
   }
 
-  const handleGalleryReorder = (fromIndex: number, toSlotIndex: number) => {
-    // Only allow reordering within new images (galleryPreviews)
-    // toSlotIndex is the target slot, but we need to map it to the actual array index
-    setGalleryPreviews((prev) => {
-      if (fromIndex < 0 || fromIndex >= prev.length) return prev
+  const handleGalleryReorder = (fromIndex: number, toSlotIndex: number, fromType: 'new' | 'existing' = 'new') => {
+    const existingCount = existingImages.length
+    
+    if (fromType === 'existing') {
+      // Moving an existing image
+      if (fromIndex < 0 || fromIndex >= existingCount) return
       
-      const next = [...prev]
-      const [moved] = next.splice(fromIndex, 1)
-      if (!moved) return prev
+      const imageToMove = existingImages[fromIndex]
+      if (!imageToMove) return
       
-      // Calculate the target index in the new images array
-      // toSlotIndex might include existing images, so we need to adjust
-      const existingCount = mode === 'edit' ? existingImages.length : 0
-      const targetIndex = Math.max(0, Math.min(toSlotIndex - existingCount, next.length))
+      // Remove from existing images
+      const newExisting = [...existingImages]
+      newExisting.splice(fromIndex, 1)
       
-      next.splice(targetIndex, 0, moved)
-      const files = next.map((item) => item.file)
-      setForm((formState) => ({
-        ...formState,
-        galleryFiles: files,
-        // First image (index 0) is always the cover
-        mainImageIndex: 0,
-      }))
-      return next
-    })
+      // Calculate target position within existing images
+      // If toSlotIndex is within existing images range, reorder there
+      if (toSlotIndex < existingCount) {
+        const targetIndex = Math.max(0, Math.min(toSlotIndex, newExisting.length))
+        newExisting.splice(targetIndex, 0, imageToMove)
+      } else {
+        // If moving beyond existing images, just move to end of existing
+        newExisting.push(imageToMove)
+      }
+      
+      setExistingImages(newExisting)
+    } else {
+      // Moving a new image
+      if (fromIndex < 0 || fromIndex >= galleryPreviews.length) return
+      
+      setGalleryPreviews((prev) => {
+        const next = [...prev]
+        const [moved] = next.splice(fromIndex, 1)
+        if (!moved) return prev
+        
+        // Calculate the target index in the new images array
+        // toSlotIndex might include existing images, so we need to adjust
+        const targetIndex = Math.max(0, Math.min(toSlotIndex - existingCount, next.length))
+        
+        next.splice(targetIndex, 0, moved)
+        const files = next.map((item) => item.file)
+        setForm((formState) => ({
+          ...formState,
+          galleryFiles: files,
+          // First image (index 0) is always the cover
+          mainImageIndex: 0,
+        }))
+        return next
+      })
+    }
   }
 
-  const handleGalleryRemove = (index: number) => {
-    setGalleryPreviews((prev) => {
-      const next = prev.filter((_, idx) => idx !== index)
-      const removedItem = prev[index]
-      // Clean up the object URL to prevent memory leaks
-      if (removedItem?.preview) {
-        URL.revokeObjectURL(removedItem.preview)
+  const handleGalleryRemove = (index: number, isExisting: boolean = false) => {
+    if (isExisting) {
+      // Remove existing image - mark for deletion
+      const imageToRemove = existingImages[index]
+      if (imageToRemove?.id) {
+        setDeletedImageIds((prev) => [...prev, imageToRemove.id])
       }
-      const files = next.map((item) => item.file)
-      setForm((formState) => ({
-        ...formState,
-        galleryFiles: files,
-        mainImageIndex:
-          files.length === 0
-            ? 0
-            : Math.min(formState.mainImageIndex, Math.max(files.length - 1, 0)),
-      }))
-      return next
-    })
+      setExistingImages((prev) => prev.filter((_, idx) => idx !== index))
+    } else {
+      // Remove new image
+      setGalleryPreviews((prev) => {
+        const next = prev.filter((_, idx) => idx !== index)
+        const removedItem = prev[index]
+        // Clean up the object URL to prevent memory leaks
+        if (removedItem?.preview) {
+          URL.revokeObjectURL(removedItem.preview)
+        }
+        const files = next.map((item) => item.file)
+        setForm((formState) => ({
+          ...formState,
+          galleryFiles: files,
+          mainImageIndex:
+            files.length === 0
+              ? 0
+              : Math.min(formState.mainImageIndex, Math.max(files.length - 1, 0)),
+        }))
+        return next
+      })
+    }
   }
 
   const handleGalleryReplace = (index: number, isExisting: boolean = false, existingIndex?: number) => {
@@ -464,6 +536,8 @@ export default function ProductForm({
     setForm({ ...emptyForm })
     setError(null)
     setGalleryPreviews([])
+    setExistingImages([])
+    setDeletedImageIds([])
   }
 
   const handleCancel = () => {
@@ -511,6 +585,13 @@ export default function ProductForm({
         formData.append('images[]', file)
       })
       formData.append('main_image_index', String(form.mainImageIndex || 0))
+    }
+
+    // Add deleted image IDs for edit mode
+    if (mode === 'edit' && deletedImageIds.length > 0) {
+      deletedImageIds.forEach((id) => {
+        formData.append('delete_image_ids[]', String(id))
+      })
     }
 
     if (mode === 'create') {
@@ -577,6 +658,7 @@ export default function ProductForm({
             lowStockThreshold: Number.parseInt(form.lowStockThreshold || '0', 10),
             isActive: mode === 'create' ? true : form.status === 'active',
             isFeatured: form.isFeatured,
+            isRewardOnly: mode === 'edit' ? product?.isRewardOnly || false : false,
             metaTitle: form.metaTitle,
             metaDescription: form.metaDescription,
             metaKeywords: form.metaKeywords,
@@ -707,24 +789,17 @@ export default function ProductForm({
                        onDrop={(e) => {
                          e.preventDefault()
                          e.stopPropagation()
-                         if (draggingIndex !== null && draggingIndex !== imageIndex) {
-                           // Only allow reordering new images
-                           const existingCount = mode === 'edit' ? existingImages.length : 0
-                           const draggingIsNew = draggingIndex < galleryPreviews.length
-                           
-                           if (draggingIsNew) {
-                             if (!isEmpty) {
-                               // If dropping on a filled slot, reorder
-                               if (isNewImage) {
-                                 handleGalleryReorder(draggingIndex, slotIndex)
-                               }
-                             } else {
-                               // If dropping on an empty slot, move to that position
-                               handleGalleryReorder(draggingIndex, slotIndex)
-                             }
+                         if (draggingIndex !== null && draggingType !== null && draggingIndex !== imageIndex) {
+                           if (!isEmpty && (isNewImage && draggingType === 'new' || !isNewImage && draggingType === 'existing')) {
+                             // Dropping on filled slot of same type - reorder
+                             handleGalleryReorder(draggingIndex, slotIndex, draggingType)
+                           } else {
+                             // Dropping on empty slot or different type - move to position
+                             handleGalleryReorder(draggingIndex, slotIndex, draggingType)
                            }
                          }
                          setDraggingIndex(null)
+                         setDraggingType(null)
                        }}
                     >
                       {isEmpty ? (
@@ -761,11 +836,13 @@ export default function ProductForm({
                                 draggable
                                 onDragStart={(e) => {
                                   setDraggingIndex(imageIndex)
+                                  setDraggingType('new')
                                   e.dataTransfer.effectAllowed = 'move'
                                   e.stopPropagation()
                                 }}
                                 onDragEnd={() => {
                                   setDraggingIndex(null)
+                                  setDraggingType(null)
                                 }}
                                 className="w-8 h-8 bg-white/95 backdrop-blur-md text-gray-700 rounded-full flex items-center justify-center shadow-lg border border-gray-200/50 cursor-move hover:bg-white hover:shadow-xl transition-all duration-200 hover:scale-110"
                                 onClick={(e) => {
@@ -800,9 +877,30 @@ export default function ProductForm({
                               </button>
                             </div>
                           )}
-                          {/* Replace Button for Existing Images */}
+                          {/* Drag Handle, Replace & Remove Button for Existing Images */}
                           {!isNewImage && imageInSlot && (
                             <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                              {/* Drag Handle - Only draggable from this icon */}
+                              <div
+                                draggable
+                                onDragStart={(e) => {
+                                  setDraggingIndex(imageIndex)
+                                  setDraggingType('existing')
+                                  e.dataTransfer.effectAllowed = 'move'
+                                  e.stopPropagation()
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingIndex(null)
+                                  setDraggingType(null)
+                                }}
+                                className="w-8 h-8 bg-white/95 backdrop-blur-md text-gray-700 rounded-full flex items-center justify-center shadow-lg border border-gray-200/50 cursor-move hover:bg-white hover:shadow-xl transition-all duration-200 hover:scale-110"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                }}
+                              >
+                                <i className="fa-solid fa-grip-vertical text-xs" />
+                              </div>
+                              {/* Replace Button */}
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -812,7 +910,19 @@ export default function ProductForm({
                                 className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
                                 aria-label={t('product.replaceImage')}
                               >
-                                <i className="fa-solid fa-arrow-rotate-right text-xs" />
+                                <i className="fa-solid fa-image text-xs" />
+                              </button>
+                              {/* Remove Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleGalleryRemove(imageIndex, true)
+                                }}
+                                className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                aria-label={t('product.removeImage')}
+                              >
+                                <i className="fa-solid fa-trash-can text-xs" />
                               </button>
                             </div>
                           )}
@@ -1288,79 +1398,130 @@ export default function ProductForm({
 
       {/* SEO & Metadata Section */}
       <div className="space-y-4">
-        <div className="pb-2 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">{t('product.seoMetadata')}</h3>
-          <p className="text-sm text-gray-500 mt-1">{t('product.seoMetadataDescription')}</p>
+        <div 
+          className="pb-2 border-b border-gray-100 cursor-pointer hover:bg-gray-50 -mx-2 px-2 py-2 rounded-lg transition-colors"
+          onClick={() => setIsSeoMetadataOpen(!isSeoMetadataOpen)}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">{t('product.seoMetadata')}</h3>
+              <p className="text-sm text-gray-500 mt-1">{t('product.seoMetadataDescription')}</p>
+            </div>
+            <div className="flex-shrink-0 ml-4">
+              <i className={`fa-solid fa-chevron-${isSeoMetadataOpen ? 'up' : 'down'} text-gray-400 transition-transform duration-200`} />
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="metaTitle">
-              {t('product.metaTitle')}
-            </label>
-            <input
-              id="metaTitle"
-              name="metaTitle"
-              value={form.metaTitle}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder={t('product.metaTitlePlaceholder')}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="metaKeywords">
-              {t('product.metaKeywords')}
-            </label>
-            <input
-              id="metaKeywords"
-              name="metaKeywords"
-              value={form.metaKeywords}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder={t('product.metaKeywordsPlaceholder')}
-            />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="metaDescription">
-              {t('product.metaDescription')}
-            </label>
-            <textarea
-              id="metaDescription"
-              name="metaDescription"
-              value={form.metaDescription}
-              onChange={handleChange}
-              rows={3}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
-              placeholder={t('product.metaDescriptionPlaceholder')}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="metaOgImage">
+        {/* Layout: Meta OG Image on left, Meta fields on right */}
+        {isSeoMetadataOpen && (
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Left: Meta OG Image URL */}
+          <div className="lg:w-1/3 space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
               {t('product.metaOgImageUrl')}
             </label>
+            {/* Hidden File Input */}
             <input
-              id="metaOgImage"
-              name="metaOgImage"
-              value={form.metaOgImage}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder={t('product.metaOgImageUrlPlaceholder')}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="metaOgImageFile">
-              {t('product.metaOgImageFile')}
-            </label>
-            <input
+              ref={metaOgImageFileInputRef}
               id="metaOgImageFile"
               name="metaOgImageFile"
               type="file"
               accept="image/*"
               onChange={handleMetaFileChange}
-              className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+              className="hidden"
             />
-            <p className="text-xs text-gray-500">{t('product.metaOgImageFileDescription')}</p>
+            {/* Upload Area */}
+            <div
+              className={`relative aspect-square rounded-xl border-2 border-dashed overflow-hidden transition-all duration-200 ${
+                metaOgImagePreview || form.metaOgImage
+                  ? 'border-gray-200 bg-white shadow-md hover:shadow-lg'
+                  : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md cursor-pointer'
+              }`}
+              onClick={() => {
+                if (!metaOgImagePreview && !form.metaOgImage) {
+                  metaOgImageFileInputRef.current?.click()
+                }
+              }}
+            >
+              {metaOgImagePreview || form.metaOgImage ? (
+                // Image Preview with Remove Button
+                <div className="w-full h-full cursor-pointer group relative">
+                  <img
+                    src={metaOgImagePreview || form.metaOgImage}
+                    alt={t('product.metaOgImageUrl')}
+                    className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-200"
+                  />
+                  {/* Remove Button - Only show on hover */}
+                  <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleMetaImageRemove()
+                      }}
+                      className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                      aria-label={t('product.removeImage')}
+                    >
+                      <i className="fa-solid fa-trash-can text-xs" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // Empty Slot - Upload Placeholder
+                <div className="w-full h-full flex flex-col items-center justify-center p-2 group">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-2 transition-all duration-200 group-hover:scale-110">
+                    <i className="fa-solid fa-cloud-arrow-up text-gray-400 group-hover:text-blue-500 text-lg transition-colors duration-200" />
+                  </div>
+                  <span className="text-[10px] text-gray-500 group-hover:text-blue-600 text-center font-medium transition-colors duration-200">{t('product.clickToUpload')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Right: Meta Title, Keywords, Description - Vertical layout */}
+          <div className="lg:w-2/3 space-y-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="metaTitle">
+                {t('product.metaTitle')}
+              </label>
+              <input
+                id="metaTitle"
+                name="metaTitle"
+                value={form.metaTitle}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                placeholder={t('product.metaTitlePlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="metaKeywords">
+                {t('product.metaKeywords')}
+              </label>
+              <input
+                id="metaKeywords"
+                name="metaKeywords"
+                value={form.metaKeywords}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                placeholder={t('product.metaKeywordsPlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="metaDescription">
+                {t('product.metaDescription')}
+              </label>
+              <textarea
+                id="metaDescription"
+                name="metaDescription"
+                value={form.metaDescription}
+                onChange={handleChange}
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                placeholder={t('product.metaDescriptionPlaceholder')}
+              />
+            </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Form Actions Bar */}

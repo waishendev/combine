@@ -1,5 +1,7 @@
-import Image from "next/image";
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
 
 interface ProductGridProps {
@@ -14,7 +16,19 @@ interface ProductGridProps {
   }>;
 }
 
+const PLACEHOLDER_IMAGE = "/images/placeholder.png";
+
 export default function ProductGrid({ items }: ProductGridProps) {
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  const handleImageError = (imageSrc: string) => {
+    setImageErrors((prev) => new Set(prev).add(imageSrc));
+  };
+
+  const getImageSrc = (imageSrc: string) => {
+    return imageErrors.has(imageSrc) ? PLACEHOLDER_IMAGE : imageSrc;
+  };
+
   return (
     <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
       {items?.map((product) => {
@@ -39,13 +53,20 @@ export default function ProductGrid({ items }: ProductGridProps) {
 
             <Link href={`/product/${productSlug}`} className="block">
               {image && (
-                <div className="relative h-44 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">
-                  <Image
+                <div className="relative h-44 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">         
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {/* <Image
                     // src={image}
                     src={"/images/placeholder.png"}
                     alt={product.name}
                     fill
                     className="object-cover transition duration-500 ease-out group-hover:scale-105"
+                  /> */}
+                  <img
+                    src={getImageSrc(image)}
+                    alt={product.name}
+                    className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
+                    onError={() => handleImageError(image)}
                   />
                 </div>
               )}
