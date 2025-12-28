@@ -42,7 +42,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
         return (
           <div
             key={product.id}
-            className="group relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_12px_45px_-30px_rgba(17,24,39,0.65)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_70px_-32px_rgba(109,40,217,0.35)]"
+            className="group relative overflow-hidden rounded-md border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_12px_45px_-30px_rgba(17,24,39,0.65)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_70px_-32px_rgba(109,40,217,0.35)]"
           >
             <div className="absolute right-3 top-3 z-10">
               <WishlistToggleButton

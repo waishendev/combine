@@ -124,7 +124,7 @@ export default function Slider({ items }: SliderProps) {
   };
 
   return (
-    <div className="relative overflow-hidden border border-[var(--card-border)]/80 bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[var(--shadow)]">
+    <div className="relative overflow-hidden border rounded-md  border-[var(--card-border)]/80 bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[var(--shadow)]">
       <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32  bg-[color:var(--accent)]/30 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 bg-[color:var(--muted)]/70 blur-3xl" />
 
@@ -150,10 +150,10 @@ export default function Slider({ items }: SliderProps) {
           return (
             <article
               key={item.id}
-              className={`absolute inset-0 overflow-hidden transition duration-700 ease-out ${isActive ? "z-10 opacity-100" : "pointer-events-none opacity-0"}`}
+              className={`absolute inset-0 overflow-hidden transition  duration-700 ease-out ${isActive ? "z-10 opacity-100" : "pointer-events-none opacity-0"}`}
             >
               <div className="absolute inset-0">
-                <div className="relative h-full w-full">
+                <div className="relative h-full w-full ">
                   <Image
                     src={desktopImage}
                     alt={item.title ?? "slide"}

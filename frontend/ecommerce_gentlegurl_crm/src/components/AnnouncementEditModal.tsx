@@ -21,7 +21,6 @@ interface FormState {
   isActive: 'active' | 'inactive'
   startAt: string
   endAt: string
-  sortOrder: string
   imageFile: File | null
 }
 
@@ -34,7 +33,6 @@ const initialFormState: FormState = {
   isActive: 'active',
   startAt: '',
   endAt: '',
-  sortOrder: '1',
   imageFile: null,
 }
 
@@ -122,7 +120,6 @@ export default function AnnouncementEditModal({
               : 'inactive',
           startAt: formatDateForInput(announcement.start_at),
           endAt: formatDateForInput(announcement.end_at),
-          sortOrder: announcement.sort_order ? String(announcement.sort_order) : '1',
           imageFile: null,
         })
 
@@ -210,7 +207,6 @@ export default function AnnouncementEditModal({
       formData.append('is_active', form.isActive === 'active' ? '1' : '0')
       formData.append('start_at', form.startAt)
       formData.append('end_at', form.endAt)
-      formData.append('sort_order', form.sortOrder)
 
       if (form.imageFile) {
         formData.append('image_file', form.imageFile)
@@ -277,7 +273,7 @@ export default function AnnouncementEditModal({
             isActive: form.isActive === 'active',
             startAt: form.startAt,
             endAt: form.endAt,
-            sortOrder: Number(form.sortOrder) || 0,
+            sortOrder: loadedAnnouncement?.sortOrder ?? 0,
             createdAt: loadedAnnouncement?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
             formattedStartAt: form.startAt,
@@ -387,6 +383,46 @@ export default function AnnouncementEditModal({
                     </div>
                   )}
                 </div>
+
+                <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="edit-buttonLabel"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Button Label
+                    </label>
+                    <input
+                      id="edit-buttonLabel"
+                      name="buttonLabel"
+                      type="text"
+                      value={form.buttonLabel}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Shop Now"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-buttonLink"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Button Link
+                    </label>
+                    <input
+                      id="edit-buttonLink"
+                      name="buttonLink"
+                      type="text"
+                      value={form.buttonLink}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="/shop"
+                      disabled={disableForm}
+                    />
+                  </div>
+                </section>
               </div>
 
               <div className="w-full lg:w-1/2 space-y-4">
@@ -450,44 +486,6 @@ export default function AnnouncementEditModal({
 
                 <div>
                   <label
-                    htmlFor="edit-buttonLabel"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Button Label
-                  </label>
-                  <input
-                    id="edit-buttonLabel"
-                    name="buttonLabel"
-                    type="text"
-                    value={form.buttonLabel}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Shop Now"
-                    disabled={disableForm}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-buttonLink"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Button Link
-                  </label>
-                  <input
-                    id="edit-buttonLink"
-                    name="buttonLink"
-                    type="text"
-                    value={form.buttonLink}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="/shop"
-                    disabled={disableForm}
-                  />
-                </div>
-
-                <div>
-                  <label
                     htmlFor="edit-status"
                     className="block text-sm font-medium text-gray-700 mb-1"
                   >
@@ -506,7 +504,7 @@ export default function AnnouncementEditModal({
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label
                       htmlFor="edit-startAt"
@@ -542,26 +540,7 @@ export default function AnnouncementEditModal({
                       disabled={disableForm}
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-sortOrder"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Sort Order
-                  </label>
-                  <input
-                    id="edit-sortOrder"
-                    name="sortOrder"
-                    type="number"
-                    value={form.sortOrder}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    disabled={disableForm}
-                    min="0"
-                  />
-                </div>
+                </section>
               </div>
             </div>
           )}

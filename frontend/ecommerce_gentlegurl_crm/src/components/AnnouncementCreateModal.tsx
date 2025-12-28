@@ -265,6 +265,46 @@ export default function AnnouncementCreateModal({
                   </div>
                 )}
               </div>
+
+              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="buttonLabel"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Button Label
+                  </label>
+                  <input
+                    id="buttonLabel"
+                    name="buttonLabel"
+                    type="text"
+                    value={form.buttonLabel}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Shop Now"
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="buttonLink"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Button Link
+                  </label>
+                  <input
+                    id="buttonLink"
+                    name="buttonLink"
+                    type="text"
+                    value={form.buttonLink}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="/shop"
+                    disabled={submitting}
+                  />
+                </div>
+              </section>
             </div>
 
             <div className="w-full lg:w-1/2 space-y-4">
@@ -346,45 +386,7 @@ export default function AnnouncementCreateModal({
                 />
               </div>
 
-              <div>
-                <label
-                  htmlFor="buttonLabel"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Button Label
-                </label>
-                <input
-                  id="buttonLabel"
-                  name="buttonLabel"
-                  type="text"
-                  value={form.buttonLabel}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Shop Now"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="buttonLink"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Button Link
-                </label>
-                <input
-                  id="buttonLink"
-                  name="buttonLink"
-                  type="text"
-                  value={form.buttonLink}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="/shop"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label
                     htmlFor="startAt"
@@ -420,7 +422,7 @@ export default function AnnouncementCreateModal({
                     disabled={submitting}
                   />
                 </div>
-              </div>
+              </section>
             </div>
           </div>
 

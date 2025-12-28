@@ -20,6 +20,14 @@ type AnnouncementModalProps = {
 export default function AnnouncementModal({ items }: AnnouncementModalProps) {
   const [open, setOpen] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [mouseStart, setMouseStart] = useState<number | null>(null);
+  const [mouseEnd, setMouseEnd] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  
+  // Minimum swipe distance (in px)
+  const minSwipeDistance = 50;
 
   // Prevent page jump when modal opens by locking scroll position
   useEffect(() => {
@@ -67,9 +75,77 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
     setActiveIndex((prev) => (prev + 1) % items.length);
   };
 
+  // Touch handlers for mobile
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance; // Swipe left (拉左去右) = NEXT
+    const isRightSwipe = distance < -minSwipeDistance; // Swipe right (拉右去左) = PREV
+
+    if (isLeftSwipe) {
+      handleNext();
+    } else if (isRightSwipe) {
+      handlePrev();
+    }
+  };
+
+  // Mouse drag handlers for desktop
+  const onMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setMouseStart(e.clientX);
+    setMouseEnd(null);
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setMouseEnd(e.clientX);
+  };
+
+  const onMouseUp = () => {
+    if (!isDragging || !mouseStart) {
+      setIsDragging(false);
+      return;
+    }
+    
+    if (mouseEnd !== null) {
+      const distance = mouseStart - mouseEnd;
+      const isLeftSwipe = distance > minSwipeDistance; // Swipe left (拉左去右) = NEXT
+      const isRightSwipe = distance < -minSwipeDistance; // Swipe right (拉右去左) = PREV
+
+      if (isLeftSwipe) {
+        handleNext();
+      } else if (isRightSwipe) {
+        handlePrev();
+      }
+    }
+
+    setIsDragging(false);
+    setMouseStart(null);
+    setMouseEnd(null);
+  };
+
   return (
     <div className="fixed inset-0 z-50 m-0 flex items-center justify-center bg-[var(--foreground)]/25 px-4 backdrop-blur-sm">
-      <div className="relative w-[90%] max-w-lg overflow-hidden rounded-3xl border border-[var(--card-border)] bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] p-8 shadow-[0_25px_90px_-45px_rgba(var(--accent-rgb),0.55)]">
+      <div 
+        className="relative w-[90%] max-w-lg overflow-hidden rounded-3xl border border-[var(--card-border)] bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] p-8 shadow-[0_25px_90px_-45px_rgba(var(--accent-rgb),0.55)] cursor-grab active:cursor-grabbing"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+      >
         <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent" aria-hidden />
 
         <button
@@ -79,28 +155,6 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
         >
           ×
         </button>
-
-        {hasMultiple && (
-          <>
-            <button
-              type="button"
-              onClick={handlePrev}
-              className="absolute left-4 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 text-[var(--foreground)]/70 shadow-sm transition hover:-translate-y-1/2 hover:text-[var(--foreground)]"
-              aria-label="Previous announcement"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={handleNext}
-              className="absolute right-4 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 text-[var(--foreground)]/70 shadow-sm transition hover:-translate-y-1/2 hover:text-[var(--foreground)]"
-              aria-label="Next announcement"
-            >
-              ›
-            </button>
-          </>
-        )}
-
         {item.title && (
           <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
             Latest Drop
@@ -113,7 +167,7 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
         )}
 
         {(item.image_url || item.image_path) && (
-          <div className="relative mt-5 w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] aspect-[4/3]">
+          <div className="relative mt-5 w-full overflow-hidden rounded-md border border-[var(--card-border)] bg-[var(--card)] aspect-[4/3]">
             <Image
               src={item.image_url || item.image_path || ""}
               alt={item.title ?? "announcement"}
