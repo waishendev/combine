@@ -42,7 +42,7 @@ export default async function RewardProductCreatePage() {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-3xl font-semibold text-gray-900">
-            {t('product.createTitle')}
+            Create Reward Product
           </h2>
           <Link
             href="/rewards/products"
@@ -53,7 +53,7 @@ export default async function RewardProductCreatePage() {
           </Link>
         </div>
         <p className="text-sm text-gray-600">
-          {t('product.createDescription')}
+          Add a reward product with pricing, inventory, and reward details.
         </p>
       </div>
 

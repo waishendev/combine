@@ -20,6 +20,14 @@ export type RewardVoucherRow = {
   endAt: string
 }
 
+const generateVoucherCode = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const segment = Array.from({ length: 6 }, () =>
+    chars[Math.floor(Math.random() * chars.length)],
+  ).join('')
+  return `RW-${segment}`
+}
+
 interface RewardVoucherEditModalProps {
   reward: RewardVoucherRow
   onClose: () => void
@@ -297,15 +305,25 @@ export default function RewardVoucherEditModal({
                 <label className="block text-sm font-medium text-gray-700" htmlFor="code">
                   Code <span className="text-red-500">*</span>
                 </label>
-                <input
-                  id="code"
-                  name="code"
-                  type="text"
-                  value={form.code}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={submitting}
-                />
+                <div className="flex gap-2">
+                  <input
+                    id="code"
+                    name="code"
+                    type="text"
+                    value={form.code}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={submitting}
+                  />
+                  <button
+                    type="button"
+                    className="whitespace-nowrap px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+                    onClick={() => setForm((prev) => ({ ...prev, code: generateVoucherCode() }))}
+                    disabled={submitting}
+                  >
+                    Auto-generate
+                  </button>
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="value">

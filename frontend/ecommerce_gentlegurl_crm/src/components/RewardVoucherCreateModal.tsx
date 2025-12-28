@@ -35,6 +35,14 @@ const initialFormState: FormState = {
   endAt: '',
 }
 
+const generateVoucherCode = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const segment = Array.from({ length: 6 }, () =>
+    chars[Math.floor(Math.random() * chars.length)],
+  ).join('')
+  return `RW-${segment}`
+}
+
 export default function RewardVoucherCreateModal({
   onClose,
   onSuccess,
@@ -292,10 +300,11 @@ export default function RewardVoucherCreateModal({
 
           <div className="border-t border-gray-200 pt-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="code">
-                  Code <span className="text-red-500">*</span>
-                </label>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="code">
+                Code <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-2">
                 <input
                   id="code"
                   name="code"
@@ -306,7 +315,16 @@ export default function RewardVoucherCreateModal({
                   placeholder="Voucher code"
                   disabled={submitting}
                 />
+                <button
+                  type="button"
+                  className="whitespace-nowrap px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+                  onClick={() => setForm((prev) => ({ ...prev, code: generateVoucherCode() }))}
+                  disabled={submitting}
+                >
+                  Auto-generate
+                </button>
               </div>
+            </div>
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="value">
                   Value <span className="text-red-500">*</span>

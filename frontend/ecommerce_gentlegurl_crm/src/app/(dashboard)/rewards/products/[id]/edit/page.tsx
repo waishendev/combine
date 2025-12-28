@@ -99,11 +99,11 @@ export default async function RewardProductEditPage({ params }: { params: Promis
             {t('product.back')}
           </Link>
           <h2 className="text-3xl font-semibold text-gray-900">
-            {t('product.editTitle')}
+            Edit Reward Product
           </h2>
         </div>
         <p className="text-sm text-gray-600">
-          {t('product.editDescription')}
+          Update reward product information including details, images, pricing, inventory, and SEO metadata.
         </p>
       </div>
 

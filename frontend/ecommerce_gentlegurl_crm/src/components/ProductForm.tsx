@@ -914,11 +914,98 @@ export default function ProductForm({
     <form className="p-6 space-y-6" onSubmit={handleSubmit}>
       <ErrorBox error={error} />
 
+      {/* Reward Details Section */}
+      {rewardOnly && (
+        <div className="space-y-4">
+          <div className="pb-2 border-b border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900">Reward Details</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Configure reward title, points, and visibility.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2 md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="rewardTitle">
+                Title <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="rewardTitle"
+                name="title"
+                type="text"
+                value={rewardForm.title}
+                onChange={handleRewardChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                placeholder="Reward title"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label
+                className="block text-sm font-medium text-gray-700"
+                htmlFor="rewardDescription"
+              >
+                Description
+              </label>
+              <textarea
+                id="rewardDescription"
+                name="description"
+                value={rewardForm.description}
+                onChange={handleRewardChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                rows={3}
+                placeholder="Reward description"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                className="block text-sm font-medium text-gray-700"
+                htmlFor="rewardPoints"
+              >
+                Points Required <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="rewardPoints"
+                name="pointsRequired"
+                type="number"
+                min="1"
+                value={rewardForm.pointsRequired}
+                onChange={handleRewardChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                className="block text-sm font-medium text-gray-700"
+                htmlFor="rewardStatus"
+              >
+                Status
+              </label>
+              <select
+                id="rewardStatus"
+                name="status"
+                value={rewardForm.status}
+                onChange={handleRewardChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              >
+                <option value="active">{t('common.active')}</option>
+                <option value="inactive">{t('common.inactive')}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Basic Information Section */}
       <div className="space-y-4">
         <div className="pb-2 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">{t('product.basicInformation')}</h3>
-          <p className="text-sm text-gray-500 mt-1">{t('product.basicInformationDescription')}</p>
+          <h3 className="text-lg font-semibold text-gray-900">
+            {rewardOnly ? 'Reward Product Information' : t('product.basicInformation')}
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {rewardOnly
+              ? 'Update reward product details, images, pricing, inventory, and SEO metadata.'
+              : t('product.basicInformationDescription')}
+          </p>
         </div>
         
         {/* Flex Layout: Images on left, Form fields on right */}
@@ -1501,86 +1588,6 @@ export default function ProductForm({
           </div>
         </div>
       </div>
-
-      {rewardOnly && (
-        <div className="space-y-4">
-          <div className="pb-2 border-b border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900">Reward Details</h3>
-            <p className="text-sm text-gray-500 mt-1">
-              Configure the reward title, points, and visibility.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2 md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700" htmlFor="rewardTitle">
-                Title <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="rewardTitle"
-                name="title"
-                type="text"
-                value={rewardForm.title}
-                onChange={handleRewardChange}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="Reward title"
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <label
-                className="block text-sm font-medium text-gray-700"
-                htmlFor="rewardDescription"
-              >
-                Description
-              </label>
-              <textarea
-                id="rewardDescription"
-                name="description"
-                value={rewardForm.description}
-                onChange={handleRewardChange}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                rows={3}
-                placeholder="Reward description"
-              />
-            </div>
-            <div className="space-y-2">
-              <label
-                className="block text-sm font-medium text-gray-700"
-                htmlFor="rewardPoints"
-              >
-                Points Required <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="rewardPoints"
-                name="pointsRequired"
-                type="number"
-                min="1"
-                value={rewardForm.pointsRequired}
-                onChange={handleRewardChange}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="0"
-              />
-            </div>
-            <div className="space-y-2">
-              <label
-                className="block text-sm font-medium text-gray-700"
-                htmlFor="rewardStatus"
-              >
-                Status
-              </label>
-              <select
-                id="rewardStatus"
-                name="status"
-                value={rewardForm.status}
-                onChange={handleRewardChange}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              >
-                <option value="active">{t('common.active')}</option>
-                <option value="inactive">{t('common.inactive')}</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Pricing & Inventory Section */}
       <div className="space-y-4">
