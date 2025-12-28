@@ -11,7 +11,7 @@ return new class extends Migration {
             $table->bigIncrements('id');
             $table->string('code', 100)->unique();
             $table->string('type', 30);
-            $table->decimal('amount', 12, 2);
+            $table->decimal('value', 12, 2);
             $table->integer('max_uses')->nullable();
             $table->integer('max_uses_per_customer')->nullable();
             $table->decimal('min_order_amount', 12, 2)->default(0);

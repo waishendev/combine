@@ -999,7 +999,7 @@ export default function ProductForm({
       <div className="space-y-4">
         <div className="pb-2 border-b border-gray-100">
           <h3 className="text-lg font-semibold text-gray-900">
-            {rewardOnly ? 'Reward Product Information' : t('product.basicInformation')}
+            {rewardOnly ? 'Product Information' : t('product.basicInformation')}
           </h3>
           <p className="text-sm text-gray-500 mt-1">
             {rewardOnly
