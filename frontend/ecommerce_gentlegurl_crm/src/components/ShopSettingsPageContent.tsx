@@ -480,7 +480,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 }
               />
               <div
-                className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500"
+                className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500"
               >
                 <span
                   className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]"
@@ -558,7 +558,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                   setFooterSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
               />
-              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
+              <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
                 <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]" />
               </div>
             </label>
@@ -795,7 +795,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                   setPageReviewsSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
               />
-              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
+              <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
                 <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]" />
               </div>
             </label>
@@ -840,7 +840,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                   setProductReviewsSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
               />
-              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
+              <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
                 <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]" />
               </div>
             </label>
@@ -958,7 +958,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                   setShippingSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
               />
-              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
+              <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
                 <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]" />
               </div>
             </label>
