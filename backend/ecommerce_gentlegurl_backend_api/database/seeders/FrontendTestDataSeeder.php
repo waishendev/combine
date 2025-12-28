@@ -814,7 +814,7 @@ class FrontendTestDataSeeder extends Seeder
                 'code' => 'SAVE50',
                 'type' => 'fixed',
                 'value' => 50.00,
-                'amount' => 10.00,
+                'amount' => 90.00,
                 'usage_limit_total' => 500,
                 'usage_limit_per_customer' => 2,
                 'min_order_amount' => 200.00,

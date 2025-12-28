@@ -22,6 +22,7 @@ import { useI18n } from '@/lib/i18n'
 
 interface VoucherTableProps {
   permissions: string[]
+  isRewardOnly?: boolean
 }
 
 type Meta = {
@@ -49,6 +50,7 @@ type VoucherApiResponse = {
 
 export default function VoucherTable({
   permissions,
+  isRewardOnly,
 }: VoucherTableProps) {
   const { t } = useI18n()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
@@ -120,6 +122,9 @@ export default function VoucherTable({
         if (filters.code) qs.set('code', filters.code)
         if (filters.isActive) {
           qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
+        }
+        if (isRewardOnly !== undefined) {
+          qs.set('is_reward_only', String(isRewardOnly))
         }
 
         const res = await fetch(`/api/proxy/ecommerce/vouchers?${qs.toString()}`, {
@@ -277,7 +282,10 @@ export default function VoucherTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 11 : 10
+  const hideMaxUsesPerCustomer = Boolean(isRewardOnly)
+  const colCount = showActions
+    ? hideMaxUsesPerCustomer ? 8 : 9
+    : hideMaxUsesPerCustomer ? 7 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -369,6 +377,8 @@ export default function VoucherTable({
 
       {isCreateModalOpen && (
         <VoucherCreateModal
+          isRewardOnly={isRewardOnly}
+          hideMaxUsesPerCustomer={hideMaxUsesPerCustomer}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={(voucher) => {
             setIsCreateModalOpen(false)
@@ -452,12 +462,12 @@ export default function VoucherTable({
                   { key: 'amount', label: 'Amount' },
                   { key: 'minOrderAmount', label: 'Min Order Amount' },
                   { key: 'maxUses', label: 'Max Uses' },
-                  { key: 'maxUsesPerCustomer', label: 'Max Uses Per Customer' },
+                  ...(!hideMaxUsesPerCustomer
+                    ? [{ key: 'maxUsesPerCustomer', label: 'Max Uses Per Customer' } as const]
+                    : []),
                   { key: 'startAt', label: 'Start Date' },
                   { key: 'endAt', label: 'End Date' },
                   { key: 'isActive', label: t('common.status') },
-                  { key: 'createdAt', label: t('common.createdAt') },
-                  { key: 'updatedAt', label: t('common.updatedAt') },
                 ] as const
               ).map(({ key, label }) => (
                 <th
@@ -495,6 +505,7 @@ export default function VoucherTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  hideMaxUsesPerCustomer={hideMaxUsesPerCustomer}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingVoucherId(voucher.id)
@@ -517,6 +528,8 @@ export default function VoucherTable({
       {editingVoucherId !== null && (
         <VoucherEditModal
           voucherId={editingVoucherId}
+          isRewardOnly={isRewardOnly}
+          hideMaxUsesPerCustomer={hideMaxUsesPerCustomer}
           onClose={() => setEditingVoucherId(null)}
           onSuccess={(voucher) => {
             setEditingVoucherId(null)
@@ -546,4 +559,3 @@ export default function VoucherTable({
     </div>
   )
 }
-

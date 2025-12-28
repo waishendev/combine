@@ -10,6 +10,8 @@ interface VoucherEditModalProps {
   voucherId: number
   onClose: () => void
   onSuccess: (voucher: VoucherRowData) => void
+  isRewardOnly?: boolean
+  hideMaxUsesPerCustomer?: boolean
 }
 
 interface FormState {
@@ -38,6 +40,8 @@ export default function VoucherEditModal({
   voucherId,
   onClose,
   onSuccess,
+  isRewardOnly,
+  hideMaxUsesPerCustomer = false,
 }: VoucherEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -148,17 +152,29 @@ export default function VoucherEditModal({
     const trimmedCode = form.code.trim()
     const amountNum = parseFloat(form.amount)
     const minOrderAmountNum = parseFloat(form.minOrderAmount)
-    const maxUsesNum = parseInt(form.maxUses, 10)
-    const maxUsesPerCustomerNum = parseInt(form.maxUsesPerCustomer, 10)
+    const maxUsesNum = form.maxUses.trim() ? parseInt(form.maxUses, 10) : undefined
+    const maxUsesPerCustomerNum = form.maxUsesPerCustomer.trim()
+      ? parseInt(form.maxUsesPerCustomer, 10)
+      : undefined
 
     if (
       !trimmedCode ||
       !Number.isFinite(amountNum) ||
       !Number.isFinite(minOrderAmountNum) ||
-      !Number.isFinite(maxUsesNum) ||
-      !Number.isFinite(maxUsesPerCustomerNum) ||
       !form.startAt ||
       !form.endAt
+    ) {
+      setError(t('common.allFieldsRequired'))
+      return
+    }
+    if (maxUsesNum !== undefined && !Number.isFinite(maxUsesNum)) {
+      setError(t('common.allFieldsRequired'))
+      return
+    }
+    if (
+      !hideMaxUsesPerCustomer &&
+      maxUsesPerCustomerNum !== undefined &&
+      !Number.isFinite(maxUsesPerCustomerNum)
     ) {
       setError(t('common.allFieldsRequired'))
       return
@@ -177,14 +193,17 @@ export default function VoucherEditModal({
         },
         body: JSON.stringify({
           code: trimmedCode,
-          type: 'fixed_amount',
+          type: 'fixed',
           amount: amountNum,
           min_order_amount: minOrderAmountNum,
-          max_uses: maxUsesNum,
-          max_uses_per_customer: maxUsesPerCustomerNum,
+          ...(maxUsesNum !== undefined ? { max_uses: maxUsesNum } : {}),
+          ...(!hideMaxUsesPerCustomer && maxUsesPerCustomerNum !== undefined
+            ? { max_uses_per_customer: maxUsesPerCustomerNum }
+            : {}),
           start_at: form.startAt,
           end_at: form.endAt,
           is_active: form.isActive === 'active',
+          ...(isRewardOnly !== undefined ? { is_reward_only: isRewardOnly } : {}),
         }),
       })
 
@@ -232,16 +251,14 @@ export default function VoucherEditModal({
         : {
             id: loadedVoucher?.id ?? voucherId,
             code: trimmedCode,
-            type: 'fixed_amount',
+            type: 'fixed',
             amount: amountNum.toFixed(2),
-            maxUses: String(maxUsesNum),
-            maxUsesPerCustomer: String(maxUsesPerCustomerNum),
+            maxUses: maxUsesNum != null ? String(maxUsesNum) : '-',
+            maxUsesPerCustomer: maxUsesPerCustomerNum != null ? String(maxUsesPerCustomerNum) : '-',
             minOrderAmount: minOrderAmountNum.toFixed(2),
             startAt: form.startAt,
             endAt: form.endAt,
             isActive: form.isActive === 'active',
-            createdAt: loadedVoucher?.createdAt ?? '',
-            updatedAt: new Date().toISOString(),
           }
 
       setLoadedVoucher(voucherRow)
@@ -350,7 +367,7 @@ export default function VoucherEditModal({
                   htmlFor="edit-maxUses"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Max Uses <span className="text-red-500">*</span>
+                  Max Uses
                 </label>
                 <input
                   id="edit-maxUses"
@@ -365,25 +382,27 @@ export default function VoucherEditModal({
                 />
               </div>
 
-              <div>
-                <label
-                  htmlFor="edit-maxUsesPerCustomer"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Max Uses Per Customer <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-maxUsesPerCustomer"
-                  name="maxUsesPerCustomer"
-                  type="number"
-                  min="1"
-                  value={form.maxUsesPerCustomer}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="1"
-                  disabled={disableForm}
-                />
-              </div>
+              {!hideMaxUsesPerCustomer && (
+                <div>
+                  <label
+                    htmlFor="edit-maxUsesPerCustomer"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Max Uses Per Customer
+                  </label>
+                  <input
+                    id="edit-maxUsesPerCustomer"
+                    name="maxUsesPerCustomer"
+                    type="number"
+                    min="1"
+                    value={form.maxUsesPerCustomer}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="1"
+                    disabled={disableForm}
+                  />
+                </div>
+              )}
 
               <div>
                 <label
@@ -473,4 +492,3 @@ export default function VoucherEditModal({
     </div>
   )
 }
-

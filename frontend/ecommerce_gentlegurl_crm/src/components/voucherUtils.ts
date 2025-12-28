@@ -11,8 +11,6 @@ export type VoucherApiItem = {
   start_at?: string | null
   end_at?: string | null
   is_active?: boolean | number | string | null
-  created_at?: string | null
-  updated_at?: string | null
 }
 
 export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => {
@@ -38,7 +36,7 @@ export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => 
   return {
     id: normalizedId,
     code: item.code ?? '-',
-    type: item.type ?? 'fixed_amount',
+    type: item.type ?? 'fixed',
     amount: formatAmount(item.amount),
     maxUses: item.max_uses != null ? String(item.max_uses) : '-',
     maxUsesPerCustomer: item.max_uses_per_customer != null ? String(item.max_uses_per_customer) : '-',
@@ -46,8 +44,5 @@ export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => 
     startAt: item.start_at ?? '', // Direct from API
     endAt: item.end_at ?? '', // Direct from API
     isActive,
-    createdAt: item.created_at ?? '', // Direct from API
-    updatedAt: item.updated_at ?? '', // Direct from API
   }
 }
-

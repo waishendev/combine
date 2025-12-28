@@ -13,6 +13,7 @@ export default function AccountVouchersPage() {
   useEffect(() => {
     setLoading(true);
     getCustomerVouchers()
+    // getCustomerVouchers({ is_reward_only: false })
       .then((data) => {
         setVouchers(data ?? []);
         setError(null);
