@@ -184,6 +184,12 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/rewards/vouchers',
             requiredPermission: 'ecommerce.vouchers.view',
           },
+          {
+            key: 'rewards-products',
+            label: 'Product',
+            href: '/rewards/products',
+            requiredPermission: 'ecommerce.products.view',
+          },
         ],
       },
       {

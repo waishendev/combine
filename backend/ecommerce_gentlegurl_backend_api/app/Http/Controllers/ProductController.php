@@ -30,6 +30,9 @@ class ProductController extends Controller
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
             })
+            ->when($request->has('is_reward_only'), function ($query) use ($request) {
+                $query->where('is_reward_only', filter_var($request->get('is_reward_only'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
             ->paginate($perPage);
 
         return $this->respond($products);

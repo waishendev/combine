@@ -37,6 +37,7 @@ export interface ProductRowData {
 
 interface ProductRowProps {
   product: ProductRowData
+  hideCategories?: boolean
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
@@ -46,6 +47,7 @@ interface ProductRowProps {
 
 export default function ProductRow({
   product,
+  hideCategories = false,
   showActions = false,
   canUpdate = false,
   canDelete = false,
@@ -73,7 +75,9 @@ export default function ProductRow({
         </div>
       </td>
       <td className="px-4 py-2 border border-gray-200">{product.sku}</td>
-      <td className="px-4 py-2 border border-gray-200">{product.categories}</td>
+      {!hideCategories && (
+        <td className="px-4 py-2 border border-gray-200">{product.categories}</td>
+      )}
       <td className="px-4 py-2 border border-gray-200">{product.price.toFixed(2)}</td>
       <td className="px-4 py-2 border border-gray-200">{product.stock}</td>
       <td className="px-4 py-2 border border-gray-200">
