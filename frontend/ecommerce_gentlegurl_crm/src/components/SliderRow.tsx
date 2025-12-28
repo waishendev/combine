@@ -113,8 +113,6 @@ export default function SliderRow({
           <span>{slider.sort_order != null ? slider.sort_order : '-'}</span>
         )}
       </td>
-      <td className="px-4 py-2 border border-gray-200">{formatDate(slider.createdAt)}</td>
-      <td className="px-4 py-2 border border-gray-200">{formatDate(slider.updatedAt)}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
@@ -146,4 +144,3 @@ export default function SliderRow({
     </tr>
   )
 }
-

@@ -140,12 +140,12 @@ export default function Slider({ items }: SliderProps) {
       >
         {slides.map((item, index) => {
           const isActive = index === activeIndex;
-          // const desktopImage = item.image_url ?? item.image_path ?? "/images/slideshow_placeholder.jpg";
-          const desktopImage =  "/images/aaa.jpg";
-          // const mobileImage = item.mobile_image_url ?? item.mobile_image_path ?? desktopImage;
-
-          const mobileImage = desktopImage;
-
+          const desktopImage =
+            item.image_url ?? item.image_path ?? "/images/slideshow_placeholder.jpg";
+          const mobileImage =
+            item.mobile_image_url ?? item.mobile_image_path ?? desktopImage;
+          const hasCta = Boolean(item.button_label && item.button_link);
+          const hasContent = Boolean(item.title || item.subtitle || hasCta);
 
           return (
             <article
@@ -171,47 +171,48 @@ export default function Slider({ items }: SliderProps) {
                     className="object-cover sm:hidden"
                   />
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/35 to-transparent" />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.45)_0%,_rgba(255,255,255,0)_45%)]" />
+                {hasContent && (
+                  <>
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/35 to-transparent" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.45)_0%,_rgba(255,255,255,0)_45%)]" />
+                  </>
+                )}
               </div>
 
-              <div className="relative z-10 flex h-full items-center px-6 py-10 sm:px-10 lg:px-14">
-                <div className="max-w-xl space-y-4 text-white sm:space-y-6">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-[var(--card)]/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] backdrop-blur">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-strong)]" />
-                    Signature Edit
+              {hasContent && (
+                <div className="relative z-10 flex h-full items-center px-6 py-10 sm:px-10 lg:px-14">
+                  <div className="max-w-xl space-y-4 text-white sm:space-y-6">
+                    {item.subtitle && (
+                      <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/80">
+                        {item.subtitle}
+                      </p>
+                    )}
+
+                    {item.title && (
+                      <h2 className="text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl">
+                        {item.title}
+                      </h2>
+                    )}
+
+                    {hasCta && (
+                      <Link
+                        href={item.button_link as string}
+                        onClick={(e) => {
+                          if (hasSwiped) {
+                            e.preventDefault();
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 rounded-full bg-[var(--card)]/90 px-5 py-3 text-sm font-semibold text-[var(--foreground)] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-[var(--card)]"
+                      >
+                        {item.button_label}
+                        <span aria-hidden className="text-base">
+                          →
+                        </span>
+                      </Link>
+                    )}
                   </div>
-
-                  {item.subtitle && (
-                    <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/80">{item.subtitle}</p>
-                  )}
-
-                  {item.title && (
-                    <h2 className="text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl">{item.title}</h2>
-                  )}
-
-                  <p className="max-w-lg text-sm leading-relaxed text-white/80 sm:text-base">
-                    Discover covetable textures, romantic tones, and curated essentials for your everyday statements.
-                  </p>
-
-                  {item.button_link && item.button_label && (
-                    <Link
-                      href={item.button_link}
-                      onClick={(e) => {
-                        if (hasSwiped) {
-                          e.preventDefault();
-                        }
-                      }}
-                      className="inline-flex items-center gap-2 rounded-full bg-[var(--card)]/90 px-5 py-3 text-sm font-semibold text-[var(--foreground)] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-[var(--card)]"
-                    >
-                      {item.button_label}
-                      <span aria-hidden className="text-base">
-                        →
-                      </span>
-                    </Link>
-                  )}
                 </div>
-              </div>
+              )}
             </article>
           );
         })}
