@@ -7,6 +7,7 @@ import { mapProductApiItemToRow, type ProductApiItem } from './productUtils'
 import type { ProductImage, ProductRowData } from './ProductRow'
 import { useI18n } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
+import ErrorBox from './ErrorBox'
 
 interface CategoryOption {
   id: number
@@ -618,24 +619,41 @@ export default function ProductForm({
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        let message = t('product.saveError')
+        let errorMessages: string[] = []
         if (data && typeof data === 'object') {
-          if (typeof (data as { message?: unknown }).message === 'string') {
-            message = (data as { message: string }).message
-          } else if ('errors' in data && data.errors) {
+          // Check if there are validation errors
+          if ('errors' in data && data.errors) {
             const errors = (data as { errors?: unknown }).errors
             if (errors && typeof errors === 'object') {
-              const firstKey = Object.keys(errors)[0]
-              const firstValue = firstKey ? (errors as Record<string, unknown>)[firstKey] : null
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                message = firstValue[0]
-              } else if (typeof firstValue === 'string') {
-                message = firstValue
-              }
+              // Loop through all error keys
+              Object.keys(errors).forEach((key) => {
+                const errorValue = (errors as Record<string, unknown>)[key]
+                if (Array.isArray(errorValue)) {
+                  // If it's an array, add all error messages
+                  errorValue.forEach((msg) => {
+                    if (typeof msg === 'string') {
+                      errorMessages.push(`${msg}`)
+                    }
+                  })
+                } else if (typeof errorValue === 'string') {
+                  errorMessages.push(`${key}: ${errorValue}`)
+                }
+              })
             }
           }
+          
+          // If no errors found but there's a message, use it
+          if (errorMessages.length === 0 && typeof (data as { message?: unknown }).message === 'string') {
+            errorMessages.push((data as { message: string }).message)
+          }
         }
-        setError(message)
+        
+        // If still no error messages, use default error message
+        if (errorMessages.length === 0) {
+          errorMessages.push(t('product.saveError'))
+        }
+        
+        setError(errorMessages.join('\n'))
         return
       }
 
@@ -701,12 +719,7 @@ export default function ProductForm({
 
   return (
     <form className="p-6 space-y-6" onSubmit={handleSubmit}>
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center gap-2">
-          <i className="fa-solid fa-circle-exclamation" />
-          <span>{error}</span>
-        </div>
-      )}
+      <ErrorBox error={error} />
 
       {/* Basic Information Section */}
       <div className="space-y-4">
