@@ -351,7 +351,7 @@ export default function CheckoutForm() {
       const trimmedVoucherCode = voucherCode.trim();
       const voucherCodeForSubmit = selectedVoucherId
         ? undefined
-        : appliedVoucher?.code ?? trimmedVoucherCode || undefined;
+        : (appliedVoucher?.code ?? trimmedVoucherCode) || undefined;
       const payload: CheckoutPayload = {
         items: selectedItems.map((item) => ({
           product_id: item.product_id,
