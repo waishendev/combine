@@ -1,0 +1,35 @@
+图片尺寸要求总结
+1. AnnouncementModal (公告弹窗)
+容器尺寸: h-56 (224px 高) × max-w-lg (最大512px 宽)
+推荐尺寸: 512px × 224px
+宽高比: 约 2.3:1 (横向矩形)
+代码位置: AnnouncementModal.tsx 第78行
+2. Homepage Slider (首页轮播图)
+桌面版:
+高度: lg:h-[480px] (480px)
+宽度: 最大 max-w-6xl (1152px)
+推荐尺寸: 1152px × 480px
+宽高比: 约 2.4:1
+移动版:
+高度: h-[380px] (380px)
+宽度: 全屏宽度
+推荐尺寸: 768px × 380px (或按实际移动端宽度)
+代码位置: Slider.tsx 第132行
+3. ProductGrid (产品网格)
+容器高度: h-44 (176px)
+移动端: 2列布局，单张宽度约屏幕宽度/2
+桌面端: 4列布局，单张宽度约屏幕宽度/4
+推荐尺寸: 400px × 176px (或按实际容器宽度)
+宽高比: 约 2.3:1
+代码位置: ProductGrid.tsx 第56行
+4. Product Slug Page (产品详情页)
+主图: aspect-square (1:1 正方形)
+推荐尺寸: 800px × 800px 或 1000px × 1000px
+缩略图: h-16 w-16 (64px × 64px)
+代码位置: ProductGallery.tsx 第40行
+建议
+Announcement: 512px × 224px (2.3:1)
+Homepage Slider: 桌面 1152px × 480px (2.4:1)，移动 768px × 380px
+Product Grid: 400px × 176px (2.3:1)
+Product Detail: 800px × 800px 或 1000px × 1000px (1:1)
+注意: ProductGrid 和 Product Detail 的图片尺寸不同。Grid 是横向矩形，Detail 是正方形。如需统一，需要修改代码中的样式设置。

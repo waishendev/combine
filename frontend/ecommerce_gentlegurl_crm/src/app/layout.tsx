@@ -33,7 +33,7 @@ export default function RootLayout({
           referrerPolicy="no-referrer"
         />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable}  overflow-hidden antialiased`}>
         <I18nProvider>
           {children}
         </I18nProvider>
