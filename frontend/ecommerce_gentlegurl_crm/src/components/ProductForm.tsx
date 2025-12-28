@@ -66,6 +66,9 @@ interface ProductFormProps {
   onSuccess?: (product: ProductRowData) => void
   onCancel?: () => void
   redirectPath?: string
+  showCategories?: boolean
+  showFeatured?: boolean
+  rewardOnly?: boolean
 }
 
 export default function ProductForm({
@@ -74,6 +77,9 @@ export default function ProductForm({
   onSuccess,
   onCancel,
   redirectPath,
+  showCategories = true,
+  showFeatured = true,
+  rewardOnly = false,
 }: ProductFormProps) {
   const { t } = useI18n()
   const router = useRouter()
@@ -93,13 +99,13 @@ export default function ProductForm({
         lowStockThreshold: product.lowStockThreshold
           ? String(product.lowStockThreshold)
           : '',
-        isFeatured: product.isFeatured,
+        isFeatured: showFeatured ? product.isFeatured : false,
         metaTitle: product.metaTitle,
         metaDescription: product.metaDescription,
         metaKeywords: product.metaKeywords,
         metaOgImage: product.metaOgImage,
         status: product.isActive ? 'active' : 'inactive',
-        categoryIds: product.categoryIds ?? [],
+        categoryIds: showCategories ? (product.categoryIds ?? []) : [],
         metaOgImageFile: null,
         galleryFiles: [],
         mainImageIndex:
@@ -108,7 +114,11 @@ export default function ProductForm({
             : 0,
       }
     }
-    return { ...emptyForm }
+    return {
+      ...emptyForm,
+      isFeatured: showFeatured ? emptyForm.isFeatured : false,
+      categoryIds: showCategories ? emptyForm.categoryIds : [],
+    }
   })
   const [existingImages, setExistingImages] = useState<ProductImage[]>(
     product?.images ?? [],
@@ -161,6 +171,9 @@ export default function ProductForm({
   }, [isCategoryDropdownOpen])
 
   useEffect(() => {
+    if (!showCategories) {
+      return undefined
+    }
     const controller = new AbortController()
     const fetchCategories = async () => {
       setLoadingCategories(true)
@@ -211,7 +224,7 @@ export default function ProductForm({
 
     fetchCategories()
     return () => controller.abort()
-  }, [])
+  }, [showCategories])
 
   useEffect(() => {
     setExistingImages(product?.images ?? [])
@@ -535,7 +548,11 @@ export default function ProductForm({
   // Removed handleSetMainImage - first image is always the cover
 
   const resetForm = () => {
-    setForm({ ...emptyForm })
+    setForm({
+      ...emptyForm,
+      isFeatured: showFeatured ? emptyForm.isFeatured : false,
+      categoryIds: showCategories ? emptyForm.categoryIds : [],
+    })
     setError(null)
     setGalleryPreviews([])
     setExistingImages([])
@@ -568,15 +585,24 @@ export default function ProductForm({
     formData.append('cost_price', form.costPrice || '0')
     formData.append('stock', form.stock || '0')
     formData.append('low_stock_threshold', form.lowStockThreshold || '0')
-    formData.append('is_featured', form.isFeatured ? '1' : '0')
+    if (showFeatured) {
+      formData.append('is_featured', form.isFeatured ? '1' : '0')
+    } else {
+      formData.append('is_featured', '0')
+    }
+    if (rewardOnly) {
+      formData.append('is_reward_only', '1')
+    }
     formData.append('meta_title', form.metaTitle.trim())
     formData.append('meta_description', form.metaDescription.trim())
     formData.append('meta_keywords', form.metaKeywords.trim())
     formData.append('meta_og_image', form.metaOgImage.trim())
 
-    form.categoryIds.forEach((id) => {
-      formData.append('category_ids[]', String(id))
-    })
+    if (showCategories) {
+      form.categoryIds.forEach((id) => {
+        formData.append('category_ids[]', String(id))
+      })
+    }
 
     if (form.metaOgImageFile) {
       formData.append('meta_og_image_file', form.metaOgImageFile)
@@ -1074,234 +1100,236 @@ export default function ProductForm({
                   placeholder={t('product.descriptionPlaceholder')}
                 />
               </div>
-              <div className="space-y-2  md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  {t('product.categories')} <span className="text-red-500">*</span>
-                  {form.categoryIds.length > 0 && (
-                    <span className="ml-2 text-xs font-normal text-gray-500">
-                      ({t('product.categoriesSelected').replace('{count}', String(form.categoryIds.length))})
-                    </span>
-                  )}
-                </label>
-                <div ref={categoryDropdownRef} className="relative">
-                  {/* Main Trigger Button with Clear Button Outside */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
-                        if (!isCategoryDropdownOpen) {
-                          // Focus search input when opening
-                          setTimeout(() => {
-                            categorySearchRef.current?.focus()
-                          }, 100)
-                        } else {
-                          setCategorySearchQuery('')
-                        }
-                      }}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-left bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md pr-10"
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {form.categoryIds.length === 0 ? (
-                          <span className="text-gray-500 flex items-center gap-2">
-                            <i className="fa-solid fa-layer-group text-xs" />
-                            {t('product.selectCategories')}
-                          </span>
-                        ) : form.categoryIds.length <= 2 ? (
-                          <span className="text-gray-700 flex items-center gap-2 truncate">
-                            <i className="fa-solid fa-check-circle text-blue-600 text-xs" />
-                            {categories
-                              .filter((cat) => form.categoryIds.includes(cat.id))
-                              .map((cat) => cat.name)
-                              .join(', ')}
-                          </span>
-                        ) : (
-                          <span className="text-gray-700 flex items-center gap-2">
-                            <i className="fa-solid fa-check-circle text-blue-600 text-xs" />
-                            <span className="font-medium">
-                              {t('product.categoriesSelectedCount').replace('{count}', String(form.categoryIds.length))}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                      <i
-                        className={`fa-solid fa-chevron-${
-                          isCategoryDropdownOpen ? 'up' : 'down'
-                        } text-gray-400 text-xs transition-transform duration-200 flex-shrink-0`}
-                      />
-                    </button>
-                    {/* Clear Button - Outside the main button */}
-                    {/* {form.categoryIds.length > 0 && (
+              {showCategories && (
+                <div className="space-y-2  md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t('product.categories')} <span className="text-red-500">*</span>
+                    {form.categoryIds.length > 0 && (
+                      <span className="ml-2 text-xs font-normal text-gray-500">
+                        ({t('product.categoriesSelected').replace('{count}', String(form.categoryIds.length))})
+                      </span>
+                    )}
+                  </label>
+                  <div ref={categoryDropdownRef} className="relative">
+                    {/* Main Trigger Button with Clear Button Outside */}
+                    <div className="relative">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleClearAllCategories()
+                        onClick={() => {
+                          setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
+                          if (!isCategoryDropdownOpen) {
+                            // Focus search input when opening
+                            setTimeout(() => {
+                              categorySearchRef.current?.focus()
+                            }, 100)
+                          } else {
+                            setCategorySearchQuery('')
+                          }
                         }}
-                        className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50 z-10"
-                        aria-label="Clear all"
-                        title="Clear all"
+                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-left bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md pr-10"
                       >
-                        <i className="fa-solid fa-xmark text-xs" />
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {form.categoryIds.length === 0 ? (
+                            <span className="text-gray-500 flex items-center gap-2">
+                              <i className="fa-solid fa-layer-group text-xs" />
+                              {t('product.selectCategories')}
+                            </span>
+                          ) : form.categoryIds.length <= 2 ? (
+                            <span className="text-gray-700 flex items-center gap-2 truncate">
+                              <i className="fa-solid fa-check-circle text-blue-600 text-xs" />
+                              {categories
+                                .filter((cat) => form.categoryIds.includes(cat.id))
+                                .map((cat) => cat.name)
+                                .join(', ')}
+                            </span>
+                          ) : (
+                            <span className="text-gray-700 flex items-center gap-2">
+                              <i className="fa-solid fa-check-circle text-blue-600 text-xs" />
+                              <span className="font-medium">
+                                {t('product.categoriesSelectedCount').replace('{count}', String(form.categoryIds.length))}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                        <i
+                          className={`fa-solid fa-chevron-${
+                            isCategoryDropdownOpen ? 'up' : 'down'
+                          } text-gray-400 text-xs transition-transform duration-200 flex-shrink-0`}
+                        />
                       </button>
-                    )} */}
-                  </div>
+                      {/* Clear Button - Outside the main button */}
+                      {/* {form.categoryIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleClearAllCategories()
+                          }}
+                          className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50 z-10"
+                          aria-label="Clear all"
+                          title="Clear all"
+                        >
+                          <i className="fa-solid fa-xmark text-xs" />
+                        </button>
+                      )} */}
+                    </div>
 
-                  {/* Dropdown Panel */}
-                  {isCategoryDropdownOpen && (
-                    <div className="absolute z-20 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden transition-all duration-200 ease-out">
-                      {/* Search Bar */}
-                      <div className="p-3 border-b border-gray-100 bg-gray-50">
-                        <div className="relative">
-                          <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
-                          <input
-                            ref={categorySearchRef}
-                            type="text"
-                            value={categorySearchQuery}
-                            onChange={(e) => setCategorySearchQuery(e.target.value)}
-                            placeholder={t('product.searchCategories')}
-                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all"
-                          />
-                          {categorySearchQuery && (
-                            <button
-                              type="button"
-                              onClick={() => setCategorySearchQuery('')}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                            >
-                              <i className="fa-solid fa-xmark text-xs" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Quick Actions */}
-                      {!loadingCategories && filteredCategories.length > 0 && (
-                        <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={handleSelectAllCategories}
-                            className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1.5 transition-colors"
-                          >
-                            <i className="fa-solid fa-check-double" />
-                            {filteredCategories.every((cat) =>
-                              form.categoryIds.includes(cat.id)
-                            )
-                              ? t('product.deselectAll')
-                              : t('product.selectAll')}
-                          </button>
-                          {form.categoryIds.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={handleClearAllCategories}
-                              className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1.5 transition-colors"
-                            >
-                              <i className="fa-solid fa-trash-can" />
-                              {t('product.clearAll')}
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Categories List */}
-                      <div className="max-h-64 overflow-y-auto">
-                        {loadingCategories ? (
-                          <div className="p-6 text-center">
-                            <i className="fa-solid fa-spinner fa-spin text-blue-600 mb-2" />
-                            <p className="text-sm text-gray-500">{t('product.loadingCategories')}</p>
-                          </div>
-                        ) : filteredCategories.length > 0 ? (
-                          <div className="p-2">
-                            {filteredCategories.map((category) => {
-                              const isSelected = form.categoryIds.includes(
-                                category.id
-                              )
-                              return (
-                                <label
-                                  key={category.id}
-                                  className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all duration-150 ${
-                                    isSelected
-                                      ? 'bg-blue-50 hover:bg-blue-100'
-                                      : 'hover:bg-gray-50'
-                                  }`}
-                                >
-                                  <div className="relative flex-shrink-0">
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() =>
-                                        handleCategoryToggle(category.id)
-                                      }
-                                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                                    />
-                                    {isSelected && (
-                                      <i className="fa-solid fa-check absolute inset-0 flex items-center justify-center text-white text-[10px] pointer-events-none" />
-                                    )}
-                                  </div>
-                                  <span
-                                    className={`text-sm flex-1 ${
-                                      isSelected
-                                        ? 'text-blue-900 font-medium'
-                                        : 'text-gray-700'
-                                    }`}
-                                  >
-                                    {category.name}
-                                  </span>
-                                  {isSelected && (
-                                    <i className="fa-solid fa-check-circle text-blue-600 text-xs flex-shrink-0" />
-                                  )}
-                                </label>
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <div className="p-6 text-center">
-                            <i className="fa-solid fa-folder-open text-gray-300 text-2xl mb-2" />
-                            <p className="text-sm text-gray-500">
-                              {categorySearchQuery
-                                ? t('product.noCategoriesFound')
-                                : t('product.noCategoriesAvailable')}
-                            </p>
+                    {/* Dropdown Panel */}
+                    {isCategoryDropdownOpen && (
+                      <div className="absolute z-20 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden transition-all duration-200 ease-out">
+                        {/* Search Bar */}
+                        <div className="p-3 border-b border-gray-100 bg-gray-50">
+                          <div className="relative">
+                            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                            <input
+                              ref={categorySearchRef}
+                              type="text"
+                              value={categorySearchQuery}
+                              onChange={(e) => setCategorySearchQuery(e.target.value)}
+                              placeholder={t('product.searchCategories')}
+                              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all"
+                            />
                             {categorySearchQuery && (
                               <button
                                 type="button"
                                 onClick={() => setCategorySearchQuery('')}
-                                className="mt-2 text-xs text-blue-600 hover:text-blue-700"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                               >
-                                {t('product.clearSearch')}
+                                <i className="fa-solid fa-xmark text-xs" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Quick Actions */}
+                        {!loadingCategories && filteredCategories.length > 0 && (
+                          <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                            <button
+                              type="button"
+                              onClick={handleSelectAllCategories}
+                              className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1.5 transition-colors"
+                            >
+                              <i className="fa-solid fa-check-double" />
+                              {filteredCategories.every((cat) =>
+                                form.categoryIds.includes(cat.id)
+                              )
+                                ? t('product.deselectAll')
+                                : t('product.selectAll')}
+                            </button>
+                            {form.categoryIds.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleClearAllCategories}
+                                className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1.5 transition-colors"
+                              >
+                                <i className="fa-solid fa-trash-can" />
+                                {t('product.clearAll')}
                               </button>
                             )}
                           </div>
                         )}
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Selected Categories Tags */}
-                  {form.categoryIds.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {categories
-                        .filter((cat) => form.categoryIds.includes(cat.id))
-                        .map((category) => (
-                          <span
-                            key={category.id}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-blue-100 text-blue-800 rounded-lg text-sm font-medium border border-blue-200/50 shadow-sm hover:shadow-md transition-all duration-200 group"
-                          >
-                            <i className="fa-solid fa-tag text-blue-600 text-xs" />
-                            <span>{category.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleCategoryToggle(category.id)}
-                              className="text-blue-600 hover:text-red-600 hover:bg-red-50 rounded-full p-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500"
-                              aria-label={t('product.removeCategory').replace('{name}', category.name)}
+                        {/* Categories List */}
+                        <div className="max-h-64 overflow-y-auto">
+                          {loadingCategories ? (
+                            <div className="p-6 text-center">
+                              <i className="fa-solid fa-spinner fa-spin text-blue-600 mb-2" />
+                              <p className="text-sm text-gray-500">{t('product.loadingCategories')}</p>
+                            </div>
+                          ) : filteredCategories.length > 0 ? (
+                            <div className="p-2">
+                              {filteredCategories.map((category) => {
+                                const isSelected = form.categoryIds.includes(
+                                  category.id
+                                )
+                                return (
+                                  <label
+                                    key={category.id}
+                                    className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all duration-150 ${
+                                      isSelected
+                                        ? 'bg-blue-50 hover:bg-blue-100'
+                                        : 'hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    <div className="relative flex-shrink-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() =>
+                                          handleCategoryToggle(category.id)
+                                        }
+                                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                      />
+                                      {isSelected && (
+                                        <i className="fa-solid fa-check absolute inset-0 flex items-center justify-center text-white text-[10px] pointer-events-none" />
+                                      )}
+                                    </div>
+                                    <span
+                                      className={`text-sm flex-1 ${
+                                        isSelected
+                                          ? 'text-blue-900 font-medium'
+                                          : 'text-gray-700'
+                                      }`}
+                                    >
+                                      {category.name}
+                                    </span>
+                                    {isSelected && (
+                                      <i className="fa-solid fa-check-circle text-blue-600 text-xs flex-shrink-0" />
+                                    )}
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="p-6 text-center">
+                              <i className="fa-solid fa-folder-open text-gray-300 text-2xl mb-2" />
+                              <p className="text-sm text-gray-500">
+                                {categorySearchQuery
+                                  ? t('product.noCategoriesFound')
+                                  : t('product.noCategoriesAvailable')}
+                              </p>
+                              {categorySearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCategorySearchQuery('')}
+                                  className="mt-2 text-xs text-blue-600 hover:text-blue-700"
+                                >
+                                  {t('product.clearSearch')}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Selected Categories Tags */}
+                    {form.categoryIds.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {categories
+                          .filter((cat) => form.categoryIds.includes(cat.id))
+                          .map((category) => (
+                            <span
+                              key={category.id}
+                              className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-blue-100 text-blue-800 rounded-lg text-sm font-medium border border-blue-200/50 shadow-sm hover:shadow-md transition-all duration-200 group"
                             >
-                              <i className="fa-solid fa-xmark text-xs" />
-                            </button>
-                          </span>
-                        ))}
-                    </div>
-                  )}
+                              <i className="fa-solid fa-tag text-blue-600 text-xs" />
+                              <span>{category.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCategoryToggle(category.id)}
+                                className="text-blue-600 hover:text-red-600 hover:bg-red-50 rounded-full p-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                aria-label={t('product.removeCategory').replace('{name}', category.name)}
+                              >
+                                <i className="fa-solid fa-xmark text-xs" />
+                              </button>
+                            </span>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -1378,22 +1406,24 @@ export default function ProductForm({
               placeholder="0"
             />
           </div>
-          <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
-            <div>
-              <p className="text-sm font-medium text-gray-900">
-                {t('product.featuredProduct')}
-              </p>
-              <p className="text-xs text-gray-500">
-                {t('product.featuredProductDescription')}
-              </p>
+          {showFeatured && (
+            <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {t('product.featuredProduct')}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {t('product.featuredProductDescription')}
+                </p>
+              </div>
+              <Switch
+                checked={form.isFeatured}
+                onCheckedChange={(checked) =>
+                  setForm((f) => ({ ...f, isFeatured: checked }))
+                }
+              />
             </div>
-            <Switch
-              checked={form.isFeatured}
-              onCheckedChange={(checked) =>
-                setForm((f) => ({ ...f, isFeatured: checked }))
-              }
-            />
-          </div>
+          )}
           {mode === 'edit' && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="status">

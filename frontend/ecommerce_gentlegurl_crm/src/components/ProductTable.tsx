@@ -15,6 +15,9 @@ import { useI18n } from '@/lib/i18n'
 
 interface ProductTableProps {
   permissions: string[]
+  basePath?: string
+  rewardOnly?: boolean
+  showCategories?: boolean
 }
 
 type Meta = {
@@ -40,7 +43,12 @@ type ProductApiResponse = {
   message?: string
 }
 
-export default function ProductTable({ permissions }: ProductTableProps) {
+export default function ProductTable({
+  permissions,
+  basePath = '/product',
+  rewardOnly = false,
+  showCategories = true,
+}: ProductTableProps) {
   const { t } = useI18n()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [inputs, setInputs] = useState<ProductFilterValues>({ ...emptyProductFilters })
@@ -76,6 +84,9 @@ export default function ProductTable({ permissions }: ProductTableProps) {
         if (filters.sku) qs.set('sku', filters.sku)
         if (filters.status) {
           qs.set('is_active', filters.status === 'active' ? 'true' : 'false')
+        }
+        if (rewardOnly) {
+          qs.set('is_reward_only', 'true')
         }
 
         const res = await fetch(`/api/proxy/ecommerce/products?${qs.toString()}`, {
@@ -146,7 +157,7 @@ export default function ProductTable({ permissions }: ProductTableProps) {
 
     fetchProducts()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, rewardOnly])
 
   const handleSort = (column: keyof ProductRowData) => {
     if (sortColumn === column) {
@@ -223,7 +234,7 @@ export default function ProductTable({ permissions }: ProductTableProps) {
   const columns = [
     { key: 'name', label: 'Product' },
     { key: 'sku', label: 'SKU' },
-    { key: 'categories', label: 'Categories' },
+    ...(showCategories ? [{ key: 'categories', label: 'Categories' } as const] : []),
     { key: 'price', label: 'Price' },
     { key: 'stock', label: 'Stock' },
     { key: 'isActive', label: t('common.status') },
@@ -315,7 +326,7 @@ export default function ProductTable({ permissions }: ProductTableProps) {
           {canCreate && (
             <Link
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-              href="/product/create"
+              href={`${basePath}/create`}
             >
               <i className="fa-solid fa-plus" />
               {t('common.create')}
@@ -389,12 +400,13 @@ export default function ProductTable({ permissions }: ProductTableProps) {
                   <ProductRow
                   key={product.id}
                   product={product}
+                  hideCategories={!showCategories}
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   onEdit={() => {
                     if (canUpdate) {
-                      router.push(`/product/${product.id}/edit`)
+                      router.push(`${basePath}/${product.id}/edit`)
                     }
                   }}
                   onDelete={() => {
