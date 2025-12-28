@@ -285,7 +285,7 @@ class PublicShopController extends Controller
             'enabled' => true,
             'flat_fee' => 0,
             'currency' => 'MYR',
-            'label' => 'Flat Rate Shipping',
+            'label' => 'Shipping fees',
         ]);
 
         return $this->respond($shipping);

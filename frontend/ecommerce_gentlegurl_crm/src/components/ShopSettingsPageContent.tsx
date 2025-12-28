@@ -455,7 +455,6 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Contact Widget</p>
             <h3 className="text-2xl font-semibold text-slate-900 mt-1">WhatsApp Contact Widget</h3>
             <p className="text-sm text-slate-500 mt-2 max-w-2xl">
               Control the WhatsApp button that appears on the storefront. Configure the phone number and default greeting customers will see when they start a chat.
@@ -469,7 +468,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               <p className="text-sm font-medium text-slate-900">Enable WhatsApp Button</p>
               <p className="text-xs text-slate-500">Toggle to show or hide the floating WhatsApp contact button.</p>
             </div>
-            <label className="inline-flex cursor-pointer items-center">
+            <label className="relative inline-flex cursor-pointer items-center isolate">
               <input
                 type="checkbox"
                 className="sr-only peer"
@@ -478,13 +477,10 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 onChange={(event) =>
                   setContactSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
+                onClick={(e) => e.stopPropagation()}
               />
-              <div
-                className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500"
-              >
-                <span
-                  className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]"
-                />
+              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500 isolate">
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px] z-10" />
               </div>
             </label>
           </div>
@@ -534,10 +530,9 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Footer</p>
             <h3 className="text-2xl font-semibold text-slate-900 mt-1">Footer Settings</h3>
             <p className="text-sm text-slate-500 mt-2 max-w-2xl">
-              Manage the footer content shown on your storefront, including about text, contact details, social links, and policy URLs.
+              Manage the footer content shown on your storefront, including about text, social links.
             </p>
           </div>
         </div>
@@ -548,7 +543,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               <p className="text-sm font-medium text-slate-900">Enable Footer</p>
               <p className="text-xs text-slate-500">Toggle to show or hide the footer section.</p>
             </div>
-            <label className="inline-flex cursor-pointer items-center">
+            <label className="relative inline-flex cursor-pointer items-center isolate">
               <input
                 type="checkbox"
                 className="sr-only peer"
@@ -557,9 +552,10 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 onChange={(event) =>
                   setFooterSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
+                onClick={(e) => e.stopPropagation()}
               />
-              <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
-                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]" />
+              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500 isolate">
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px] z-10" />
               </div>
             </label>
           </div>
@@ -578,7 +574,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
             />
           </label>
 
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <h4 className="text-sm font-semibold text-slate-900">Contact Details</h4>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
@@ -630,9 +626,9 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 />
               </label>
             </div>
-          </div>
+          </div> */}
 
-          <div className="space-y-4">
+          <div className="space-y-4 mt-4">
             <h4 className="text-sm font-semibold text-slate-900">Social Links</h4>
             <div className="grid gap-4 md:grid-cols-3">
               <label className="space-y-2">
@@ -686,7 +682,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
             </div>
           </div>
 
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <h4 className="text-sm font-semibold text-slate-900">Footer Links</h4>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
@@ -754,7 +750,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 />
               </label>
             </div>
-          </div>
+          </div> */}
 
           <div className="flex justify-end">
             <button
@@ -771,7 +767,6 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Reviews Page</p>
             <h3 className="text-2xl font-semibold text-slate-900 mt-1">Page Reviews Settings</h3>
             <p className="text-sm text-slate-500 mt-2 max-w-2xl">
               Toggle reviews visibility on the dedicated reviews page.
@@ -785,7 +780,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               <p className="text-sm font-medium text-slate-900">Enable Page Reviews</p>
               <p className="text-xs text-slate-500">Show reviews on your storefront reviews page.</p>
             </div>
-            <label className="inline-flex cursor-pointer items-center">
+            <label className="relative inline-flex cursor-pointer items-center isolate">
               <input
                 type="checkbox"
                 className="sr-only peer"
@@ -794,9 +789,10 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 onChange={(event) =>
                   setPageReviewsSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
+                onClick={(e) => e.stopPropagation()}
               />
-              <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
-                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]" />
+              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500 isolate">
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px] z-10" />
               </div>
             </label>
           </div>
@@ -816,7 +812,6 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Product Reviews</p>
             <h3 className="text-2xl font-semibold text-slate-900 mt-1">Product Reviews Settings</h3>
             <p className="text-sm text-slate-500 mt-2 max-w-2xl">
               Control product review availability and the review submission window after purchase.
@@ -830,7 +825,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               <p className="text-sm font-medium text-slate-900">Enable Product Reviews</p>
               <p className="text-xs text-slate-500">Allow customers to leave reviews on product pages.</p>
             </div>
-            <label className="inline-flex cursor-pointer items-center">
+            <label className="relative inline-flex cursor-pointer items-center isolate">
               <input
                 type="checkbox"
                 className="sr-only peer"
@@ -839,9 +834,10 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 onChange={(event) =>
                   setProductReviewsSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
+                onClick={(e) => e.stopPropagation()}
               />
-              <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
-                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]" />
+              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500 isolate">
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px] z-10" />
               </div>
             </label>
           </div>
@@ -880,7 +876,6 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Homepage Products</p>
             <h3 className="text-2xl font-semibold text-slate-900 mt-1">Homepage Product Settings</h3>
             <p className="text-sm text-slate-500 mt-2 max-w-2xl">
               Set the time window for highlighting new products and best sellers on the storefront homepage.
@@ -934,7 +929,6 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Shipping</p>
             <h3 className="text-2xl font-semibold text-slate-900 mt-1">Shipping Settings</h3>
             <p className="text-sm text-slate-500 mt-2 max-w-2xl">
               Configure your shipping options and fees displayed to shoppers during checkout.
@@ -943,12 +937,12 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handleShippingSubmit}>
-          <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
+          {/* <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
             <div>
               <p className="text-sm font-medium text-slate-900">Enable Shipping</p>
               <p className="text-xs text-slate-500">Toggle to enable flat-rate shipping on your shop.</p>
             </div>
-            <label className="inline-flex cursor-pointer items-center">
+            <label className="relative inline-flex cursor-pointer items-center isolate">
               <input
                 type="checkbox"
                 className="sr-only peer"
@@ -957,29 +951,50 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 onChange={(event) =>
                   setShippingSettings((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
+                onClick={(e) => e.stopPropagation()}
               />
-              <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
-                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]" />
+              <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500 isolate">
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px] z-10" />
               </div>
             </label>
-          </div>
+          </div> */}
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2">
-              <span className="block text-sm font-medium text-slate-800">Flat Fee</span>
-              <input
-                type="number"
-                min={0}
-                value={shippingSettings.flat_fee}
-                disabled={!canEdit}
-                onChange={(event) =>
-                  setShippingSettings((prev) => ({ ...prev, flat_fee: Number(event.target.value) }))
-                }
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
+              <span className="block text-sm font-medium text-slate-800">
+                Flat Fee
+              </span>
+
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                  RM
+                </span>
+
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={shippingSettings.flat_fee}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    setShippingSettings((prev) => ({
+                      ...prev,
+                      flat_fee: Number(event.target.value),
+                    }))
+                  }
+                  placeholder="0.00"
+                  className={`
+                    w-full rounded-lg border px-3 py-2 pl-10 text-sm shadow-sm outline-none
+                    ${canEdit
+                      ? "border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      : "border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed"}
+                  `}
+                />
+              </div>
             </label>
 
-            <label className="space-y-2">
+
+            {/* <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Currency</span>
               <select
                 value={shippingSettings.currency}
@@ -994,9 +1009,9 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 <option value="SGD">SGD</option>
                 <option value="IDR">IDR</option>
               </select>
-            </label>
+            </label> */}
 
-            <label className="space-y-2 md:col-span-2">
+            {/* <label className="space-y-2 md:col-span-2">
               <span className="block text-sm font-medium text-slate-800">Label (Optional)</span>
               <input
                 type="text"
@@ -1005,10 +1020,10 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 onChange={(event) =>
                   setShippingSettings((prev) => ({ ...prev, label: event.target.value }))
                 }
-                placeholder="e.g. Flat Rate Shipping"
+                placeholder="e.g. Shipping fees"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-            </label>
+            </label> */}
           </div>
 
           <div className="flex justify-end">

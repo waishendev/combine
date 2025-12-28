@@ -26,6 +26,7 @@ export default function CartPageClient() {
       toggleSelectItem,
       selectAll,
       clearSelection,
+      shippingLabel,
     } = useCart();
 
   const [voucherCode, setVoucherCode] = useState("");
@@ -564,7 +565,7 @@ export default function CartPageClient() {
               </div>
 
               <div className="flex justify-between">
-                <span className="text-[var(--foreground)]/70">Shipping</span>
+                <span className="text-[var(--foreground)]/70">{shippingLabel ?? "Shipping fees"}</span>
                 <span className="font-medium">RM {safeTotals.shipping.toFixed(2)}</span>
               </div>
             </div>

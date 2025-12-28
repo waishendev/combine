@@ -16,7 +16,7 @@ class ShippingSettingSeeder extends Seeder
                     'enabled' => true,
                     'flat_fee' => 0,
                     'currency' => 'MYR',
-                    'label' => 'Flat Rate Shipping',
+                    'label' => 'Shipping fees',
                 ],
             ]
         );
