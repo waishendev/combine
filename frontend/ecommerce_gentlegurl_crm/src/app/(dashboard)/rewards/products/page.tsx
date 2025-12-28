@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
-import ProductTable from '@/components/ProductTable'
+import RewardProductTable from '@/components/RewardProductTable'
 import { getCurrentUser } from '@/lib/auth'
 import { getTranslator } from '@/lib/i18n-server'
 import type { LangCode } from '@/lib/i18n'
@@ -40,13 +40,8 @@ export default async function RewardProductsPage() {
           {t('sidebar.admin.products')}
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-6">{t('product.title')}</h2>
-      <ProductTable
-        permissions={user.permissions}
-        basePath="/rewards/products"
-        rewardOnly
-        showCategories={false}
-      />
+      <h2 className="text-3xl font-semibold mb-6">Reward Products</h2>
+      <RewardProductTable permissions={user.permissions} />
     </div>
   )
 }

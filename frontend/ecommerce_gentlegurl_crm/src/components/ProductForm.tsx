@@ -60,6 +60,20 @@ const emptyForm: ProductFormValues = {
   mainImageIndex: 0,
 }
 
+type RewardFormValues = {
+  title: string
+  description: string
+  pointsRequired: string
+  status: 'active' | 'inactive'
+}
+
+const emptyRewardForm: RewardFormValues = {
+  title: '',
+  description: '',
+  pointsRequired: '',
+  status: 'active',
+}
+
 interface ProductFormProps {
   mode: ProductFormMode
   product?: ProductRowData | null
@@ -120,6 +134,8 @@ export default function ProductForm({
       categoryIds: showCategories ? emptyForm.categoryIds : [],
     }
   })
+  const [rewardForm, setRewardForm] = useState<RewardFormValues>({ ...emptyRewardForm })
+  const [rewardId, setRewardId] = useState<number | null>(null)
   const [existingImages, setExistingImages] = useState<ProductImage[]>(
     product?.images ?? [],
   )
@@ -237,6 +253,78 @@ export default function ProductForm({
       }))
     }
   }, [mode, product])
+
+  useEffect(() => {
+    if (!rewardOnly) {
+      return undefined
+    }
+
+    if (mode !== 'edit' || !product?.id) {
+      setRewardForm({ ...emptyRewardForm })
+      setRewardId(null)
+      return undefined
+    }
+
+    const controller = new AbortController()
+    const fetchReward = async () => {
+      try {
+        const res = await fetch(
+          '/api/proxy/ecommerce/loyalty/rewards?type=product&per_page=200',
+          {
+            cache: 'no-store',
+            signal: controller.signal,
+          },
+        )
+
+        if (!res.ok) return
+
+        const data = await res.json().catch(() => null)
+        if (data?.success === false && data?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+
+        const list = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.data?.data)
+            ? data.data.data
+            : []
+
+        const match = list.find(
+          (item: { product_id?: number | string | null }) =>
+            Number(item?.product_id) === Number(product.id),
+        )
+
+        if (match) {
+          setRewardId(
+            typeof match.id === 'number'
+              ? match.id
+              : Number(match.id) || Number.parseInt(String(match.id), 10),
+          )
+          setRewardForm({
+            title: match.title ?? '',
+            description: match.description ?? '',
+            pointsRequired:
+              match.points_required != null ? String(match.points_required) : '',
+            status:
+              match.is_active === false ||
+              match.is_active === 0 ||
+              match.is_active === '0' ||
+              match.is_active === 'false'
+                ? 'inactive'
+                : 'active',
+          })
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          console.error(error)
+        }
+      }
+    }
+
+    fetchReward()
+    return () => controller.abort()
+  }, [mode, product?.id, rewardOnly])
 
   // Keep track of the latest previews for cleanup on unmount
   useEffect(() => {
@@ -553,6 +641,8 @@ export default function ProductForm({
       isFeatured: showFeatured ? emptyForm.isFeatured : false,
       categoryIds: showCategories ? emptyForm.categoryIds : [],
     })
+    setRewardForm({ ...emptyRewardForm })
+    setRewardId(null)
     setError(null)
     setGalleryPreviews([])
     setExistingImages([])
@@ -570,10 +660,31 @@ export default function ProductForm({
     }
   }
 
+  const handleRewardChange = (
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
+  ) => {
+    const { name, value } = event.target
+    setRewardForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitting(true)
     setError(null)
+
+    const rewardTitle = rewardForm.title.trim()
+    const rewardPoints = Number.parseInt(rewardForm.pointsRequired, 10)
+
+    if (rewardOnly) {
+      if (!rewardTitle || !Number.isFinite(rewardPoints)) {
+        setError(t('common.allFieldsRequired'))
+        setSubmitting(false)
+        return
+      }
+    }
 
     const formData = new FormData()
     formData.append('name', form.name.trim())
@@ -622,7 +733,12 @@ export default function ProductForm({
       })
     }
 
-    if (mode === 'create') {
+    if (rewardOnly) {
+      formData.append('is_active', rewardForm.status === 'active' ? '1' : '0')
+      if (mode === 'edit') {
+        formData.append('_method', 'PUT')
+      }
+    } else if (mode === 'create') {
       formData.append('is_active', '1')
     } else {
       formData.append('is_active', form.status === 'active' ? '1' : '0')
@@ -701,7 +817,11 @@ export default function ProductForm({
             costPrice: Number.parseFloat(form.costPrice || '0'),
             stock: Number.parseInt(form.stock || '0', 10),
             lowStockThreshold: Number.parseInt(form.lowStockThreshold || '0', 10),
-            isActive: mode === 'create' ? true : form.status === 'active',
+            isActive: rewardOnly
+              ? rewardForm.status === 'active'
+              : mode === 'create'
+                ? true
+                : form.status === 'active',
             isFeatured: form.isFeatured,
             isRewardOnly: mode === 'edit' ? product?.isRewardOnly || false : false,
             metaTitle: form.metaTitle,
@@ -717,6 +837,53 @@ export default function ProductForm({
             updatedAt: new Date().toISOString(),
             images: [],
           }
+
+      if (rewardOnly) {
+        const rewardPayload = {
+          title: rewardTitle,
+          description: rewardForm.description.trim() || null,
+          type: 'product',
+          points_required: rewardPoints,
+          product_id: productRow.id,
+          is_active: rewardForm.status === 'active',
+        }
+
+        const rewardEndpoint = rewardId
+          ? `/api/proxy/ecommerce/loyalty/rewards/${rewardId}`
+          : '/api/proxy/ecommerce/loyalty/rewards'
+
+        const rewardMethod = rewardId ? 'PUT' : 'POST'
+
+        const rewardRes = await fetch(rewardEndpoint, {
+          method: rewardMethod,
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(rewardPayload),
+        })
+
+        if (!rewardRes.ok) {
+          const rewardData = await rewardRes.json().catch(() => null)
+          let message = 'Failed to save reward'
+          if (rewardData && typeof rewardData === 'object') {
+            if (typeof (rewardData as { message?: unknown }).message === 'string') {
+              message = (rewardData as { message: string }).message
+            } else if ('errors' in rewardData && typeof rewardData.errors === 'object') {
+              const errors = rewardData.errors as Record<string, unknown>
+              const firstKey = Object.keys(errors)[0]
+              const firstValue = firstKey ? errors[firstKey] : null
+              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
+                message = firstValue[0]
+              } else if (typeof firstValue === 'string') {
+                message = firstValue
+              }
+            }
+          }
+          setError(message)
+          return
+        }
+      }
 
       if (mode === 'create') {
         resetForm()
@@ -1335,6 +1502,86 @@ export default function ProductForm({
         </div>
       </div>
 
+      {rewardOnly && (
+        <div className="space-y-4">
+          <div className="pb-2 border-b border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900">Reward Details</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Configure the reward title, points, and visibility.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2 md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="rewardTitle">
+                Title <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="rewardTitle"
+                name="title"
+                type="text"
+                value={rewardForm.title}
+                onChange={handleRewardChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                placeholder="Reward title"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label
+                className="block text-sm font-medium text-gray-700"
+                htmlFor="rewardDescription"
+              >
+                Description
+              </label>
+              <textarea
+                id="rewardDescription"
+                name="description"
+                value={rewardForm.description}
+                onChange={handleRewardChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                rows={3}
+                placeholder="Reward description"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                className="block text-sm font-medium text-gray-700"
+                htmlFor="rewardPoints"
+              >
+                Points Required <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="rewardPoints"
+                name="pointsRequired"
+                type="number"
+                min="1"
+                value={rewardForm.pointsRequired}
+                onChange={handleRewardChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                className="block text-sm font-medium text-gray-700"
+                htmlFor="rewardStatus"
+              >
+                Status
+              </label>
+              <select
+                id="rewardStatus"
+                name="status"
+                value={rewardForm.status}
+                onChange={handleRewardChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              >
+                <option value="active">{t('common.active')}</option>
+                <option value="inactive">{t('common.inactive')}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Pricing & Inventory Section */}
       <div className="space-y-4">
         <div className="pb-2 border-b border-gray-100">
@@ -1424,7 +1671,7 @@ export default function ProductForm({
               />
             </div>
           )}
-          {mode === 'edit' && (
+          {mode === 'edit' && !rewardOnly && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="status">
                 {t('common.status')}

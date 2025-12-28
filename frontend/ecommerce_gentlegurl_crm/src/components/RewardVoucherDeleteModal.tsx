@@ -1,75 +1,63 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
-import type { RewardRowData } from './RewardRow'
 import { useI18n } from '@/lib/i18n'
 
-interface RewardDeleteModalProps {
-  reward: RewardRowData
+interface RewardVoucherDeleteModalProps {
+  title: string
+  rewardId: number
+  voucherId: number
   onClose: () => void
-  onDeleted: (rewardId: number) => void
+  onDeleted: () => void
 }
 
-export default function RewardDeleteModal({
-  reward,
+export default function RewardVoucherDeleteModal({
+  title,
+  rewardId,
+  voucherId,
   onClose,
   onDeleted,
-}: RewardDeleteModalProps) {
+}: RewardVoucherDeleteModalProps) {
   const { t } = useI18n()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const acceptLanguage = useMemo(() => 'en', [])
 
   const handleDelete = async () => {
     setSubmitting(true)
     setError(null)
 
     try {
-      const res = await fetch(`/api/proxy/ecommerce/loyalty/rewards/${reward.id}`, {
+      const rewardRes = await fetch(`/api/proxy/ecommerce/loyalty/rewards/${rewardId}`, {
         method: 'DELETE',
         headers: {
           Accept: 'application/json',
-          'Accept-Language': acceptLanguage,
         },
       })
 
-      const data = await res.json().catch(() => null)
-      if (data && typeof data === 'object') {
-        if (data?.success === false && data?.message === 'Unauthorized') {
-          window.location.replace('/dashboard')
-          return
-        }
-      }
-
-      if (!res.ok) {
-        if (data && typeof data === 'object') {
-          if ('message' in data && typeof data.message === 'string') {
-            setError(data.message)
-            return
-          }
-          if ('errors' in data && typeof data.errors === 'object') {
-            const errors = data.errors as Record<string, unknown>
-            const firstKey = Object.keys(errors)[0]
-            if (firstKey) {
-              const firstValue = errors[firstKey]
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                setError(firstValue[0])
-                return
-              }
-              if (typeof firstValue === 'string') {
-                setError(firstValue)
-                return
-              }
-            }
-          }
-        }
-        setError('Failed to delete reward')
+      if (!rewardRes.ok) {
+        const data = await rewardRes.json().catch(() => null)
+        const message =
+          data && typeof data === 'object' && 'message' in data && typeof data.message === 'string'
+            ? data.message
+            : 'Failed to delete reward'
+        setError(message)
         return
       }
 
-      onDeleted(reward.id)
+      const voucherRes = await fetch(`/api/proxy/ecommerce/vouchers/${voucherId}`, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+        },
+      })
+
+      if (!voucherRes.ok) {
+        setError('Failed to delete voucher')
+        return
+      }
+
+      onDeleted()
     } catch (err) {
       console.error(err)
       setError('Failed to delete reward')
@@ -104,10 +92,7 @@ export default function RewardDeleteModal({
         <div className="px-5 py-4 space-y-4">
           <p className="text-sm text-gray-700">Are you sure you want to delete this reward?</p>
           <div className="rounded-md bg-yellow-100 px-4 py-3">
-            <p className="text-sm font-semibold text-yellow-800">{reward.title}</p>
-            <p className="text-xs text-yellow-800">
-              Points Required: {reward.pointsRequired}
-            </p>
+            <p className="text-sm font-semibold text-yellow-800">{title}</p>
           </div>
 
           {error && (

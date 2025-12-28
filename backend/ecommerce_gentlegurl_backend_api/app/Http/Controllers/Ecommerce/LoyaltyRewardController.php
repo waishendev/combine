@@ -12,7 +12,10 @@ class LoyaltyRewardController extends Controller
     public function index(Request $request)
     {
         $rewards = LoyaltyReward::query()
-            ->with(['product:id,name,sku', 'voucher:id,code'])
+            ->with([
+                'product:id,name,sku,stock',
+                'voucher:id,code,value,min_order_amount,start_at,end_at,is_active',
+            ])
             ->when($request->filled('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
             ->when($request->filled('type'), fn($q) => $q->where('type', $request->string('type')->toString()))
             ->orderBy('sort_order')
@@ -27,14 +30,20 @@ class LoyaltyRewardController extends Controller
         $validated = $this->validatePayload($request);
 
         $reward = LoyaltyReward::create($validated);
-        $reward->load(['product:id,name,sku', 'voucher:id,code']);
+        $reward->load([
+            'product:id,name,sku,stock',
+            'voucher:id,code,value,min_order_amount,start_at,end_at,is_active',
+        ]);
 
         return $this->respond($reward, __('Reward created successfully.'));
     }
 
     public function show(LoyaltyReward $reward)
     {
-        $reward->load(['product:id,name,sku', 'voucher:id,code']);
+        $reward->load([
+            'product:id,name,sku,stock',
+            'voucher:id,code,value,min_order_amount,start_at,end_at,is_active',
+        ]);
         return $this->respond($reward);
     }
 
@@ -44,7 +53,10 @@ class LoyaltyRewardController extends Controller
 
         $reward->fill($validated);
         $reward->save();
-        $reward->load(['product:id,name,sku', 'voucher:id,code']);
+        $reward->load([
+            'product:id,name,sku,stock',
+            'voucher:id,code,value,min_order_amount,start_at,end_at,is_active',
+        ]);
 
         return $this->respond($reward, __('Reward updated successfully.'));
     }
