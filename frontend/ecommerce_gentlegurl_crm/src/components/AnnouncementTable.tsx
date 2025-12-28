@@ -242,7 +242,7 @@ export default function AnnouncementTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 8 : 7
+  const colCount = showActions ? 9 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -354,6 +354,7 @@ export default function AnnouncementTable({
             <tr>
               {(
                 [
+                  { key: 'imageUrl', label: 'Image' },
                   { key: 'title', label: 'Title' },
                   { key: 'subtitle', label: 'Subtitle' },
                   { key: 'bodyText', label: 'Body Text' },
@@ -449,4 +450,3 @@ export default function AnnouncementTable({
     </div>
   )
 }
-

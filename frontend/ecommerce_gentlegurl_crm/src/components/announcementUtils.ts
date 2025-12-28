@@ -13,7 +13,6 @@ export type AnnouncementApiItem = {
   is_active?: boolean | number | string | null
   start_at?: string | null
   end_at?: string | null
-  show_once_per_session?: boolean | number | string | null
   sort_order?: number | string | null
   created_at?: string | null
   updated_at?: string | null
@@ -32,13 +31,6 @@ export const mapAnnouncementApiItemToRow = (item: AnnouncementApiItem): Announce
     isActiveValue === 'true' ||
     isActiveValue === '1' ||
     isActiveValue === 1
-
-  const showOncePerSessionValue = item.show_once_per_session
-  const showOncePerSession =
-    showOncePerSessionValue === true ||
-    showOncePerSessionValue === 'true' ||
-    showOncePerSessionValue === '1' ||
-    showOncePerSessionValue === 1
 
   const sortOrderValue = item.sort_order
   const sortOrder =
@@ -59,7 +51,6 @@ export const mapAnnouncementApiItemToRow = (item: AnnouncementApiItem): Announce
     isActive,
     startAt: item.start_at ?? '', // Direct from API
     endAt: item.end_at ?? '', // Direct from API
-    showOncePerSession,
     sortOrder,
     createdAt: item.created_at ?? '', // Direct from API
     updatedAt: item.updated_at ?? '', // Direct from API
@@ -69,4 +60,3 @@ export const mapAnnouncementApiItemToRow = (item: AnnouncementApiItem): Announce
     formattedUpdatedAt: item.updated_at ?? '', // Direct from API (no longer formatted)
   }
 }
-

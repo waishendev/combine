@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 use DateTimeInterface;
 
 class Announcement extends Model
@@ -51,7 +52,15 @@ class Announcement extends Model
 
     public function getImageUrlAttribute(): ?string
     {
-        return $this->image_path;
+        if (!$this->image_path) {
+            return null;
+        }
+
+        if (filter_var($this->image_path, FILTER_VALIDATE_URL)) {
+            return $this->image_path;
+        }
+
+        return Storage::disk('public')->url($this->image_path);
     }
 
      /**

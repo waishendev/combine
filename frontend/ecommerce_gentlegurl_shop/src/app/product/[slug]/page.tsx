@@ -184,7 +184,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                 <Link
                   key={related.id}
                   href={`/product/${related.slug ?? related.id}`}
-                  className="group relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/90 shadow-[0_16px_50px_-36px_rgba(15,23,42,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-36px_rgba(var(--accent-rgb),0.45)]"
+                  className="group relative overflow-hidden rounded-md border border-[var(--card-border)] bg-[var(--card)]/90 shadow-[0_16px_50px_-36px_rgba(15,23,42,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-36px_rgba(var(--accent-rgb),0.45)]"
                 >
                   <div className="relative h-36 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] via-white/80 to-white">
                     {thumbnail ? (

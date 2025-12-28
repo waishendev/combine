@@ -16,7 +16,6 @@ export interface AnnouncementRowData {
   isActive: boolean
   startAt: string
   endAt: string
-  showOncePerSession: boolean
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -46,6 +45,17 @@ export default function AnnouncementRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      <td className="px-4 py-2 border border-gray-200">
+        {announcement.imageUrl || announcement.imagePath ? (
+          <img
+            src={announcement.imageUrl || announcement.imagePath}
+            alt={announcement.title}
+            className="h-16 w-24 rounded object-contain border border-gray-200 bg-white"
+          />
+        ) : (
+          '-'
+        )}
+      </td>
       <td className="px-4 py-2 border border-gray-200">{announcement.title}</td>
       <td className="px-4 py-2 border border-gray-200">{announcement.subtitle}</td>
       <td className="px-4 py-2 border border-gray-200">
@@ -99,4 +109,3 @@ export default function AnnouncementRow({
     </tr>
   )
 }
-

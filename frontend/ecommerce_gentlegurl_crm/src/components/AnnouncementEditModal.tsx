@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { AnnouncementRowData } from './AnnouncementRow'
 import { mapAnnouncementApiItemToRow, type AnnouncementApiItem } from './announcementUtils'
@@ -21,8 +21,6 @@ interface FormState {
   isActive: 'active' | 'inactive'
   startAt: string
   endAt: string
-  showOncePerSession: 'true' | 'false'
-  sortOrder: string
   imageFile: File | null
 }
 
@@ -35,8 +33,6 @@ const initialFormState: FormState = {
   isActive: 'active',
   startAt: '',
   endAt: '',
-  showOncePerSession: 'true',
-  sortOrder: '1',
   imageFile: null,
 }
 
@@ -53,6 +49,8 @@ export default function AnnouncementEditModal({
   const [loadedAnnouncement, setLoadedAnnouncement] = useState<AnnouncementRowData | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
+  const [imageRemoved, setImageRemoved] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -122,16 +120,12 @@ export default function AnnouncementEditModal({
               : 'inactive',
           startAt: formatDateForInput(announcement.start_at),
           endAt: formatDateForInput(announcement.end_at),
-          showOncePerSession:
-            announcement.show_once_per_session === true || announcement.show_once_per_session === 'true' || announcement.show_once_per_session === 1
-              ? 'true'
-              : 'false',
-          sortOrder: announcement.sort_order ? String(announcement.sort_order) : '1',
           imageFile: null,
         })
 
         if (announcement.image_url || announcement.image_path) {
           setExistingImageUrl(announcement.image_url || announcement.image_path || null)
+          setImageRemoved(false)
         }
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -166,10 +160,28 @@ export default function AnnouncementEditModal({
       reader.onloadend = () => {
         setImagePreview(reader.result as string)
         setExistingImageUrl(null) // Clear existing image when new one is selected
+        setImageRemoved(false)
       }
       reader.readAsDataURL(file)
     } else {
       setImagePreview(null)
+    }
+  }
+
+  const handleImageClick = () => {
+    if (!disableForm) {
+      imageInputRef.current?.click()
+    }
+  }
+
+  const handleRemoveImage = () => {
+    if (disableForm) return
+    setForm((prev) => ({ ...prev, imageFile: null }))
+    setImagePreview(null)
+    setExistingImageUrl(null)
+    setImageRemoved(true)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
     }
   }
 
@@ -195,11 +207,11 @@ export default function AnnouncementEditModal({
       formData.append('is_active', form.isActive === 'active' ? '1' : '0')
       formData.append('start_at', form.startAt)
       formData.append('end_at', form.endAt)
-      formData.append('show_once_per_session', form.showOncePerSession)
-      formData.append('sort_order', form.sortOrder)
 
       if (form.imageFile) {
         formData.append('image_file', form.imageFile)
+      } else if (imageRemoved) {
+        formData.append('image_path', '')
       }
 
       const res = await fetch(`/api/proxy/ecommerce/announcements/${announcementId}`, {
@@ -261,8 +273,7 @@ export default function AnnouncementEditModal({
             isActive: form.isActive === 'active',
             startAt: form.startAt,
             endAt: form.endAt,
-            showOncePerSession: form.showOncePerSession === 'true',
-            sortOrder: Number(form.sortOrder) || 0,
+            sortOrder: loadedAnnouncement?.sortOrder ?? 0,
             createdAt: loadedAnnouncement?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
             formattedStartAt: form.startAt,
@@ -291,7 +302,7 @@ export default function AnnouncementEditModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-2xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">Edit Announcement</h2>
           <button
@@ -306,240 +317,241 @@ export default function AnnouncementEditModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5">
           {loading ? (
             <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
           ) : (
-            <>
-              <div>
-                <label
-                  htmlFor="edit-title"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+            <div className="flex flex-col gap-6 lg:flex-row">
+              <div className="w-full lg:w-1/2 space-y-3">
+                <h3 className="text-sm font-medium text-gray-700">Image</h3>
+                <div
+                  onClick={handleImageClick}
+                  className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                    imagePreview || existingImageUrl
+                      ? 'border-gray-300'
+                      : 'border-gray-300 hover:border-blue-400'
+                  }`}
                 >
-                  Title <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-title"
-                  name="title"
-                  type="text"
-                  value={form.title}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Welcome to Our Store"
-                  disabled={disableForm}
-                  required
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-subtitle"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Subtitle
-                </label>
-                <input
-                  id="edit-subtitle"
-                  name="subtitle"
-                  type="text"
-                  value={form.subtitle}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Special Offer Today"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-bodyText"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Body Text
-                </label>
-                <textarea
-                  id="edit-bodyText"
-                  name="bodyText"
-                  value={form.bodyText}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Get 20% off on all products!"
-                  disabled={disableForm}
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-buttonLabel"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Button Label
-                </label>
-                <input
-                  id="edit-buttonLabel"
-                  name="buttonLabel"
-                  type="text"
-                  value={form.buttonLabel}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Shop Now"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-buttonLink"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Button Link
-                </label>
-                <input
-                  id="edit-buttonLink"
-                  name="buttonLink"
-                  type="text"
-                  value={form.buttonLink}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="/shop"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-status"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Status <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-status"
-                  name="isActive"
-                  value={form.isActive}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="edit-startAt"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Start Date
-                  </label>
                   <input
-                    id="edit-startAt"
-                    name="startAt"
-                    type="date"
-                    value={form.startAt}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    ref={imageInputRef}
+                    id="edit-imageFile"
+                    name="imageFile"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
                     disabled={disableForm}
                   />
+                  {imagePreview || existingImageUrl ? (
+                    <div className="relative group">
+                      <img
+                        src={imagePreview || existingImageUrl || ''}
+                        alt="Preview"
+                        className="w-full h-64 object-contain rounded"
+                      />
+                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleImageClick()
+                          }}
+                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Replace image"
+                          disabled={disableForm}
+                        >
+                          <i className="fa-solid fa-image text-xs" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleRemoveImage()
+                          }}
+                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Remove image"
+                          disabled={disableForm}
+                        >
+                          <i className="fa-solid fa-trash-can text-xs" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16">
+                      <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">Click to upload</p>
+                    </div>
+                  )}
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="edit-endAt"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    End Date
-                  </label>
-                  <input
-                    id="edit-endAt"
-                    name="endAt"
-                    type="date"
-                    value={form.endAt}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    disabled={disableForm}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-showOncePerSession"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Show Once Per Session
-                </label>
-                <select
-                  id="edit-showOncePerSession"
-                  name="showOncePerSession"
-                  value={form.showOncePerSession}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="true">True</option>
-                  <option value="false">False</option>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-sortOrder"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Sort Order
-                </label>
-                <input
-                  id="edit-sortOrder"
-                  name="sortOrder"
-                  type="number"
-                  value={form.sortOrder}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-imageFile"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Image File
-                </label>
-                <input
-                  id="edit-imageFile"
-                  name="imageFile"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                />
-                {(imagePreview || existingImageUrl) && (
-                  <div className="mt-2">
-                    <img
-                      src={imagePreview || existingImageUrl || ''}
-                      alt="Preview"
-                      className="max-w-xs max-h-48 rounded border border-gray-300"
+                <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="edit-buttonLabel"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Button Label
+                    </label>
+                    <input
+                      id="edit-buttonLabel"
+                      name="buttonLabel"
+                      type="text"
+                      value={form.buttonLabel}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Shop Now"
+                      disabled={disableForm}
                     />
                   </div>
-                )}
+
+                  <div>
+                    <label
+                      htmlFor="edit-buttonLink"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Button Link
+                    </label>
+                    <input
+                      id="edit-buttonLink"
+                      name="buttonLink"
+                      type="text"
+                      value={form.buttonLink}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="/shop"
+                      disabled={disableForm}
+                    />
+                  </div>
+                </section>
               </div>
-            </>
+
+              <div className="w-full lg:w-1/2 space-y-4">
+                <div>
+                  <label
+                    htmlFor="edit-title"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-title"
+                    name="title"
+                    type="text"
+                    value={form.title}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Welcome to Our Store"
+                    disabled={disableForm}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-subtitle"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Subtitle
+                  </label>
+                  <input
+                    id="edit-subtitle"
+                    name="subtitle"
+                    type="text"
+                    value={form.subtitle}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Special Offer Today"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-bodyText"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Body Text
+                  </label>
+                  <textarea
+                    id="edit-bodyText"
+                    name="bodyText"
+                    value={form.bodyText}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Get 20% off on all products!"
+                    disabled={disableForm}
+                    rows={3}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-status"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Status <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="edit-status"
+                    name="isActive"
+                    value={form.isActive}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={disableForm}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+
+                <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="edit-startAt"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Start Date
+                    </label>
+                    <input
+                      id="edit-startAt"
+                      name="startAt"
+                      type="date"
+                      value={form.startAt}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-endAt"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      End Date
+                    </label>
+                    <input
+                      id="edit-endAt"
+                      name="endAt"
+                      type="date"
+                      value={form.endAt}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      disabled={disableForm}
+                    />
+                  </div>
+                </section>
+              </div>
+            </div>
           )}
 
           {error && (
-            <div className="text-sm text-red-600" role="alert">
+            <div className="text-sm text-red-600 mt-4" role="alert">
               {error}
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-3 pt-4 mt-4 border-t border-gray-200">
             <button
               type="button"
               className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
@@ -563,4 +575,3 @@ export default function AnnouncementEditModal({
     </div>
   )
 }
-

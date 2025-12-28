@@ -36,7 +36,7 @@ export default async function HomePage() {
         {data.announcements?.length > 0 && <AnnouncementModal items={data.announcements} />}
 
         {data.featured_products && data.featured_products.length > 0 && (
-          <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
+          <section className="rounded-md border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Featured</p>
@@ -51,7 +51,7 @@ export default async function HomePage() {
         )}
 
         {data.new_products && data.new_products.length > 0 && (
-          <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
+          <section className="rounded-md border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">New Arrivals</p>
@@ -66,7 +66,7 @@ export default async function HomePage() {
         )}
 
         {data.best_sellers && data.best_sellers.length > 0 && (
-          <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
+          <section className="rounded-md border border-[var(--card-border)] bg-[var(--card)]/70 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)] backdrop-blur-sm sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Community Favorites</p>

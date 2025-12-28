@@ -8,6 +8,7 @@ type Announcement = {
   title?: string;
   content?: string;
   image_path?: string | null;
+  image_url?: string | null;
   button_link?: string | null;
   button_label?: string | null;
 };
@@ -18,6 +19,15 @@ type AnnouncementModalProps = {
 
 export default function AnnouncementModal({ items }: AnnouncementModalProps) {
   const [open, setOpen] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [mouseStart, setMouseStart] = useState<number | null>(null);
+  const [mouseEnd, setMouseEnd] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  
+  // Minimum swipe distance (in px)
+  const minSwipeDistance = 50;
 
   // Prevent page jump when modal opens by locking scroll position
   useEffect(() => {
@@ -46,13 +56,96 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
     }
   }, [open, items]);
 
+  useEffect(() => {
+    if (items?.length) {
+      setActiveIndex(0);
+    }
+  }, [items]);
+
   if (!open || !items?.length) return null;
 
-  const item = items[0];
+  const item = items[activeIndex];
+  const hasMultiple = items.length > 1;
+
+  const handlePrev = () => {
+    setActiveIndex((prev) => (prev - 1 + items.length) % items.length);
+  };
+
+  const handleNext = () => {
+    setActiveIndex((prev) => (prev + 1) % items.length);
+  };
+
+  // Touch handlers for mobile
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance; // Swipe left (拉左去右) = NEXT
+    const isRightSwipe = distance < -minSwipeDistance; // Swipe right (拉右去左) = PREV
+
+    if (isLeftSwipe) {
+      handleNext();
+    } else if (isRightSwipe) {
+      handlePrev();
+    }
+  };
+
+  // Mouse drag handlers for desktop
+  const onMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setMouseStart(e.clientX);
+    setMouseEnd(null);
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setMouseEnd(e.clientX);
+  };
+
+  const onMouseUp = () => {
+    if (!isDragging || !mouseStart) {
+      setIsDragging(false);
+      return;
+    }
+    
+    if (mouseEnd !== null) {
+      const distance = mouseStart - mouseEnd;
+      const isLeftSwipe = distance > minSwipeDistance; // Swipe left (拉左去右) = NEXT
+      const isRightSwipe = distance < -minSwipeDistance; // Swipe right (拉右去左) = PREV
+
+      if (isLeftSwipe) {
+        handleNext();
+      } else if (isRightSwipe) {
+        handlePrev();
+      }
+    }
+
+    setIsDragging(false);
+    setMouseStart(null);
+    setMouseEnd(null);
+  };
 
   return (
     <div className="fixed inset-0 z-50 m-0 flex items-center justify-center bg-[var(--foreground)]/25 px-4 backdrop-blur-sm">
-      <div className="relative w-[90%] max-w-lg overflow-hidden rounded-3xl border border-[var(--card-border)] bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] p-8 shadow-[0_25px_90px_-45px_rgba(var(--accent-rgb),0.55)]">
+      <div 
+        className="relative w-[90%] max-w-lg overflow-hidden rounded-3xl border border-[var(--card-border)] bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] p-8 shadow-[0_25px_90px_-45px_rgba(var(--accent-rgb),0.55)] cursor-grab active:cursor-grabbing"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+      >
         <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent" aria-hidden />
 
         <button
@@ -62,7 +155,6 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
         >
           ×
         </button>
-
         {item.title && (
           <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
             Latest Drop
@@ -74,14 +166,13 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
           <p className="mt-2 text-sm leading-relaxed text-[var(--foreground)]/75">{item.content}</p>
         )}
 
-        {item.image_path && (
-          <div className="relative mt-5 h-56 w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]">
+        {(item.image_url || item.image_path) && (
+          <div className="relative mt-5 w-full overflow-hidden rounded-md border border-[var(--card-border)] bg-[var(--card)] aspect-[4/3]">
             <Image
-              // src={item.image_path}
-              src={"/images/placeholder.png"}
+              src={item.image_url || item.image_path || ""}
               alt={item.title ?? "announcement"}
               fill
-              className="object-cover"
+              className="object-contain"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[var(--accent)]/15 via-transparent to-[var(--card)]/70" />
           </div>
@@ -95,6 +186,22 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
             {item.button_label ?? "Shop the edit"}
             <span aria-hidden className="text-base">→</span>
           </a>
+        )}
+
+        {hasMultiple && (
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-[var(--foreground)]/60">
+            {items.map((announcement, index) => (
+              <button
+                key={announcement.id}
+                type="button"
+                onClick={() => setActiveIndex(index)}
+                className={`h-2 w-2 rounded-full transition ${
+                  index === activeIndex ? "bg-[var(--accent)]" : "bg-[var(--card-border)]"
+                }`}
+                aria-label={`Go to announcement ${index + 1}`}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>
