@@ -801,7 +801,6 @@ class FrontendTestDataSeeder extends Seeder
                 'code' => 'WELCOME10',
                 'type' => 'fixed',
                 'value' => 10.00,
-                'amount' => 10.00,
                 'usage_limit_total' => 1000,
                 'usage_limit_per_customer' => 1,
                 'min_order_amount' => 50.00,
@@ -814,7 +813,6 @@ class FrontendTestDataSeeder extends Seeder
                 'code' => 'SAVE50',
                 'type' => 'fixed',
                 'value' => 50.00,
-                'amount' => 90.00,
                 'usage_limit_total' => 500,
                 'usage_limit_per_customer' => 2,
                 'min_order_amount' => 200.00,
@@ -828,7 +826,6 @@ class FrontendTestDataSeeder extends Seeder
                 'type' => 'fixed',  // percentage → percent
                 'value' => 20.00,     // Percent value = 20 → 20%
                 'usage_limit_total' => 2000,
-                'amount' => 10.00,
                 'usage_limit_per_customer' => 1,
                 'min_order_amount' => 100.00,
                 'max_discount_amount' => null, // 可选加 cap，例如 50
@@ -841,7 +838,6 @@ class FrontendTestDataSeeder extends Seeder
                 'type' => 'fixed',
                 'value' => 100.00,
                 'usage_limit_total' => 100,
-                'amount' => 10.00,
                 'usage_limit_per_customer' => 1,
                 'min_order_amount' => 500.00,
                 'max_discount_amount' => null,
