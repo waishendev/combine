@@ -8,6 +8,7 @@ type Announcement = {
   title?: string;
   content?: string;
   image_path?: string | null;
+  image_url?: string | null;
   button_link?: string | null;
   button_label?: string | null;
 };
@@ -74,14 +75,13 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
           <p className="mt-2 text-sm leading-relaxed text-[var(--foreground)]/75">{item.content}</p>
         )}
 
-        {item.image_path && (
-          <div className="relative mt-5 h-56 w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]">
+        {(item.image_url || item.image_path) && (
+          <div className="relative mt-5 w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] aspect-[4/3]">
             <Image
-              // src={item.image_path}
-              src={"/images/placeholder.png"}
+              src={item.image_url || item.image_path || ""}
               alt={item.title ?? "announcement"}
               fill
-              className="object-cover"
+              className="object-contain"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[var(--accent)]/15 via-transparent to-[var(--card)]/70" />
           </div>
