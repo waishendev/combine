@@ -182,11 +182,6 @@ export default function Slider({ items }: SliderProps) {
               {hasContent && (
                 <div className="relative z-10 flex h-full items-center px-6 py-10 sm:px-10 lg:px-14">
                   <div className="max-w-xl space-y-4 text-white sm:space-y-6">
-                    {item.subtitle && (
-                      <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/80">
-                        {item.subtitle}
-                      </p>
-                    )}
 
                     {item.title && (
                       <h2 className="text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl">
@@ -194,6 +189,12 @@ export default function Slider({ items }: SliderProps) {
                       </h2>
                     )}
 
+                    {item.subtitle && (
+                      <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/80">
+                        {item.subtitle}
+                      </p>
+                    )}
+                    
                     {hasCta && (
                       <Link
                         href={item.button_link as string}
