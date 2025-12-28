@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { AnnouncementRowData } from './AnnouncementRow'
 import { mapAnnouncementApiItemToRow, type AnnouncementApiItem } from './announcementUtils'
@@ -51,6 +51,8 @@ export default function AnnouncementEditModal({
   const [loadedAnnouncement, setLoadedAnnouncement] = useState<AnnouncementRowData | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
+  const [imageRemoved, setImageRemoved] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -126,6 +128,7 @@ export default function AnnouncementEditModal({
 
         if (announcement.image_url || announcement.image_path) {
           setExistingImageUrl(announcement.image_url || announcement.image_path || null)
+          setImageRemoved(false)
         }
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -160,10 +163,28 @@ export default function AnnouncementEditModal({
       reader.onloadend = () => {
         setImagePreview(reader.result as string)
         setExistingImageUrl(null) // Clear existing image when new one is selected
+        setImageRemoved(false)
       }
       reader.readAsDataURL(file)
     } else {
       setImagePreview(null)
+    }
+  }
+
+  const handleImageClick = () => {
+    if (!disableForm) {
+      imageInputRef.current?.click()
+    }
+  }
+
+  const handleRemoveImage = () => {
+    if (disableForm) return
+    setForm((prev) => ({ ...prev, imageFile: null }))
+    setImagePreview(null)
+    setExistingImageUrl(null)
+    setImageRemoved(true)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
     }
   }
 
@@ -193,6 +214,8 @@ export default function AnnouncementEditModal({
 
       if (form.imageFile) {
         formData.append('image_file', form.imageFile)
+      } else if (imageRemoved) {
+        formData.append('image_path', '')
       }
 
       const res = await fetch(`/api/proxy/ecommerce/announcements/${announcementId}`, {
@@ -304,35 +327,65 @@ export default function AnnouncementEditModal({
           ) : (
             <div className="flex flex-col gap-6 lg:flex-row">
               <div className="w-full lg:w-1/2 space-y-3">
-                <label
-                  htmlFor="edit-imageFile"
-                  className="block text-sm font-medium text-gray-700"
+                <h3 className="text-sm font-medium text-gray-700">Image</h3>
+                <div
+                  onClick={handleImageClick}
+                  className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                    imagePreview || existingImageUrl
+                      ? 'border-gray-300'
+                      : 'border-gray-300 hover:border-blue-400'
+                  }`}
                 >
-                  Image File
-                </label>
-                <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
                   <input
+                    ref={imageInputRef}
                     id="edit-imageFile"
                     name="imageFile"
                     type="file"
                     accept="image/*"
                     onChange={handleImageChange}
-                    className="w-full text-sm text-gray-600"
+                    className="hidden"
                     disabled={disableForm}
                   />
-                  <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
-                    {imagePreview || existingImageUrl ? (
+                  {imagePreview || existingImageUrl ? (
+                    <div className="relative group">
                       <img
                         src={imagePreview || existingImageUrl || ''}
                         alt="Preview"
-                        className="h-64 w-full object-contain"
+                        className="w-full h-64 object-contain rounded"
                       />
-                    ) : (
-                      <div className="flex h-64 items-center justify-center text-sm text-gray-400">
-                        No image selected
+                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleImageClick()
+                          }}
+                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Replace image"
+                          disabled={disableForm}
+                        >
+                          <i className="fa-solid fa-image text-xs" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleRemoveImage()
+                          }}
+                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Remove image"
+                          disabled={disableForm}
+                        >
+                          <i className="fa-solid fa-trash-can text-xs" />
+                        </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16">
+                      <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">Click to upload</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
