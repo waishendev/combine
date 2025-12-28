@@ -151,21 +151,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
     if (appliedMaxPrice !== queryMaxPrice) {
       setAppliedMaxPrice(queryMaxPrice);
     }
-  }, [
-    appliedMaxPrice,
-    appliedMinPrice,
-    debouncedSearch,
-    maxPriceInput,
-    minPriceInput,
-    queryCategory,
-    queryMaxPrice,
-    queryMinPrice,
-    querySearch,
-    querySort,
-    searchTerm,
-    selectedCategory,
-    sort,
-  ]);
+  }, [queryCategory, queryMaxPrice, queryMinPrice, querySearch, querySort]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
