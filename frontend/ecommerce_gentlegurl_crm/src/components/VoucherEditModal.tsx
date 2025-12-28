@@ -10,6 +10,7 @@ interface VoucherEditModalProps {
   voucherId: number
   onClose: () => void
   onSuccess: (voucher: VoucherRowData) => void
+  isRewardOnly?: boolean
 }
 
 interface FormState {
@@ -38,6 +39,7 @@ export default function VoucherEditModal({
   voucherId,
   onClose,
   onSuccess,
+  isRewardOnly,
 }: VoucherEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -185,6 +187,7 @@ export default function VoucherEditModal({
           start_at: form.startAt,
           end_at: form.endAt,
           is_active: form.isActive === 'active',
+          ...(isRewardOnly !== undefined ? { is_reward_only: isRewardOnly } : {}),
         }),
       })
 
@@ -240,8 +243,6 @@ export default function VoucherEditModal({
             startAt: form.startAt,
             endAt: form.endAt,
             isActive: form.isActive === 'active',
-            createdAt: loadedVoucher?.createdAt ?? '',
-            updatedAt: new Date().toISOString(),
           }
 
       setLoadedVoucher(voucherRow)
@@ -473,4 +474,3 @@ export default function VoucherEditModal({
     </div>
   )
 }
-

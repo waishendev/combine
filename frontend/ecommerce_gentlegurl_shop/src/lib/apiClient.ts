@@ -727,10 +727,16 @@ export async function getStoreLocationDetail(id: number): Promise<PublicStoreLoc
   return response.data;
 }
 
-export async function getCustomerVouchers(params?: { status?: string }): Promise<CustomerVoucher[]> {
+export async function getCustomerVouchers(params?: {
+  status?: string;
+  is_reward_only?: boolean;
+}): Promise<CustomerVoucher[]> {
   const search = new URLSearchParams();
   if (params?.status) {
     search.set("status", params.status);
+  }
+  if (params?.is_reward_only !== undefined) {
+    search.set("is_reward_only", String(params.is_reward_only));
   }
 
   const response = await get<{ data: CustomerVoucher[] }>(

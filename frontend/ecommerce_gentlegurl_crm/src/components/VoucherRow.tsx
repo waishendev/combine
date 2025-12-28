@@ -14,8 +14,6 @@ export interface VoucherRowData {
   startAt: string
   endAt: string
   isActive: boolean
-  createdAt: string
-  updatedAt: string
 }
 
 interface VoucherRowProps {
@@ -51,8 +49,6 @@ export default function VoucherRow({
           label={voucher.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
-      <td className="px-4 py-2 border border-gray-200">{voucher.createdAt || '-'}</td>
-      <td className="px-4 py-2 border border-gray-200">{voucher.updatedAt || '-'}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
@@ -84,4 +80,3 @@ export default function VoucherRow({
     </tr>
   )
 }
-

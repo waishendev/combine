@@ -17,6 +17,7 @@ class VoucherController extends Controller
             ->when($request->filled('code'), fn($q) => $q->where('code', 'like', '%' . $request->string('code')->toString() . '%'))
             ->when($request->filled('type'), fn($q) => $q->where('type', $request->string('type')))
             ->when($request->filled('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
+            ->when($request->filled('is_reward_only'), fn($q) => $q->where('is_reward_only', $request->boolean('is_reward_only')))
             ->orderByDesc('created_at')
             ->paginate($perPage);
 
@@ -44,9 +45,13 @@ class VoucherController extends Controller
             'start_at' => ['nullable', 'date'],
             'end_at' => ['nullable', 'date', 'after_or_equal:start_at'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_reward_only' => ['sometimes', 'boolean'],
         ]);
 
-        $payload = $validated + ['is_active' => $validated['is_active'] ?? true];
+        $payload = $validated + [
+            'is_active' => $validated['is_active'] ?? true,
+            'is_reward_only' => $validated['is_reward_only'] ?? false,
+        ];
         $payload['value'] = $validated['value'] ?? $validated['amount'];
         $payload['usage_limit_total'] = $validated['usage_limit_total'] ?? $validated['max_uses'] ?? null;
         $payload['usage_limit_per_customer'] = $validated['usage_limit_per_customer'] ?? $validated['max_uses_per_customer'] ?? null;
@@ -72,6 +77,7 @@ class VoucherController extends Controller
             'start_at' => ['nullable', 'date'],
             'end_at' => ['nullable', 'date', 'after_or_equal:start_at'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_reward_only' => ['sometimes', 'boolean'],
         ]);
 
         $payload = $validated;

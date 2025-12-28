@@ -9,6 +9,7 @@ import { useI18n } from '@/lib/i18n'
 interface VoucherCreateModalProps {
   onClose: () => void
   onSuccess: (voucher: VoucherRowData) => void
+  isRewardOnly?: boolean
 }
 
 interface FormState {
@@ -34,6 +35,7 @@ const initialFormState: FormState = {
 export default function VoucherCreateModal({
   onClose,
   onSuccess,
+  isRewardOnly,
 }: VoucherCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -89,6 +91,7 @@ export default function VoucherCreateModal({
           start_at: form.startAt,
           end_at: form.endAt,
           is_active: true,
+          ...(isRewardOnly !== undefined ? { is_reward_only: isRewardOnly } : {}),
         }),
       })
 
@@ -134,8 +137,6 @@ export default function VoucherCreateModal({
             startAt: form.startAt,
             endAt: form.endAt,
             isActive: true,
-            createdAt: '',
-            updatedAt: '',
           }
 
       setForm({ ...initialFormState })
@@ -339,4 +340,3 @@ export default function VoucherCreateModal({
     </div>
   )
 }
-

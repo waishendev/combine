@@ -11,8 +11,6 @@ export type VoucherApiItem = {
   start_at?: string | null
   end_at?: string | null
   is_active?: boolean | number | string | null
-  created_at?: string | null
-  updated_at?: string | null
 }
 
 export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => {
@@ -46,8 +44,5 @@ export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => 
     startAt: item.start_at ?? '', // Direct from API
     endAt: item.end_at ?? '', // Direct from API
     isActive,
-    createdAt: item.created_at ?? '', // Direct from API
-    updatedAt: item.updated_at ?? '', // Direct from API
   }
 }
-

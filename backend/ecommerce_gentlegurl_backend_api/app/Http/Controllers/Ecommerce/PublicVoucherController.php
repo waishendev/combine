@@ -24,6 +24,13 @@ class PublicVoucherController extends Controller
 
         $vouchers = $query
             ->when($status, fn($q) => $q->where('status', $status))
+            ->when(
+                $request->filled('is_reward_only'),
+                fn($q) => $q->whereHas(
+                    'voucher',
+                    fn($voucherQuery) => $voucherQuery->where('is_reward_only', $request->boolean('is_reward_only')),
+                ),
+            )
             ->get();
 
         $vouchers->each(function (CustomerVoucher $voucher) use ($now) {
