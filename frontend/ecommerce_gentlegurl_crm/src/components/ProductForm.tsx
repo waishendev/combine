@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { mapProductApiItemToRow, type ProductApiItem } from './productUtils'
 import type { ProductImage, ProductRowData } from './ProductRow'
 import { useI18n } from '@/lib/i18n'
+import { Switch } from '@/components/ui/switch'
 
 interface CategoryOption {
   id: number
@@ -1030,7 +1031,7 @@ export default function ProductForm({
                   placeholder={t('product.skuPlaceholder')}
                 />
               </div>
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="type">
                   {t('product.type')}
                 </label>
@@ -1044,7 +1045,8 @@ export default function ProductForm({
                   <option value="single">{t('product.typeSingle')}</option>
                   <option value="bundle">{t('product.typeBundle')}</option>
                 </select>
-              </div>
+              </div> */}
+
               <div className="space-y-2 md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="description">
                   {t('product.description')}
@@ -1059,7 +1061,7 @@ export default function ProductForm({
                   placeholder={t('product.descriptionPlaceholder')}
                 />
               </div>
-              <div className="space-y-2 md:col-span-2">
+              <div className="space-y-2  md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700">
                   {t('product.categories')} <span className="text-red-500">*</span>
                   {form.categoryIds.length > 0 && (
@@ -1116,7 +1118,7 @@ export default function ProductForm({
                       />
                     </button>
                     {/* Clear Button - Outside the main button */}
-                    {form.categoryIds.length > 0 && (
+                    {/* {form.categoryIds.length > 0 && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1129,7 +1131,7 @@ export default function ProductForm({
                       >
                         <i className="fa-solid fa-xmark text-xs" />
                       </button>
-                    )}
+                    )} */}
                   </div>
 
                   {/* Dropdown Panel */}
@@ -1363,18 +1365,21 @@ export default function ProductForm({
               placeholder="0"
             />
           </div>
-          <div className="space-y-2">
-            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
-              <input
-                type="checkbox"
-                name="isFeatured"
-                checked={form.isFeatured}
-                onChange={handleChange}
-                className="rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
-              />
-              <span>{t('product.featuredProduct')}</span>
-            </label>
-            <p className="text-xs text-gray-500 ml-6">{t('product.featuredProductDescription')}</p>
+          <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                {t('product.featuredProduct')}
+              </p>
+              <p className="text-xs text-gray-500">
+                {t('product.featuredProductDescription')}
+              </p>
+            </div>
+            <Switch
+              checked={form.isFeatured}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({ ...f, isFeatured: checked }))
+              }
+            />
           </div>
           {mode === 'edit' && (
             <div className="space-y-2">
