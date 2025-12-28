@@ -91,7 +91,7 @@ class VoucherService
             }
         }
 
-        $value = $voucher->value !== null ? (float) $voucher->value : (float) ($voucher->amount ?? 0);
+        $value = $voucher->value !== null ? (float) $voucher->value : 0.0;
         $discount = 0.0;
         if ($voucher->type === 'fixed') {
             $discount = min($value, $orderAmount);

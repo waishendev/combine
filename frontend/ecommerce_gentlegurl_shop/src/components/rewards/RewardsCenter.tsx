@@ -145,11 +145,9 @@ export function RewardsCenter() {
           const voucherBenefit = reward.voucher
             ? reward.voucher.type === "percent"
               ? `${reward.voucher.value}% off`
-              : reward.voucher.amount
-                ? formatAmount(reward.voucher.amount)
-                : reward.voucher.value
-                  ? formatAmount(reward.voucher.value)
-                  : "Benefit available"
+              : reward.voucher.value
+                ? formatAmount(reward.voucher.value)
+                : "Benefit available"
             : "Reward voucher";
           const minSpend = reward.voucher?.min_order_amount
             ? formatAmount(reward.voucher.min_order_amount)
@@ -274,11 +272,9 @@ export function RewardsCenter() {
               const voucherBenefit = reward.voucher
                 ? reward.voucher.type === "percent"
                   ? `${reward.voucher.value}% off`
-                  : reward.voucher.amount
-                    ? formatAmount(reward.voucher.amount)
-                    : reward.voucher.value
-                      ? formatAmount(reward.voucher.value)
-                      : "Benefit available"
+                  : reward.voucher.value
+                    ? formatAmount(reward.voucher.value)
+                    : "Benefit available"
                 : null;
 
               return (

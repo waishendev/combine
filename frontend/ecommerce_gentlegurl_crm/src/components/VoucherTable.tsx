@@ -459,7 +459,7 @@ export default function VoucherTable({
               {(
                 [
                   { key: 'code', label: 'Code' },
-                  { key: 'amount', label: 'Amount' },
+                  { key: 'value', label: 'Value' },
                   { key: 'minOrderAmount', label: 'Min Order Amount' },
                   { key: 'maxUses', label: 'Max Uses' },
                   ...(!hideMaxUsesPerCustomer

@@ -94,7 +94,6 @@ class PublicLoyaltyController extends Controller
                     'code' => $reward->voucher->code,
                     'type' => $reward->voucher->type,
                     'value' => (float) $reward->voucher->value,
-                    'amount' => (float) $reward->voucher->amount,
                     'min_order_amount' => $reward->voucher->min_order_amount,
                     'max_discount_amount' => $reward->voucher->max_discount_amount,
                     'start_at' => $reward->voucher->start_at,
