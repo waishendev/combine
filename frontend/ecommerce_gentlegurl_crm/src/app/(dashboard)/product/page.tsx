@@ -39,7 +39,7 @@ export default async function ProductPage() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">{t('product.title')}</h2>
-      <ProductTable permissions={user.permissions} />
+      <ProductTable permissions={user.permissions} rewardOnlyFilter={false} />
     </div>
   )
 }

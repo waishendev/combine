@@ -16,7 +16,7 @@ import { useI18n } from '@/lib/i18n'
 interface ProductTableProps {
   permissions: string[]
   basePath?: string
-  rewardOnly?: boolean
+  rewardOnlyFilter?: boolean | null
   showCategories?: boolean
 }
 
@@ -46,7 +46,7 @@ type ProductApiResponse = {
 export default function ProductTable({
   permissions,
   basePath = '/product',
-  rewardOnly = false,
+  rewardOnlyFilter = null,
   showCategories = true,
 }: ProductTableProps) {
   const { t } = useI18n()
@@ -85,8 +85,8 @@ export default function ProductTable({
         if (filters.status) {
           qs.set('is_active', filters.status === 'active' ? 'true' : 'false')
         }
-        if (rewardOnly) {
-          qs.set('is_reward_only', 'true')
+        if (rewardOnlyFilter !== null) {
+          qs.set('is_reward_only', rewardOnlyFilter ? 'true' : 'false')
         }
 
         const res = await fetch(`/api/proxy/ecommerce/products?${qs.toString()}`, {
@@ -157,7 +157,7 @@ export default function ProductTable({
 
     fetchProducts()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize, rewardOnly])
+  }, [filters, currentPage, pageSize, rewardOnlyFilter])
 
   const handleSort = (column: keyof ProductRowData) => {
     if (sortColumn === column) {

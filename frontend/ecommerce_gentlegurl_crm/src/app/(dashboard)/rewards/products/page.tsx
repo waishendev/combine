@@ -44,7 +44,7 @@ export default async function RewardProductsPage() {
       <ProductTable
         permissions={user.permissions}
         basePath="/rewards/products"
-        rewardOnly
+        rewardOnlyFilter={true}
         showCategories={false}
       />
     </div>
