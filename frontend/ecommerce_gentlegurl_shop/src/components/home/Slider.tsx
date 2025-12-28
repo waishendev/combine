@@ -153,7 +153,7 @@ export default function Slider({ items }: SliderProps) {
               className={`absolute inset-0 overflow-hidden transition  duration-700 ease-out ${isActive ? "z-10 opacity-100" : "pointer-events-none opacity-0"}`}
             >
               <div className="absolute inset-0">
-                <div className="relative h-full w-full ">
+                <div className="relative h-full w-full bg-[var(--background)]">
                   <Image
                     src={desktopImage}
                     alt={item.title ?? "slide"}
@@ -168,7 +168,7 @@ export default function Slider({ items }: SliderProps) {
                     fill
                     priority={isActive}
                     sizes="100vw"
-                    className="object-cover sm:hidden"
+                    className="object-contain sm:hidden"
                   />
                 </div>
                 {hasContent && (
