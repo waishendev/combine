@@ -246,23 +246,38 @@ export default function SliderCreateModal({
                     disabled={submitting}
                   />
                   {imagePreview ? (
-                    <div className="relative">
+                    <div className="relative group">
                       <img
                         src={imagePreview}
                         alt="Preview"
                         className="w-full h-48 object-contain rounded"
                       />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleRemoveImage()
-                        }}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
-                        disabled={submitting}
-                      >
-                        <i className="fa-solid fa-xmark text-xs" />
-                      </button>
+                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleImageClick()
+                          }}
+                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Replace desktop image"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-image text-xs" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemoveImage()
+                          }}
+                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Delete desktop image"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-trash-can text-xs" />
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-8">
@@ -292,23 +307,38 @@ export default function SliderCreateModal({
                     disabled={submitting}
                   />
                   {mobileImagePreview ? (
-                    <div className="relative">
+                    <div className="relative group">
                       <img
                         src={mobileImagePreview}
                         alt="Mobile Preview"
                         className="w-full h-48 object-contain rounded"
                       />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleRemoveMobileImage()
-                        }}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
-                        disabled={submitting}
-                      >
-                        <i className="fa-solid fa-xmark text-xs" />
-                      </button>
+                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleMobileImageClick()
+                          }}
+                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Replace mobile image"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-image text-xs" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemoveMobileImage()
+                          }}
+                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Delete mobile image"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-trash-can text-xs" />
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-8">

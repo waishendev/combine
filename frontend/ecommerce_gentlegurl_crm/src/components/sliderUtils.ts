@@ -7,6 +7,7 @@ export type SliderApiItem = {
   image_path?: string | null
   image_url?: string | null
   mobile_image_path?: string | null
+  mobile_image_url?: string | null
   button_label?: string | null
   button_link?: string | null
   start_at?: string | null
@@ -45,7 +46,7 @@ export const mapSliderApiItemToRow = (item: SliderApiItem): SliderRowData => {
     title: item.title ?? '-',
     subtitle: item.subtitle ?? '-',
     image_path: item.image_url ?? item.image_path ?? '',
-    mobile_image_path: item.mobile_image_path ?? '',
+    mobile_image_path: item.mobile_image_url ?? item.mobile_image_path ?? '',
     button_label: item.button_label ?? '-',
     button_link: item.button_link ?? '-',
     start_at: item.start_at ?? '',
@@ -56,4 +57,3 @@ export const mapSliderApiItemToRow = (item: SliderApiItem): SliderRowData => {
     updatedAt: item.updated_at ?? '',
   }
 }
-
