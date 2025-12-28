@@ -483,7 +483,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500"
               >
                 <span
-                  className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]"
+                  className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]"
                 />
               </div>
             </label>
@@ -559,7 +559,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 }
               />
               <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
-                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]" />
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]" />
               </div>
             </label>
           </div>
@@ -796,7 +796,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 }
               />
               <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
-                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]" />
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]" />
               </div>
             </label>
           </div>
@@ -841,7 +841,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 }
               />
               <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
-                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]" />
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]" />
               </div>
             </label>
           </div>
@@ -959,7 +959,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 }
               />
               <div className="relative h-6 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500">
-                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px]" />
+                <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[22px]" />
               </div>
             </label>
           </div>
