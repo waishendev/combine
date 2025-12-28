@@ -65,7 +65,6 @@ export type LoyaltyReward = {
     code: string;
     type: string;
     value: number;
-    amount: number;
     min_order_amount?: number | string | null;
     max_discount_amount?: number | string | null;
     start_at?: string | null;

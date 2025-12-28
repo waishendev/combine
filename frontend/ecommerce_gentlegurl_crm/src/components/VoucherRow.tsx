@@ -7,7 +7,7 @@ export interface VoucherRowData {
   id: number
   code: string
   type: string
-  amount: string
+  value: string
   maxUses: string
   maxUsesPerCustomer: string
   minOrderAmount: string
@@ -39,7 +39,7 @@ export default function VoucherRow({
   return (
     <tr className="text-sm">
       <td className="px-4 py-2 border border-gray-200">{voucher.code}</td>
-      <td className="px-4 py-2 border border-gray-200">{voucher.amount}</td>
+      <td className="px-4 py-2 border border-gray-200">{voucher.value}</td>
       <td className="px-4 py-2 border border-gray-200">{voucher.minOrderAmount}</td>
       <td className="px-4 py-2 border border-gray-200">{voucher.maxUses}</td>
       {!hideMaxUsesPerCustomer && (

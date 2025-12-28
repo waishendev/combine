@@ -34,8 +34,7 @@ class VoucherController extends Controller
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:100', 'unique:vouchers,code'],
             'type' => ['required', Rule::in(['fixed', 'percent'])],
-            'value' => ['required_without:amount', 'numeric', 'min:0'],
-            'amount' => ['required_without:value', 'numeric', 'min:0'],
+            'value' => ['required', 'numeric', 'min:0'],
             'min_order_amount' => ['nullable', 'numeric', 'min:0'],
             'max_discount_amount' => ['nullable', 'numeric', 'min:0'],
             'usage_limit_total' => ['nullable', 'integer', 'min:1'],
@@ -52,7 +51,6 @@ class VoucherController extends Controller
             'is_active' => $validated['is_active'] ?? true,
             'is_reward_only' => $validated['is_reward_only'] ?? false,
         ];
-        $payload['value'] = $validated['value'] ?? $validated['amount'];
         $payload['usage_limit_total'] = $validated['usage_limit_total'] ?? $validated['max_uses'] ?? null;
         $payload['usage_limit_per_customer'] = $validated['usage_limit_per_customer'] ?? $validated['max_uses_per_customer'] ?? null;
 
@@ -67,7 +65,6 @@ class VoucherController extends Controller
             'code' => ['sometimes', 'string', 'max:100', Rule::unique('vouchers', 'code')->ignore($voucher->id)],
             'type' => ['sometimes', Rule::in(['fixed', 'percent'])],
             'value' => ['nullable', 'numeric', 'min:0'],
-            'amount' => ['nullable', 'numeric', 'min:0'],
             'min_order_amount' => ['nullable', 'numeric', 'min:0'],
             'max_discount_amount' => ['nullable', 'numeric', 'min:0'],
             'usage_limit_total' => ['nullable', 'integer', 'min:1'],
@@ -81,9 +78,6 @@ class VoucherController extends Controller
         ]);
 
         $payload = $validated;
-        if (array_key_exists('value', $validated) || array_key_exists('amount', $validated)) {
-            $payload['value'] = $validated['value'] ?? $validated['amount'];
-        }
 
         if (array_key_exists('usage_limit_total', $validated) || array_key_exists('max_uses', $validated)) {
             $payload['usage_limit_total'] = $validated['usage_limit_total'] ?? $validated['max_uses'];

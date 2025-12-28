@@ -107,7 +107,7 @@ export default function VoucherDeleteModal({
           <p className="text-sm text-gray-700">Are you sure you want to delete this voucher?</p>
           <div className="rounded-md bg-yellow-100 px-4 py-3">
             <p className="text-sm font-semibold text-yellow-800">{voucher.code}</p>
-            <p className="text-xs text-yellow-800">Amount: {voucher.amount}</p>
+            <p className="text-xs text-yellow-800">Value: {voucher.value}</p>
           </div>
 
           {error && (
@@ -141,4 +141,3 @@ export default function VoucherDeleteModal({
     </div>
   )
 }
-
