@@ -44,9 +44,6 @@ export default async function LoyaltySettingsPage() {
       </div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-gray-500 mb-2">
-            Ecommerce
-          </p>
           <h2 className="text-3xl font-semibold text-slate-900 leading-tight">
             Loyalty Settings
           </h2>

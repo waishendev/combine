@@ -132,13 +132,6 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         requiredPermission: 'ecommerce.stores.view',
       },
       {
-        key: 'shop-settings',
-        label: 'Shop Settings',
-        icon: 'fa-solid fa-gear',
-        href: '/shop-settings',
-        requiredPermission: 'ecommerce.settings.view',
-      },
-      {
         key: 'seo',
         label: 'SEO',
         icon: 'fa-solid fa-magnifying-glass-chart',
@@ -192,12 +185,25 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
           },
         ],
       },
+
       {
-        key: 'loyalty-settings',
+        key: 'settings',
         label: 'Settings',
         icon: 'fa-solid fa-gear',
-        href: '/settings',
-        requiredPermission: 'ecommerce.loyalty.settings.update',
+        children: [
+          {
+            key: 'loyalty-settings',
+            label: 'Loyalty Settings',
+            href: '/loyalty-settings',
+            requiredPermission: 'ecommerce.loyalty.settings.update',
+          },
+          {
+            key: 'shop-settings',
+            label: 'Shop Settings',
+            href: '/shop-settings',
+            requiredPermission: 'ecommerce.settings.view',
+          },
+        ],
       },
       {
         key: 'slides',
