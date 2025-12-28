@@ -19,6 +19,7 @@ type AnnouncementModalProps = {
 
 export default function AnnouncementModal({ items }: AnnouncementModalProps) {
   const [open, setOpen] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   // Prevent page jump when modal opens by locking scroll position
   useEffect(() => {
@@ -47,9 +48,24 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
     }
   }, [open, items]);
 
+  useEffect(() => {
+    if (items?.length) {
+      setActiveIndex(0);
+    }
+  }, [items]);
+
   if (!open || !items?.length) return null;
 
-  const item = items[0];
+  const item = items[activeIndex];
+  const hasMultiple = items.length > 1;
+
+  const handlePrev = () => {
+    setActiveIndex((prev) => (prev - 1 + items.length) % items.length);
+  };
+
+  const handleNext = () => {
+    setActiveIndex((prev) => (prev + 1) % items.length);
+  };
 
   return (
     <div className="fixed inset-0 z-50 m-0 flex items-center justify-center bg-[var(--foreground)]/25 px-4 backdrop-blur-sm">
@@ -63,6 +79,27 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
         >
           ×
         </button>
+
+        {hasMultiple && (
+          <>
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="absolute left-4 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 text-[var(--foreground)]/70 shadow-sm transition hover:-translate-y-1/2 hover:text-[var(--foreground)]"
+              aria-label="Previous announcement"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              className="absolute right-4 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 text-[var(--foreground)]/70 shadow-sm transition hover:-translate-y-1/2 hover:text-[var(--foreground)]"
+              aria-label="Next announcement"
+            >
+              ›
+            </button>
+          </>
+        )}
 
         {item.title && (
           <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
@@ -95,6 +132,22 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
             {item.button_label ?? "Shop the edit"}
             <span aria-hidden className="text-base">→</span>
           </a>
+        )}
+
+        {hasMultiple && (
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-[var(--foreground)]/60">
+            {items.map((announcement, index) => (
+              <button
+                key={announcement.id}
+                type="button"
+                onClick={() => setActiveIndex(index)}
+                className={`h-2 w-2 rounded-full transition ${
+                  index === activeIndex ? "bg-[var(--accent)]" : "bg-[var(--card-border)]"
+                }`}
+                aria-label={`Go to announcement ${index + 1}`}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>
