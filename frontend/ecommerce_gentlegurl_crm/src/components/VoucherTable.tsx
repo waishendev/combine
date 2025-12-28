@@ -282,7 +282,10 @@ export default function VoucherTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 9 : 8
+  const hideMaxUsesPerCustomer = Boolean(isRewardOnly)
+  const colCount = showActions
+    ? hideMaxUsesPerCustomer ? 8 : 9
+    : hideMaxUsesPerCustomer ? 7 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -375,6 +378,7 @@ export default function VoucherTable({
       {isCreateModalOpen && (
         <VoucherCreateModal
           isRewardOnly={isRewardOnly}
+          hideMaxUsesPerCustomer={hideMaxUsesPerCustomer}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={(voucher) => {
             setIsCreateModalOpen(false)
@@ -458,7 +462,9 @@ export default function VoucherTable({
                   { key: 'amount', label: 'Amount' },
                   { key: 'minOrderAmount', label: 'Min Order Amount' },
                   { key: 'maxUses', label: 'Max Uses' },
-                  { key: 'maxUsesPerCustomer', label: 'Max Uses Per Customer' },
+                  ...(!hideMaxUsesPerCustomer
+                    ? [{ key: 'maxUsesPerCustomer', label: 'Max Uses Per Customer' } as const]
+                    : []),
                   { key: 'startAt', label: 'Start Date' },
                   { key: 'endAt', label: 'End Date' },
                   { key: 'isActive', label: t('common.status') },
@@ -499,6 +505,7 @@ export default function VoucherTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  hideMaxUsesPerCustomer={hideMaxUsesPerCustomer}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingVoucherId(voucher.id)
@@ -522,6 +529,7 @@ export default function VoucherTable({
         <VoucherEditModal
           voucherId={editingVoucherId}
           isRewardOnly={isRewardOnly}
+          hideMaxUsesPerCustomer={hideMaxUsesPerCustomer}
           onClose={() => setEditingVoucherId(null)}
           onSuccess={(voucher) => {
             setEditingVoucherId(null)

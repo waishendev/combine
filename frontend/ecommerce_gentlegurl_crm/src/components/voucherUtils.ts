@@ -36,7 +36,7 @@ export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => 
   return {
     id: normalizedId,
     code: item.code ?? '-',
-    type: item.type ?? 'fixed_amount',
+    type: item.type ?? 'fixed',
     amount: formatAmount(item.amount),
     maxUses: item.max_uses != null ? String(item.max_uses) : '-',
     maxUsesPerCustomer: item.max_uses_per_customer != null ? String(item.max_uses_per_customer) : '-',

@@ -21,6 +21,7 @@ interface VoucherRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  hideMaxUsesPerCustomer?: boolean
   onEdit?: (voucher: VoucherRowData) => void
   onDelete?: (voucher: VoucherRowData) => void
 }
@@ -30,6 +31,7 @@ export default function VoucherRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  hideMaxUsesPerCustomer = false,
   onEdit,
   onDelete,
 }: VoucherRowProps) {
@@ -40,7 +42,9 @@ export default function VoucherRow({
       <td className="px-4 py-2 border border-gray-200">{voucher.amount}</td>
       <td className="px-4 py-2 border border-gray-200">{voucher.minOrderAmount}</td>
       <td className="px-4 py-2 border border-gray-200">{voucher.maxUses}</td>
-      <td className="px-4 py-2 border border-gray-200">{voucher.maxUsesPerCustomer}</td>
+      {!hideMaxUsesPerCustomer && (
+        <td className="px-4 py-2 border border-gray-200">{voucher.maxUsesPerCustomer}</td>
+      )}
       <td className="px-4 py-2 border border-gray-200">{voucher.startAt || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{voucher.endAt || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">
