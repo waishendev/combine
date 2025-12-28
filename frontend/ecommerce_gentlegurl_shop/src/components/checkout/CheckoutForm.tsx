@@ -348,6 +348,10 @@ export default function CheckoutForm() {
 
     setIsSubmitting(true);
     try {
+      const trimmedVoucherCode = voucherCode.trim();
+      const voucherCodeForSubmit = selectedVoucherId
+        ? undefined
+        : appliedVoucher?.code ?? trimmedVoucherCode || undefined;
       const payload: CheckoutPayload = {
         items: selectedItems.map((item) => ({
           product_id: item.product_id,
@@ -359,7 +363,7 @@ export default function CheckoutForm() {
         payment_method: paymentMethod,
         shipping_method: shippingMethod,
         ...form,
-        voucher_code: selectedVoucherId ? undefined : voucherCode || undefined,
+        voucher_code: voucherCodeForSubmit,
         customer_voucher_id: selectedVoucherId ?? undefined,
         store_location_id: shippingMethod === "self_pickup" ? selectedStoreId ?? undefined : undefined,
         bank_account_id: paymentMethod === "manual_transfer" ? selectedBankId ?? undefined : undefined,
