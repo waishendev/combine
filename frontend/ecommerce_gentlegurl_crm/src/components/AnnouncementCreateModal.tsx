@@ -12,7 +12,6 @@ interface AnnouncementCreateModalProps {
 }
 
 interface FormState {
-  key: string
   title: string
   subtitle: string
   bodyText: string
@@ -24,7 +23,6 @@ interface FormState {
 }
 
 const initialFormState: FormState = {
-  key: '',
   title: '',
   subtitle: '',
   bodyText: '',
@@ -86,7 +84,7 @@ export default function AnnouncementCreateModal({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    if (!form.key.trim() || !form.title.trim()) {
+    if (!form.title.trim()) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -96,7 +94,6 @@ export default function AnnouncementCreateModal({
 
     try {
       const formData = new FormData()
-      formData.append('key', form.key.trim())
       formData.append('title', form.title.trim())
       formData.append('subtitle', form.subtitle.trim())
       formData.append('body_text', form.bodyText.trim())
@@ -148,7 +145,7 @@ export default function AnnouncementCreateModal({
         ? mapAnnouncementApiItemToRow(payload)
         : {
             id: 0,
-            key: form.key.trim(),
+            key: '',
             title: form.title.trim(),
             subtitle: form.subtitle.trim(),
             bodyText: form.bodyText.trim(),
@@ -308,26 +305,6 @@ export default function AnnouncementCreateModal({
             </div>
 
             <div className="w-full lg:w-1/2 space-y-4">
-              <div>
-                <label
-                  htmlFor="key"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Key <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="key"
-                  name="key"
-                  type="text"
-                  value={form.key}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="welcome_banner"
-                  disabled={submitting}
-                  required
-                />
-              </div>
-
               <div>
                 <label
                   htmlFor="title"

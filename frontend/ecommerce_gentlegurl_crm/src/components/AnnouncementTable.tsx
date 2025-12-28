@@ -361,7 +361,7 @@ export default function AnnouncementTable({
                   { key: 'isActive', label: 'Status' },
                   { key: 'formattedStartAt', label: 'Start Date' },
                   { key: 'formattedEndAt', label: 'End Date' },
-                  { key: 'formattedCreatedAt', label: 'Created At' },
+                  { key: 'sortOrder', label: 'Sort Order' },
                 ] as const
               ).map(({ key, label }) => (
                 <th

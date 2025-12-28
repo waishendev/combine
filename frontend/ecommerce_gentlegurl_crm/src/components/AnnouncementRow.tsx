@@ -75,9 +75,7 @@ export default function AnnouncementRow({
       <td className="px-4 py-2 border border-gray-200">
         {announcement.formattedEndAt || '-'}
       </td>
-      <td className="px-4 py-2 border border-gray-200">
-        {announcement.formattedCreatedAt || '-'}
-      </td>
+      <td className="px-4 py-2 border border-gray-200">{announcement.sortOrder}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

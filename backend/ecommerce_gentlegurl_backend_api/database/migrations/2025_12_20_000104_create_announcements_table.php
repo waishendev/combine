@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('announcements', function (Blueprint $table) {
             $table->bigIncrements('id');
-            $table->string('key', 50);
+            $table->string('key', 50)->nullable();
             $table->string('title', 255)->nullable();
             $table->string('subtitle', 255)->nullable();
             $table->text('body_text')->nullable();

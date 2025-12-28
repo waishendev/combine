@@ -37,7 +37,7 @@ class AnnouncementController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'key' => 'required|string|max:50',
+            'key' => 'nullable|string|max:50',
             'title' => 'nullable|string|max:255',
             'subtitle' => 'nullable|string|max:255',
             'body_text' => 'nullable|string',
@@ -79,7 +79,7 @@ class AnnouncementController extends Controller
     public function update(Request $request, Announcement $announcement)
     {
         $data = $request->validate([
-            'key' => 'sometimes|required|string|max:50',
+            'key' => 'sometimes|nullable|string|max:50',
             'title' => 'sometimes|nullable|string|max:255',
             'subtitle' => 'sometimes|nullable|string|max:255',
             'body_text' => 'sometimes|nullable|string',
