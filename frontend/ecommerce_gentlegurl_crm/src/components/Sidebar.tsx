@@ -179,6 +179,12 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         icon: 'fa-solid fa-gift',
         children: [
           {
+            key: 'rewards-list',
+            label: 'Rewards',
+            href: '/rewards',
+            requiredPermission: 'ecommerce.loyalty.rewards.view',
+          },
+          {
             key: 'rewards-vouchers',
             label: 'Voucher',
             href: '/rewards/vouchers',
