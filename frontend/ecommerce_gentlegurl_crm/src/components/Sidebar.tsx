@@ -192,16 +192,16 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         icon: 'fa-solid fa-gear',
         children: [
           {
-            key: 'loyalty-settings',
-            label: 'Loyalty Settings',
-            href: '/loyalty-settings',
-            requiredPermission: 'ecommerce.loyalty.settings.update',
-          },
-          {
             key: 'shop-settings',
             label: 'Shop Settings',
             href: '/shop-settings',
             requiredPermission: 'ecommerce.settings.view',
+          },
+          {
+            key: 'loyalty-settings',
+            label: 'Loyalty Settings',
+            href: '/loyalty-settings',
+            requiredPermission: 'ecommerce.loyalty.settings.update',
           },
         ],
       },

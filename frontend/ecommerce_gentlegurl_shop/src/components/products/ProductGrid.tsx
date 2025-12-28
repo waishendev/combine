@@ -53,7 +53,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
 
             <Link href={`/product/${productSlug}`} className="block">
               {image && (
-                <div className="relative h-44 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">         
+                <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">         
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {/* <Image
                     // src={image}

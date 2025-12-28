@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,7 +13,7 @@ import {
   redeemLoyaltyReward,
 } from "@/lib/apiClient";
 import { RedeemModal, RedeemModalState } from "./RedeemModal";
-import { RewardCard } from "./RewardCard";
+import { ProductImageCard } from "@/components/products/ProductImageCard";
 
 const FILTERS = [
   { value: "product", label: "Products" },
@@ -35,21 +36,12 @@ export function RewardsCenter() {
   const [filter, setFilter] = useState<string>("product");
   const [redeemingId, setRedeemingId] = useState<number | null>(null);
   const [redeemModal, setRedeemModal] = useState<RedeemModalState | null>(null);
-  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   const availablePoints = overview?.loyalty.points.available ?? 0;
 
   const filteredRewards = useMemo(() => {
     return rewards.filter((reward) => reward.type === filter);
   }, [filter, rewards]);
-
-  const handleImageError = useCallback((imageSrc: string) => {
-    setImageErrors((prev) => new Set(prev).add(imageSrc));
-  }, []);
-
-  const getImageSrc = useCallback((imageSrc: string) => {
-    return imageErrors.has(imageSrc) ? PLACEHOLDER : imageSrc;
-  }, [imageErrors]);
 
   const syncOverview = useCallback(() => {
     setOverview(customer ?? null);
@@ -234,10 +226,10 @@ export function RewardsCenter() {
         )}
 
         {loadingRewards ? (
-          <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, idx) => (
-              <div key={idx} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-[0_12px_45px_-30px_rgba(17,24,39,0.65)]">
-                <div className="h-44 w-full rounded-xl bg-[var(--background-soft)]" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div key={idx} className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm">
+                <div className="h-36 w-full rounded-xl bg-[var(--background-soft)]" />
                 <div className="mt-3 h-5 w-1/2 rounded bg-[var(--background-soft)]" />
                 <div className="mt-2 h-4 w-2/3 rounded bg-[var(--background-soft)]" />
                 <div className="mt-4 h-10 w-full rounded-full bg-[var(--background-soft)]" />
@@ -249,20 +241,133 @@ export function RewardsCenter() {
             No rewards available for this filter right now. Please check back later.
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-            {filteredRewards.map((reward) => (
-              <RewardCard
-                key={reward.id}
-                reward={reward}
-                availablePoints={availablePoints}
-                isRedeeming={redeemingId === reward.id}
-                onRedeem={handleRedeem}
-                formatAmount={formatAmount}
-                getImageSrc={getImageSrc}
-                handleImageError={handleImageError}
-                customer={customer}
-              />
-            ))}
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredRewards.map((reward) => {
+              const isProduct = reward.type === "product";
+              const imageUrl =
+                reward.product?.image_url ||
+                reward.thumbnail ||
+                PLACEHOLDER;
+              const hasEnoughPoints = availablePoints >= reward.points_required;
+              const isRedeeming = redeemingId === reward.id;
+              const isAvailable = reward.is_available !== false;
+              const shouldDisable = customer ? !hasEnoughPoints || !isAvailable || isRedeeming : !isAvailable || isRedeeming;
+              const productLink =
+                isProduct && reward.product?.slug ? `/product/${reward.product.slug}?reward=1` : null;
+              const buttonLabel = !customer
+                ? "Login to redeem"
+                : isRedeeming
+                  ? "Redeeming..."
+                  : !isAvailable
+                    ? "Out of stock"
+                    : hasEnoughPoints
+                    ? "Redeem"
+                    : "Not enough points";
+              const remainingLabel = isProduct
+                ? `Stock left: ${reward.remaining ?? 0}`
+                : reward.remaining == null
+                  ? "Remaining: Unlimited"
+                  : `Remaining: ${reward.remaining}`;
+
+              const voucherBenefit = reward.voucher
+                ? reward.voucher.type === "percent"
+                  ? `${reward.voucher.value}% off`
+                  : reward.voucher.value
+                    ? formatAmount(reward.voucher.value)
+                    : "Benefit available"
+                : null;
+
+              return (
+                <div
+                  key={reward.id}
+                  className="flex h-full flex-col justify-between rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+                >
+                  {isProduct ? (
+                    <div className="space-y-1">
+                      <div className="rounded-xl overflow-hidden">
+                        <ProductImageCard
+                          imageUrl={imageUrl}
+                          alt={reward.title}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-lg font-semibold text-[var(--foreground)]">{reward.title}</p>
+                      </div>
+
+                      {reward.description && (
+                        <p className="text-sm text-[color:var(--text-muted)] line-clamp-3">{reward.description}</p>
+                      )}
+
+                      <div className="text-sm font-semibold text-[var(--accent-strong)]">
+                        <span>{reward.points_required.toLocaleString()} pts</span>
+                      </div>
+
+                      <div className="text-xs text-[color:var(--text-muted)]">{remainingLabel}</div>
+                      {/* {!isAvailable && (
+                        <span className="text-xs font-semibold text-[color:var(--status-error)]">Out of stock</span>
+                      )} */}
+
+                      {productLink && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[color:var(--text-muted)]">
+                          <Link
+                            href={productLink}
+                            className="inline-flex items-center gap-1 font-semibold text-[var(--accent-strong)] transition hover:text-[var(--accent-stronger)]"
+                          >
+                            View details
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                     <div>
+                        <p className="text-sm font-semibold text-[var(--foreground)]">
+                          {reward.title}
+                        </p>
+                        {reward.description && (
+                          <p className="text-xs text-[color:var(--text-muted)] line-clamp-2">
+                            {reward.description}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-sm font-semibold text-[var(--accent-strong)]">
+                        <span>{reward.points_required.toLocaleString()} pts</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-[color:var(--text-muted)]">
+                        <span>Discount: {voucherBenefit ?? "Reward voucher"}</span>
+                        <span>
+                          Min spend:{" "}
+                          {reward.voucher?.min_order_amount
+                            ? formatAmount(reward.voucher.min_order_amount)
+                            : "None"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-[color:var(--text-muted)]">{remainingLabel}</div>
+                      {!isAvailable && (
+                        <span className="text-xs font-semibold text-[color:var(--status-error)]">Fully redeemed</span>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleRedeem(reward)}
+                    disabled={shouldDisable}
+                    className={`mt-4 inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
+                      shouldDisable
+                        ? "cursor-not-allowed bg-[var(--muted)] text-[color:var(--text-muted)]"
+                        : "bg-[var(--accent-strong)] text-white shadow-sm hover:bg-[var(--accent-stronger)]"
+                    }`}
+                  >
+                    {buttonLabel}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

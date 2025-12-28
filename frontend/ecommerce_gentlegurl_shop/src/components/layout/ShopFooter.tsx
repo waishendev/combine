@@ -105,15 +105,12 @@ export function ShopFooter({ footer }: { footer?: HomepageFooter | null }) {
               />
             </Link>
 
-            {footer.about_text ? (
+            {footer.about_text && (
               <p className="mt-3 max-w-md text-sm leading-relaxed text-[var(--foreground)]/80">
                 {footer.about_text}
               </p>
-            ) : (
-              <p className="mt-3 max-w-md text-sm leading-relaxed text-[var(--foreground)]/70">
-                Curated beauty & lifestyle picks — soft, minimal, and made to feel good.
-              </p>
             )}
+
 
             {showPaymentBadges && (
               <div className="mt-5 flex flex-wrap gap-2">

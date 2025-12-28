@@ -40,7 +40,6 @@ export default async function ShopSettingsPage() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-gray-500 mb-2">Ecommerce</p>
           <h2 className="text-3xl font-semibold text-slate-900 leading-tight">Shop Settings</h2>
           <p className="text-sm text-slate-500 mt-2 max-w-2xl">
             Manage storefront widgets and homepage product windows shown to shoppers.

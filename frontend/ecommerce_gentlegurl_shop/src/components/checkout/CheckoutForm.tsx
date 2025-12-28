@@ -796,7 +796,9 @@ export default function CheckoutForm() {
                   checked={shippingMethod === "shipping"}
                   onChange={() => setShippingMethod("shipping")}
                 />
-                <span>Shipping ({shippingLabel ?? "Flat Rate"})</span>
+                <span>Delivery 
+                  {/* {shippingLabel ?? "Shipping fees"} */}
+                </span>
               </label>
               <label className="flex items-center gap-2">
                 <input
