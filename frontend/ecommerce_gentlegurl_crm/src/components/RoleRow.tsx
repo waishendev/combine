@@ -115,12 +115,6 @@ export default function RoleRow({
           )}
         </div>
       </td>
-      <td className="border border-gray-200 px-4 py-2 text-gray-700">
-        {role.createdAt || '-'}
-      </td>
-      <td className="border border-gray-200 px-4 py-2 text-gray-700">
-        {role.updatedAt || '-'}
-      </td>
       {showActions && (
         <td className="border border-gray-200 px-4 py-2">
           <div className="flex items-center gap-2">

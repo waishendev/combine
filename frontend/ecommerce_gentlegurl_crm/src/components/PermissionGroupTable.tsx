@@ -254,7 +254,7 @@ export default function PermissionGroupTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 5 : 4
+  const colCount = showActions ? 3 : 2
 
   const totalPages = meta.last_page || 1
 
@@ -554,7 +554,7 @@ export default function PermissionGroupTable({
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
@@ -562,8 +562,6 @@ export default function PermissionGroupTable({
                 [
                   { key: 'name', label: t('permissionGroup.name') },
                   { key: 'sortOrder', label: t('permissionGroup.sortOrder') },
-                  { key: 'createdAt', label: t('common.createdAt') },
-                  { key: 'updatedAt', label: t('common.updatedAt') },
                 ] as const
               ).map(({ key, label }) => (
                 <th

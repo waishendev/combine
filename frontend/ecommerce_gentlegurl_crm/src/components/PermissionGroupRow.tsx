@@ -41,7 +41,7 @@ export default function PermissionGroupRow({
       <td className="px-4 py-2 border border-gray-200">{group.name}</td>
       <td className="px-4 py-2 border border-gray-200">
         {canUpdate ? (
-          <div className="flex items-center gap-3 justify-center">
+          <div className="flex items-center gap-3 justify-left">
             <button
               type="button"
               className="inline-flex h-7 w-7 items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -70,8 +70,6 @@ export default function PermissionGroupRow({
           <span>{group.sortOrder != null ? group.sortOrder : '-'}</span>
         )}
       </td>
-      <td className="px-4 py-2 border border-gray-200">{group.createdAt}</td>
-      <td className="px-4 py-2 border border-gray-200">{group.updatedAt}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

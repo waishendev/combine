@@ -41,8 +41,6 @@ export default function PermissionRow({
       <td className="px-4 py-2 border border-gray-200">
         {permission.description || '-'}
       </td>
-      <td className="px-4 py-2 border border-gray-200">{permission.createdAt}</td>
-      <td className="px-4 py-2 border border-gray-200">{permission.updatedAt}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

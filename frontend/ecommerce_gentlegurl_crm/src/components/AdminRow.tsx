@@ -48,7 +48,6 @@ export default function AdminRow({
         {admin.roleName || '-'}
       </td>
       <td className="px-4 py-2 border border-gray-200">{admin.createdAt}</td>
-      <td className="px-4 py-2 border border-gray-200">{admin.updatedAt}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

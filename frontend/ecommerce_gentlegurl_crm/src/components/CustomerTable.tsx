@@ -283,7 +283,7 @@ export default function CustomerTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions || canView ? 8 : 7
+  const colCount = showActions || canView ? 7 : 6
 
   const totalPages = meta.last_page || 1
 
@@ -451,7 +451,7 @@ export default function CustomerTable({
         </div>
       )}
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
@@ -463,7 +463,6 @@ export default function CustomerTable({
                   { key: 'tier', label: 'Tier' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'createdAt', label: t('common.createdAt') },
-                  { key: 'updatedAt', label: t('common.updatedAt') },
                 ] as const
               ).map(({ key, label }) => (
                 <th
