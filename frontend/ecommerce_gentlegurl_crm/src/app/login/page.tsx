@@ -30,7 +30,7 @@ export default function LoginPage() {
       // Use router.refresh() to ensure cookies are updated before navigation
       router.refresh();
       console.log('Navigating to /dashboard...');
-      router.push('/dashboard');
+      router.push('/admins');
     } catch (err) {
       console.error('Login error:', err);
       if (err instanceof Error) {
