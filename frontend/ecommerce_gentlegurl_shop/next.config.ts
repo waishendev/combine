@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
 
   images: {
     remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "api.innovforge.net",
+        pathname: "/**",
+      },
       // local backend
       {
         protocol: "http",
