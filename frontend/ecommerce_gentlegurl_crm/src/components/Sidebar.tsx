@@ -22,8 +22,9 @@ type MenuItem = {
 type MenuChild = {
   key: string
   label: string
-  href: string
+  href?: string
   requiredPermission?: string
+  children?: MenuChild[]
 }
 
 export default function Sidebar({ collapsed, permissions, onToggleSidebar }: SidebarProps) {
@@ -31,39 +32,51 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
 
   const menuItems: MenuItem[] = useMemo(
     () => [
+      // ======================
+      // Overview
+      // ======================
       {
         key: 'dashboard',
         label: 'Dashboard',
         icon: 'fa-solid fa-gauge',
         href: '/dashboard',
       },
+        // ======================
+      // Admin Management
+      // ======================
       {
-        key: 'admins',
-        label: 'Admins',
+        key: 'admin-management',
+        label: 'Admin Management',
         icon: 'fa-solid fa-user-shield',
-        href: '/admins',
+        children: [
+          {
+            key: 'admins',
+            label: 'Admins',
+            href: '/admins',
+          },
+          {
+            key: 'roles',
+            label: 'Roles',
+            href: '/roles',
+            requiredPermission: 'roles.view',
+          },
+          {
+            key: 'permission-groups',
+            label: 'Permission Groups',
+            href: '/permission-groups',
+            requiredPermission: 'permission-groups.view',
+          },
+          {
+            key: 'permissions',
+            label: 'Permissions',
+            href: '/permission',
+            requiredPermission: 'permissions.view',
+          },
+        ],
       },
-      {
-        key: 'permissions',
-        label: 'Permissions',
-        icon: 'fa-solid fa-user-tag',
-        href: '/permission',
-        requiredPermission: 'permissions.view',
-      },
-      {
-        key: 'permission-groups',
-        label: 'Permission Groups',
-        icon: 'fa-solid fa-layer-group',
-        href: '/permission-groups',
-        requiredPermission: 'permission-groups.view',
-      },
-      {
-        key: 'roles',
-        label: 'Roles',
-        icon: 'fa-solid fa-user-tag',
-        href: '/roles',
-        requiredPermission: 'roles.view',
-      },
+      // ======================
+      // Sales
+      // ======================
       {
         key: 'orders',
         label: 'Orders',
@@ -95,107 +108,62 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
           },
         ],
       },
+  
+      // ======================
+      // Catalog
+      // ======================
       {
-        key: 'customers',
-        label: 'Customers',
-        icon: 'fa-solid fa-users',
-        href: '/customers',
-        requiredPermission: 'customers.view',
-      },
-      {
-        key: 'shop-menu',
-        label: 'SHOP MENU',
-        icon: 'fa-solid fa-list',
-        href: '/shop-menu',
-        requiredPermission: 'ecommerce.shop-menu.view',
-      },
-      {
-        key: 'categories',
-        label: 'Categories',
-        icon: 'fa-solid fa-list',
-        href: '/categories',
-        requiredPermission: 'ecommerce.categories.view',
-      },
-      {
-        key: 'product',
-        label: 'Product',
-        icon: 'fa-solid fa-box',
-        href: '/product',
-        requiredPermission: 'ecommerce.products.view',
-      },
-      
-      {
-        key: 'store',
-        label: 'Store',
-        icon: 'fa-solid fa-store',
-        href: '/store',
-        requiredPermission: 'ecommerce.stores.view',
-      },
-      {
-        key: 'seo',
-        label: 'SEO',
-        icon: 'fa-solid fa-magnifying-glass-chart',
-        href: '/seo',
-        requiredPermission: 'ecommerce.seo.view',
-      },
-      {
-        key: 'membership',
-        label: 'Membership',
-        icon: 'fa-solid fa-id-card',
-        href: '/membership',
-        requiredPermission: 'ecommerce.loyalty.tiers.view',
-      },
-      {
-        key: 'announcements',
-        label: 'Announcements',
-        icon: 'fa-solid fa-id-card',
-        href: '/announcements',
-        requiredPermission: 'ecommerce.announcements.view',
-      },
-      {
-        key: 'marquee',
-        label: 'Marquee',
-        icon: 'fa-solid fa-scroll',
-        href: '/marquee',
-        requiredPermission: 'ecommerce.marquees.view',
-      },
-      {
-        key: 'voucher',
-        label: 'Voucher',
-        icon: 'fa-solid fa-ticket',
-        href: '/voucher',
-        requiredPermission: 'ecommerce.vouchers.view',
-      },
-      {
-        key: 'rewards',
-        label: 'Rewards',
-        icon: 'fa-solid fa-gift',
+        key: 'catalog',
+        label: 'Catalog',
+        icon: 'fa-solid fa-boxes-stacked',
         children: [
           {
-            key: 'rewards-vouchers',
-            label: 'Voucher',
-            href: '/rewards/vouchers',
-            requiredPermission: 'ecommerce.vouchers.view',
+            key: 'shop-menu',
+            label: 'Shop Menu',
+            href: '/shop-menu',
+            requiredPermission: 'ecommerce.shop-menu.view',
           },
           {
-            key: 'rewards-products',
-            label: 'Product',
-            href: '/rewards/products',
+            key: 'categories',
+            label: 'Categories',
+            href: '/categories',
+            requiredPermission: 'ecommerce.categories.view',
+          },
+          {
+            key: 'product',
+            label: 'Products',
+            href: '/product',
             requiredPermission: 'ecommerce.products.view',
+          },
+          {
+            key: 'store',
+            label: 'Stores',
+            href: '/store',
+            requiredPermission: 'ecommerce.stores.view',
           },
         ],
       },
-
+      
+  
+      // ======================
+      // Customers & Loyalty
+      // ======================
       {
-        key: 'settings',
-        label: 'Settings',
-        icon: 'fa-solid fa-gear',
+        key: 'customers-loyalty',
+        label: 'Customers & Loyalty',
+        icon: 'fa-solid fa-users-gear',
         children: [
           {
-            key: 'shop-settings',
-            label: 'Shop Settings',
-            href: '/shop-settings',
-            requiredPermission: 'ecommerce.settings.view',
+            key: 'customers',
+            label: 'Customers',
+            href: '/customers',
+            requiredPermission: 'customers.view',
+          },
+          {
+            key: 'membership',
+            label: 'Membership',
+            href: '/membership',
+            requiredPermission: 'ecommerce.loyalty.tiers.view',
           },
           {
             key: 'loyalty-settings',
@@ -205,17 +173,114 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
           },
         ],
       },
+      
+  
+      // ======================
+      // Marketing
+      // ======================
       {
-        key: 'slides',
-        label: 'Slides',
-        icon: 'fa-solid fa-images',
-        href: '/slides',
-        requiredPermission: 'ecommerce.sliders.view',
+        key: 'marketing',
+        label: 'Marketing',
+        icon: 'fa-solid fa-bullhorn',
+        children: [
+          {
+            key: 'voucher',
+            label: 'Vouchers',
+            href: '/voucher',
+            requiredPermission: 'ecommerce.vouchers.view',
+          },
+          {
+            key: 'rewards',
+            label: 'Rewards',
+            children: [
+              {
+                key: 'rewards-vouchers',
+                label: 'Redeem Vouchers',
+                href: '/rewards/vouchers',
+                requiredPermission: 'ecommerce.vouchers.view',
+              },
+              {
+                key: 'rewards-products',
+                label: 'Redeem Products',
+                href: '/rewards/products',
+                requiredPermission: 'ecommerce.products.view',
+              },
+            ],
+          },
+          {
+            key: 'announcements',
+            label: 'Announcements',
+            href: '/announcements',
+            requiredPermission: 'ecommerce.announcements.view',
+          },
+          {
+            key: 'marquee',
+            label: 'Marquee',
+            href: '/marquee',
+            requiredPermission: 'ecommerce.marquees.view',
+          },
+          {
+            key: 'slides',
+            label: 'Slides',
+            href: '/slides',
+            requiredPermission: 'ecommerce.sliders.view',
+          },
+          {
+            key: 'seo',
+            label: 'Global SEO',
+            href: '/seo',
+            requiredPermission: 'ecommerce.seo.view',
+          },
+        ],
       },
-
+  
+      // ======================
+      // Reports
+      // ======================
+      {
+        key: 'reports',
+        label: 'Reports',
+        icon: 'fa-solid fa-chart-line',
+        children: [
+          {
+            key: 'sales-report',
+            label: 'Sales Report',
+            href: '/reports/sales',
+            requiredPermission: 'ecommerce.reports.view',
+          },
+          // 以后可加：
+          // orders-report
+          // customers-report
+          // loyalty-report
+        ],
+      },
+  
+      // ======================
+      // Shop Settings
+      // ======================
+      // {
+      //   key: 'settings',
+      //   label: 'Shop Settings',
+      //   icon: 'fa-solid fa-gear',
+      //   children: [
+      //     {
+      //       key: 'shop-settings',
+      //       label: 'General Settings',
+      //       href: '/shop-settings',
+      //       requiredPermission: 'ecommerce.settings.view',
+      //     },
+      //   ],
+      // },
+      {
+        key: 'shop-settings',
+        icon: 'fa-solid fa-gear',
+        label: 'Shop Settings',
+        href: '/shop-settings',
+        requiredPermission: 'ecommerce.settings.view',
+      },
     ],
     [],
-  )
+  );
 
   const visibleItems = useMemo(() => {
     return menuItems
@@ -242,11 +307,17 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
 
   const activeParentKeys = useMemo(() => {
     const keys = new Set<string>()
+    const checkChild = (child: MenuChild, parentKey: string) => {
+      if (child.href && matchesPath(pathname, child.href)) {
+        keys.add(parentKey)
+      }
+      if (child.children) {
+        child.children.forEach((subChild) => checkChild(subChild, parentKey))
+      }
+    }
     visibleItems.forEach((item) => {
       if (!item.children) return
-      if (item.children.some((child) => matchesPath(pathname, child.href))) {
-        keys.add(item.key)
-      }
+      item.children.forEach((child) => checkChild(child, item.key))
     })
     return keys
   }, [visibleItems, pathname])
@@ -321,6 +392,60 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
                     {!collapsed && isExpanded && (
                       <div className="space-y-1 pl-9">
                         {item.children.map((child) => {
+                          if (child.children) {
+                            const childKey = `${item.key}-${child.key}`
+                            const isChildExpanded = openMenus[childKey] ?? false
+                            const hasActiveChild = child.children.some(
+                              (subChild) => subChild.href && matchesPath(pathname, subChild.href)
+                            )
+                            return (
+                              <div key={child.key} className="space-y-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setOpenMenus((prev) => ({
+                                      ...prev,
+                                      [childKey]: !(prev[childKey] ?? false),
+                                    }))
+                                  }
+                                  className={`flex w-full items-center rounded-lg px-3 py-2 text-sm transition-colors ${
+                                    hasActiveChild
+                                      ? 'bg-blue-50 text-blue-600'
+                                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                  }`}
+                                >
+                                  <span className="font-medium">{child.label}</span>
+                                  <i
+                                    className={`fa-solid fa-chevron-down ml-auto text-xs transition-transform ${
+                                      isChildExpanded ? 'rotate-180' : ''
+                                    }`}
+                                  />
+                                </button>
+                                {isChildExpanded && (
+                                  <div className="space-y-1 pl-6">
+                                    {child.children.map((subChild) => {
+                                      if (!subChild.href) return null
+                                      const isActive = matchesPath(pathname, subChild.href)
+                                      return (
+                                        <Link
+                                          key={subChild.key}
+                                          href={subChild.href}
+                                          className={`flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${
+                                            isActive
+                                              ? 'bg-blue-50 text-blue-600'
+                                              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                          }`}
+                                        >
+                                          <span className="font-medium">{subChild.label}</span>
+                                        </Link>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          }
+                          if (!child.href) return null
                           const isActive = matchesPath(pathname, child.href)
                           return (
                             <Link
