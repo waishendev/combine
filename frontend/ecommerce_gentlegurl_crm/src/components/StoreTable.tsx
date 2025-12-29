@@ -68,9 +68,10 @@ export default function StoreTable({
   const [deleteTarget, setDeleteTarget] = useState<StoreRowData | null>(null)
 
   const canCreate = permissions.includes('ecommerce.stores.create')
+  const canView = permissions.includes('ecommerce.stores.view')
   const canUpdate = permissions.includes('ecommerce.stores.update')
   const canDelete = permissions.includes('ecommerce.stores.delete')
-  const showActions = canUpdate || canDelete
+  const showActions = canView || canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -281,7 +282,7 @@ export default function StoreTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 12 : 11
+  const colCount = showActions ? 9 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -457,8 +458,7 @@ export default function StoreTable({
               <tr>
                 {(
                   [
-                    { key: 'name', label: 'Name' },
-                    { key: 'code', label: 'Code' },
+                    { key: 'name', label: 'Store' },
                     { key: 'address_line1', label: 'Address' },
                     { key: 'city', label: 'City' },
                     { key: 'state', label: 'State' },
@@ -466,8 +466,6 @@ export default function StoreTable({
                     { key: 'country', label: 'Country' },
                     { key: 'phone', label: 'Phone' },
                     { key: 'isActive', label: t('common.status') },
-                    { key: 'createdAt', label: t('common.createdAt') },
-                    { key: 'updatedAt', label: t('common.updatedAt') },
                   ] as const
                 ).map(({ key, label }) => (
                   <th
@@ -557,5 +555,3 @@ export default function StoreTable({
     </div>
   )
 }
-
-
