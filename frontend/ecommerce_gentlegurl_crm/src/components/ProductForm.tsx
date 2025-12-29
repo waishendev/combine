@@ -1717,13 +1717,13 @@ export default function ProductForm({
         </div>
         {/* Layout: Meta OG Image on left, Meta fields on right */}
         {isSeoMetadataOpen && (
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex flex-col gap-6 lg:flex-row mb-4">
           {/* Left: Meta OG Image URL */}
-          <div className="lg:w-1/3 space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
+          <div className="w-full lg:w-1/2 space-y-1">
+            <h3 className="text-sm font-medium text-gray-700">
               {t('product.metaOgImageUrl')}
-            </label>
-            <p className="text-xs text-red-500">Suggested size: 1200 x 630</p>
+            </h3>
+            <p className="text-xs text-red-500 mb-2">Suggested size: 1200 x 630</p>
             {/* Hidden File Input */}
             <input
               ref={metaOgImageFileInputRef}
@@ -1736,27 +1736,36 @@ export default function ProductForm({
             />
             {/* Upload Area */}
             <div
-              className={`relative aspect-square rounded-xl border-2 border-dashed overflow-hidden transition-all duration-200 ${
+              className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
                 metaOgImagePreview || form.metaOgImage
-                  ? 'border-gray-200 bg-white shadow-md hover:shadow-lg'
-                  : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md cursor-pointer'
+                  ? 'border-gray-300'
+                  : 'border-gray-300 hover:border-blue-400'
               }`}
               onClick={() => {
-                if (!metaOgImagePreview && !form.metaOgImage) {
-                  metaOgImageFileInputRef.current?.click()
-                }
+                metaOgImageFileInputRef.current?.click()
               }}
             >
               {metaOgImagePreview || form.metaOgImage ? (
-                // Image Preview with Remove Button
-                <div className="w-full h-full cursor-pointer group relative">
+                // Image Preview with Replace and Remove Buttons
+                <div className="relative group">
                   <img
                     src={metaOgImagePreview || form.metaOgImage}
                     alt={t('product.metaOgImageUrl')}
-                    className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-200"
+                    className="w-full h-64 object-contain rounded"
                   />
-                  {/* Remove Button - Only show on hover */}
+                  {/* Replace and Remove Buttons - Only show on hover */}
                   <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        metaOgImageFileInputRef.current?.click()
+                      }}
+                      className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                      aria-label={t('product.replaceImage')}
+                    >
+                      <i className="fa-solid fa-image text-xs" />
+                    </button>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1772,17 +1781,18 @@ export default function ProductForm({
                 </div>
               ) : (
                 // Empty Slot - Upload Placeholder
-                <div className="w-full h-full flex flex-col items-center justify-center p-2 group">
-                  <div className="w-10 h-10 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-2 transition-all duration-200 group-hover:scale-110">
-                    <i className="fa-solid fa-cloud-arrow-up text-gray-400 group-hover:text-blue-500 text-lg transition-colors duration-200" />
-                  </div>
-                  <span className="text-[10px] text-gray-500 group-hover:text-blue-600 text-center font-medium transition-colors duration-200">{t('product.clickToUpload')}</span>
+                <div className="flex flex-col items-center justify-center py-16">
+                  <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-600">Click to upload</p>
                 </div>
               )}
             </div>
+            <p className="text-xs text-slate-500 mt-2">
+              Used for social previews when sharing this product.
+            </p>
           </div>
           {/* Right: Meta Title, Keywords, Description - Vertical layout */}
-          <div className="lg:w-2/3 space-y-4">
+          <div className="w-full lg:w-1/2 space-y-4">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="metaTitle">
                 {t('product.metaTitle')}

@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 type SeoSettings = {
   default_title: string
@@ -37,6 +37,9 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   const lastUpdatedLabel = useMemo(() => {
     if (!formState.updated_at) return null
@@ -79,6 +82,9 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
             default_og_image: data.default_og_image ?? '',
             updated_at: data.updated_at,
           })
+          if (data.default_og_image) {
+            setImagePreview(data.default_og_image)
+          }
           setFeedback(null)
         }
       } catch (error) {
@@ -112,6 +118,26 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
     setFeedback(null)
 
     try {
+      // If there's a new image file, upload it first
+      let ogImageUrl = formState.default_og_image || null
+      
+      if (imageFile) {
+        const formData = new FormData()
+        formData.append('image_file', imageFile)
+        
+        const uploadResponse = await fetch('/api/proxy/ecommerce/seo-global/upload-image', {
+          method: 'POST',
+          body: formData,
+        })
+        
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json()
+          ogImageUrl = uploadData?.data?.image_url || uploadData?.image_url || null
+        } else {
+          throw new Error('Failed to upload image')
+        }
+      }
+
       const response = await fetch('/api/proxy/ecommerce/seo-global', {
         method: 'PUT',
         headers: {
@@ -121,7 +147,7 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
           default_title: formState.default_title,
           default_description: formState.default_description,
           default_keywords: formState.default_keywords,
-          default_og_image: formState.default_og_image || null,
+          default_og_image: ogImageUrl,
         }),
       })
 
@@ -147,6 +173,13 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
           default_og_image: updatedData.default_og_image ?? '',
           updated_at: updatedData.updated_at,
         })
+        if (updatedData.default_og_image) {
+          setImagePreview(updatedData.default_og_image)
+        }
+        setImageFile(null)
+        if (imageInputRef.current) {
+          imageInputRef.current.value = ''
+        }
       }
 
       setFeedback({
@@ -169,7 +202,43 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
   const handleReset = () => {
     if (!initialState) return
     setFormState(initialState)
+    setImagePreview(initialState.default_og_image || null)
+    setImageFile(null)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
     setFeedback(null)
+  }
+
+  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null
+    setImageFile(file)
+    
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      setImagePreview(null)
+    }
+  }
+
+  const handleImageClick = () => {
+    if (!inputDisabled) {
+      imageInputRef.current?.click()
+    }
+  }
+
+  const handleRemoveImage = () => {
+    if (inputDisabled) return
+    setImageFile(null)
+    setImagePreview(null)
+    setFormState((prev) => ({ ...prev, default_og_image: '' }))
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
   }
 
   const inputDisabled = !canEdit || saving
@@ -222,90 +291,153 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
             <div className="h-11 w-full bg-slate-100 rounded-lg animate-pulse" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6">
-            <div className="grid grid-cols-1 gap-2">
-              <label className="text-sm font-medium text-slate-700" htmlFor="default_title">
-                Default title
-              </label>
-              <input
-                id="default_title"
-                name="default_title"
-                value={formState.default_title}
-                onChange={(event) =>
-                  setFormState((prev) => ({ ...prev, default_title: event.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-                placeholder="e.g. My Shop — Modern ecommerce"
-                disabled={inputDisabled}
-                required
-              />
-              <p className="text-xs text-slate-500">
-                Appears as the base title for pages without a custom meta title.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              <label className="text-sm font-medium text-slate-700" htmlFor="default_description">
-                Default description
-              </label>
-              <textarea
-                id="default_description"
-                name="default_description"
-                value={formState.default_description}
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    default_description: event.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm shadow-sm focus:border-slate-400 focus:outline-none min-h-[110px]"
-                placeholder="Concise description that summarizes your storefront for search engines."
-                disabled={inputDisabled}
-                required
-              />
-              <p className="text-xs text-slate-500">
-                Keep this between 140-160 characters for the best search snippet quality.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              <label className="text-sm font-medium text-slate-700" htmlFor="default_keywords">
-                Default keywords
-              </label>
-              <input
-                id="default_keywords"
-                name="default_keywords"
-                value={formState.default_keywords}
-                onChange={(event) =>
-                  setFormState((prev) => ({ ...prev, default_keywords: event.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-                placeholder="myshop, ecommerce, shopping"
-                disabled={inputDisabled}
-              />
-              <p className="text-xs text-slate-500">
-                Comma-separated keywords that help describe your catalog and brand.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              <label className="text-sm font-medium text-slate-700" htmlFor="default_og_image">
-                Default Open Graph image URL
-              </label>
-              <input
-                id="default_og_image"
-                name="default_og_image"
-                value={formState.default_og_image ?? ''}
-                onChange={(event) =>
-                  setFormState((prev) => ({ ...prev, default_og_image: event.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-                placeholder="/uploads/seo/default-og.jpg"
-                disabled={inputDisabled}
-              />
-              <p className="text-xs text-slate-500">
+          <div className="flex flex-col gap-6 lg:flex-row mb-4">
+            {/* Left Column - Image Upload */}
+            <div className="w-full lg:w-1/2 space-y-1">
+              <h3 className="text-sm font-medium text-gray-700">Default Open Graph Image</h3>
+              <p className="text-xs text-red-500 mb-2">Suggested size: 1200 x 630</p>
+              <div
+                onClick={handleImageClick}
+                className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                  imagePreview
+                    ? 'border-gray-300'
+                    : 'border-gray-300 hover:border-blue-400'
+                } ${inputDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+              >
+                <input
+                  ref={imageInputRef}
+                  id="ogImageFile"
+                  name="ogImageFile"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                  disabled={inputDisabled}
+                />
+                {imagePreview ? (
+                  <div className="relative group">
+                    <img
+                      src={imagePreview}
+                      alt="Open Graph Preview"
+                      className="w-full h-64 object-contain rounded"
+                    />
+                    {!inputDisabled && (
+                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleImageClick()
+                          }}
+                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Replace image"
+                          disabled={inputDisabled}
+                        >
+                          <i className="fa-solid fa-image text-xs" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleRemoveImage()
+                          }}
+                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Remove image"
+                          disabled={inputDisabled}
+                        >
+                          <i className="fa-solid fa-trash-can text-xs" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-600">Click to upload</p>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
                 Used for social previews when a page does not have its own Open Graph image.
               </p>
+            </div>
+
+            {/* Right Column - Form Fields */}
+            <div className="w-full lg:w-1/2 space-y-4">
+              <div>
+                <label
+                  htmlFor="default_title"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Default title <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="default_title"
+                  name="default_title"
+                  value={formState.default_title}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, default_title: event.target.value }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g. My Shop — Modern ecommerce"
+                  disabled={inputDisabled}
+                  required
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Appears as the base title for pages without a custom meta title.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="default_description"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Default description <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="default_description"
+                  name="default_description"
+                  value={formState.default_description}
+                  onChange={(event) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      default_description: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Concise description that summarizes your storefront for search engines."
+                  disabled={inputDisabled}
+                  required
+                  rows={4}
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Keep this between 140-160 characters for the best search snippet quality.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="default_keywords"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Default keywords
+                </label>
+                <input
+                  id="default_keywords"
+                  name="default_keywords"
+                  value={formState.default_keywords}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, default_keywords: event.target.value }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="myshop, ecommerce, shopping"
+                  disabled={inputDisabled}
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Comma-separated keywords that help describe your catalog and brand.
+                </p>
+              </div>
             </div>
           </div>
         )}
