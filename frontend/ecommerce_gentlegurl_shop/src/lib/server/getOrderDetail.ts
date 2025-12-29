@@ -16,6 +16,7 @@ export type OrderDetail = {
   pickup_or_shipping?: string | null;
   shipping_courier?: string | null;
   shipping_tracking_no?: string | null;
+  shipped_at?: string | null;
   placed_at?: string | null;
   paid_at?: string | null;
   completed_at?: string | null;

@@ -8,6 +8,12 @@ type OrderDetailPageProps = {
   params: Promise<{ id: string }>;
 };
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return date.toLocaleString();
+};
+
 export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
   const { id } = await params;
   const orderId = Number(id);
@@ -116,6 +122,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               {order.shipping_address?.phone && <p>Phone: {order.shipping_address?.phone}</p>}
               {order.shipping_courier && <p>Courier: {order.shipping_courier}</p>}
               {order.shipping_tracking_no && <p>Tracking: {order.shipping_tracking_no}</p>}
+              {order.shipped_at && <p>Shipped At: {formatDateTime(order.shipped_at)}</p>}
             </div>
           )}
         </div>

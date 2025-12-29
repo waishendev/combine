@@ -49,6 +49,7 @@ class PublicOrderTrackingController extends Controller
             'status' => $order->status,
             'tracking_no' => $order->shipping_tracking_no,
             'courier' => $order->shipping_courier,
+            'shipped_at' => $order->shipped_at?->toDateTimeString(),
             'shipping_method' => $order->pickup_or_shipping,
             'totals' => [
                 'subtotal' => $order->subtotal,

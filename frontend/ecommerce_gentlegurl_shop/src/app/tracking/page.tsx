@@ -9,6 +9,12 @@ import type { OrderTrackingResponse } from "@/lib/apiClient";
 import { trackGuestOrder } from "@/lib/apiClient";
 import { normalizeImageUrl } from "@/lib/imageUrl";
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "Not shipped yet";
+  const date = new Date(value);
+  return date.toLocaleString();
+};
+
 export default function TrackingPage() {
   const [orderNo, setOrderNo] = useState("");
   const [loading, setLoading] = useState(false);
@@ -114,6 +120,10 @@ export default function TrackingPage() {
                   {result.courier}
                 </span>
               )}
+            </div>
+            <div className="flex items-center gap-2 sm:col-span-2">
+              <span className="font-semibold text-[var(--foreground)]">Shipped At:</span>
+              <span>{formatDateTime(result.shipped_at)}</span>
             </div>
           </div>
 

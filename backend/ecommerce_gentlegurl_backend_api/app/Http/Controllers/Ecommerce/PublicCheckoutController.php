@@ -376,7 +376,7 @@ class PublicCheckoutController extends Controller
                 'file_url' => $upload->file_url,
                 'note' => $upload->note,
                 'status' => $upload->status,
-                'created_at' => $upload->created_at,
+                'created_at' => $upload->created_at?->toDateTimeString(),
             ]);
 
         return $this->respond([

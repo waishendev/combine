@@ -626,6 +626,7 @@ export type OrderTrackingResponse = {
     status: string;
     tracking_no: string | null;
     courier: string | null;
+    shipped_at?: string | null;
     shipping_method: string;
     totals: {
       subtotal: number | string;
