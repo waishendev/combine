@@ -74,16 +74,16 @@ export default function AnnouncementRow({
         </div>
       </td>
       <td className="px-4 py-2 border border-gray-200">
-        <StatusBadge
-          status={announcement.isActive ? 'active' : 'inactive'}
-          label={announcement.isActive ? t('common.active') : t('common.inactive')}
-        />
-      </td>
-      <td className="px-4 py-2 border border-gray-200">
         {announcement.formattedStartAt || '-'}
       </td>
       <td className="px-4 py-2 border border-gray-200">
         {announcement.formattedEndAt || '-'}
+      </td>
+      <td className="px-4 py-2 border border-gray-200">
+        <StatusBadge
+          status={announcement.isActive ? 'active' : 'inactive'}
+          label={announcement.isActive ? t('common.active') : t('common.inactive')}
+        />
       </td>
       <td className="px-4 py-2 border border-gray-200">
         {canMove ? (

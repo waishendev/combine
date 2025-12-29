@@ -50,8 +50,6 @@ export default function CategoryRow({
           label={category.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
-      <td className="px-4 py-2 border border-gray-200">{category.createdAt}</td>
-      <td className="px-4 py-2 border border-gray-200">{category.updatedAt}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

@@ -544,7 +544,7 @@ export default function AnnouncementTable({
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
@@ -554,9 +554,9 @@ export default function AnnouncementTable({
                   { key: 'title', label: 'Title' },
                   { key: 'subtitle', label: 'Subtitle' },
                   { key: 'bodyText', label: 'Body Text' },
-                  { key: 'isActive', label: 'Status' },
                   { key: 'formattedStartAt', label: 'Start Date' },
                   { key: 'formattedEndAt', label: 'End Date' },
+                  { key: 'isActive', label: 'Status' },
                   { key: 'sortOrder', label: 'Sort Order' },
                 ] as const
               ).map(({ key, label }) => (

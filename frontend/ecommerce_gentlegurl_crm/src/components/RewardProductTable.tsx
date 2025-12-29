@@ -238,17 +238,30 @@ export default function RewardProductTable({ permissions }: RewardProductTablePr
         </div>
       </div>
 
-      <div className="overflow-x-auto bg-white rounded-lg shadow">
-        <table className="min-w-full text-left border border-gray-200">
-          <thead>
-            <tr className="bg-gray-100 text-xs uppercase text-gray-600">
-              <th className="px-4 py-2 border border-gray-200">Title</th>
-              <th className="px-4 py-2 border border-gray-200">Product</th>
-              <th className="px-4 py-2 border border-gray-200">Points</th>
-              <th className="px-4 py-2 border border-gray-200">Status</th>
-              <th className="px-4 py-2 border border-gray-200">Stock</th>
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
+            <tr>
+              {(
+                [
+                  { key: 'title', label: 'Title' },
+                  { key: 'productName', label: 'Product' },
+                  { key: 'pointsRequired', label: 'Points' },
+                  { key: 'isActive', label: t('common.status') },
+                  { key: 'productStock', label: 'Stock' },
+                ] as const
+              ).map(({ key, label }) => (
+                <th
+                  key={key}
+                  className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
+                >
+                  <span>{label}</span>
+                </th>
+              ))}
               {showActions && (
-                <th className="px-4 py-2 border border-gray-200">Actions</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                  {t('common.actions')}
+                </th>
               )}
             </tr>
           </thead>

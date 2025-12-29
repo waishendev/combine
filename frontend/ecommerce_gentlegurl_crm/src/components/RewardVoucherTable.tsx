@@ -278,20 +278,33 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
         </div>
       </div>
 
-      <div className="overflow-x-auto bg-white rounded-lg shadow">
-        <table className="min-w-full text-left border border-gray-200">
-          <thead>
-            <tr className="bg-gray-100 text-xs uppercase text-gray-600">
-              <th className="px-4 py-2 border border-gray-200">Title</th>
-              <th className="px-4 py-2 border border-gray-200">Points</th>
-              <th className="px-4 py-2 border border-gray-200">Value</th>
-              <th className="px-4 py-2 border border-gray-200">Min Order Amount</th>
-              <th className="px-4 py-2 border border-gray-200">Quota</th>
-              <th className="px-4 py-2 border border-gray-200">Start Date</th>
-              <th className="px-4 py-2 border border-gray-200">End Date</th>
-              <th className="px-4 py-2 border border-gray-200">Status</th>
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
+            <tr>
+              {(
+                [
+                  { key: 'title', label: 'Title' },
+                  { key: 'pointsRequired', label: 'Points' },
+                  { key: 'value', label: 'Value' },
+                  { key: 'minOrderAmount', label: 'Min Order Amount' },
+                  { key: 'quota', label: 'Quota' },
+                  { key: 'startAt', label: 'Start Date' },
+                  { key: 'endAt', label: 'End Date' },
+                  { key: 'isActive', label: t('common.status') },
+                ] as const
+              ).map(({ key, label }) => (
+                <th
+                  key={key}
+                  className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
+                >
+                  <span>{label}</span>
+                </th>
+              ))}
               {showActions && (
-                <th className="px-4 py-2 border border-gray-200">Actions</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                  {t('common.actions')}
+                </th>
               )}
             </tr>
           </thead>
