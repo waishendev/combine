@@ -83,8 +83,6 @@ export default function MarqueeRow({
           <span>{marquee.sortOrder != null ? marquee.sortOrder : '-'}</span>
         )}
       </td>
-      <td className="px-4 py-2 border border-gray-200">{marquee.createdAt || '-'}</td>
-      <td className="px-4 py-2 border border-gray-200">{marquee.updatedAt || '-'}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

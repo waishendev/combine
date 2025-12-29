@@ -645,7 +645,7 @@ export default function MarqueeTable({
         </div>
       )}
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
@@ -656,8 +656,6 @@ export default function MarqueeTable({
                   { key: 'endAt', label: 'End Date' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'sortOrder', label: 'Sort Order' },
-                  { key: 'createdAt', label: t('common.createdAt') },
-                  { key: 'updatedAt', label: t('common.updatedAt') },
                 ] as const
               ).map(({ key, label }) => (
                 <th
