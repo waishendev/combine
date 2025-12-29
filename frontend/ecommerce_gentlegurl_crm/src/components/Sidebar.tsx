@@ -35,12 +35,12 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
       // ======================
       // Overview
       // ======================
-      {
-        key: 'dashboard',
-        label: 'Dashboard',
-        icon: 'fa-solid fa-gauge',
-        href: '/dashboard',
-      },
+      // {
+      //   key: 'dashboard',
+      //   label: 'Dashboard',
+      //   icon: 'fa-solid fa-gauge',
+      //   href: '/dashboard',
+      // },
         // ======================
       // Admin Management
       // ======================
