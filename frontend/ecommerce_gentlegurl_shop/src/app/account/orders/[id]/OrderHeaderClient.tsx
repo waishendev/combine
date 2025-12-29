@@ -80,7 +80,7 @@ export function OrderHeaderClient({
       return "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]";
     }
     if ((statusKey === "pending" && paymentStatusKey === "unpaid") || (statusKey === "processing" && paymentStatusKey === "unpaid")) {
-      return "bg-[var(--status-warning-bg)] text-[color:var(--status-warning)] border-[var(--status-warning-border)]";
+      return "bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)] border-[var(--status-warning-border)]";
     }
     if ((statusKey === "confirmed" && paymentStatusKey === "paid") || (statusKey === "processing" && paymentStatusKey === "paid") || (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped" || statusKey === "completed") {
       return "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]";

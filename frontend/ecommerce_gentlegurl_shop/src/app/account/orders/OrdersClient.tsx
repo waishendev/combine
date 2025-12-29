@@ -427,7 +427,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-[var(--foreground)]">Write a Review</h3>
-                <p className="text-sm text-[color:var(--text-muted)]">{modal.item.name}</p>
+                {/* <p className="text-sm text-[color:var(--text-muted)]">{modal.item.name}</p>
+                <p className="text-sm text-[color:var(--text-muted)]">{modal.item.product_image}</p> */}
               </div>
               <button
                 type="button"
