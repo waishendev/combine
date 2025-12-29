@@ -630,11 +630,8 @@ export default function MembershipTable({
                   { key: 'minSpent', label: 'Min Spent' },
                   { key: 'monthsWindow', label: 'Months Window' },
                   { key: 'multiplier', label: 'Multiplier' },
-                  { key: 'discountPercent', label: 'Discount %' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'sortOrder', label: 'Sort Order' },
-                  { key: 'createdAt', label: t('common.createdAt') },
-                  { key: 'updatedAt', label: t('common.updatedAt') },
                 ] as const
               ).map(({ key, label }) => (
                 <th

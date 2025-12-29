@@ -54,7 +54,6 @@ export default function MembershipRow({
       <td className="px-4 py-2 border border-gray-200">{membership.minSpent}</td>
       <td className="px-4 py-2 border border-gray-200">{membership.monthsWindow}</td>
       <td className="px-4 py-2 border border-gray-200">{membership.multiplier}</td>
-      <td className="px-4 py-2 border border-gray-200">{membership.discountPercent}%</td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={membership.isActive ? 'active' : 'inactive'}
@@ -92,8 +91,6 @@ export default function MembershipRow({
           <span>{membership.sortOrder != null ? membership.sortOrder : '-'}</span>
         )}
       </td>
-      <td className="px-4 py-2 border border-gray-200">{membership.createdAt}</td>
-      <td className="px-4 py-2 border border-gray-200">{membership.updatedAt}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

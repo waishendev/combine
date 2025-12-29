@@ -18,7 +18,6 @@ interface FormState {
   minSpentLastXMonths: string
   monthsWindow: string
   multiplier: string
-  productDiscountPercent: string
 }
 
 const initialFormState: FormState = {
@@ -28,7 +27,6 @@ const initialFormState: FormState = {
   minSpentLastXMonths: '0',
   monthsWindow: '6',
   multiplier: '1.00',
-  productDiscountPercent: '0',
 }
 
 export default function MembershipCreateModal({
@@ -56,7 +54,6 @@ export default function MembershipCreateModal({
     const minSpent = Number.parseFloat(form.minSpentLastXMonths) || 0
     const monthsWindow = Number.parseInt(form.monthsWindow, 10) || 6
     const multiplier = Number.parseFloat(form.multiplier) || 1.0
-    const discountPercent = Number.parseFloat(form.productDiscountPercent) || 0
 
     if (!trimmedTier || !trimmedDisplayName) {
       setError(t('common.allFieldsRequired'))
@@ -81,7 +78,6 @@ export default function MembershipCreateModal({
           min_spent_last_x_months: minSpent,
           months_window: monthsWindow,
           multiplier: multiplier,
-          product_discount_percent: discountPercent,
           is_active: true,
         }),
       })
@@ -125,7 +121,7 @@ export default function MembershipCreateModal({
             minSpent: minSpent.toFixed(2),
             monthsWindow: monthsWindow,
             multiplier: multiplier.toFixed(2),
-            discountPercent: discountPercent.toFixed(2),
+            discountPercent: '0',
             isActive: true,
             sortOrder: 0,
             createdAt: '',
@@ -278,26 +274,6 @@ export default function MembershipCreateModal({
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
               placeholder="1.00"
-              disabled={submitting}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="productDiscountPercent"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Product Discount Percent
-            </label>
-            <input
-              id="productDiscountPercent"
-              name="productDiscountPercent"
-              type="number"
-              step="0.01"
-              value={form.productDiscountPercent}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="0.00"
               disabled={submitting}
             />
           </div>
