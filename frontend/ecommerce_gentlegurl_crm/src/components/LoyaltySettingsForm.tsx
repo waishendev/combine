@@ -123,7 +123,7 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
         throw new Error(payload?.message || 'Failed to update loyalty settings')
       }
 
-      const updated = payload?.data?.current || payload?.data || payload?.data?.history?.[0]
+      const updated = payload?.data?.current || payload?.data?.history?.[0]
 
       if (updated) {
         setFormState((prev) => ({
