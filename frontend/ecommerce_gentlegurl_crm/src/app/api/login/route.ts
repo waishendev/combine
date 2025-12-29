@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getSetCookieHeaders } from '@/lib/setCookie';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -30,20 +32,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Forward cookies from backend to client
-    // Get all Set-Cookie headers
-    // Note: In Web Fetch API, we need to use headers.raw() to get all values
-      type RawHeaders = { raw?: () => Record<string, string[]> };
-      const raw = (response.headers as unknown as RawHeaders).raw;
-      const allHeaders: Record<string, string[]> = raw ? raw() : {};
-      let setCookieHeaders: string[] = allHeaders['set-cookie'] || [];
-    
-    // Fallback: if raw() doesn't work, try get()
-    if (setCookieHeaders.length === 0) {
-      const singleCookie = response.headers.get('set-cookie');
-      if (singleCookie) {
-        setCookieHeaders = [singleCookie];
-      }
-    }
+    const setCookieHeaders = getSetCookieHeaders(response.headers);
     
     console.log('[Login API] Set-Cookie headers count:', setCookieHeaders.length);
     console.log('[Login API] Set-Cookie headers:', setCookieHeaders);
@@ -104,4 +93,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

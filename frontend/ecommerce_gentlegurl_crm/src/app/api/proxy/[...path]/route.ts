@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getSetCookieHeaders } from '@/lib/setCookie';
+
 // Proxy route for /api/proxy/* that forwards to backend
 // Example: /api/proxy/admins -> http://localhost:8000/api/admins
 
@@ -174,12 +176,9 @@ async function handleRequest(
     });
 
     // Forward cookies from backend to client
-    const setCookieHeader = response.headers.get('set-cookie');
-    if (setCookieHeader) {
-      // Handle multiple cookies
-      const cookieStrings = setCookieHeader.split(',').map(c => c.trim());
-      
-      cookieStrings.forEach(cookieString => {
+    const setCookieHeaders = getSetCookieHeaders(response.headers);
+    if (setCookieHeaders.length > 0) {
+      setCookieHeaders.forEach(cookieString => {
         const parts = cookieString.split(';');
         const [nameValue] = parts;
         const [name, ...valueParts] = nameValue.split('=');
@@ -240,4 +239,3 @@ async function handleRequest(
     );
   }
 }
-
