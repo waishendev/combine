@@ -1012,13 +1012,14 @@ export default function ProductForm({
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Left Side: Product Images */}
           <div className="lg:w-2/5 space-y-4">
-            <div className="space-y-3">
+            <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="block text-sm font-medium text-gray-700">
                   {t('product.productImages')}
                   <span className="text-xs text-gray-500 font-normal ml-2">({t('product.maxImages').replace('{count}', String(MAX_IMAGES))})</span>
                 </label>
               </div>
+              <p className="text-xs text-red-500 mb-2">Suggested size: 800 x 800</p>
 
               {/* Hidden File Input */}
               <input
@@ -1033,7 +1034,7 @@ export default function ProductForm({
               />
 
               {/* Fixed 6-Slot Grid */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3 mb-2">
                 {Array.from({ length: MAX_IMAGES }).map((_, slotIndex) => {
                   // Combine new previews and existing images for display
                   const allImages = [
@@ -1722,6 +1723,7 @@ export default function ProductForm({
             <label className="block text-sm font-medium text-gray-700">
               {t('product.metaOgImageUrl')}
             </label>
+            <p className="text-xs text-red-500">Suggested size: 1200 x 630</p>
             {/* Hidden File Input */}
             <input
               ref={metaOgImageFileInputRef}

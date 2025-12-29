@@ -30,8 +30,13 @@ interface AnnouncementRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  canMove?: boolean
+  isFirst?: boolean
+  isLast?: boolean
   onEdit?: (announcement: AnnouncementRowData) => void
   onDelete?: (announcement: AnnouncementRowData) => void
+  onMoveUp?: (announcement: AnnouncementRowData) => void
+  onMoveDown?: (announcement: AnnouncementRowData) => void
 }
 
 export default function AnnouncementRow({
@@ -39,8 +44,13 @@ export default function AnnouncementRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  canMove = false,
+  isFirst = false,
+  isLast = false,
   onEdit,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: AnnouncementRowProps) {
   const { t } = useI18n()
   return (
@@ -75,7 +85,37 @@ export default function AnnouncementRow({
       <td className="px-4 py-2 border border-gray-200">
         {announcement.formattedEndAt || '-'}
       </td>
-      <td className="px-4 py-2 border border-gray-200">{announcement.sortOrder}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        {canMove ? (
+          <div className="flex items-center gap-3 justify-center">
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              onClick={() => onMoveUp?.(announcement)}
+              disabled={isFirst}
+              aria-label="Move up"
+              title="Move up"
+            >
+              <i className="fa-solid fa-chevron-up text-xs" />
+            </button>
+            <span className="text-sm font-medium text-gray-700 bg-gray-50 text-center min-w-[2rem]">
+              {announcement.sortOrder}
+            </span>
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              onClick={() => onMoveDown?.(announcement)}
+              disabled={isLast}
+              aria-label="Move down"
+              title="Move down"
+            >
+              <i className="fa-solid fa-chevron-down text-xs" />
+            </button>
+          </div>
+        ) : (
+          <span>{announcement.sortOrder}</span>
+        )}
+      </td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

@@ -51,17 +51,19 @@ export default function AnnouncementTable({
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
   const [sortColumn, setSortColumn] = useState<keyof AnnouncementRowData | null>(
-    'title',
+    'sortOrder',
   )
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
     'asc',
   )
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AnnouncementRowData | null>(null)
+  const [movingAnnouncementId, setMovingAnnouncementId] = useState<number | null>(null)
 
   const canCreate = permissions.includes('ecommerce.announcements.create')
   const canUpdate = permissions.includes('ecommerce.announcements.update')
   const canDelete = permissions.includes('ecommerce.announcements.delete')
+  const canMove = permissions.includes('ecommerce.announcements.update')
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -302,6 +304,200 @@ export default function AnnouncementTable({
     })
   }
 
+  const handleMoveUp = async (announcement: AnnouncementRowData) => {
+    if (movingAnnouncementId === announcement.id) return
+    setMovingAnnouncementId(announcement.id)
+
+    try {
+      const res = await fetch(
+        `/api/proxy/ecommerce/announcements/${announcement.id}/move-up`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Language': 'en',
+          },
+        },
+      )
+
+      const data = await res.json().catch(() => null)
+      if (data && typeof data === 'object') {
+        if (data?.success === false && data?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+      }
+
+      if (!res.ok) {
+        console.error('Failed to move announcement up')
+        return
+      }
+
+      // Refresh the list after successful move
+      const qs = new URLSearchParams()
+      qs.set('page', String(currentPage))
+      qs.set('per_page', String(pageSize))
+
+      const refreshRes = await fetch(
+        `/api/proxy/ecommerce/announcements?${qs.toString()}`,
+        {
+          cache: 'no-store',
+        },
+      )
+
+      if (refreshRes.ok) {
+        const refreshResponse: AnnouncementApiResponse = await refreshRes
+          .json()
+          .catch(() => ({} as AnnouncementApiResponse))
+
+        let announcementItems: AnnouncementApiItem[] = []
+        let paginationData: Partial<Meta> = {}
+
+        if (refreshResponse?.data) {
+          if (Array.isArray(refreshResponse.data)) {
+            announcementItems = refreshResponse.data
+          } else if (
+            typeof refreshResponse.data === 'object' &&
+            'data' in refreshResponse.data
+          ) {
+            const nestedData = refreshResponse.data as {
+              data?: AnnouncementApiItem[]
+              current_page?: number
+              last_page?: number
+              per_page?: number
+              total?: number
+            }
+            announcementItems = Array.isArray(nestedData.data) ? nestedData.data : []
+            paginationData = {
+              current_page: nestedData.current_page,
+              last_page: nestedData.last_page,
+              per_page: nestedData.per_page,
+              total: nestedData.total,
+            }
+          }
+        }
+
+        if (refreshResponse?.meta) {
+          paginationData = { ...paginationData, ...refreshResponse.meta }
+        }
+
+        const list: AnnouncementRowData[] = announcementItems.map((item) =>
+          mapAnnouncementApiItemToRow(item),
+        )
+
+        setRows(list)
+        setMeta({
+          current_page:
+            Number(paginationData.current_page ?? currentPage) || 1,
+          last_page: Number(paginationData.last_page ?? 1) || 1,
+          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
+          total: Number(paginationData.total ?? list.length) || list.length,
+        })
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setMovingAnnouncementId(null)
+    }
+  }
+
+  const handleMoveDown = async (announcement: AnnouncementRowData) => {
+    if (movingAnnouncementId === announcement.id) return
+    setMovingAnnouncementId(announcement.id)
+
+    try {
+      const res = await fetch(
+        `/api/proxy/ecommerce/announcements/${announcement.id}/move-down`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Language': 'en',
+          },
+        },
+      )
+
+      const data = await res.json().catch(() => null)
+      if (data && typeof data === 'object') {
+        if (data?.success === false && data?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+      }
+
+      if (!res.ok) {
+        console.error('Failed to move announcement down')
+        return
+      }
+
+      // Refresh the list after successful move
+      const qs = new URLSearchParams()
+      qs.set('page', String(currentPage))
+      qs.set('per_page', String(pageSize))
+
+      const refreshRes = await fetch(
+        `/api/proxy/ecommerce/announcements?${qs.toString()}`,
+        {
+          cache: 'no-store',
+        },
+      )
+
+      if (refreshRes.ok) {
+        const refreshResponse: AnnouncementApiResponse = await refreshRes
+          .json()
+          .catch(() => ({} as AnnouncementApiResponse))
+
+        let announcementItems: AnnouncementApiItem[] = []
+        let paginationData: Partial<Meta> = {}
+
+        if (refreshResponse?.data) {
+          if (Array.isArray(refreshResponse.data)) {
+            announcementItems = refreshResponse.data
+          } else if (
+            typeof refreshResponse.data === 'object' &&
+            'data' in refreshResponse.data
+          ) {
+            const nestedData = refreshResponse.data as {
+              data?: AnnouncementApiItem[]
+              current_page?: number
+              last_page?: number
+              per_page?: number
+              total?: number
+            }
+            announcementItems = Array.isArray(nestedData.data) ? nestedData.data : []
+            paginationData = {
+              current_page: nestedData.current_page,
+              last_page: nestedData.last_page,
+              per_page: nestedData.per_page,
+              total: nestedData.total,
+            }
+          }
+        }
+
+        if (refreshResponse?.meta) {
+          paginationData = { ...paginationData, ...refreshResponse.meta }
+        }
+
+        const list: AnnouncementRowData[] = announcementItems.map((item) =>
+          mapAnnouncementApiItemToRow(item),
+        )
+
+        setRows(list)
+        setMeta({
+          current_page:
+            Number(paginationData.current_page ?? currentPage) || 1,
+          last_page: Number(paginationData.last_page ?? 1) || 1,
+          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
+          total: Number(paginationData.total ?? list.length) || list.length,
+        })
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setMovingAnnouncementId(null)
+    }
+  }
+
   return (
     <div>
       {isCreateModalOpen && (
@@ -392,25 +588,49 @@ export default function AnnouncementTable({
             {loading ? (
               <TableLoadingRow colSpan={colCount} />
             ) : rows.length > 0 ? (
-              sortedRows.map((announcement) => (
-                <AnnouncementRow
-                  key={announcement.id}
-                  announcement={announcement}
-                  showActions={showActions}
-                  canUpdate={canUpdate}
-                  canDelete={canDelete}
-                  onEdit={() => {
-                    if (canUpdate) {
-                      setEditingAnnouncementId(announcement.id)
-                    }
-                  }}
-                  onDelete={() => {
-                    if (canDelete) {
-                      setDeleteTarget(announcement)
-                    }
-                  }}
-                />
-              ))
+              (() => {
+                // For move buttons, check based on sortOrder
+                const sortedByOrder = [...rows].sort((a, b) => {
+                  const orderA = a.sortOrder ?? 0
+                  const orderB = b.sortOrder ?? 0
+                  return orderA - orderB
+                })
+                const minSortOrder = sortedByOrder[0]?.sortOrder ?? null
+                const maxSortOrder = sortedByOrder[sortedByOrder.length - 1]?.sortOrder ?? null
+                
+                return sortedRows.map((announcement) => (
+                  <AnnouncementRow
+                    key={announcement.id}
+                    announcement={announcement}
+                    showActions={showActions}
+                    canUpdate={canUpdate}
+                    canDelete={canDelete}
+                    canMove={canMove}
+                    isFirst={announcement.sortOrder === minSortOrder}
+                    isLast={announcement.sortOrder === maxSortOrder}
+                    onEdit={() => {
+                      if (canUpdate) {
+                        setEditingAnnouncementId(announcement.id)
+                      }
+                    }}
+                    onDelete={() => {
+                      if (canDelete) {
+                        setDeleteTarget(announcement)
+                      }
+                    }}
+                    onMoveUp={() => {
+                      if (canMove) {
+                        handleMoveUp(announcement)
+                      }
+                    }}
+                    onMoveDown={() => {
+                      if (canMove) {
+                        handleMoveDown(announcement)
+                      }
+                    }}
+                  />
+                ))
+              })()
             ) : (
               <TableEmptyState colSpan={colCount} />
             )}

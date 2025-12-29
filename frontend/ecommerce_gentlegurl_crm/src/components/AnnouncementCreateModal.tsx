@@ -200,9 +200,10 @@ export default function AnnouncementCreateModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5">
-          <div className="flex flex-col gap-6 lg:flex-row">
-            <div className="w-full lg:w-1/2 space-y-3">
-              <h3 className="text-sm font-medium text-gray-700">Image *</h3>
+          <div className="flex flex-col gap-6 lg:flex-row mb-4">
+            <div className="w-full lg:w-1/2 space-y-1">
+              <h3 className="text-sm font-medium text-gray-700">Image <span className="text-red-500">*</span></h3>
+              <p className="text-xs text-red-500 mb-2">Suggested size: 1600 x 1200</p>
               <div
                 onClick={handleImageClick}
                 className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
@@ -262,46 +263,6 @@ export default function AnnouncementCreateModal({
                   </div>
                 )}
               </div>
-
-              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="buttonLabel"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Button Label
-                  </label>
-                  <input
-                    id="buttonLabel"
-                    name="buttonLabel"
-                    type="text"
-                    value={form.buttonLabel}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Shop Now"
-                    disabled={submitting}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="buttonLink"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Button Link
-                  </label>
-                  <input
-                    id="buttonLink"
-                    name="buttonLink"
-                    type="text"
-                    value={form.buttonLink}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="/shop"
-                    disabled={submitting}
-                  />
-                </div>
-              </section>
             </div>
 
             <div className="w-full lg:w-1/2 space-y-4">
@@ -362,44 +323,85 @@ export default function AnnouncementCreateModal({
                   rows={3}
                 />
               </div>
+            </div>
+          </div>
 
-              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="startAt"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Start Date
-                  </label>
-                  <input
-                    id="startAt"
-                    name="startAt"
-                    type="date"
-                    value={form.startAt}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    disabled={submitting}
-                  />
-                </div>
+          {/* Button & Dates Section */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label
+                  htmlFor="buttonLabel"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Button Label
+                </label>
+                <input
+                  id="buttonLabel"
+                  name="buttonLabel"
+                  type="text"
+                  value={form.buttonLabel}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Shop Now"
+                  disabled={submitting}
+                />
+              </div>
 
-                <div>
-                  <label
-                    htmlFor="endAt"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    End Date
-                  </label>
-                  <input
-                    id="endAt"
-                    name="endAt"
-                    type="date"
-                    value={form.endAt}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    disabled={submitting}
-                  />
-                </div>
-              </section>
+              <div className="space-y-2">
+                <label
+                  htmlFor="buttonLink"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Button Link
+                </label>
+                <input
+                  id="buttonLink"
+                  name="buttonLink"
+                  type="text"
+                  value={form.buttonLink}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="/shop"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="startAt"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Start Date
+                </label>
+                <input
+                  id="startAt"
+                  name="startAt"
+                  type="date"
+                  value={form.startAt}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="endAt"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  End Date
+                </label>
+                <input
+                  id="endAt"
+                  name="endAt"
+                  type="date"
+                  value={form.endAt}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={submitting}
+                />
+              </div>
             </div>
           </div>
 

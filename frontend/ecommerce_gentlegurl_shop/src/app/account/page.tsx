@@ -366,7 +366,7 @@ export default function AccountPage() {
           <button
             type="button"
             onClick={() => setProfileModalOpen(true)}
-            className="w-full rounded-lg bg-[var(--background-soft)]0 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] sm:w-auto"
+            className="w-full rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] sm:w-auto"
           >
             Edit Profile
           </button>

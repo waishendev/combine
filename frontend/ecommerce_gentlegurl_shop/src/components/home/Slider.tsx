@@ -167,7 +167,6 @@ export default function Slider({ items }: SliderProps) {
                     alt={item.title ?? "slide"}
                     fill
                     priority={isActive}
-                    sizes="100vw"
                     className="object-cover sm:hidden"
                   />
                 </div>

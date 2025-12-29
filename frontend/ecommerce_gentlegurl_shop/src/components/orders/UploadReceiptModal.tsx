@@ -100,6 +100,9 @@ export default function UploadReceiptModal({ isOpen, orderId, onClose, onSuccess
             {/* Left side - Preview */}
             <div className="w-full md:w-1/2">
               <div className="space-y-3">
+                <p className="text-left text-xs text-[color:var(--status-error)]">
+                    * Required
+                </p>
                 <div className="flex h-48 w-full items-center justify-center overflow-hidden rounded-lg border border-[var(--muted)] bg-[var(--background-soft)]">
                   {previewUrl ? (
                     <Image
@@ -187,7 +190,7 @@ export default function UploadReceiptModal({ isOpen, orderId, onClose, onSuccess
             type="button"
             onClick={handleUpload}
             disabled={!selectedFile || isUploading}
-            className="rounded-md bg-[var(--background-soft)]0 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
+            className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isUploading ? "Uploading..." : "Confirm Upload"}
           </button>

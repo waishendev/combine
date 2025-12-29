@@ -228,7 +228,8 @@ export default function SliderCreateModal({
             {/* Left Side - Image Upload */}
             <div className="space-y-4">
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Desktop Image *</h3>
+                <h3 className="text-sm font-medium text-gray-700">Desktop Image <span className="text-red-500">*</span></h3>
+                <p className="text-xs text-red-500 mb-2">Suggested size: 1920 x 848</p>
                 <div
                   onClick={handleImageClick}
                   className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
@@ -289,7 +290,8 @@ export default function SliderCreateModal({
               </div>
 
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Mobile Image</h3>
+                <h3 className="text-sm font-medium text-gray-700">Mobile Image</h3>
+                <p className="text-xs text-red-500 mb-2">Suggested size: 1410 x 1360</p>
                 <div
                   onClick={handleMobileImageClick}
                   className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${

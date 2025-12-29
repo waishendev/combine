@@ -3,6 +3,7 @@
 :root[data-theme="soft"] {
   --background: #fff8f5;
   --background-soft: #ffeef3;
+  --some-button: #ffeef3;
   --badge-background: #ffeef3;
   --foreground: #3c2432;
   --accent: #e7a2ba;
@@ -83,6 +84,7 @@
   --background-soft: #fefbe8;
   --foreground: #2b211b;
   --accent: #966f4b;
+  --some-button: #966f4b;
   --accent-strong: #b78363;
   --accent-stronger: #a97052;
   --muted: #f6eade;
@@ -93,7 +95,7 @@
   --text-muted: #6f5b50;
   --ring: #d2ae90;
   --shadow: 0 12px 30px -20px rgba(70, 45, 35, 0.35);
-  --status-error: #b07257;
+  --status-error: #ff1c0c;
   --status-error-bg: #f8e6db;
   --status-error-border: #e9c9b8;
   --status-success: #2f6f57;

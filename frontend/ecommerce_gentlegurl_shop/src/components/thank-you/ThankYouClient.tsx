@@ -300,6 +300,9 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               {/* Left side - Preview */}
               <div className="w-full md:w-1/2">
                 <div className="space-y-3">
+                  <p className="text-left text-xs text-[color:var(--status-error)]">
+                    * Required
+                  </p>
                   <div className="h-48 w-full overflow-hidden rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] flex items-center justify-center">
                     {previewUrl ? (
                       <Image
@@ -343,6 +346,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                       {selectedFile.name}
                     </p>
                   )}
+
                   <p className="text-center text-xs text-[color:var(--status-error)] opacity-70">
                     * Accepted: jpg, jpeg, png, webp, pdf (max 5MB)
                   </p>
@@ -386,7 +390,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 type="button"
                 onClick={handleUpload}
                 disabled={!selectedFile || isUploading}
-                className="rounded-md bg-[var(--background-soft)]0 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
+                className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isUploading ? "Uploading..." : "Confirm Upload"}
               </button>
