@@ -14,6 +14,7 @@ class PublicStoreLocationController extends Controller
             ->where('is_active', true)
             ->orderBy('name')
             ->orderBy('id')
+            ->with('images')
             ->get([
                 'id',
                 'name',

@@ -320,7 +320,7 @@ export default function StoreCreateModal({
                   return (
                     <div
                       key={slotIndex}
-                      className={`relative aspect-square rounded-xl border-2 border-dashed overflow-hidden transition-all duration-200 ${
+                      className={`relative aspect-square rounded-xl border-2 border-dashed overflow-hidden transition-all duration-200 flex items-center justify-center ${
                         isEmpty
                           ? 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md cursor-pointer'
                           : 'border-gray-200 bg-white shadow-md hover:shadow-lg'
@@ -356,7 +356,7 @@ export default function StoreCreateModal({
                           </span>
                         </div>
                       ) : (
-                        <div className="w-full h-full cursor-pointer group relative">
+                        <div className="w-full h-full cursor-pointer group relative flex items-center justify-center">
                           <img
                             src={imageInSlot.preview}
                             alt="Preview"
