@@ -310,7 +310,7 @@ export default function ReviewsPage() {
 
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="flex max-h-[600px] flex-col rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm">
+        <div className="flex max-h-[680px] flex-col rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xl font-semibold text-[var(--foreground)]">Recent Reviews</h2>
             {pagination && (
@@ -402,7 +402,7 @@ export default function ReviewsPage() {
             </div>
           )}
           
-          <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+          <form className="mt-2 space-y-2" onSubmit={handleSubmit}>
             {!customer && (
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-sm font-medium text-[color:var(--text-muted)]">
