@@ -68,9 +68,10 @@ export default function StoreTable({
   const [deleteTarget, setDeleteTarget] = useState<StoreRowData | null>(null)
 
   const canCreate = permissions.includes('ecommerce.stores.create')
+  const canView = permissions.includes('ecommerce.stores.view')
   const canUpdate = permissions.includes('ecommerce.stores.update')
   const canDelete = permissions.includes('ecommerce.stores.delete')
-  const showActions = canUpdate || canDelete
+  const showActions = canView || canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -554,4 +555,3 @@ export default function StoreTable({
     </div>
   )
 }
-

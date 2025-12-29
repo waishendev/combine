@@ -1,13 +1,22 @@
 'use client'
 
+import Link from 'next/link'
+
 import StatusBadge from './StatusBadge'
 import { useI18n } from '@/lib/i18n'
+
+export interface StoreImage {
+  id: number
+  imageUrl: string
+}
 
 export interface StoreRowData {
   id: number
   name: string
   code: string
   imageUrl?: string | null
+  images?: StoreImage[]
+  openingHours?: string[]
   address_line1: string
   address_line2: string
   city: string
@@ -77,6 +86,14 @@ export default function StoreRow({
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
+            <Link
+              href={`/store/${store.id}`}
+              className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+              aria-label="View store"
+              title="View store"
+            >
+              <i className="fa-solid fa-eye" />
+            </Link>
             {canUpdate && (
               <button
                 type="button"
@@ -105,4 +122,3 @@ export default function StoreRow({
     </tr>
   )
 }
-

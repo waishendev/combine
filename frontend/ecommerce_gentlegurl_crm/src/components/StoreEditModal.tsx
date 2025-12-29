@@ -23,7 +23,6 @@ interface FormState {
   country: string
   phone: string
   isActive: 'true' | 'false'
-  imageFile: File | null
 }
 
 const initialFormState: FormState = {
@@ -37,7 +36,6 @@ const initialFormState: FormState = {
   country: '',
   phone: '',
   isActive: 'true',
-  imageFile: null,
 }
 
 export default function StoreEditModal({
@@ -51,8 +49,14 @@ export default function StoreEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadedStore, setLoadedStore] = useState<StoreRowData | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
+  const [openingHours, setOpeningHours] = useState<string[]>([''])
+  const [existingImages, setExistingImages] = useState<
+    { id: number; imageUrl: string }[]
+  >([])
+  const [deletedImageIds, setDeletedImageIds] = useState<number[]>([])
+  const [newImages, setNewImages] = useState<
+    { file: File; preview: string }[]
+  >([])
   const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -102,8 +106,14 @@ export default function StoreEditModal({
 
         const mappedStore = mapStoreApiItemToRow(store)
         setLoadedStore(mappedStore)
-        setExistingImageUrl(mappedStore.imageUrl ?? null)
-        setImagePreview(mappedStore.imageUrl ?? null)
+        setOpeningHours(
+          mappedStore.openingHours && mappedStore.openingHours.length > 0
+            ? mappedStore.openingHours
+            : [''],
+        )
+        setExistingImages(mappedStore.images ?? [])
+        setDeletedImageIds([])
+        setNewImages([])
 
         setForm({
           name: typeof store.name === 'string' ? store.name : '',
@@ -123,7 +133,6 @@ export default function StoreEditModal({
             store.is_active === 1
               ? 'true'
               : 'false',
-          imageFile: null,
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -150,17 +159,27 @@ export default function StoreEditModal({
   }
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null
-    setForm((prev) => ({ ...prev, imageFile: file }))
+    const files = Array.from(event.target.files ?? [])
+    if (!files.length) return
 
-    if (file) {
+    const activeExistingCount = existingImages.length - deletedImageIds.length
+    const remainingSlots = Math.max(6 - activeExistingCount - newImages.length, 0)
+    const nextFiles = files.slice(0, remainingSlots)
+
+    if (nextFiles.length < files.length) {
+      setError('You can upload up to 6 photos.')
+    }
+
+    nextFiles.forEach((file) => {
       const reader = new FileReader()
       reader.onloadend = () => {
-        setImagePreview(reader.result as string)
+        setNewImages((prev) => [...prev, { file, preview: reader.result as string }])
       }
       reader.readAsDataURL(file)
-    } else {
-      setImagePreview(existingImageUrl)
+    })
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
     }
   }
 
@@ -170,13 +189,26 @@ export default function StoreEditModal({
     }
   }
 
-  const handleImageRemove = () => {
+  const handleRemoveExistingImage = (imageId: number) => {
     if (submitting) return
-    setForm((prev) => ({ ...prev, imageFile: null }))
-    setImagePreview(existingImageUrl)
-    if (imageInputRef.current) {
-      imageInputRef.current.value = ''
-    }
+    setDeletedImageIds((prev) => [...prev, imageId])
+  }
+
+  const handleRemoveNewImage = (index: number) => {
+    if (submitting) return
+    setNewImages((prev) => prev.filter((_, currentIndex) => currentIndex !== index))
+  }
+
+  const handleOpeningHourChange = (index: number, value: string) => {
+    setOpeningHours((prev) => prev.map((item, idx) => (idx === index ? value : item)))
+  }
+
+  const handleAddOpeningHour = () => {
+    setOpeningHours((prev) => [...prev, ''])
+  }
+
+  const handleRemoveOpeningHour = (index: number) => {
+    setOpeningHours((prev) => prev.filter((_, idx) => idx !== index))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -220,9 +252,18 @@ export default function StoreEditModal({
       formData.append('country', trimmedCountry)
       formData.append('phone', trimmedPhone)
       formData.append('is_active', form.isActive === 'true' ? '1' : '0')
-      if (form.imageFile) {
-        formData.append('image_file', form.imageFile)
-      }
+      openingHours
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .forEach((value) => {
+          formData.append('opening_hours[]', value)
+        })
+      newImages.forEach(({ file }) => {
+        formData.append('images[]', file)
+      })
+      deletedImageIds.forEach((imageId) => {
+        formData.append('delete_image_ids[]', String(imageId))
+      })
 
       const res = await fetch(
         `/api/proxy/ecommerce/store-locations/${storeId}`,
@@ -282,6 +323,10 @@ export default function StoreEditModal({
             name: trimmedName,
             code: trimmedCode,
             imageUrl: loadedStore?.imageUrl ?? null,
+            images: loadedStore?.images ?? [],
+            openingHours: openingHours
+              .map((value) => value.trim())
+              .filter(Boolean),
             address_line1: trimmedAddressLine1,
             address_line2: form.address_line2.trim(),
             city: trimmedCity,
@@ -336,64 +381,78 @@ export default function StoreEditModal({
             <>
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
                 <div className="space-y-2">
-                  <h3 className="text-sm font-medium text-gray-700">Photo</h3>
-                  <div
-                    onClick={handleImageClick}
-                    className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
-                      imagePreview
-                        ? 'border-gray-300'
-                        : 'border-gray-300 hover:border-blue-400'
-                    }`}
-                  >
-                    <input
-                      ref={imageInputRef}
-                      id="imageFile"
-                      name="imageFile"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                      disabled={disableForm}
-                    />
-                    {imagePreview ? (
-                      <div className="relative group">
-                        <img
-                          src={imagePreview}
-                          alt="Preview"
-                          className="w-full h-56 object-cover rounded"
-                        />
-                        <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-gray-700">Photos</h3>
+                    <span className="text-xs text-gray-500">
+                      {existingImages.length - deletedImageIds.length + newImages.length}
+                      /6
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {existingImages
+                      .filter((image) => !deletedImageIds.includes(image.id))
+                      .map((image) => (
+                        <div
+                          key={`existing-${image.id}`}
+                          className="relative rounded-lg border border-gray-200 overflow-hidden group"
+                        >
+                          <img
+                            src={image.imageUrl}
+                            alt="Store"
+                            className="h-28 w-full object-cover"
+                          />
                           <button
                             type="button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              handleImageClick()
-                            }}
-                            className="w-8 h-8 bg-blue-500/95 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-600"
-                            aria-label="Replace image"
-                          >
-                            <i className="fa-solid fa-pen" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              handleImageRemove()
-                            }}
-                            className="w-8 h-8 bg-red-500/95 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600"
+                            onClick={() => handleRemoveExistingImage(image.id)}
+                            className="absolute top-2 right-2 h-7 w-7 rounded-full bg-red-500/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
                             aria-label="Remove image"
                           >
                             <i className="fa-solid fa-trash" />
                           </button>
                         </div>
+                      ))}
+                    {newImages.map((image, index) => (
+                      <div
+                        key={image.preview}
+                        className="relative rounded-lg border border-gray-200 overflow-hidden group"
+                      >
+                        <img
+                          src={image.preview}
+                          alt="Preview"
+                          className="h-28 w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveNewImage(index)}
+                          className="absolute top-2 right-2 h-7 w-7 rounded-full bg-red-500/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                          aria-label="Remove image"
+                        >
+                          <i className="fa-solid fa-trash" />
+                        </button>
                       </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                        <i className="fa-regular fa-image text-3xl mb-2" />
-                        <p className="text-sm">Click to upload</p>
-                      </div>
+                    ))}
+                    {existingImages.length - deletedImageIds.length + newImages.length < 6 && (
+                      <button
+                        type="button"
+                        onClick={handleImageClick}
+                        className="flex flex-col items-center justify-center h-28 rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition"
+                      >
+                        <i className="fa-regular fa-image text-xl mb-1" />
+                        <span className="text-xs">Add Photo</span>
+                      </button>
                     )}
                   </div>
+                  <input
+                    ref={imageInputRef}
+                    id="imageFile"
+                    name="imageFile"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageChange}
+                    className="hidden"
+                    disabled={disableForm}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -586,6 +645,48 @@ export default function StoreEditModal({
                       <option value="true">{t('common.active')}</option>
                       <option value="false">{t('common.inactive')}</option>
                     </select>
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Opening Hours
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleAddOpeningHour}
+                        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+                      >
+                        <i className="fa-solid fa-plus" />
+                        Add line
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {openingHours.map((value, index) => (
+                        <div key={`opening-${index}`} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={value}
+                            onChange={(event) =>
+                              handleOpeningHourChange(index, event.target.value)
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="e.g. Mon-Fri 10:00 - 19:00"
+                            disabled={disableForm}
+                          />
+                          {openingHours.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOpeningHour(index)}
+                              className="h-9 w-9 rounded-md border border-gray-300 text-gray-500 hover:text-red-500 hover:border-red-300"
+                              aria-label="Remove opening hour"
+                            >
+                              <i className="fa-solid fa-xmark" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
