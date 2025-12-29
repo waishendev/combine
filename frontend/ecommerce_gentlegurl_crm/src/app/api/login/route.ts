@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getSetCookieHeaders } from '@/lib/setCookie';
+import { getSetCookieHeaders, parseSetCookieHeader } from '@/lib/setCookie';
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +39,13 @@ export async function POST(request: NextRequest) {
     
     if (setCookieHeaders.length > 0) {
       setCookieHeaders.forEach((cookieString) => {
-        nextResponse.headers.append('set-cookie', cookieString);
+        const parsedCookie = parseSetCookieHeader(cookieString);
+        if (!parsedCookie) return;
+        nextResponse.cookies.set(
+          parsedCookie.name,
+          parsedCookie.value,
+          parsedCookie.attributes,
+        );
       });
     }
 

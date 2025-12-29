@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getSetCookieHeaders } from '@/lib/setCookie';
+import { getSetCookieHeaders, parseSetCookieHeader } from '@/lib/setCookie';
 
 // This is a catch-all proxy route for all API endpoints except /api/login
 // It forwards requests to the backend server to avoid CORS issues
@@ -167,7 +167,13 @@ async function handleRequest(
     const setCookieHeaders = getSetCookieHeaders(response.headers);
     if (setCookieHeaders.length > 0) {
       setCookieHeaders.forEach((cookieString) => {
-        nextResponse.headers.append('set-cookie', cookieString);
+        const parsedCookie = parseSetCookieHeader(cookieString);
+        if (!parsedCookie) return;
+        nextResponse.cookies.set(
+          parsedCookie.name,
+          parsedCookie.value,
+          parsedCookie.attributes,
+        );
       });
     }
 

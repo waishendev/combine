@@ -65,3 +65,75 @@ export const getSetCookieHeaders = (headers: Headers): string[] => {
 
   return splitSetCookieHeader(singleValue);
 };
+
+export type ParsedCookieAttributes = {
+  httpOnly?: boolean;
+  sameSite?: 'strict' | 'lax' | 'none';
+  path?: string;
+  secure?: boolean;
+  maxAge?: number;
+  expires?: Date;
+};
+
+export const parseSetCookieHeader = (
+  cookieString: string,
+): { name: string; value: string; attributes: ParsedCookieAttributes } | null => {
+  const parts = cookieString.split(';');
+  const [nameValue, ...attributesParts] = parts;
+  const [name, ...valueParts] = nameValue.split('=');
+  const value = valueParts.join('=');
+
+  if (!name) {
+    return null;
+  }
+
+  const attributes: ParsedCookieAttributes = {
+    sameSite: 'lax',
+    path: '/',
+  };
+
+  attributesParts.forEach((attr) => {
+    const trimmed = attr.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (lower === 'httponly') {
+      attributes.httpOnly = true;
+      return;
+    }
+    if (lower === 'secure') {
+      attributes.secure = true;
+      return;
+    }
+    if (lower.startsWith('samesite=')) {
+      const value = lower.split('=')[1];
+      if (value === 'strict' || value === 'none' || value === 'lax') {
+        attributes.sameSite = value;
+      }
+      return;
+    }
+    if (lower.startsWith('path=')) {
+      attributes.path = trimmed.split('=')[1];
+      return;
+    }
+    if (lower.startsWith('max-age=')) {
+      const maxAge = Number.parseInt(trimmed.split('=')[1], 10);
+      if (!Number.isNaN(maxAge)) {
+        attributes.maxAge = maxAge;
+      }
+      return;
+    }
+    if (lower.startsWith('expires=')) {
+      const expiresValue = trimmed.substring(8);
+      const parsedDate = new Date(expiresValue);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        attributes.expires = parsedDate;
+      }
+    }
+  });
+
+  return {
+    name: name.trim(),
+    value: value.trim(),
+    attributes,
+  };
+};
