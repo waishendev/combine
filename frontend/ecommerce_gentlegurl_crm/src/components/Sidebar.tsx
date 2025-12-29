@@ -53,7 +53,7 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             key: 'admins',
             label: 'Admins',
             href: '/admins',
-            requiredPermission: 'admins.view',
+            requiredPermission: 'users.view',
           },
           {
             key: 'roles',
