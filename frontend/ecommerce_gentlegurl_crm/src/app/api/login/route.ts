@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getSetCookieHeaders } from '@/lib/setCookie';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -30,68 +32,14 @@ export async function POST(request: NextRequest) {
     });
 
     // Forward cookies from backend to client
-    // Get all Set-Cookie headers
-    // Note: In Web Fetch API, we need to use headers.raw() to get all values
-      type RawHeaders = { raw?: () => Record<string, string[]> };
-      const raw = (response.headers as unknown as RawHeaders).raw;
-      const allHeaders: Record<string, string[]> = raw ? raw() : {};
-      let setCookieHeaders: string[] = allHeaders['set-cookie'] || [];
-    
-    // Fallback: if raw() doesn't work, try get()
-    if (setCookieHeaders.length === 0) {
-      const singleCookie = response.headers.get('set-cookie');
-      if (singleCookie) {
-        setCookieHeaders = [singleCookie];
-      }
-    }
+    const setCookieHeaders = getSetCookieHeaders(response.headers);
     
     console.log('[Login API] Set-Cookie headers count:', setCookieHeaders.length);
     console.log('[Login API] Set-Cookie headers:', setCookieHeaders);
     
     if (setCookieHeaders.length > 0) {
-      setCookieHeaders.forEach(cookieString => {
-        // Laravel cookies format: name=value; Path=/; HttpOnly; SameSite=lax
-        const parts = cookieString.split(';').map(p => p.trim());
-        const [nameValue] = parts;
-        const [name, ...valueParts] = nameValue.split('=');
-        const value = valueParts.join('='); // In case value contains '='
-        
-        if (name && value) {
-          // Extract cookie attributes
-          let httpOnly = false;
-          let sameSite: 'strict' | 'lax' | 'none' = 'lax';
-          let path = '/';
-          let maxAge: number | undefined;
-          let secure = false;
-          
-          parts.slice(1).forEach(attr => {
-            const trimmed = attr.toLowerCase();
-            if (trimmed === 'httponly') httpOnly = true;
-            if (trimmed === 'secure') secure = true;
-            if (trimmed.startsWith('samesite=')) {
-              const samesiteValue = trimmed.split('=')[1];
-              if (samesiteValue === 'strict' || samesiteValue === 'none') {
-                sameSite = samesiteValue;
-              }
-            }
-            if (trimmed.startsWith('path=')) {
-              path = trimmed.split('=')[1];
-            }
-            if (trimmed.startsWith('max-age=')) {
-              maxAge = parseInt(trimmed.split('=')[1], 10);
-            }
-          });
-          
-          console.log(`[Login API] Setting cookie: ${name} with path=${path}, httpOnly=${httpOnly}, sameSite=${sameSite}`);
-          
-          nextResponse.cookies.set(name.trim(), value.trim(), {
-            httpOnly,
-            sameSite,
-            path,
-            secure,
-            ...(maxAge && { maxAge }),
-          });
-        }
+      setCookieHeaders.forEach((cookieString) => {
+        nextResponse.headers.append('set-cookie', cookieString);
       });
     }
 
@@ -104,4 +52,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
