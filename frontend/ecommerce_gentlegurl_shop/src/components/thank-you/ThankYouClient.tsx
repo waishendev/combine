@@ -112,6 +112,76 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const paymentProvider = order?.payment_provider ?? (isBillplzPayment ? "billplz" : "manual");
   const isPaid = order?.payment_status === "paid";
 
+  // Status display logic based on new requirements
+  const displayStatus = useMemo(() => {
+    if (!order) return "";
+    const statusKey = order.status ? order.status.toLowerCase() : "";
+    const paymentStatusKey = order.payment_status ? order.payment_status.toLowerCase() : "";
+    
+    if (statusKey === "cancelled") {
+      return "Cancelled";
+    }
+    if (paymentStatusKey === "failed") {
+      return "Payment Failed";
+    }
+    if (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid") {
+      return "Payment Proof Rejected";
+    }
+    if (statusKey === "pending" && paymentStatusKey === "unpaid") {
+      return "Awaiting Payment";
+    }
+    if (statusKey === "processing" && paymentStatusKey === "unpaid") {
+      return "Waiting for Verification";
+    }
+    if (statusKey === "confirmed" && paymentStatusKey === "paid") {
+      return "Payment Confirmed";
+    }
+    if (statusKey === "processing" && paymentStatusKey === "paid") {
+      return "Preparing";
+    }
+    if (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") {
+      return "Ready for Pickup";
+    }
+    if (statusKey === "shipped") {
+      return "Shipped";
+    }
+    if (statusKey === "completed") {
+      return "Completed";
+    }
+    return order.status;
+  }, [order]);
+
+  const badgeStyle = useMemo(() => {
+    if (!order) return "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
+    const statusKey = order.status ? order.status.toLowerCase() : "";
+    const paymentStatusKey = order.payment_status ? order.payment_status.toLowerCase() : "";
+    
+    if (statusKey === "cancelled" || paymentStatusKey === "failed" || (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid")) {
+      return "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]";
+    }
+    if ((statusKey === "pending" && paymentStatusKey === "unpaid") || (statusKey === "processing" && paymentStatusKey === "unpaid")) {
+      return "bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)] border-[var(--status-warning-border)]";
+    }
+    if ((statusKey === "confirmed" && paymentStatusKey === "paid") || (statusKey === "processing" && paymentStatusKey === "paid") || (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped" || statusKey === "completed") {
+      return "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]";
+    }
+    return "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
+  }, [order]);
+
+  // Check if status is Payment Confirmed or Cancelled
+  const isPaymentConfirmed = useMemo(() => {
+    if (!order) return false;
+    const statusKey = order.status ? order.status.toLowerCase() : "";
+    const paymentStatusKey = order.payment_status ? order.payment_status.toLowerCase() : "";
+    return statusKey === "confirmed" && paymentStatusKey === "paid";
+  }, [order]);
+
+  const isCancelled = useMemo(() => {
+    if (!order) return false;
+    const statusKey = order.status ? order.status.toLowerCase() : "";
+    return statusKey === "cancelled";
+  }, [order]);
+
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-center text-[var(--foreground)]">
       <h1 className="text-3xl font-semibold">Thank you for your order!</h1>
@@ -133,22 +203,16 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 <span className="font-semibold">RM {Number(order.grand_total).toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between">
+                <span className="text-[var(--foreground)]/70">Status</span>
+                <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
+                  {displayStatus}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Payment Status</span>
                 <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
                   {order.payment_status}
                 </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[var(--foreground)]/70">Status</span>
-                {order.status?.toLowerCase() === "processing" ? (
-                  <span className="rounded-full border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--status-warning)]">
-                    Waiting for verification
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                    {order.status}
-                  </span>
-                )}
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Payment Method</span>
@@ -218,31 +282,38 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               )}
 
               <div className="mt-4 space-y-2">
-                {!latestUpload && (
-                  <p className="text-xs text-[var(--foreground)]/80">Upload your bank-in slip</p>
-                )}
-                {!latestUpload && (
-                  <button
-                    type="button"
-                    onClick={openModal}
-                    className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
-                  >
-                    Upload Slip
-                  </button>
-                )}
-                {/* {uploadMessage && <p className="text-xs text-[var(--foreground)]/70">{uploadMessage}</p>} */}
-                {latestUpload && (
-                  <div className="text-xs text-[var(--foreground)]/70 space-y-1">
-                    <p>Latest upload: {latestUpload.created_at}</p>
-                    <p className="font-medium text-[var(--accent-strong)]">Slip submitted • Pending verification</p>
-                    <button
-                      type="button"
-                      onClick={openModal}
-                      className="mt-2 w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
-                    >
-                      Reupload Slip
-                    </button>
-                  </div>
+                {!isPaymentConfirmed && (
+                  <>
+                    {!latestUpload && (
+                      <p className="text-xs text-[var(--foreground)]/80">Upload your bank-in slip</p>
+                    )}
+                    {!latestUpload && (
+                      <button
+                        type="button"
+                        onClick={openModal}
+                        className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+                      >
+                        Upload Slip
+                      </button>
+                    )}
+                    {latestUpload && (
+                      <div className="text-xs text-[var(--foreground)]/70 space-y-1">
+                        <p>Latest upload: {latestUpload.created_at}</p>
+                        {!isCancelled && (
+                          <>
+                            <p className="font-medium text-[var(--accent-strong)]">Slip submitted • Pending verification</p>
+                            <button
+                              type="button"
+                              onClick={openModal}
+                              className="mt-2 w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+                            >
+                              Reupload Slip
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

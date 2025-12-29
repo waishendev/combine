@@ -226,6 +226,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         const statusValue = override.status ?? order.status;
         const paymentStatusValue = override.payment_status ?? order.payment_status;
         const statusKey = (statusValue || "").toLowerCase();
+        const paymentStatusKey = (paymentStatusValue || "").toLowerCase();
         const reserveExpiresAt = order.reserve_expires_at ? new Date(order.reserve_expires_at) : null;
         const remainingSeconds = reserveExpiresAt
           ? Math.max(0, Math.floor((reserveExpiresAt.getTime() - now) / 1000))
@@ -235,37 +236,49 @@ export function OrdersClient({ orders }: OrdersClientProps) {
             ? `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`
             : null;
         const isExpired = remainingSeconds !== null && remainingSeconds === 0;
-        const isPendingUnpaid = statusKey === "pending" && paymentStatusValue === "unpaid";
+        const isPendingUnpaid = statusKey === "pending" && paymentStatusKey === "unpaid";
         const isPendingUnpaidExpired = isPendingUnpaid && isExpired;
-        const isProcessing = statusKey === "processing" && paymentStatusValue === "unpaid";
+        const isProcessing = statusKey === "processing" && paymentStatusKey === "unpaid";
         const canPay = isPendingUnpaid && !isExpired;
         const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
-        const displayStatus =
-          isPendingUnpaidExpired
-            ? "Cancelled"
-            : statusKey === "pending" && paymentStatusValue === "unpaid"
-              ? `Pending Payment${remainingLabel !== null ? ` (${remainingLabel} left)` : ""}`
-              : statusKey === "processing" && paymentStatusValue === "unpaid"
-                ? "Waiting for verification"
-                : statusKey === "paid" && paymentStatusValue === "paid"
-                  ? "Paid"
-                  : statusKey === "completed" && paymentStatusValue === "paid"
-                    ? "Completed"
-                    : statusKey === "cancelled"
-                      ? "Cancelled"
-                      : statusKey === "refunded" || paymentStatusValue === "refunded"
-                        ? "Refunded"
-                        : statusValue;
-        const badgeStyle =
-          isPendingUnpaidExpired || statusKey === "cancelled"
-            ? "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]"
-            : (statusKey === "pending" || statusKey === "processing") && paymentStatusValue === "unpaid"
-              ? "bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)] border-[var(--status-warning-border)]"
-              : statusKey === "paid" || statusKey === "completed"
-                ? "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]"
-                : statusKey === "shipped"
-                  ? "bg-blue-50 text-blue-700 border-blue-200"
-                  : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
+        
+        // New status display logic based on the requirements
+        let displayStatus: string;
+        if (statusKey === "cancelled") {
+          displayStatus = "Cancelled";
+        } else if (paymentStatusKey === "failed") {
+          displayStatus = "Payment Failed";
+        } else if (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid") {
+          displayStatus = "Payment Proof Rejected";
+        } else if (statusKey === "pending" && paymentStatusKey === "unpaid") {
+          displayStatus = `Awaiting Payment${remainingLabel !== null ? ` (${remainingLabel} left)` : ""}`;
+        } else if (statusKey === "processing" && paymentStatusKey === "unpaid") {
+          displayStatus = "Waiting for Verification";
+        } else if (statusKey === "confirmed" && paymentStatusKey === "paid") {
+          displayStatus = "Payment Confirmed";
+        } else if (statusKey === "processing" && paymentStatusKey === "paid") {
+          displayStatus = "Preparing";
+        } else if (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") {
+          displayStatus = "Ready for Pickup";
+        } else if (statusKey === "shipped") {
+          displayStatus = "Shipped";
+        } else if (statusKey === "completed") {
+          displayStatus = "Completed";
+        } else {
+          displayStatus = statusValue;
+        }
+
+        // Badge style based on status
+        let badgeStyle: string;
+        if (statusKey === "cancelled" || paymentStatusKey === "failed" || (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid")) {
+          badgeStyle = "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]";
+        } else if ((statusKey === "pending" && paymentStatusKey === "unpaid") || (statusKey === "processing" && paymentStatusKey === "unpaid")) {
+          badgeStyle = "bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)] border-[var(--status-warning-border)]";
+        } else if ((statusKey === "confirmed" && paymentStatusKey === "paid") || (statusKey === "processing" && paymentStatusKey === "paid") || (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped" || statusKey === "completed") {
+          badgeStyle = "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]";
+        } else {
+          badgeStyle = "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
+        }
 
         return (
           <div
@@ -280,9 +293,6 @@ export function OrdersClient({ orders }: OrdersClientProps) {
               <div className="flex items-center gap-2">
                 <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
                   {displayStatus}
-                </span>
-                <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                  {paymentStatusValue}
                 </span>
               </div>
             </div>

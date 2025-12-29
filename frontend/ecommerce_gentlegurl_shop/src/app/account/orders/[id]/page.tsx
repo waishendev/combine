@@ -98,8 +98,10 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
         </div>
 
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
-          <h3 className="text-lg font-semibold text-[var(--foreground)]">Shipping / Pickup</h3>
-          {order.pickup_or_shipping === "self_pickup" && order.pickup_store ? (
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">
+            {order.pickup_or_shipping === "self_pickup" ? "Pickup" : "Shipping Information"}
+          </h3>
+           {order.pickup_or_shipping === "self_pickup" && order.pickup_store ? (
             <div className="mt-2 text-sm text-[var(--foreground)]/80">
               <p className="font-semibold text-[var(--foreground)]">{order.pickup_store.name}</p>
               <p>{order.pickup_store.address_line1}</p>
@@ -111,19 +113,44 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               {order.pickup_store.phone && <p>Phone: {order.pickup_store.phone}</p>}
             </div>
           ) : (
-            <div className="mt-2 text-sm text-[var(--foreground)]/80">
-              <p className="font-semibold text-[var(--foreground)]">{order.shipping_address?.name}</p>
-              <p>{order.shipping_address?.line1}</p>
-              {order.shipping_address?.line2 && <p>{order.shipping_address.line2}</p>}
-              <p>
-                {order.shipping_address?.postcode} {order.shipping_address?.city}, {order.shipping_address?.state}
-              </p>
-              <p>{order.shipping_address?.country}</p>
-              {order.shipping_address?.phone && <p>Phone: {order.shipping_address?.phone}</p>}
-              {order.shipping_courier && <p>Courier: {order.shipping_courier}</p>}
-              {order.shipping_tracking_no && <p>Tracking: {order.shipping_tracking_no}</p>}
-              {order.shipped_at && <p>Shipped At: {formatDateTime(order.shipped_at)}</p>}
-            </div>
+                <div className="mt-2 text-sm text-[var(--foreground)]/80">
+                  {/* Address */}
+                  <p className="font-semibold text-[var(--foreground)]">
+                    {order.shipping_address?.name}
+                  </p>
+                  <p>{order.shipping_address?.line1}</p>
+                  {order.shipping_address?.line2 && <p>{order.shipping_address.line2}</p>}
+                  <p>
+                    {order.shipping_address?.postcode} {order.shipping_address?.city},{" "}
+                    {order.shipping_address?.state}
+                  </p>
+                  <p>{order.shipping_address?.country}</p>
+                  {order.shipping_address?.phone && (
+                    <p>Phone: {order.shipping_address.phone}</p>
+                  )}
+
+                  {/* Divider */}
+                  {(order.shipping_courier || order.shipping_tracking_no || order.shipped_at) && (
+                    <div className="my-3 border-t border-[var(--card-border)]" />
+                  )}
+
+                  {/* Logistics */}
+                  {(order.shipping_courier || order.shipping_tracking_no || order.shipped_at) && (
+                    <div className="space-y-1 text-xs text-[var(--foreground)]/70">
+                      <p className="font-semibold uppercase tracking-wide text-[var(--foreground)]/80">
+                        Logistics
+                      </p>
+                      {order.shipping_courier && <p>Courier: {order.shipping_courier}</p>}
+                      {order.shipping_tracking_no && (
+                        <p>Tracking: {order.shipping_tracking_no}</p>
+                      )}
+                      {order.shipped_at && (
+                        <p>Shipped At: {formatDateTime(order.shipped_at)}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
           )}
         </div>
       </div>

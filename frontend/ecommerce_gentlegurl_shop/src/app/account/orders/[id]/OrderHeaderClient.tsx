@@ -36,53 +36,63 @@ export function OrderHeaderClient({
   }, []);
 
   const statusKey = (status || "").toLowerCase();
+  const paymentStatusKey = (paymentStatus || "").toLowerCase();
   const reserveExpiry = reserveExpiresAt ? new Date(reserveExpiresAt) : null;
   const remainingSeconds = reserveExpiry ? Math.max(0, Math.floor((reserveExpiry.getTime() - now) / 1000)) : null;
   const remainingLabel = remainingSeconds !== null ? formatCountdown(remainingSeconds) : null;
-  const isExpired = remainingSeconds !== null && remainingSeconds === 0;
-  const isPendingUnpaidExpired = statusKey === "pending" && paymentStatus === "unpaid" && isExpired;
 
   const displayStatus = useMemo(() => {
-    if (isPendingUnpaidExpired) {
-      return "Cancelled";
-    }
-    if (statusKey === "pending" && paymentStatus === "unpaid") {
-      return `Pending Payment${remainingLabel ? ` (${remainingLabel} left)` : ""}`;
-    }
-    if (statusKey === "processing" && paymentStatus === "unpaid") {
-      return "Waiting for verification";
-    }
-    if (statusKey === "paid" && paymentStatus === "paid") {
-      return "Paid";
-    }
-    if (statusKey === "completed" && paymentStatus === "paid") {
-      return "Completed";
-    }
     if (statusKey === "cancelled") {
       return "Cancelled";
     }
-    if (statusKey === "refunded" || paymentStatus === "refunded") {
-      return "Refunded";
+    if (paymentStatusKey === "failed") {
+      return "Payment Failed";
+    }
+    if (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid") {
+      return "Payment Proof Rejected";
+    }
+    if (statusKey === "pending" && paymentStatusKey === "unpaid") {
+      return `Awaiting Payment${remainingLabel ? ` (${remainingLabel} left)` : ""}`;
+    }
+    if (statusKey === "processing" && paymentStatusKey === "unpaid") {
+      return "Waiting for Verification";
+    }
+    if (statusKey === "confirmed" && paymentStatusKey === "paid") {
+      return "Payment Confirmed";
+    }
+    if (statusKey === "processing" && paymentStatusKey === "paid") {
+      return "Preparing";
+    }
+    if (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") {
+      return "Ready for Pickup";
+    }
+    if (statusKey === "shipped") {
+      return "Shipped";
+    }
+    if (statusKey === "completed") {
+      return "Completed";
     }
     return status;
-  }, [statusKey, paymentStatus, remainingLabel, status, isPendingUnpaidExpired]);
+  }, [statusKey, paymentStatusKey, remainingLabel, status]);
 
-  const badgeStyle =
-    isPendingUnpaidExpired || statusKey === "cancelled"
-      ? "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]"
-      : (statusKey === "pending" || statusKey === "processing") && paymentStatus === "unpaid"
-        ? "bg-[var(--status-warning-bg)] text-[color:var(--status-warning)] border-[var(--status-warning-border)]"
-        : statusKey === "paid" || statusKey === "completed"
-          ? "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]"
-          : statusKey === "shipped"
-            ? "bg-blue-50 text-blue-700 border-blue-200"
-            : "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
+  const badgeStyle = useMemo(() => {
+    if (statusKey === "cancelled" || paymentStatusKey === "failed" || (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid")) {
+      return "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]";
+    }
+    if ((statusKey === "pending" && paymentStatusKey === "unpaid") || (statusKey === "processing" && paymentStatusKey === "unpaid")) {
+      return "bg-[var(--status-warning-bg)] text-[color:var(--status-warning)] border-[var(--status-warning-border)]";
+    }
+    if ((statusKey === "confirmed" && paymentStatusKey === "paid") || (statusKey === "processing" && paymentStatusKey === "paid") || (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped" || statusKey === "completed") {
+      return "bg-[var(--status-success-bg)] text-[color:var(--status-success)] border-[var(--status-success-border)]";
+    }
+    return "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
+  }, [statusKey, paymentStatusKey]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Order {orderNo}</h1>
+          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Order No: {orderNo}</h1>
           <p className="text-sm text-[var(--foreground)]/70">
             {placedAt ? new Date(placedAt).toLocaleString() : ""}
           </p>
@@ -90,9 +100,6 @@ export function OrderHeaderClient({
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
             {displayStatus}
-          </span>
-          <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-            {paymentStatus}
           </span>
         </div>
       </div>

@@ -555,52 +555,103 @@ export default function OrderViewPanel({
               {/* Shipping Address */}
               {order.address && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                  {/* Header */}
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Shipping Address</p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      Shipping Information
+                    </p>
                   </div>
+
                   <div className="space-y-3 px-4 py-3 text-sm">
+                    {/* Name */}
                     <div>
                       <p className="text-xs text-slate-500">Name</p>
-                      <p className="font-medium text-slate-900">{order.address.shipping_name || '-'}</p>
+                      <p className="font-medium text-slate-900">
+                        {order.address.shipping_name || "-"}
+                      </p>
                     </div>
+
+                    {/* Phone */}
                     <div>
                       <p className="text-xs text-slate-500">Phone</p>
-                      <p className="font-medium text-slate-900">{order.address.shipping_phone || '-'}</p>
+                      <p className="font-medium text-slate-900">
+                        {order.address.shipping_phone || "-"}
+                      </p>
                     </div>
+
+                    {/* Address */}
                     <div>
                       <p className="text-xs text-slate-500">Address</p>
                       <p className="font-medium text-slate-900">
-                        {order.address.shipping_address_line1 || ''}
-                        {order.address.shipping_address_line2 ? `, ${order.address.shipping_address_line2}` : ''}
+                        {order.address.shipping_address_line1 || ""}
+                        {order.address.shipping_address_line2
+                          ? `, ${order.address.shipping_address_line2}`
+                          : ""}
                       </p>
                       <p className="font-medium text-slate-900">
-                        {order.address.shipping_city || ''}
-                        {order.address.shipping_state ? `, ${order.address.shipping_state}` : ''}
-                        {order.address.shipping_postcode ? ` ${order.address.shipping_postcode}` : ''}
+                        {order.address.shipping_city || ""}
+                        {order.address.shipping_state
+                          ? `, ${order.address.shipping_state}`
+                          : ""}
+                        {order.address.shipping_postcode
+                          ? ` ${order.address.shipping_postcode}`
+                          : ""}
                       </p>
-                      <p className="font-medium text-slate-900">{order.address.shipping_country || '-'}</p>
+                      <p className="font-medium text-slate-900">
+                        {order.address.shipping_country || "-"}
+                      </p>
                     </div>
-                    {order.shipping_courier && (
-                      <div>
-                        <p className="text-xs text-slate-500">Courier</p>
-                        <p className="font-medium text-slate-900">{order.shipping_courier}</p>
+
+                    {/* Divider */}
+                    {(order.shipping_courier ||
+                      order.shipping_tracking_no ||
+                      order.shipped_at) && (
+                      <div className="pt-2">
+                        <div className="border-t border-slate-200" />
                       </div>
                     )}
-                    {order.shipping_tracking_no && (
-                      <div>
-                        <p className="text-xs text-slate-500">Tracking Number</p>
-                        <p className="font-medium text-slate-900">{order.shipping_tracking_no}</p>
-                      </div>
-                    )}
-                    {order.shipped_at && (
-                      <div>
-                        <p className="text-xs text-slate-500">Shipped At</p>
-                        <p className="font-medium text-slate-900">{formatDate(order.shipped_at)}</p>
+
+                    {/* Logistics */}
+                    {(order.shipping_courier ||
+                      order.shipping_tracking_no ||
+                      order.shipped_at) && (
+                      <div className="space-y-3 pt-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Logistics
+                        </p>
+
+                        {order.shipping_courier && (
+                          <div>
+                            <p className="text-xs text-slate-500">Courier</p>
+                            <p className="font-medium text-slate-900">
+                              {order.shipping_courier}
+                            </p>
+                          </div>
+                        )}
+
+                        {order.shipping_tracking_no && (
+                          <div>
+                            <p className="text-xs text-slate-500">Tracking Number</p>
+                            <p className="font-medium text-slate-900">
+                              {order.shipping_tracking_no}
+                            </p>
+                          </div>
+                        )}
+
+                        {order.shipped_at && (
+                          <div>
+                            <p className="text-xs text-slate-500">Shipped At</p>
+                            <p className="font-medium text-slate-900">
+                              {formatDate(order.shipped_at)}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 </section>
               )}
+
 
               {/* Vouchers */}
               {order.vouchers && order.vouchers.length > 0 && (
