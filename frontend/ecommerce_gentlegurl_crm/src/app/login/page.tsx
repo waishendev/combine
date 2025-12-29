@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,19 +17,31 @@ export default function LoginPage() {
 
     try {
       console.log('Attempting login...');
-      const response = await apiFetch('/api/login', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ email, password }),
       });
-      console.log('Login successful, response:', response);
+
+      const responseBody = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          responseBody?.error ||
+          responseBody?.message ||
+          'Login failed';
+        throw new Error(message);
+      }
+
+      console.log('Login successful, response:', responseBody);
 
       // Small delay to ensure cookies are set
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Use router.refresh() to ensure cookies are updated before navigation
-      router.refresh();
       console.log('Navigating to /dashboard...');
-      router.push('/dashboard');
+      router.replace('/dashboard');
     } catch (err) {
       console.error('Login error:', err);
       if (err instanceof Error) {
