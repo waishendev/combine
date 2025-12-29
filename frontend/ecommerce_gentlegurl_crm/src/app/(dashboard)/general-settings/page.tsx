@@ -3,29 +3,24 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
-import SeoSettingsForm from '@/components/SeoSettingsForm'
+import ShopSettingsPageContent from '@/components/ShopSettingsPageContent'
 import { getCurrentUser } from '@/lib/auth'
 import type { LangCode } from '@/lib/i18n'
 import { getTranslator } from '@/lib/i18n-server'
 
-export default async function SeoSettingsPage() {
+export default async function ShopSettingsPage() {
   const user = await getCurrentUser()
 
   if (!user) {
     redirect('/login')
   }
 
-  const canViewSeo = user.permissions.some(
-    (permission) => permission === 'ecommerce.seo.view'
-  )
+  const canView = user.permissions.includes('ecommerce.settings.view')
+  const canUpdate = user.permissions.includes('ecommerce.settings.update')
 
-  if (!canViewSeo) {
+  if (!canView && !canUpdate) {
     redirect('/dashboard')
   }
-
-  const canUpdateSeo = user.permissions.some(
-    (permission) => permission === 'ecommerce.seo.update'
-  )
 
   const lang: LangCode = 'EN'
   const t = await getTranslator(lang)
@@ -36,28 +31,23 @@ export default async function SeoSettingsPage() {
         <span>{t('Dashboard')}</span>
         <span className="mx-1">/</span>
         <Link
-          href="/seo"
+          href="/general-settings"
           className="text-blue-600 hover:underline"
         >
-          SEO Settings
+          General Settings
         </Link>
       </div>
+
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-gray-500 mb-2">
-            Ecommerce
-          </p>
-          <h2 className="text-3xl font-semibold text-slate-900 leading-tight">
-            Global SEO Defaults
-          </h2>
+          <h2 className="text-3xl font-semibold text-slate-900 leading-tight">General Settings</h2>
           <p className="text-sm text-slate-500 mt-2 max-w-2xl">
-            Control the default title, description, keywords, and Open Graph image
-            that power your storefront&apos;s search and social previews.
+            Manage storefront widgets and homepage product windows shown to shoppers.
           </p>
         </div>
       </div>
 
-      <SeoSettingsForm canEdit={canUpdateSeo} />
+      <ShopSettingsPageContent canEdit={canUpdate} />
     </div>
   )
 }

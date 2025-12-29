@@ -178,7 +178,6 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
       <div className="border-b border-slate-200 px-6 py-4 flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-gray-500">SEO</p>
           <h3 className="text-xl font-semibold text-slate-900">Default metadata</h3>
           <p className="text-sm text-slate-500 mt-1">
             Define the fallback metadata for every page across your ecommerce

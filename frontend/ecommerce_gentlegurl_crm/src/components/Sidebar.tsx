@@ -60,18 +60,18 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/roles',
             requiredPermission: 'roles.view',
           },
-          {
-            key: 'permission-groups',
-            label: 'Permission Groups',
-            href: '/permission-groups',
-            requiredPermission: 'permission-groups.view',
-          },
-          {
-            key: 'permissions',
-            label: 'Permissions',
-            href: '/permission',
-            requiredPermission: 'permissions.view',
-          },
+          // {
+          //   key: 'permission-groups',
+          //   label: 'Permission Groups',
+          //   href: '/permission-groups',
+          //   requiredPermission: 'permission-groups.view',
+          // },
+          // {
+          //   key: 'permissions',
+          //   label: 'Permissions',
+          //   href: '/permission',
+          //   requiredPermission: 'permissions.view',
+          // },
         ],
       },
       // ======================
@@ -100,12 +100,12 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/orders/completed',
             requiredPermission: 'ecommerce.orders.view',
           },
-          {
-            key: 'orders-returns',
-            label: 'Return Orders',
-            href: '/returns',
-            requiredPermission: 'ecommerce.returns.view',
-          },
+          // {
+          //   key: 'orders-returns',
+          //   label: 'Return Orders',
+          //   href: '/returns',
+          //   requiredPermission: 'ecommerce.returns.view',
+          // },
         ],
       },
   
@@ -225,12 +225,6 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/slides',
             requiredPermission: 'ecommerce.sliders.view',
           },
-          {
-            key: 'seo',
-            label: 'Global SEO',
-            href: '/seo',
-            requiredPermission: 'ecommerce.seo.view',
-          },
         ],
       },
   
@@ -258,26 +252,32 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
       // ======================
       // Shop Settings
       // ======================
-      // {
-      //   key: 'settings',
-      //   label: 'Shop Settings',
-      //   icon: 'fa-solid fa-gear',
-      //   children: [
-      //     {
-      //       key: 'shop-settings',
-      //       label: 'General Settings',
-      //       href: '/shop-settings',
-      //       requiredPermission: 'ecommerce.settings.view',
-      //     },
-      //   ],
-      // },
       {
-        key: 'shop-settings',
-        icon: 'fa-solid fa-gear',
+        key: 'settings',
         label: 'Shop Settings',
-        href: '/shop-settings',
-        requiredPermission: 'ecommerce.settings.view',
+        icon: 'fa-solid fa-gear',
+        children: [
+          {
+            key: 'shop-settings',
+            label: 'General Settings',
+            href: '/general-settings',
+            requiredPermission: 'ecommerce.settings.view',
+          },
+          {
+            key: 'seo-settings',
+            label: 'Global SEO',
+            href: '/seo-settings',
+            requiredPermission: 'ecommerce.seo.view',
+          },
+        ],
       },
+      // {
+      //   key: 'shop-settings',
+      //   icon: 'fa-solid fa-gear',
+      //   label: 'Shop Settings',
+      //   href: '/shop-settings',
+      //   requiredPermission: 'ecommerce.settings.view',
+      // },
     ],
     [],
   );
