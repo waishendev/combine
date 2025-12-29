@@ -546,9 +546,9 @@ export default function SliderTable({
             <tr>
               {(
                 [
+                  { key: 'image_path', label: 'Image' },
                   { key: 'title', label: 'Title' },
                   { key: 'subtitle', label: 'Subtitle' },
-                  { key: 'image_path', label: 'Image' },
                   { key: 'button_label', label: 'Button Label' },
                   { key: 'start_at', label: 'Start Date' },
                   { key: 'end_at', label: 'End Date' },

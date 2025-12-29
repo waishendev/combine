@@ -60,8 +60,6 @@ export default function SliderRow({
 
   return (
     <tr className="text-sm">
-      <td className="px-4 py-2 border border-gray-200">{slider.title}</td>
-      <td className="px-4 py-2 border border-gray-200">{slider.subtitle}</td>
       <td className="px-4 py-2 border border-gray-200">
         {slider.image_path ? (
           <img 
@@ -73,6 +71,8 @@ export default function SliderRow({
           '-'
         )}
       </td>
+      <td className="px-4 py-2 border border-gray-200">{slider.title}</td>
+      <td className="px-4 py-2 border border-gray-200">{slider.subtitle}</td>
       <td className="px-4 py-2 border border-gray-200">{slider.button_label}</td>
       <td className="px-4 py-2 border border-gray-200">{formatDate(slider.start_at)}</td>
       <td className="px-4 py-2 border border-gray-200">{formatDate(slider.end_at)}</td>

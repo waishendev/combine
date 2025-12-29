@@ -25,7 +25,7 @@ class DatabaseSeeder extends Seeder
             BankAccountSeeder::class,
             LoyaltyRewardSeeder::class,
             LoyaltyDemoCustomerSeeder::class,
-            SalesReportSeeder::class,
+            // SalesReportSeeder::class,
             ReturnRequestSeeder::class,
         ]);
 
