@@ -4,6 +4,12 @@ export type StoreApiItem = {
   id: number | string
   name?: string | null
   code?: string | null
+  images?: {
+    id?: number | string | null
+    image_path?: string | null
+    image_url?: string | null
+    sort_order?: number | string | null
+  }[]
   address_line1?: string | null
   address_line2?: string | null
   city?: string | null
@@ -12,8 +18,6 @@ export type StoreApiItem = {
   country?: string | null
   phone?: string | null
   is_active?: boolean | number | string | null
-  created_at?: string | null
-  updated_at?: string | null
 }
 
 export const mapStoreApiItemToRow = (item: StoreApiItem): StoreRowData => {
@@ -30,10 +34,14 @@ export const mapStoreApiItemToRow = (item: StoreApiItem): StoreRowData => {
     isActiveValue === '1' ||
     isActiveValue === 1
 
+  const primaryImageUrl =
+    item.images?.find((image) => Boolean(image?.image_url))?.image_url ?? null
+
   return {
     id: normalizedId,
     name: item.name ?? '-',
     code: item.code ?? '-',
+    imageUrl: primaryImageUrl,
     address_line1: item.address_line1 ?? '-',
     address_line2: item.address_line2 ?? '',
     city: item.city ?? '-',
@@ -42,9 +50,6 @@ export const mapStoreApiItemToRow = (item: StoreApiItem): StoreRowData => {
     country: item.country ?? '-',
     phone: item.phone ?? '-',
     isActive,
-    createdAt: item.created_at ?? '',
-    updatedAt: item.updated_at ?? '',
   }
 }
-
 

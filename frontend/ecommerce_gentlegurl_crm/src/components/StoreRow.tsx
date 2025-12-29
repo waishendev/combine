@@ -7,6 +7,7 @@ export interface StoreRowData {
   id: number
   name: string
   code: string
+  imageUrl?: string | null
   address_line1: string
   address_line2: string
   city: string
@@ -15,8 +16,6 @@ export interface StoreRowData {
   country: string
   phone: string
   isActive: boolean
-  createdAt: string
-  updatedAt: string
 }
 
 interface StoreRowProps {
@@ -39,8 +38,27 @@ export default function StoreRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
-      <td className="px-4 py-2 border border-gray-200">{store.name}</td>
-      <td className="px-4 py-2 border border-gray-200">{store.code}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden">
+            {store.imageUrl ? (
+              <img
+                src={store.imageUrl}
+                alt={store.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-sm font-semibold text-gray-500">
+                {store.name?.charAt(0) || 'S'}
+              </span>
+            )}
+          </div>
+          <div>
+            <div className="font-semibold text-gray-900">{store.name}</div>
+            <div className="text-xs text-gray-500">{store.code}</div>
+          </div>
+        </div>
+      </td>
       <td className="px-4 py-2 border border-gray-200">
         {store.address_line1}
         {store.address_line2 && `, ${store.address_line2}`}
@@ -56,8 +74,6 @@ export default function StoreRow({
           label={store.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
-      <td className="px-4 py-2 border border-gray-200">{store.createdAt}</td>
-      <td className="px-4 py-2 border border-gray-200">{store.updatedAt}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
@@ -89,5 +105,4 @@ export default function StoreRow({
     </tr>
   )
 }
-
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { StoreRowData } from './StoreRow'
 import { mapStoreApiItemToRow, type StoreApiItem } from './storeUtils'
@@ -23,6 +23,7 @@ interface FormState {
   country: string
   phone: string
   isActive: 'true' | 'false'
+  imageFile: File | null
 }
 
 const initialFormState: FormState = {
@@ -36,6 +37,7 @@ const initialFormState: FormState = {
   country: '',
   phone: '',
   isActive: 'true',
+  imageFile: null,
 }
 
 export default function StoreEditModal({
@@ -49,6 +51,9 @@ export default function StoreEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadedStore, setLoadedStore] = useState<StoreRowData | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -97,6 +102,8 @@ export default function StoreEditModal({
 
         const mappedStore = mapStoreApiItemToRow(store)
         setLoadedStore(mappedStore)
+        setExistingImageUrl(mappedStore.imageUrl ?? null)
+        setImagePreview(mappedStore.imageUrl ?? null)
 
         setForm({
           name: typeof store.name === 'string' ? store.name : '',
@@ -116,6 +123,7 @@ export default function StoreEditModal({
             store.is_active === 1
               ? 'true'
               : 'false',
+          imageFile: null,
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -139,6 +147,36 @@ export default function StoreEditModal({
   ) => {
     const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null
+    setForm((prev) => ({ ...prev, imageFile: file }))
+
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      setImagePreview(existingImageUrl)
+    }
+  }
+
+  const handleImageClick = () => {
+    if (!submitting) {
+      imageInputRef.current?.click()
+    }
+  }
+
+  const handleImageRemove = () => {
+    if (submitting) return
+    setForm((prev) => ({ ...prev, imageFile: null }))
+    setImagePreview(existingImageUrl)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -171,17 +209,19 @@ export default function StoreEditModal({
     setError(null)
 
     try {
-      const payload = {
-        name: trimmedName,
-        code: trimmedCode,
-        address_line1: trimmedAddressLine1,
-        address_line2: form.address_line2.trim(),
-        city: trimmedCity,
-        state: trimmedState,
-        postcode: trimmedPostcode,
-        country: trimmedCountry,
-        phone: trimmedPhone,
-        is_active: form.isActive === 'true',
+      const formData = new FormData()
+      formData.append('name', trimmedName)
+      formData.append('code', trimmedCode)
+      formData.append('address_line1', trimmedAddressLine1)
+      formData.append('address_line2', form.address_line2.trim())
+      formData.append('city', trimmedCity)
+      formData.append('state', trimmedState)
+      formData.append('postcode', trimmedPostcode)
+      formData.append('country', trimmedCountry)
+      formData.append('phone', trimmedPhone)
+      formData.append('is_active', form.isActive === 'true' ? '1' : '0')
+      if (form.imageFile) {
+        formData.append('image_file', form.imageFile)
       }
 
       const res = await fetch(
@@ -189,11 +229,10 @@ export default function StoreEditModal({
         {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json',
             Accept: 'application/json',
             'Accept-Language': 'en',
           },
-          body: JSON.stringify(payload),
+          body: formData,
         },
       )
 
@@ -242,6 +281,7 @@ export default function StoreEditModal({
             id: loadedStore?.id ?? storeId,
             name: trimmedName,
             code: trimmedCode,
+            imageUrl: loadedStore?.imageUrl ?? null,
             address_line1: trimmedAddressLine1,
             address_line2: form.address_line2.trim(),
             city: trimmedCity,
@@ -250,8 +290,6 @@ export default function StoreEditModal({
             country: trimmedCountry,
             phone: trimmedPhone,
             isActive: form.isActive === 'true',
-            createdAt: loadedStore?.createdAt ?? '',
-            updatedAt: new Date().toISOString(),
           }
 
       setLoadedStore(storeRow)
@@ -274,7 +312,7 @@ export default function StoreEditModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-2xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">Edit Store</h2>
           <button
@@ -296,199 +334,260 @@ export default function StoreEditModal({
             </div>
           ) : (
             <>
-              <div>
-                <label
-                  htmlFor="edit-name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-name"
-                  name="name"
-                  type="text"
-                  value={form.name}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Store Name"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-code"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Code <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-code"
-                  name="code"
-                  type="text"
-                  value={form.code}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Store Code"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-address_line1"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Address Line 1 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-address_line1"
-                  name="address_line1"
-                  type="text"
-                  value={form.address_line1}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Address Line 1"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-address_line2"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Address Line 2
-                </label>
-                <input
-                  id="edit-address_line2"
-                  name="address_line2"
-                  type="text"
-                  value={form.address_line2}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Address Line 2 (Optional)"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="edit-city"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium text-gray-700">Photo</h3>
+                  <div
+                    onClick={handleImageClick}
+                    className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                      imagePreview
+                        ? 'border-gray-300'
+                        : 'border-gray-300 hover:border-blue-400'
+                    }`}
                   >
-                    City <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="edit-city"
-                    name="city"
-                    type="text"
-                    value={form.city}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="City"
-                    disabled={disableForm}
-                  />
+                    <input
+                      ref={imageInputRef}
+                      id="imageFile"
+                      name="imageFile"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                      disabled={disableForm}
+                    />
+                    {imagePreview ? (
+                      <div className="relative group">
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="w-full h-56 object-cover rounded"
+                        />
+                        <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleImageClick()
+                            }}
+                            className="w-8 h-8 bg-blue-500/95 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-600"
+                            aria-label="Replace image"
+                          >
+                            <i className="fa-solid fa-pen" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleImageRemove()
+                            }}
+                            className="w-8 h-8 bg-red-500/95 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600"
+                            aria-label="Remove image"
+                          >
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                        <i className="fa-regular fa-image text-3xl mb-2" />
+                        <p className="text-sm">Click to upload</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="edit-state"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    State <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="edit-state"
-                    name="state"
-                    type="text"
-                    value={form.state}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="State"
-                    disabled={disableForm}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label
+                      htmlFor="edit-name"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-name"
+                      name="name"
+                      type="text"
+                      value={form.name}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Store Name"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-code"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Code <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-code"
+                      name="code"
+                      type="text"
+                      value={form.code}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Store Code"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label
+                      htmlFor="edit-address_line1"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Address Line 1 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-address_line1"
+                      name="address_line1"
+                      type="text"
+                      value={form.address_line1}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Address Line 1"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label
+                      htmlFor="edit-address_line2"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Address Line 2
+                    </label>
+                    <input
+                      id="edit-address_line2"
+                      name="address_line2"
+                      type="text"
+                      value={form.address_line2}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Address Line 2 (Optional)"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-city"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      City <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-city"
+                      name="city"
+                      type="text"
+                      value={form.city}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="City"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-state"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      State <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-state"
+                      name="state"
+                      type="text"
+                      value={form.state}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="State"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-postcode"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Postcode <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-postcode"
+                      name="postcode"
+                      type="text"
+                      value={form.postcode}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Postcode"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-country"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Country <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-country"
+                      name="country"
+                      type="text"
+                      value={form.country}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Country"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label
+                      htmlFor="edit-phone"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Phone <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-phone"
+                      name="phone"
+                      type="text"
+                      value={form.phone}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Phone Number"
+                      disabled={disableForm}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label
+                      htmlFor="edit-isActive"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Status <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      id="edit-isActive"
+                      name="isActive"
+                      value={form.isActive}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      disabled={disableForm}
+                    >
+                      <option value="true">{t('common.active')}</option>
+                      <option value="false">{t('common.inactive')}</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="edit-postcode"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Postcode <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="edit-postcode"
-                    name="postcode"
-                    type="text"
-                    value={form.postcode}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Postcode"
-                    disabled={disableForm}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-country"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Country <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="edit-country"
-                    name="country"
-                    type="text"
-                    value={form.country}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Country"
-                    disabled={disableForm}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-phone"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Phone <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-phone"
-                  name="phone"
-                  type="text"
-                  value={form.phone}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Phone Number"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-isActive"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Status <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-isActive"
-                  name="isActive"
-                  value={form.isActive}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="true">{t('common.active')}</option>
-                  <option value="false">{t('common.inactive')}</option>
-                </select>
               </div>
             </>
           )}
@@ -523,5 +622,3 @@ export default function StoreEditModal({
     </div>
   )
 }
-
-

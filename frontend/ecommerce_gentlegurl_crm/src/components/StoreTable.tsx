@@ -281,7 +281,7 @@ export default function StoreTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 12 : 11
+  const colCount = showActions ? 9 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -457,8 +457,7 @@ export default function StoreTable({
               <tr>
                 {(
                   [
-                    { key: 'name', label: 'Name' },
-                    { key: 'code', label: 'Code' },
+                    { key: 'name', label: 'Store' },
                     { key: 'address_line1', label: 'Address' },
                     { key: 'city', label: 'City' },
                     { key: 'state', label: 'State' },
@@ -466,8 +465,6 @@ export default function StoreTable({
                     { key: 'country', label: 'Country' },
                     { key: 'phone', label: 'Phone' },
                     { key: 'isActive', label: t('common.status') },
-                    { key: 'createdAt', label: t('common.createdAt') },
-                    { key: 'updatedAt', label: t('common.updatedAt') },
                   ] as const
                 ).map(({ key, label }) => (
                   <th
@@ -557,5 +554,4 @@ export default function StoreTable({
     </div>
   )
 }
-
 
