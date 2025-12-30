@@ -1,50 +1,53 @@
-TASK: PAGE 
+我在SIDEBAR 加了 @Sidebar.tsx (274-279)  了 
+这里需要你帮我做一下 /bank-accounts Page 
 
-Repo root: combine/
-Frontend Ecommerce CRM (Next.js): frontend/ecommerce_gentlegurl_crm
-Backend (Laravel): backend/ecommerce_gentlegurl_backend_api
-Ingore OTHER PROJECT/ FILE  
+API
+{{base_url}}/ecommerce/bank-accounts
 
-
-billplz_fpx
-billplz_card
-
-
-
-
-C:\Users\WS\Desktop\test\ccc\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\orders\page.tsx 目前是一个最普通的 帮我改一下 
-跟着  C:\Users\WS\Desktop\test\ccc\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\customers\page.tsx  就是有 INCLUDE COMPONENT   那些的 
-只是 API 换吧 ~
-
-API  GET  这里我有放可以FILTER 什么 一起在里面你拿掉后你在 MODAL FILTER 那边放
-{{base_url}}/ecommerce/orders&per_page=15
-RESPONSE 
+RESPONSE API 
 {
     "data": {
         "current_page": 1,
         "data": [
             {
                 "id": 1,
-                "order_no": "LOYALTY-DEMO-0001",
-                "customer": {
-                    "id": 1,
-                    "name": "Loyalty Tester",
-                    "email": "loyalty.tester@example.com"
-                },
-                "status": "completed",
-                "payment_status": "paid",
-                "subtotal": "4999.00",
-                "discount_total": "0.00",
-                "shipping_fee": "0.00",
-                "grand_total": "4999.00",
-                "shipping_method": "shipping",
-                "created_at": "2025-12-27T01:50:08.000000Z"
+                "label": "Maybank Account 1",
+                "bank_name": "Maybank",
+                "account_name": "GENTLEGURL SDN BHD",
+                "account_number": "1234567890",
+                "branch": "Gurney Plaza Branch",
+                "swift_code": "MBBEMYKL",
+                "logo_url": "https://example.com/banks/maybank.png",
+                "qr_image_url": "https://example.com/banks/qr_maybank.png",
+                "is_active": true,
+                "is_default": true,
+                "sort_order": 1,
+                "instructions": "After transfer, please upload your payment slip within 24 hours.",
+                "created_at": "2025-12-30T11:11:26.000000Z",
+                "updated_at": "2025-12-30T11:11:26.000000Z"
+            },
+            {
+                "id": 2,
+                "label": "Public Bank Account 1",
+                "bank_name": "Public Bank",
+                "account_name": "GENTLEGURL SDN BHD",
+                "account_number": "9876543210",
+                "branch": null,
+                "swift_code": null,
+                "logo_url": "https://example.com/banks/publicbank.png",
+                "qr_image_url": null,
+                "is_active": true,
+                "is_default": false,
+                "sort_order": 2,
+                "instructions": null,
+                "created_at": "2025-12-30T11:11:26.000000Z",
+                "updated_at": "2025-12-30T11:11:26.000000Z"
             }
         ],
-        "first_page_url": "http://localhost:8000/api/ecommerce/orders?page=1",
+        "first_page_url": "http://localhost:8000/api/ecommerce/bank-accounts?page=1",
         "from": 1,
         "last_page": 1,
-        "last_page_url": "http://localhost:8000/api/ecommerce/orders?page=1",
+        "last_page_url": "http://localhost:8000/api/ecommerce/bank-accounts?page=1",
         "links": [
             {
                 "url": null,
@@ -53,7 +56,7 @@ RESPONSE
                 "active": false
             },
             {
-                "url": "http://localhost:8000/api/ecommerce/orders?page=1",
+                "url": "http://localhost:8000/api/ecommerce/bank-accounts?page=1",
                 "label": "1",
                 "page": 1,
                 "active": true
@@ -66,402 +69,92 @@ RESPONSE
             }
         ],
         "next_page_url": null,
-        "path": "http://localhost:8000/api/ecommerce/orders",
+        "path": "http://localhost:8000/api/ecommerce/bank-accounts",
         "per_page": 15,
         "prev_page_url": null,
-        "to": 1,
-        "total": 1
+        "to": 2,
+        "total": 2
     },
     "message": null,
     "success": true
 }
 
-SHOW  ORDERS  做PAGE 因为很多东西看 如果 MODAL 怕不够看 ？ 但应该会比较方便 你看吧 那个好
-{{base_url}}/ecommerce/orders/{{order_id}}
-RESPONSE  API  
+Create (POST)
+{{base_url}}/ecommerce/bank-accounts
+{
+  "label":"account 1",
+  "bank_name": "Maybank",
+  "account_name": "Gentle Gurl Shop",
+  "account_number": "1234567890",
+  "is_active": true,
+  "sort_order": 1
+}
+
+RESPONSE API
 {
     "data": {
-        "id": 4,
-        "order_no": "ORD20251227120316384",
-        "status": "pending",
-        "payment_status": "unpaid",
-        "subtotal": "2999.00",
-        "discount_total": "10.00",
-        "shipping_fee": "0.00",
-        "grand_total": "2989.00",
-        "shipping_method": "shipping",
-        "shipping_courier": null,
-        "shipping_tracking_no": null,
-        "shipped_at": null,
-        "notes": null,
-        "address": {
-            "shipping_name": "Loyalty Tester",
-            "shipping_phone": "0123456789",
-            "shipping_address_line1": "123 Loyalty Street",
-            "shipping_address_line2": "Taman Seed",
-            "shipping_city": "George Town",
-            "shipping_state": "Penang",
-            "shipping_postcode": "11000",
-            "shipping_country": "Malaysia"
-        },
-        "customer": {
-            "id": 1,
-            "name": "Loyalty Tester",
-            "email": "loyalty.tester@example.com",
-            "phone": "0123456789",
-            "tier": "gold",
-            "tier_marked_pending_at": null,
-            "tier_effective_at": null,
-            "is_active": true,
-            "last_login_at": "2025-12-27 11:59:23",
-            "last_login_ip": "127.0.0.1",
-            "created_at": "2025-12-27 11:59:06",
-            "updated_at": "2025-12-27 11:59:23",
-            "avatar": null,
-            "gender": null,
-            "date_of_birth": null
-        },
-        "items": [
-            {
-                "product_id": 11,
-                "product_name": "北欧风格沙发",
-                "quantity": 1,
-                "unit_price": null,
-                "line_total": "2999.00"
-            }
-        ],
-        "vouchers": [
-            {
-                "code": "RM10-REWARD",
-                "discount_amount": "10.00"
-            }
-        ],
-        "payment_info": {
-            "payment_status": "unpaid",
-            "paid_at": null,
-            "payment_method": "manual_transfer"
-        },
-        "uploads": []
+        "label": "account 1",
+        "bank_name": "Maybank",
+        "account_name": "Gentle Gurl Shop",
+        "account_number": "1234567890",
+        "is_active": true,
+        "sort_order": 1,
+        "is_default": false,
+        "updated_at": "2025-12-30T11:12:43.000000Z",
+        "created_at": "2025-12-30T11:12:43.000000Z",
+        "id": 3
     },
-    "message": null,
+    "message": "Bank account created.",
     "success": true
 }
 
-
-我们只是显示一个叫 Status 的就好了 在 TABLE 还是 在 SHOW ORDER 里面
-Awaiting Payment
-payment_status = unpaid AND status = pending
-
-Waiting for Verification
-payment_status = unpaid AND status = processing
-
-Payment Proof Rejected
-status = reject_payment_proof AND payment_status = unpaid
-
-Payment Failed
-payment_status = failed
-
-Cancelled 
-status=cancelled
-
-Payment Confirmed
-status = confirmed AND payment_status = paid
-
-Preparing
-status = processing AND payment_status = paid
-
-Ready for Pickup
-status = ready_for_pickup AND payment_status = paid
-
-Shipped
-status = shipped
-
-Completed
-status = completed
-
-
-Waiting for Verification 就有一个BUTTON还是什么的吧 点了后 会CALL 
-{{base_url}}/ecommerce/orders/{{order_id}}/confirm-payment (PUT)
-RESPONSE API 
-{
-    "data": {
-        "id": 2,
-        "order_number": "ORD20251227112523232",
-        "customer_id": 1,
-        "status": "confirmed",
-        "payment_status": "paid",
-        "payment_method": "manual_transfer",
-        "payment_gateway_id": null,
-        "subtotal": "4999.00",
-        "discount_total": "0.00",
-        "shipping_fee": "0.00",
-        "grand_total": "4999.00",
-        "voucher_code_snapshot": null,
-        "pickup_or_shipping": "shipping",
-        "pickup_store_id": null,
-        "shipping_name": "Loyalty Tester",
-        "shipping_phone": "0123456789",
-        "shipping_address_line1": "123 Loyalty Street",
-        "shipping_address_line2": "Taman Seed",
-        "shipping_city": "George Town",
-        "shipping_state": "Penang",
-        "shipping_postcode": "11000",
-        "shipping_country": "Malaysia",
-        "notes": null,
-        "placed_at": "2025-12-27T03:25:23.000000Z",
-        "paid_at": "2025-12-27T03:30:52.000000Z",
-        "completed_at": null,
-        "pickup_ready_at": null,
-        "created_at": "2025-12-27T03:25:23.000000Z",
-        "updated_at": "2025-12-27T03:30:52.000000Z",
-        "shipping_courier": null,
-        "shipping_tracking_no": null,
-        "shipped_at": null,
-        "bank_account_id": 1,
-        "payment_provider": "manual",
-        "payment_reference": null,
-        "payment_url": null,
-        "payment_meta": null,
-        "items": [
-            {
-                "id": 2,
-                "order_id": 2,
-                "product_id": 1,
-                "product_name_snapshot": "iPhone 15 Pro Max",
-                "sku_snapshot": "IP15PM-256-BLK",
-                "price_snapshot": "4999.00",
-                "quantity": 1,
-                "line_total": "4999.00",
-                "is_package": false,
-                "parent_package_item_id": null,
-                "created_at": "2025-12-27T03:25:23.000000Z",
-                "updated_at": "2025-12-27T03:25:23.000000Z",
-                "is_reward": false,
-                "reward_redemption_id": null,
-                "locked": false
-            }
-        ],
-        "customer": {
-            "id": 1,
-            "name": "Loyalty Tester",
-            "email": "loyalty.tester@example.com",
-            "phone": "0123456789",
-            "tier": "gold",
-            "tier_marked_pending_at": null,
-            "tier_effective_at": null,
-            "is_active": true,
-            "last_login_at": "2025-12-27 11:25:03",
-            "last_login_ip": "127.0.0.1",
-            "created_at": "2025-12-27 11:24:10",
-            "updated_at": "2025-12-27 11:25:03",
-            "avatar": null,
-            "gender": null,
-            "date_of_birth": null
-        }
-    },
-    "message": "Payment confirmed.",
-    "success": true
-}
-
-
-Waiting for Verification 的话也可以REJECT 
-{{base_url}}/ecommerce/orders/{{order_id}}/reject-payment-proof
-{
-  "admin_note": "xxxxx" (REQURIED)
-}
+SHOW BANK ACCOUNT (GET) 这是 EDIT的时候用的吧 ~
+{{base_url}}/ecommerce/bank-accounts/{{bank_account_id}}
 
 RESPONSE API 
-{
-    "data": {
-        "id": 2,
-        "order_number": "ORD20251227115946909",
-        "customer_id": 1,
-        "status": "reject_payment_proof",
-        "payment_status": "unpaid",
-        "payment_method": "manual_transfer",
-        "payment_gateway_id": null,
-        "subtotal": "4999.00",
-        "discount_total": "0.00",
-        "shipping_fee": "0.00",
-        "grand_total": "4999.00",
-        "voucher_code_snapshot": null,
-        "pickup_or_shipping": "shipping",
-        "pickup_store_id": null,
-        "shipping_name": "Loyalty Tester",
-        "shipping_phone": "0123456789",
-        "shipping_address_line1": "123 Loyalty Street",
-        "shipping_address_line2": "Taman Seed",
-        "shipping_city": "George Town",
-        "shipping_state": "Penang",
-        "shipping_postcode": "11000",
-        "shipping_country": "Malaysia",
-        "notes": null,
-        "placed_at": "2025-12-27T03:59:46.000000Z",
-        "paid_at": null,
-        "completed_at": null,
-        "pickup_ready_at": null,
-        "payment_proof_rejected_at": "2025-12-27 12:00:23",
-        "admin_note": "xxxxx",
-        "created_at": "2025-12-27T03:59:46.000000Z",
-        "updated_at": "2025-12-27T04:00:23.000000Z",
-        "shipping_courier": null,
-        "shipping_tracking_no": null,
-        "shipped_at": null,
-        "bank_account_id": 1,
-        "payment_provider": "manual",
-        "payment_reference": null,
-        "payment_url": null,
-        "payment_meta": null,
-        "items": [
-            {
-                "id": 2,
-                "order_id": 2,
-                "product_id": 1,
-                "product_name_snapshot": "iPhone 15 Pro Max",
-                "sku_snapshot": "IP15PM-256-BLK",
-                "price_snapshot": "4999.00",
-                "quantity": 1,
-                "line_total": "4999.00",
-                "is_package": false,
-                "parent_package_item_id": null,
-                "created_at": "2025-12-27T03:59:46.000000Z",
-                "updated_at": "2025-12-27T03:59:46.000000Z",
-                "is_reward": false,
-                "reward_redemption_id": null,
-                "locked": false
-            }
-        ],
-        "customer": {
-            "id": 1,
-            "name": "Loyalty Tester",
-            "email": "loyalty.tester@example.com",
-            "phone": "0123456789",
-            "tier": "gold",
-            "tier_marked_pending_at": null,
-            "tier_effective_at": null,
-            "is_active": true,
-            "last_login_at": "2025-12-27 11:59:23",
-            "last_login_ip": "127.0.0.1",
-            "created_at": "2025-12-27 11:59:06",
-            "updated_at": "2025-12-27 11:59:23",
-            "avatar": null,
-            "gender": null,
-            "date_of_birth": null
-        }
-    },
-    "message": "Payment Proof Rejected.",
-    "success": true
-}
-
-Waiting for Verification 和  Ready for Pickup 也可以CANCEL
-{{base_url}}/ecommerce/orders/{{order_id}}/cancel-order （PUT）
-{
-  "admin_note": "xxxxx" (REQURIED)
-}
-RETURN 都是一样跟  reject-payment-proof 的只是 Status 换了去 cancelled
-
-Payment Confirmed  后就可以 有 
-{{base_url}}/ecommerce/orders/{{order_id}}  (PUT)
-
- 如果他是         "pickup_or_shipping": "shipping", 你就给他放
-             'shipping_courier' => ['nullable', 'string', 'max:100'],
-            'shipping_tracking_no' => ['nullable', 'string', 'max:100'],
-            'shipped_at' => ['nullable', 'date'],
-            后面要传一个   "status": " shipped",
-
-            如果是  pickup_or_shipping = pickup的话 就不需要填  后面发 "status":  ready_for_pickup
-
-RETURN RESPONSE 是 一样的
-
-
-Payment Confirmed， Preparing， Ready for Pickup， Completed  可以有一个REFUND 
-{{base_url}}/ecommerce/orders/{{order_id}}/refund （POST)
-from-data
-admin_note: xxx (required)
-refund_proof_path :xxx.webp (OPTIONAL)
-
-RETURN  API  
 {
     "data": {
         "id": 1,
-        "order_number": "LOYALTY-DEMO-0001",
-        "customer_id": 1,
-        "status": "cancelled",
-        "payment_status": "refunded",
-        "payment_method": "manual",
-        "payment_gateway_id": null,
-        "subtotal": "4999.00",
-        "discount_total": "0.00",
-        "shipping_fee": "0.00",
-        "grand_total": "4999.00",
-        "voucher_code_snapshot": null,
-        "pickup_or_shipping": "shipping",
-        "pickup_store_id": null,
-        "shipping_name": "Loyalty Tester",
-        "shipping_phone": "0123456789",
-        "shipping_address_line1": "123 Loyalty Street",
-        "shipping_address_line2": "Taman Seed",
-        "shipping_city": "George Town",
-        "shipping_state": "Penang",
-        "shipping_postcode": "11000",
-        "shipping_country": "Malaysia",
-        "notes": null,
-        "placed_at": "2025-12-13T05:03:49.000000Z",
-        "paid_at": "2025-12-14T05:03:49.000000Z",
-        "completed_at": "2025-12-16T05:03:49.000000Z",
-        "pickup_ready_at": null,
-        "payment_proof_rejected_at": null,
-        "admin_note": "Refund processed: reason here",
-        "refund_proof_path": "refund-photos/1tvRjcYn3hrMQku0SdMPJRnexzshwiE08E0Fa295.png",
-        "refunded_at": "2025-12-27T05:11:54.000000Z",
-        "created_at": "2025-12-27T05:03:49.000000Z",
-        "updated_at": "2025-12-27T05:11:54.000000Z",
-        "shipping_courier": null,
-        "shipping_tracking_no": null,
-        "shipped_at": null,
-        "bank_account_id": null,
-        "payment_provider": "seed",
-        "payment_reference": null,
-        "payment_url": null,
-        "payment_meta": null,
-        "refunded_photo_url": "http://localhost:8000/storage/refund-photos/1tvRjcYn3hrMQku0SdMPJRnexzshwiE08E0Fa295.png",
-        "items": [
-            {
-                "id": 1,
-                "order_id": 1,
-                "product_id": 1,
-                "product_name_snapshot": "iPhone 15 Pro Max",
-                "sku_snapshot": "IP15PM-256-BLK",
-                "price_snapshot": "4999.00",
-                "quantity": 1,
-                "line_total": "4999.00",
-                "is_package": false,
-                "parent_package_item_id": null,
-                "created_at": "2025-12-27T05:03:49.000000Z",
-                "updated_at": "2025-12-27T05:03:49.000000Z",
-                "is_reward": false,
-                "reward_redemption_id": null,
-                "locked": false
-            }
-        ],
-        "customer": {
-            "id": 1,
-            "name": "Loyalty Tester",
-            "email": "loyalty.tester@example.com",
-            "phone": "0123456789",
-            "tier": "gold",
-            "tier_marked_pending_at": null,
-            "tier_effective_at": null,
-            "is_active": true,
-            "last_login_at": null,
-            "last_login_ip": null,
-            "created_at": "2025-12-27 13:03:49",
-            "updated_at": "2025-12-27 13:03:49",
-            "avatar": null,
-            "gender": null,
-            "date_of_birth": null
-        }
+        "label": "Maybank Account 1",
+        "bank_name": "Maybank",
+        "account_name": "GENTLEGURL SDN BHD",
+        "account_number": "1234567890",
+        "branch": "Gurney Plaza Branch",
+        "swift_code": "MBBEMYKL",
+        "logo_url": "https://example.com/banks/maybank.png",
+        "qr_image_url": "https://example.com/banks/qr_maybank.png",
+        "is_active": true,
+        "is_default": true,
+        "sort_order": 1,
+        "instructions": "After transfer, please upload your payment slip within 24 hours.",
+        "created_at": "2025-12-30T11:11:26.000000Z",
+        "updated_at": "2025-12-30T11:11:26.000000Z"
     },
-    "message": "Order Refunded.",
+    "message": null,
     "success": true
 }
+
+UDPATE (PUT)
+{{base_url}}/ecommerce/bank-accounts/{{bank_account_id}}
+
+RESPONSE API 
+{
+  "bank_name": "Maybank",
+  "account_name": "Gentle Gurl Shop",
+  "account_number": "1234567890",
+  "is_active": true,
+  "sort_order": 1
+}
+
+
+DELETE 
+{{base_url}}/ecommerce/bank-accounts/{{bank_account_id}}
+
+DELETE 
+
+
+PREMISSION 
+ecommerce.bank-accounts.view
+ecommerce.bank-accounts.update
+ecommerce.bank-accounts.delete
+ecommerce.bank-accounts.create

@@ -3101,14 +3101,66 @@
                       "type": "inherit"
                     },
                     "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"bank_name\": \"Maybank\",\n  \"account_name\": \"Gentle Gurl Shop\",\n  \"account_number\": \"1234567890\",\n  \"is_active\": true,\n  \"sort_order\": 1\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "label",
+                          "value": "Maybank Main Account",
+                          "type": "text"
+                        },
+                        {
+                          "key": "bank_name",
+                          "value": "Maybank",
+                          "type": "text"
+                        },
+                        {
+                          "key": "account_name",
+                          "value": "Gentle Gurl Shop",
+                          "type": "text"
+                        },
+                        {
+                          "key": "account_number",
+                          "value": "1234567890",
+                          "type": "text"
+                        },
+                        {
+                          "key": "branch",
+                          "value": "KL Main Branch",
+                          "type": "text"
+                        },
+                        {
+                          "key": "swift_code",
+                          "value": "MBBEMYKL",
+                          "type": "text"
+                        },
+                        {
+                          "key": "logo_file",
+                          "type": "file",
+                          "src": []
+                        },
+                        {
+                          "key": "qr_image_file",
+                          "type": "file",
+                          "src": []
+                        },
+                        {
+                          "key": "is_active",
+                          "value": "true",
+                          "type": "text"
+                        },
+                        {
+                          "key": "is_default",
+                          "value": "false",
+                          "type": "text"
+                        },
+                        {
+                          "key": "instructions",
+                          "value": "Please include your order number in the payment reference.",
+                          "type": "text"
                         }
-                      }
-                    }
+                      ]
+                    },
+                    "description": "Create a new bank account. sort_order is automatically set to the bottom. Use logo_file and qr_image_file for image uploads. The API will automatically return full URLs for logo_url and qr_image_url using Storage::disk('public')->url()."
                   },
                   "response": []
                 },
@@ -3137,7 +3189,7 @@
                 {
                   "name": "Update Bank Account",
                   "request": {
-                    "method": "PUT",
+                    "method": "POST",
                     "header": [],
                     "url": {
                       "raw": "{{base_url}}/ecommerce/bank-accounts/{{bank_account_id}}",
@@ -3154,14 +3206,124 @@
                       "type": "inherit"
                     },
                     "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"bank_name\": \"Maybank\",\n  \"account_name\": \"Gentle Gurl Shop\",\n  \"account_number\": \"1234567890\",\n  \"is_active\": true,\n  \"sort_order\": 1\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "_method",
+                          "value": "PUT",
+                          "type": "text"
+                        },
+                        {
+                          "key": "label",
+                          "value": "Maybank Main Account",
+                          "type": "text"
+                        },
+                        {
+                          "key": "bank_name",
+                          "value": "Maybank",
+                          "type": "text"
+                        },
+                        {
+                          "key": "account_name",
+                          "value": "Gentle Gurl Shop",
+                          "type": "text"
+                        },
+                        {
+                          "key": "account_number",
+                          "value": "1234567890",
+                          "type": "text"
+                        },
+                        {
+                          "key": "branch",
+                          "value": "KL Main Branch",
+                          "type": "text"
+                        },
+                        {
+                          "key": "swift_code",
+                          "value": "MBBEMYKL",
+                          "type": "text"
+                        },
+                        {
+                          "key": "logo_file",
+                          "type": "file",
+                          "src": []
+                        },
+                        {
+                          "key": "qr_image_file",
+                          "type": "file",
+                          "src": []
+                        },
+                        {
+                          "key": "is_active",
+                          "value": "true",
+                          "type": "text"
+                        },
+                        {
+                          "key": "is_default",
+                          "value": "false",
+                          "type": "text"
+                        },
+                        {
+                          "key": "sort_order",
+                          "value": "1",
+                          "type": "text"
+                        },
+                        {
+                          "key": "instructions",
+                          "value": "Please include your order number in the payment reference.",
+                          "type": "text"
                         }
-                      }
-                    }
+                      ]
+                    },
+                    "description": "Update a bank account. Uses POST with _method=PUT for reliable multipart/form-data file upload support. Use logo_file and qr_image_file for image uploads. The API will automatically return full URLs for logo_url and qr_image_url using Storage::disk('public')->url()."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Move Bank Account Up",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/bank-accounts/{{bank_account_id}}/move-up",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "bank-accounts",
+                        "{{bank_account_id}}",
+                        "move-up"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "description": "Move a bank account up in the sort order (swap with previous item)."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Move Bank Account Down",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/bank-accounts/{{bank_account_id}}/move-down",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "bank-accounts",
+                        "{{bank_account_id}}",
+                        "move-down"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "description": "Move a bank account down in the sort order (swap with next item)."
                   },
                   "response": []
                 },

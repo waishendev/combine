@@ -269,6 +269,12 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/seo-settings',
             requiredPermission: 'ecommerce.seo.view',
           },
+          {
+            key: 'bank-accounts',
+            label: 'Bank (Manual Transfer)',
+            href: '/bank-accounts',
+            requiredPermission: 'ecommerce.bank-accounts.view',
+          },
         ],
       },
       // {

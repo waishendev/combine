@@ -119,7 +119,7 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/reviews/settings', [PublicPageReviewController::class, 'settings']);
     Route::get('/reviews', [PublicPageReviewController::class, 'index']);
     Route::post('/reviews', [PublicPageReviewController::class, 'store']);
-    Route::get('/bank-accounts', [PublicBankAccountController::class, 'index']);
+    Route::get('/bank-accounts',[PublicBankAccountController::class, 'index']);
     Route::get('/payment-methods', [PublicPaymentMethodController::class, 'index']);
     Route::post('/orders/track', [PublicOrderTrackingController::class, 'track']);
 
@@ -361,6 +361,15 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.bank-accounts.view');
 
         Route::put('/bank-accounts/{bankAccount}', [BankAccountController::class, 'update'])
+            ->middleware('permission:ecommerce.bank-accounts.update');
+
+        Route::post('/bank-accounts/{bankAccount}', [BankAccountController::class, 'update'])
+            ->middleware('permission:ecommerce.bank-accounts.update');
+
+        Route::post('/bank-accounts/{bankAccount}/move-up', [BankAccountController::class, 'moveUp'])
+            ->middleware('permission:ecommerce.bank-accounts.update');
+
+        Route::post('/bank-accounts/{bankAccount}/move-down', [BankAccountController::class, 'moveDown'])
             ->middleware('permission:ecommerce.bank-accounts.update');
 
         Route::delete('/bank-accounts/{bankAccount}', [BankAccountController::class, 'destroy'])

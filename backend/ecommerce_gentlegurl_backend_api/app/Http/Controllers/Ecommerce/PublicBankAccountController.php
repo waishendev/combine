@@ -14,18 +14,23 @@ class PublicBankAccountController extends Controller
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get([
-                'id',
-                'bank_name',
-                'account_name',
-                'account_number as account_no',
-                'branch',
-                'logo_url',
-                'qr_image_url',
-                'label',
-                'swift_code',
-                'is_default',
-            ]);
+            ->get()
+            ->map(function ($bankAccount) {
+                return [
+                    'id' => $bankAccount->id,
+                    'bank_name' => $bankAccount->bank_name,
+                    'account_name' => $bankAccount->account_name,
+                    'account_no' => $bankAccount->account_number,
+                    'account_number' => $bankAccount->account_number,
+                    'branch' => $bankAccount->branch,
+                    'logo_url' => $bankAccount->logo_url, // Accessor will return full URL
+                    'qr_image_url' => $bankAccount->qr_image_url, // Accessor will return full URL
+                    'label' => $bankAccount->label,
+                    'swift_code' => $bankAccount->swift_code,
+                    'is_default' => $bankAccount->is_default,
+                    'instructions' => $bankAccount->instructions,
+                ];
+            });
 
         return response()->json([
             'data' => $bankAccounts,
