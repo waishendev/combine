@@ -918,7 +918,7 @@ export default function CheckoutForm() {
                 />
                 <span>Online Banking (Billplz FPX)</span>
               </label>
-              <label className="flex items-center gap-2">
+              {/* <label className="flex items-center gap-2">
                 <input
                   type="radio"
                   name="payment_method"
@@ -927,7 +927,7 @@ export default function CheckoutForm() {
                   onChange={() => setPaymentMethod("billplz_card")}
                 />
                 <span>Credit Card (Billplz)</span>
-              </label>
+              </label> */}
             </div>
           </div>
 
