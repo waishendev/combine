@@ -28,7 +28,7 @@ class AdminSeeder extends Seeder
 
         // 创建管理员用户
         $adminUser = User::firstOrCreate(
-            ['email' => 'admin.user@example.com'],
+            ['email' => 'gentlegurlsadmin@example.com'],
             [
                 'name' => 'Admin User',
                 'username' => 'adminuser',

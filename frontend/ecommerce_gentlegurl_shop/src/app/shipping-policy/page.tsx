@@ -6,72 +6,136 @@ export default function ShippingPolicyPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--accent-strong)]">
             Customer Care
           </p>
-          <h1 className="text-3xl font-semibold text-[var(--foreground)] sm:text-4xl">Gentlegurls Shipping Policy</h1>
+          <h1 className="text-3xl font-semibold text-[var(--foreground)] sm:text-4xl">
+            Shipping Policy
+          </h1>
           <p className="text-sm text-[color:var(--text-muted)] sm:text-base">
-            This page explains how we process shipments after you choose a shipping method. We will confirm the shipment
-            in the后台 (back-end), then update your order with the tracking details so you can follow the delivery easily.
+            This page explains how orders are processed, prepared, and shipped after payment is completed.
           </p>
         </header>
 
         <section className="grid gap-6">
-          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_20px_60px_-45px_rgba(15,23,42,0.5)] backdrop-blur">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">Shipping Confirmation Flow</h2>
-            <p className="mt-3 text-sm text-[color:var(--text-muted)] sm:text-base">
-              After you select SHIPPING at checkout, our team verifies the order and marks the shipment as completed in
-              the system. Once confirmed, we prepare the parcel for courier pickup.
-            </p>
-          </article>
+          {/* Order Progress Overview */}
+          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 backdrop-blur">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">
+              Order Progress Overview
+            </h2>
 
-          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_20px_60px_-45px_rgba(15,23,42,0.5)] backdrop-blur">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">Tracking Details We Provide</h2>
-            <p className="mt-3 text-sm text-[color:var(--text-muted)] sm:text-base">
-              Once the parcel is handed to the courier, we will update your order with:
-            </p>
-            <ul className="mt-3 space-y-2 text-sm text-[color:var(--text-muted)] sm:text-base">
-              <li className="flex items-start gap-2">
-                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[var(--accent-strong)]" />
-                <span>Tracking number (Tracking No.)</span>
+            <ul className="mt-4 space-y-4 text-sm text-[color:var(--text-muted)] sm:text-base">
+              <li>
+                <strong className="block text-[var(--foreground)]">Awaiting Payment</strong>
+                <span className="block text-sm opacity-80">
+                  Payment has not been received yet.
+                </span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[var(--accent-strong)]" />
-                <span>Courier / shipping company name</span>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Waiting for Verification</strong>
+                <span className="block text-sm opacity-80">
+                  Payment proof submitted and pending review (Manual Transfer only).
+                </span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[var(--accent-strong)]" />
-                <span>Shipment status updates (when available)</span>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Payment Proof Rejected</strong>
+                <span className="block text-sm opacity-80">
+                  Submitted payment proof was not approved.
+                </span>
+              </li>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Payment Failed</strong>
+                <span className="block text-sm opacity-80">
+                  Online Banking payment was unsuccessful.
+                </span>
+              </li>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Cancelled</strong>
+                <span className="block text-sm opacity-80">
+                  Order was cancelled and will not be processed further.
+                </span>
+              </li>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Payment Confirmed</strong>
+                <span className="block text-sm opacity-80">
+                  Payment has been successfully verified.
+                </span>
+              </li>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Preparing</strong>
+                <span className="block text-sm opacity-80">
+                  Order is being prepared for shipment or pickup.
+                </span>
+              </li>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Ready for Pickup</strong>
+                <span className="block text-sm opacity-80">
+                  Order is ready to be collected (Self Pickup orders only).
+                </span>
+              </li>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Shipped</strong>
+                <span className="block text-sm opacity-80">
+                  Order has been handed to the courier (Delivery orders only).
+                </span>
+              </li>
+
+              <li>
+                <strong className="block text-[var(--foreground)]">Completed</strong>
+                <span className="block text-sm opacity-80">
+                  Order process has been fully completed.
+                </span>
               </li>
             </ul>
           </article>
 
-          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_20px_60px_-45px_rgba(15,23,42,0.5)] backdrop-blur">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">Where to Check Your Tracking</h2>
+          {/* Tracking */}
+          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 backdrop-blur">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">
+              Shipping & Tracking Information
+            </h2>
             <p className="mt-3 text-sm text-[color:var(--text-muted)] sm:text-base">
-              You can view tracking details in your account under <strong>Orders</strong>. We also provide an{' '}
-              <strong>Order Tracking</strong> page where you can quickly check the latest shipping progress.
+              Tracking details are provided once the order status is marked as <strong>Shipped</strong>.
+              We do not provide real-time parcel location tracking.
+            </p>
+
+            <ul className="mt-3 space-y-2 text-sm text-[color:var(--text-muted)] sm:text-base">
+              <li>• Tracking Number</li>
+              <li>• Courier / Shipping Company Name</li>
+            </ul>
+
+            <p className="mt-3 text-sm text-[color:var(--text-muted)] sm:text-base">
+              Customers may track delivery progress directly via the courier’s official tracking platform.
             </p>
           </article>
 
-          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_20px_60px_-45px_rgba(15,23,42,0.5)] backdrop-blur">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">Estimated Delivery Window</h2>
+          {/* Address */}
+          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 backdrop-blur">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">
+              Address Accuracy
+            </h2>
             <p className="mt-3 text-sm text-[color:var(--text-muted)] sm:text-base">
-              Delivery times vary based on location and courier schedules. If you need a more precise estimate, check the
-              tracking updates or contact us with your order reference.
+              Please ensure your shipping address and contact details are accurate and complete.
+              Incorrect information may cause delivery delays or failed delivery attempts.
             </p>
           </article>
 
-          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_20px_60px_-45px_rgba(15,23,42,0.5)] backdrop-blur">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">Address Accuracy</h2>
+          {/* Help */}
+          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 backdrop-blur">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">
+              Need Help?
+            </h2>
             <p className="mt-3 text-sm text-[color:var(--text-muted)] sm:text-base">
-              Please ensure your shipping address is complete and correct. Incorrect details may cause delays or failed
-              delivery attempts.
+              If you have questions regarding your order or shipment, please contact us via
+              <strong> WhatsApp </strong> using the floating button at the bottom-right corner of the website.
             </p>
-          </article>
-
-          <article className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_20px_60px_-45px_rgba(15,23,42,0.5)] backdrop-blur">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">Need Help?</h2>
-            <p className="mt-3 text-sm text-[color:var(--text-muted)] sm:text-base">
-              If you cannot find your tracking information or have questions, please reach out to us via Instagram with
-              your order reference. We will assist as soon as possible.
+            <p className="mt-2 text-sm text-[color:var(--text-muted)] sm:text-base">
+              Kindly provide your <strong>order reference number</strong> for faster assistance.
             </p>
           </article>
         </section>

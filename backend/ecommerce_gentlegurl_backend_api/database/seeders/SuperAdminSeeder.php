@@ -19,7 +19,7 @@ class SuperAdminSeeder extends Seeder
         }
 
         $superAdminUser = User::firstOrCreate(
-            ['email' => 'admin@example.com'],
+            ['email' => 'infrax1@example.com'],
             [
                 'name' => 'Infra Core X1',
                 'username' => 'admin',

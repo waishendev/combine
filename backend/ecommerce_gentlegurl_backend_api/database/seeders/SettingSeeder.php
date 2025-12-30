@@ -15,8 +15,8 @@ class SettingSeeder extends Seeder
                 'value' => [
                     'whatsapp' => [
                         'enabled' => true,
-                        'phone' => '+60123456789',
-                        'default_message' => 'Hi, I would like to ask about your products.',
+                        'phone' => '+0103870881',
+                        'default_message' => 'Hi, I’d like to enquire about your nail & waxing services and beauty cosmetic products.',
                     ],
                 ],
             ]
