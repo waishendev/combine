@@ -207,7 +207,7 @@ class PublicHomepageController extends Controller
             'enabled' => true,
             'flat_fee' => 0,
             'currency' => 'MYR',
-            'label' => 'Shipping fees',
+            'label' => 'Flat Rate Shipping',
         ];
     }
 

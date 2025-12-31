@@ -33,7 +33,7 @@ class ShopSettingController extends Controller
                 'enabled' => true,
                 'flat_fee' => 0,
                 'currency' => 'MYR',
-                'label' => 'Shipping fees',
+                'label' => 'Flat Rate Shipping',
             ]),
             'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
             'page_reviews' => SettingService::get('page_reviews', [
@@ -86,7 +86,7 @@ class ShopSettingController extends Controller
                 'enabled' => true,
                 'flat_fee' => 0,
                 'currency' => 'MYR',
-                'label' => 'Shipping fees',
+                'label' => 'Flat Rate Shipping',
             ],
             'footer' => $this->defaultFooterSetting(),
             'page_reviews' => [
