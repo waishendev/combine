@@ -18,7 +18,7 @@ class ShippingSettingSeeder extends Seeder
                     'label' => 'Delivery',
                     'free_shipping' => [
                         'enabled' => true,
-                        'min_order_amount' => 200,
+                        'min_order_amount' => 500,
                     ],
                     'zones' => [
                         'MY_WEST' => [

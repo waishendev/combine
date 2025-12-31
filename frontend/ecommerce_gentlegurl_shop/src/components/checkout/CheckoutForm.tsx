@@ -144,21 +144,7 @@ export default function CheckoutForm() {
   const isSelfPickup = shippingMethod === "self_pickup";
   const isShippingMalaysia = normalizeCountryValue(form.shipping_country) === "MY";
   const isAddressMalaysia = normalizeCountryValue(addressForm.country) === "MY";
-  const shippingSummaryLabel = shippingPreview?.shipping?.label
-    ? `Delivery (${shippingPreview.shipping.label})`
-    : shippingLabel ?? "Delivery";
-  const shippingIsFree = shippingPreview?.shipping?.is_free ?? false;
-  const shippingFeeDisplay =
-    shippingMethod === "shipping"
-      ? shippingPreview
-        ? shippingIsFree
-          ? "Free Shipping"
-          : `RM ${safeTotals.shipping.toFixed(2)}`
-        : isPreviewLoading
-          ? "Calculating..."
-          : "Calculated at checkout"
-      : "RM 0.00";
-
+  
   const safeTotals = useMemo(() => {
     const previewSubtotal = Number(shippingPreview?.subtotal ?? totals.subtotal ?? 0);
     const previewDiscount = Number(shippingPreview?.discount_total ?? totals.discount_total ?? 0);
@@ -184,6 +170,11 @@ export default function CheckoutForm() {
     totals.shipping_fee,
     totals.subtotal,
   ]);
+
+  const shippingSummaryLabel = shippingPreview?.shipping?.label
+    ? `Delivery (${shippingPreview.shipping.label})`
+    : shippingLabel ?? "Delivery";
+  const shippingIsFree = shippingPreview?.shipping?.is_free ?? false;
 
   const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
 
@@ -273,6 +264,34 @@ export default function CheckoutForm() {
   useEffect(() => {
     fetchAddresses();
   }, [fetchAddresses]);
+
+  const selectedAddress = useMemo(
+    () => addresses.find((addr) => addr.id === selectedAddressId) ?? addresses.find((addr) => addr.is_default),
+    [addresses, selectedAddressId],
+  );
+
+  // Get current country and state for shipping fee display logic
+  const currentCountry = isLoggedIn && selectedAddress 
+    ? normalizeCountryValue(selectedAddress.country) 
+    : normalizeCountryValue(form.shipping_country);
+  const currentState = isLoggedIn && selectedAddress 
+    ? selectedAddress.state 
+    : form.shipping_state;
+  
+  const shippingFeeDisplay =
+    shippingMethod === "shipping"
+      ? !currentCountry
+        ? "Select country to see delivery fee"
+        : currentCountry === "MY" && !currentState
+          ? "Select state to see delivery fee"
+          : isPreviewLoading
+            ? "Calculating..."
+            : shippingPreview
+              ? shippingIsFree
+                ? "Free Shipping"
+                : `RM ${safeTotals.shipping.toFixed(2)}`
+              : "Calculated at checkout"
+      : "RM 0.00";
 
   // Track when all initial data is loaded
   useEffect(() => {
@@ -556,11 +575,6 @@ export default function CheckoutForm() {
   const selectedBank = useMemo(
     () => bankAccounts.find((bank) => bank.id === selectedBankId) ?? bankAccounts[0],
     [bankAccounts, selectedBankId],
-  );
-
-  const selectedAddress = useMemo(
-    () => addresses.find((addr) => addr.id === selectedAddressId) ?? addresses.find((addr) => addr.is_default),
-    [addresses, selectedAddressId],
   );
 
   const updateAddressForm = (field: keyof AddressPayload, value: string | boolean) => {
