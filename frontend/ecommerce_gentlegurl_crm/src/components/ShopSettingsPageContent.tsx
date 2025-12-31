@@ -17,9 +17,36 @@ type ShopSettingsResponse = {
     }
     shipping?: {
       enabled?: boolean
-      flat_fee?: number
       currency?: string
       label?: string
+      free_shipping?: {
+        enabled?: boolean
+        min_order_amount?: number
+      }
+      zones?: {
+        MY_WEST?: {
+          label?: string
+          countries?: string[]
+          states?: string[]
+          fee?: number
+        }
+        MY_EAST?: {
+          label?: string
+          countries?: string[]
+          states?: string[]
+          fee?: number
+        }
+        SG?: {
+          label?: string
+          countries?: string[]
+          states?: string[]
+          fee?: number
+        }
+      }
+      fallback?: {
+        mode?: 'block_checkout' | 'use_default'
+        default_fee?: number
+      }
     }
     footer?: {
       enabled?: boolean
@@ -66,9 +93,50 @@ const defaultHomepageSettings = {
 
 const defaultShippingSettings = {
   enabled: false,
-  flat_fee: 0,
   currency: 'MYR',
-  label: '',
+  label: 'Delivery',
+  free_shipping: {
+    enabled: true,
+    min_order_amount: 200,
+  },
+  zones: {
+    MY_WEST: {
+      label: 'Malaysia (West)',
+      countries: ['MY'],
+      states: [
+        'Johor',
+        'Kedah',
+        'Kelantan',
+        'Kuala Lumpur',
+        'Melaka',
+        'Negeri Sembilan',
+        'Pahang',
+        'Penang',
+        'Perak',
+        'Perlis',
+        'Putrajaya',
+        'Selangor',
+        'Terengganu',
+      ],
+      fee: 10,
+    },
+    MY_EAST: {
+      label: 'Malaysia (East)',
+      countries: ['MY'],
+      states: ['Sabah', 'Sarawak', 'Labuan'],
+      fee: 20,
+    },
+    SG: {
+      label: 'Singapore',
+      countries: ['SG'],
+      states: [],
+      fee: 25,
+    },
+  },
+  fallback: {
+    mode: 'block_checkout',
+    default_fee: 0,
+  },
 }
 
 const defaultFooterSettings = {
@@ -160,9 +228,42 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
 
         setShippingSettings({
           enabled: shipping.enabled ?? false,
-          flat_fee: shipping.flat_fee ?? defaultShippingSettings.flat_fee,
           currency: shipping.currency ?? defaultShippingSettings.currency,
           label: shipping.label ?? defaultShippingSettings.label,
+          free_shipping: {
+            enabled:
+              shipping.free_shipping?.enabled ?? defaultShippingSettings.free_shipping.enabled,
+            min_order_amount:
+              shipping.free_shipping?.min_order_amount ??
+              defaultShippingSettings.free_shipping.min_order_amount,
+          },
+          zones: {
+            MY_WEST: {
+              label: shipping.zones?.MY_WEST?.label ?? defaultShippingSettings.zones.MY_WEST.label,
+              countries:
+                shipping.zones?.MY_WEST?.countries ?? defaultShippingSettings.zones.MY_WEST.countries,
+              states: shipping.zones?.MY_WEST?.states ?? defaultShippingSettings.zones.MY_WEST.states,
+              fee: shipping.zones?.MY_WEST?.fee ?? defaultShippingSettings.zones.MY_WEST.fee,
+            },
+            MY_EAST: {
+              label: shipping.zones?.MY_EAST?.label ?? defaultShippingSettings.zones.MY_EAST.label,
+              countries:
+                shipping.zones?.MY_EAST?.countries ?? defaultShippingSettings.zones.MY_EAST.countries,
+              states: shipping.zones?.MY_EAST?.states ?? defaultShippingSettings.zones.MY_EAST.states,
+              fee: shipping.zones?.MY_EAST?.fee ?? defaultShippingSettings.zones.MY_EAST.fee,
+            },
+            SG: {
+              label: shipping.zones?.SG?.label ?? defaultShippingSettings.zones.SG.label,
+              countries: shipping.zones?.SG?.countries ?? defaultShippingSettings.zones.SG.countries,
+              states: shipping.zones?.SG?.states ?? defaultShippingSettings.zones.SG.states,
+              fee: shipping.zones?.SG?.fee ?? defaultShippingSettings.zones.SG.fee,
+            },
+          },
+          fallback: {
+            mode: shipping.fallback?.mode ?? defaultShippingSettings.fallback.mode,
+            default_fee:
+              shipping.fallback?.default_fee ?? defaultShippingSettings.fallback.default_fee,
+          },
         })
 
         setFooterSettings({
@@ -292,9 +393,36 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         },
         body: JSON.stringify({
           enabled: shippingSettings.enabled,
-          flat_fee: Number(shippingSettings.flat_fee) || 0,
           currency: shippingSettings.currency,
           label: shippingSettings.label,
+          free_shipping: {
+            enabled: shippingSettings.free_shipping.enabled,
+            min_order_amount: Number(shippingSettings.free_shipping.min_order_amount) || 0,
+          },
+          zones: {
+            MY_WEST: {
+              label: shippingSettings.zones.MY_WEST.label,
+              countries: shippingSettings.zones.MY_WEST.countries,
+              states: shippingSettings.zones.MY_WEST.states,
+              fee: Number(shippingSettings.zones.MY_WEST.fee) || 0,
+            },
+            MY_EAST: {
+              label: shippingSettings.zones.MY_EAST.label,
+              countries: shippingSettings.zones.MY_EAST.countries,
+              states: shippingSettings.zones.MY_EAST.states,
+              fee: Number(shippingSettings.zones.MY_EAST.fee) || 0,
+            },
+            SG: {
+              label: shippingSettings.zones.SG.label,
+              countries: shippingSettings.zones.SG.countries,
+              states: shippingSettings.zones.SG.states,
+              fee: Number(shippingSettings.zones.SG.fee) || 0,
+            },
+          },
+          fallback: {
+            mode: shippingSettings.fallback.mode,
+            default_fee: Number(shippingSettings.fallback.default_fee) || 0,
+          },
         }),
       })
 
@@ -937,10 +1065,10 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handleShippingSubmit}>
-          {/* <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
+          <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
             <div>
               <p className="text-sm font-medium text-slate-900">Enable Shipping</p>
-              <p className="text-xs text-slate-500">Toggle to enable flat-rate shipping on your shop.</p>
+              <p className="text-xs text-slate-500">Toggle to enable shipping on your shop.</p>
             </div>
             <label className="relative inline-flex cursor-pointer items-center isolate">
               <input
@@ -957,32 +1085,85 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px] z-10" />
               </div>
             </label>
-          </div> */}
+          </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="block text-sm font-medium text-slate-800">
-                Flat Fee
-              </span>
-
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
-                  RM
-                </span>
-
+          <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Free Shipping</p>
+                <p className="text-xs text-slate-500">Offer free shipping once the order reaches a minimum amount.</p>
+              </div>
+              <label className="relative inline-flex cursor-pointer items-center isolate">
                 <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={shippingSettings.flat_fee}
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={shippingSettings.free_shipping.enabled}
                   disabled={!canEdit}
                   onChange={(event) =>
                     setShippingSettings((prev) => ({
                       ...prev,
-                      flat_fee: Number(event.target.value),
+                      free_shipping: { ...prev.free_shipping, enabled: event.target.checked },
                     }))
                   }
-                  placeholder="0.00"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <div className="peer relative h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-500 isolate">
+                  <span className="absolute left-[2px] top-[2px] block h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-[18px] z-10" />
+                </div>
+              </label>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="block text-sm font-medium text-slate-800">Minimum order amount (RM)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={shippingSettings.free_shipping.min_order_amount}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    setShippingSettings((prev) => ({
+                      ...prev,
+                      free_shipping: {
+                        ...prev.free_shipping,
+                        min_order_amount: Number(event.target.value),
+                      },
+                    }))
+                  }
+                  className={`
+                    w-full rounded-lg border px-3 py-2 text-sm shadow-sm outline-none
+                    ${canEdit
+                      ? "border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      : "border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed"}
+                  `}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">MY West Fee</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                  RM
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={shippingSettings.zones.MY_WEST.fee}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    setShippingSettings((prev) => ({
+                      ...prev,
+                      zones: {
+                        ...prev.zones,
+                        MY_WEST: { ...prev.zones.MY_WEST, fee: Number(event.target.value) },
+                      },
+                    }))
+                  }
                   className={`
                     w-full rounded-lg border px-3 py-2 pl-10 text-sm shadow-sm outline-none
                     ${canEdit
@@ -993,37 +1174,67 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               </div>
             </label>
 
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">MY East Fee</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                  RM
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={shippingSettings.zones.MY_EAST.fee}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    setShippingSettings((prev) => ({
+                      ...prev,
+                      zones: {
+                        ...prev.zones,
+                        MY_EAST: { ...prev.zones.MY_EAST, fee: Number(event.target.value) },
+                      },
+                    }))
+                  }
+                  className={`
+                    w-full rounded-lg border px-3 py-2 pl-10 text-sm shadow-sm outline-none
+                    ${canEdit
+                      ? "border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      : "border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed"}
+                  `}
+                />
+              </div>
+            </label>
 
-            {/* <label className="space-y-2">
-              <span className="block text-sm font-medium text-slate-800">Currency</span>
-              <select
-                value={shippingSettings.currency}
-                disabled={!canEdit}
-                onChange={(event) =>
-                  setShippingSettings((prev) => ({ ...prev, currency: event.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              >
-                <option value="MYR">MYR</option>
-                <option value="USD">USD</option>
-                <option value="SGD">SGD</option>
-                <option value="IDR">IDR</option>
-              </select>
-            </label> */}
-
-            {/* <label className="space-y-2 md:col-span-2">
-              <span className="block text-sm font-medium text-slate-800">Label (Optional)</span>
-              <input
-                type="text"
-                value={shippingSettings.label}
-                disabled={!canEdit}
-                onChange={(event) =>
-                  setShippingSettings((prev) => ({ ...prev, label: event.target.value }))
-                }
-                placeholder="e.g. Shipping fees"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </label> */}
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Singapore Fee</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                  RM
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={shippingSettings.zones.SG.fee}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    setShippingSettings((prev) => ({
+                      ...prev,
+                      zones: {
+                        ...prev.zones,
+                        SG: { ...prev.zones.SG, fee: Number(event.target.value) },
+                      },
+                    }))
+                  }
+                  className={`
+                    w-full rounded-lg border px-3 py-2 pl-10 text-sm shadow-sm outline-none
+                    ${canEdit
+                      ? "border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      : "border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed"}
+                  `}
+                />
+              </div>
+            </label>
           </div>
 
           <div className="flex justify-end">

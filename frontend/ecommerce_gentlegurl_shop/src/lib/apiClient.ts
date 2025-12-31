@@ -212,6 +212,13 @@ export type CheckoutPreviewResponse = {
   discount_total: number | string;
   shipping_fee: number | string;
   grand_total: number | string;
+  shipping?: {
+    zone?: string | null;
+    label?: string | null;
+    fee?: number | string;
+    is_free?: boolean;
+    free_shipping_min_order_amount?: number | null;
+  } | null;
   voucher?: CheckoutPreviewVoucher | null;
   voucher_error?: string | null;
   voucher_valid?: boolean;
@@ -545,6 +552,8 @@ export type CheckoutPreviewPayload = {
   shipping_method: "shipping" | "self_pickup";
   store_location_id?: number | null;
   shipping_postcode?: string | null;
+  shipping_country?: string | null;
+  shipping_state?: string | null;
   session_token?: string | null;
 };
 

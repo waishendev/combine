@@ -27,6 +27,7 @@ export default function CartPageClient() {
       selectAll,
       clearSelection,
       shippingLabel,
+      shippingMethod,
     } = useCart();
 
   const [voucherCode, setVoucherCode] = useState("");
@@ -189,6 +190,7 @@ export default function CartPageClient() {
 
   const allSelected = items.length > 0 && selectedItemIds.length === items.length;
   const selectedCount = selectedItems.length;
+  const showShippingPending = shippingMethod === "shipping" && selectedCount > 0;
 
   const gridColsMd =
     "md:grid-cols-[26px_minmax(220px,1fr)_110px_120px_120px_64px]";
@@ -566,7 +568,11 @@ export default function CartPageClient() {
 
               <div className="flex justify-between">
                 <span className="text-[var(--foreground)]/70">{shippingLabel ?? "Shipping fees"}</span>
-                <span className="font-medium">RM {safeTotals.shipping.toFixed(2)}</span>
+                {showShippingPending ? (
+                  <span className="text-xs text-[var(--foreground)]/60">Calculated at checkout</span>
+                ) : (
+                  <span className="font-medium">RM {safeTotals.shipping.toFixed(2)}</span>
+                )}
               </div>
             </div>
 

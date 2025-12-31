@@ -13,6 +13,7 @@ use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\Cart;
 use App\Services\BillplzService;
 use App\Services\Ecommerce\CartService;
+use App\Services\Ecommerce\ShippingService;
 use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
@@ -37,6 +38,7 @@ class PublicCheckoutController extends Controller
         protected BillplzService $billplzService,
         protected CartService $cartService,
         protected OrderReserveService $orderReserveService,
+        protected ShippingService $shippingService,
     )
     {
     }
@@ -61,7 +63,9 @@ class PublicCheckoutController extends Controller
             $customer,
             $shippingMethod,
             $validated['voucher_code'] ?? null,
-            $validated['customer_voucher_id'] ?? null
+            $validated['customer_voucher_id'] ?? null,
+            $validated['shipping_country'] ?? null,
+            $validated['shipping_state'] ?? null,
         );
 
         $this->orderReserveService->validateStockForItems($calculation['items']);
@@ -76,6 +80,7 @@ class PublicCheckoutController extends Controller
             'voucher_error' => $calculation['voucher_error'],
             'voucher_valid' => $calculation['voucher_valid'],
             'voucher_message' => $calculation['voucher_error'],
+            'shipping' => $calculation['shipping'] ?? null,
         ]);
     }
 
@@ -115,7 +120,9 @@ class PublicCheckoutController extends Controller
             $customer,
             $shippingMethod,
             $validated['voucher_code'] ?? null,
-            $validated['customer_voucher_id'] ?? null
+            $validated['customer_voucher_id'] ?? null,
+            $validated['shipping_country'] ?? null,
+            $validated['shipping_state'] ?? null,
         );
 
         if ((!empty($validated['voucher_code']) || !empty($validated['customer_voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']->valid)) {
@@ -563,7 +570,16 @@ class PublicCheckoutController extends Controller
         return null;
     }
 
-    protected function calculateTotals(?Cart $cart, array $itemsInput, ?Customer $customer, string $shippingMethod, ?string $voucherCode, ?int $customerVoucherId): array
+    protected function calculateTotals(
+        ?Cart $cart,
+        array $itemsInput,
+        ?Customer $customer,
+        string $shippingMethod,
+        ?string $voucherCode,
+        ?int $customerVoucherId,
+        ?string $shippingCountry,
+        ?string $shippingState,
+    ): array
     {
         $items = [];
         $subtotal = 0;
@@ -745,10 +761,25 @@ class PublicCheckoutController extends Controller
         }
 
         $shippingFee = 0;
+        $shippingInfo = null;
         if ($shippingMethod === 'shipping') {
             $shippingSetting = Setting::where('key', 'shipping')->first();
+            $shippingConfig = (array) data_get($shippingSetting?->value, []);
+            $shippingResult = $this->shippingService->calculateShippingFee(
+                $subtotal,
+                $shippingCountry,
+                $shippingState,
+                $shippingConfig,
+            );
 
-            $shippingFee = (float) data_get($shippingSetting?->value, 'flat_fee', 0);
+            $shippingFee = (float) $shippingResult['fee'];
+            $shippingInfo = [
+                'zone' => $shippingResult['zone'],
+                'label' => $shippingResult['label'],
+                'fee' => $shippingFee,
+                'is_free' => $shippingResult['is_free'],
+                'free_shipping_min_order_amount' => $shippingResult['free_threshold'],
+            ];
         }
         $discountTotal = 0;
         $voucherData = null;
@@ -765,6 +796,7 @@ class PublicCheckoutController extends Controller
                     'discount_total' => 0,
                     'shipping_fee' => $shippingFee,
                     'grand_total' => $subtotal + $shippingFee,
+                    'shipping' => $shippingInfo,
                     'voucher' => null,
                     'voucher_error' => __('Voucher not found.'),
                     'voucher_result' => null,
@@ -801,6 +833,7 @@ class PublicCheckoutController extends Controller
             'discount_total' => $discountTotal,
             'shipping_fee' => $shippingFee,
             'grand_total' => $grandTotal,
+            'shipping' => $shippingInfo,
             'voucher' => $voucherData,
             'voucher_error' => $voucherError,
             'voucher_result' => $voucherResult,
