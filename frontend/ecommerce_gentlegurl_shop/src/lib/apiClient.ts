@@ -574,7 +574,7 @@ export type CheckoutPayload = {
     reward_redemption_id?: number;
   }>;
   session_token?: string | null;
-  payment_method: "manual_transfer" | "billplz_fpx" | "billplz_card";
+  payment_method: string;
   shipping_method: "shipping" | "self_pickup";
   shipping_name?: string;
   shipping_phone?: string;

@@ -566,16 +566,6 @@ export default function CartPageClient() {
                 <span className="font-medium">- RM {safeTotals.discount.toFixed(2)}</span>
               </div>
 
-              {selectedCount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-[var(--foreground)]/70">{shippingLabel ?? "Shipping fees"}</span>
-                  {showShippingPending ? (
-                    <span className="text-xs text-[var(--foreground)]/60">Calculated at checkout</span>
-                  ) : (
-                    <span className="font-medium">RM {safeTotals.shipping.toFixed(2)}</span>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Total */}

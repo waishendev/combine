@@ -175,6 +175,12 @@
       "value": "",
       "type": "default",
       "enabled": true
+    },
+    {
+      "key": "payment_gateway_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment",
