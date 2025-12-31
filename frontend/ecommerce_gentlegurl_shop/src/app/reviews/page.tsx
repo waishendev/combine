@@ -224,7 +224,7 @@ export default function ReviewsPage() {
     <main className="mx-auto max-w-5xl px-4 py-10">
       <div className="flex items-center justify-between">
         <div>
-          {/* <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Community</p> */}
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Community</p>
           <h1 className="text-3xl font-semibold text-[var(--foreground)]">Store Reviews</h1>
           <p className="mt-2 text-sm text-[color:var(--text-muted)]">
             Read what other customers say and share your experience for each location.

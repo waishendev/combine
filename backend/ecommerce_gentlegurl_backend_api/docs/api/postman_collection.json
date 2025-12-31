@@ -27,7 +27,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"password\"\n}",
+							"raw": "{\n    \"email\": \"infrax1@example.com\",\n    \"password\": \"password\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -147,7 +147,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"name\": \"Admin Name\",\n    \"email\": \"admin@example.com\",\n    \"username\": \"admin\",\n    \"password\": \"password\",\n    \"is_active\": true\n}",
+							"raw": "{\n    \"name\": \"Admin Name\",\n    \"email\": \"infrax1@example.com\",\n    \"username\": \"admin\",\n    \"password\": \"password\",\n    \"is_active\": true\n}",
 							"options": {
 								"raw": {
 									"language": "json"

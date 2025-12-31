@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <>
       <LoadingOverlay show={isSubmitting || isRedirecting} message="Signing in..." />
-      <div className="min-h-[70vh]">
+      <div className="min-h-[80vh]">
       <div className="relative mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center px-4 py-14">
         <div className="w-full max-w-md">
           {/* Header */}

@@ -15,37 +15,29 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             PermissionSeeder::class,
-            RoleSeeder::class,
-            SuperAdminSeeder::class,
             AdminSeeder::class,
+            GlobalSeoSeedeer::class,
             SettingSeeder::class,
             ShippingSettingSeeder::class,
-            // ShopContactWidgetSeeder::class,
-            FrontendTestDataSeeder::class,
             BankAccountSeeder::class,
-            LoyaltyRewardSeederReal::class,
-            // LoyaltyDemoCustomerSeeder::class,
+            LoyaltySettingSeeder::class,
+            // LoyaltyRewardSeederReal::class,
+            // StoreLocationsSeederReal::class,
+            // FooterWidgetSeederReal::class,
+
+            SuperAdminRoleSeeder::class,
+            SuperAdminSeeder::class,
+           
+            
+            FooterWidgetSeederTesting::class,
+            FrontendTestDataSeeder::class,
+            LoyaltyRewardSeederTesting::class,
+            LoyaltyDemoCustomerSeederTesting::class
             // SalesReportSeeder::class,
             //ReturnRequestSeeder::class,
+
+            // 暂时没用到的
+            // PaymentGatewaySeeder::class, 
         ]);
-
-        $customer = Customer::first();
-
-        if ($customer && $customer->addresses()->count() === 0) {
-            CustomerAddress::create([
-                'customer_id' => $customer->id,
-                'label' => 'Home',
-                'type' => 'shipping',
-                'name' => $customer->name,
-                'phone' => '0123456789',
-                'line1' => '123 Test Street',
-                'line2' => 'Taman Contoh',
-                'city' => 'George Town',
-                'state' => 'Penang',
-                'postcode' => '11000',
-                'country' => 'Malaysia',
-                'is_default' => true,
-            ]);
-        }
     }
 }

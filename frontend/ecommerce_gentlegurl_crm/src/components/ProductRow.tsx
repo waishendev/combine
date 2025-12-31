@@ -21,6 +21,7 @@ export interface ProductRowData {
   costPrice: number
   stock: number
   lowStockThreshold: number
+  dummySoldCount?: number
   isActive: boolean
   isFeatured: boolean
   isRewardOnly: boolean

@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
-class LoyaltyDemoCustomerSeeder extends Seeder
+class LoyaltyDemoCustomerSeederTesting extends Seeder
 {
     public function run(): void
     {

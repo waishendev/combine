@@ -22,7 +22,7 @@ class SuperAdminSeeder extends Seeder
             ['email' => 'infrax1@example.com'],
             [
                 'name' => 'Infra Core X1',
-                'username' => 'admin',
+                'username' => 'infrax1',
                 'password' => Hash::make('password'),
                 'is_active' => true,
             ]

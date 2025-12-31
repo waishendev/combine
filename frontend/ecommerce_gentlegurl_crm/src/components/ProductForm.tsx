@@ -26,6 +26,7 @@ type ProductFormValues = {
   costPrice: string
   stock: string
   lowStockThreshold: string
+  dummySoldCount: string
   isFeatured: boolean
   metaTitle: string
   metaDescription: string
@@ -48,6 +49,7 @@ const emptyForm: ProductFormValues = {
   costPrice: '',
   stock: '',
   lowStockThreshold: '',
+  dummySoldCount: '',
   isFeatured: false,
   metaTitle: '',
   metaDescription: '',
@@ -112,6 +114,9 @@ export default function ProductForm({
         stock: product.stock ? String(product.stock) : '',
         lowStockThreshold: product.lowStockThreshold
           ? String(product.lowStockThreshold)
+          : '',
+        dummySoldCount: product.dummySoldCount !== undefined
+          ? String(product.dummySoldCount)
           : '',
         isFeatured: showFeatured ? product.isFeatured : false,
         metaTitle: product.metaTitle,
@@ -696,6 +701,7 @@ export default function ProductForm({
     formData.append('cost_price', form.costPrice || '0')
     formData.append('stock', form.stock || '0')
     formData.append('low_stock_threshold', form.lowStockThreshold || '0')
+    formData.append('dummy_sold_count', form.dummySoldCount || '0')
     if (showFeatured) {
       formData.append('is_featured', form.isFeatured ? '1' : '0')
     } else {
@@ -1661,6 +1667,38 @@ export default function ProductForm({
               placeholder="0"
             />
           </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700" htmlFor="dummySoldCount">
+              Extra Sold (Display Only)
+            </label>
+            <input
+              id="dummySoldCount"
+              name="dummySoldCount"
+              type="number"
+              min="0"
+              value={form.dummySoldCount}
+              onChange={handleChange}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              placeholder="0"
+            />
+          </div>
+          {mode === 'edit' && !rewardOnly && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="status">
+                {t('common.status')}
+              </label>
+              <select
+                id="status"
+                name="status"
+                value={form.status}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              >
+                <option value="active">{t('common.active')}</option>
+                <option value="inactive">{t('common.inactive')}</option>
+              </select>
+            </div>
+          )}
           {showFeatured && (
             <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
               <div>
@@ -1677,23 +1715,6 @@ export default function ProductForm({
                   setForm((f) => ({ ...f, isFeatured: checked }))
                 }
               />
-            </div>
-          )}
-          {mode === 'edit' && !rewardOnly && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700" htmlFor="status">
-                {t('common.status')}
-              </label>
-              <select
-                id="status"
-                name="status"
-                value={form.status}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              >
-                <option value="active">{t('common.active')}</option>
-                <option value="inactive">{t('common.inactive')}</option>
-              </select>
             </div>
           )}
         </div>

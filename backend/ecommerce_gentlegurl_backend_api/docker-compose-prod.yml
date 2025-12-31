@@ -51,6 +51,12 @@ services:
       options:
         max-size: "50m"
         max-file: "7"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - appnet
+
   nginx:
     image: nginx:alpine
     container_name: nginx_laravel_prod
@@ -62,6 +68,32 @@ services:
       - ./nginx:/etc/nginx/conf.d:ro
       - .:/var/www:ro
     restart: unless-stopped
+    networks:
+      - appnet
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres_prod
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - appnet
+
 volumes:
   laravel_storage:
   laravel_cache:
+  postgres_data:
+
+networks:
+  appnet:
+    driver: bridge

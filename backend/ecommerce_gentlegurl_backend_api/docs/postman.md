@@ -14,17 +14,17 @@
 
 ## 3. 鉴权说明（Session + Token）
 - Session 登录：`POST /login`
-  - Body（JSON）：`{ "email": "admin@example.com", "password": "password" }`
+  - Body（JSON）：`{ "email": "infrax1@example.com", "password": "password" }`
   - 成功后通过 Cookie 维持会话，需在后续请求中携带返回的 Cookie（Postman 先调用一次 `/login`，自动保存 Set-Cookie）。
   - 仅支持 `email` + `password`，未实现 username 登录。
 - Token 登录：`POST /login/token`
   - Body 示例：
     ```json
-    { "email": "admin@example.com", "password": "password" }
+    { "email": "infrax1@example.com", "password": "password" }
     ```
   - Response 示例：
     ```json
-    { "data": { "token": "<sanctum-token>", "user": { "id": 1, "name": "Admin", "email": "admin@example.com", "username": "admin" } } }
+    { "data": { "token": "<sanctum-token>", "user": { "id": 1, "name": "Admin", "email": "infrax1@example.com", "username": "admin" } } }
     ```
   - 后续请求在 Header 携带 `Authorization: Bearer <sanctum-token>`。
   - 使用 Sanctum token guard（`auth:web,sanctum` 中的 sanctum 部分）。

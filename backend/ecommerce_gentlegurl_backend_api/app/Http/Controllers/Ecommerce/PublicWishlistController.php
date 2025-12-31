@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class PublicWishlistController extends Controller
@@ -21,7 +22,29 @@ class PublicWishlistController extends Controller
             return $this->respond([]);
         }
 
-        $wishlist = $this->buildWishlistQuery($customer?->id, $sessionToken)->get();
+        $wishlist = $this->buildWishlistQuery($customer?->id, $sessionToken)
+            ->get()
+            ->map(function ($item) {
+                // Convert thumbnail path to full URL
+                $thumbnail = $item->thumbnail;
+                if ($thumbnail) {
+                    // If it's already a full URL, return it as is
+                    if (filter_var($thumbnail, FILTER_VALIDATE_URL)) {
+                        $item->thumbnail = $thumbnail;
+                    } else {
+                        // Normalize path: remove leading slash to avoid double slashes
+                        $normalizedPath = ltrim($thumbnail, '/');
+                        // If it's a storage path, return the full URL
+                        if (Storage::disk('public')->exists($normalizedPath)) {
+                            $item->thumbnail = Storage::disk('public')->url($normalizedPath);
+                        } else {
+                            // Fallback: construct URL manually
+                            $item->thumbnail = url('storage/' . ltrim($thumbnail, '/'));
+                        }
+                    }
+                }
+                return $item;
+            });
 
         return $this->respond([
             'items' => $wishlist,

@@ -24,6 +24,7 @@ export type ProductApiItem = {
   cost_price?: string | number | null
   stock?: number | string | null
   low_stock_threshold?: number | string | null
+  dummy_sold_count?: number | string | null
   is_active?: boolean | number | string | null
   is_featured?: boolean | number | string | null
   is_reward_only?: boolean | number | string | null
@@ -76,6 +77,13 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
         ? Number.parseInt(item.low_stock_threshold, 10)
         : 0
 
+  const dummySoldCountValue =
+    typeof item.dummy_sold_count === 'number'
+      ? item.dummy_sold_count
+      : typeof item.dummy_sold_count === 'string'
+        ? Number.parseInt(item.dummy_sold_count, 10)
+        : undefined
+
   return {
     id: normalizedId,
     name: item.name ?? '-',
@@ -87,6 +95,7 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     costPrice: Number.isFinite(costValue) ? costValue : 0,
     stock: Number.isFinite(stockValue) ? stockValue : 0,
     lowStockThreshold: Number.isFinite(lowStockValue) ? lowStockValue : 0,
+    dummySoldCount: Number.isFinite(dummySoldCountValue) ? dummySoldCountValue : undefined,
     isActive: toBoolean(item.is_active),
     isFeatured: toBoolean(item.is_featured),
     isRewardOnly: toBoolean(item.is_reward_only),

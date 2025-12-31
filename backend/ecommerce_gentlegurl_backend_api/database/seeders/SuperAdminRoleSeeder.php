@@ -6,7 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use Illuminate\Database\Seeder;
 
-class RoleSeeder extends Seeder
+class SuperAdminRoleSeeder extends Seeder
 {
     public function run(): void
     {

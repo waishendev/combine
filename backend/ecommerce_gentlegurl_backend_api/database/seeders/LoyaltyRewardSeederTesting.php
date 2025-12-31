@@ -8,7 +8,7 @@ use App\Models\Ecommerce\ProductImage;
 use App\Models\Ecommerce\Voucher;
 use Illuminate\Database\Seeder;
 
-class LoyaltyRewardSeeder extends Seeder
+class LoyaltyRewardSeederTesting extends Seeder
 {
     public function run(): void
     {

@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Core Admin Frontend',
-  description: 'Admin dashboard frontend for NestJS RBAC backend.',
+  title: 'GentleGurls Commerce Admin',
+  description: 'Ecommerce administration dashboard',
 };
 
 export default function RootLayout({

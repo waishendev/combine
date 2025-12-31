@@ -14,7 +14,7 @@ import { getUser } from "@/lib/server/getUser";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Gentlegurl",
+  title: "Gentlegurls",
 };
 
 export default async function RootLayout({

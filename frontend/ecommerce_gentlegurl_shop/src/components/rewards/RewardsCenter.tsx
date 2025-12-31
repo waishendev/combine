@@ -237,9 +237,19 @@ export function RewardsCenter() {
             ))}
           </div>
         ) : filteredRewards.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[var(--card-border)] bg-[var(--card)]/70 px-6 py-10 text-center text-sm text-[color:var(--text-muted)]">
-            No rewards available for this filter right now. Please check back later.
-          </div>
+            <div className="flex h-48 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 px-6 py-10 text-center shadow-sm">
+              <p className="text-base font-semibold text-[var(--foreground)]">
+                {filter === "product"
+                  ? "No Product Rewards Available"
+                  : "No Voucher Rewards Available"}
+              </p>
+
+              <p className="max-w-md text-sm text-[color:var(--text-muted)]">
+                {filter === "product"
+                  ? "We're currently preparing new product rewards. Check back soon to redeem items using your points."
+                  : "New voucher rewards are coming soon. Keep earning points to unlock exciting deals."}
+              </p>
+            </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filteredRewards.map((reward) => {

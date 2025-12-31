@@ -10,7 +10,7 @@ export function proxy(req: NextRequest) {
     // Check for both possible session cookie names
     const hasSessionCookie = 
       req.cookies.get('connect.sid') || 
-      req.cookies.get('laravel-session');
+      req.cookies.get('laravel-session') || req.cookies.get('gentlegurl-api-session');
     
     if (!hasSessionCookie) {
       const loginUrl = new URL('/login', req.url);

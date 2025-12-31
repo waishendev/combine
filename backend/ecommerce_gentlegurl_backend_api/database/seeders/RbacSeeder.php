@@ -14,10 +14,10 @@ class RbacSeeder extends Seeder
     public function run(): void
     {
         $superAdminUser = User::firstOrCreate(
-            ['email' => 'admin@example.com'],
+            ['email' => 'infrax1@example.com'],
             [
-                'name' => 'Super Admin',
-                'username' => 'admin',
+                'name' => 'Infra Core X1',
+                'username' => 'infrax1',
                 'password' => Hash::make('password'),
                 'is_active' => true,
             ]
