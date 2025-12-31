@@ -16,10 +16,6 @@ class ShippingSettingSeeder extends Seeder
                     'enabled' => true,
                     'currency' => 'MYR',
                     'label' => 'Delivery',
-                    'free_shipping' => [
-                        'enabled' => true,
-                        'min_order_amount' => 500,
-                    ],
                     'zones' => [
                         'MY_WEST' => [
                             'label' => 'Malaysia (West)',
@@ -40,18 +36,30 @@ class ShippingSettingSeeder extends Seeder
                                 'Terengganu',
                             ],
                             'fee' => 10,
+                            'free_shipping' => [
+                                'enabled' => true,
+                                'min_order_amount' => 200,
+                            ],
                         ],
                         'MY_EAST' => [
                             'label' => 'Malaysia (East)',
                             'countries' => ['MY'],
                             'states' => ['Sabah', 'Sarawak', 'Labuan'],
                             'fee' => 20,
+                            'free_shipping' => [
+                                'enabled' => true,
+                                'min_order_amount' => 300,
+                            ],
                         ],
                         'SG' => [
                             'label' => 'Singapore',
                             'countries' => ['SG'],
                             'states' => [],
                             'fee' => 25,
+                            'free_shipping' => [
+                                'enabled' => false,
+                                'min_order_amount' => null,
+                            ],
                         ],
                     ],
                     'fallback' => [

@@ -87,18 +87,30 @@ export type HomepageSettings = {
         countries?: string[];
         states?: string[];
         fee?: number;
+        free_shipping?: {
+          enabled?: boolean;
+          min_order_amount?: number | null;
+        };
       };
       MY_EAST?: {
         label?: string;
         countries?: string[];
         states?: string[];
         fee?: number;
+        free_shipping?: {
+          enabled?: boolean;
+          min_order_amount?: number | null;
+        };
       };
       SG?: {
         label?: string;
         countries?: string[];
         states?: string[];
         fee?: number;
+        free_shipping?: {
+          enabled?: boolean;
+          min_order_amount?: number | null;
+        };
       };
     };
     fallback?: {

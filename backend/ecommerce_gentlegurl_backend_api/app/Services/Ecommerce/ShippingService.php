@@ -52,6 +52,7 @@ class ShippingService
         $fallbackFee = (float) data_get($shippingSetting, 'fallback.default_fee', 0);
         $zoneLabel = null;
         $fee = 0.0;
+        $zoneConfig = null;
 
         if ($zone) {
             $zoneConfig = data_get($shippingSetting, "zones.{$zone}");
@@ -67,16 +68,20 @@ class ShippingService
             $fee = $fallbackFee;
         }
 
-        $freeShippingEnabled = (bool) data_get($shippingSetting, 'free_shipping.enabled', false);
-        $freeShippingThreshold = (float) data_get($shippingSetting, 'free_shipping.min_order_amount', 0);
-        $isFree = $freeShippingEnabled && $subtotal >= $freeShippingThreshold;
+        $zoneFreeShipping = data_get($zoneConfig ?? [], 'free_shipping');
+        $legacyFreeShipping = data_get($shippingSetting, 'free_shipping');
+        $freeShippingConfig = $zoneFreeShipping === null ? (array) $legacyFreeShipping : (array) $zoneFreeShipping;
+        $freeShippingEnabled = (bool) data_get($freeShippingConfig, 'enabled', false);
+        $freeShippingThresholdRaw = data_get($freeShippingConfig, 'min_order_amount');
+        $freeShippingThreshold = $freeShippingThresholdRaw !== null ? (float) $freeShippingThresholdRaw : null;
+        $isFree = $freeShippingEnabled && $freeShippingThreshold !== null && $subtotal >= $freeShippingThreshold;
 
         return [
             'zone' => $zone,
             'label' => $zoneLabel,
             'fee' => $isFree ? 0.0 : $fee,
             'is_free' => $isFree,
-            'free_threshold' => $freeShippingEnabled ? $freeShippingThreshold : null,
+            'free_threshold' => ($freeShippingEnabled && $freeShippingThreshold !== null) ? $freeShippingThreshold : null,
         ];
     }
 
