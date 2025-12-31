@@ -13,12 +13,14 @@ import {
   CustomerAddress,
   CustomerVoucher,
   PublicBankAccount,
+  PublicPaymentGateway,
   PublicStoreLocation,
   createCustomerAddress,
   createOrder,
   deleteCustomerAddress,
   getCustomerAddresses,
   getBankAccounts,
+  getPaymentGateways,
   getStoreLocations,
   getCustomerVouchers,
   makeDefaultCustomerAddress,
@@ -90,12 +92,13 @@ export default function CheckoutForm() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const hasNavigatedRef = useRef(false);
-  const [paymentMethod, setPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
+  const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
   const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [paymentGateways, setPaymentGateways] = useState<PublicPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [storeLocations, setStoreLocations] = useState<PublicStoreLocation[]>([]);
@@ -110,6 +113,7 @@ export default function CheckoutForm() {
   const [isLoadingAddresses, setIsLoadingAddresses] = useState(isLoggedIn); // Initialize as true if logged in
   const [isConfirmingAddress, setIsConfirmingAddress] = useState(false);
   const [isLoadingStoreLocations, setIsLoadingStoreLocations] = useState(true);
+  const [isLoadingPaymentGateways, setIsLoadingPaymentGateways] = useState(true);
   const [isLoadingBankAccounts, setIsLoadingBankAccounts] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -403,6 +407,29 @@ export default function CheckoutForm() {
   }, [appliedVoucher]);
 
   useEffect(() => {
+    setIsLoadingPaymentGateways(true);
+    getPaymentGateways()
+      .then((gateways) => {
+        const activeGateways = gateways.filter((gateway) => gateway.is_active);
+        setPaymentGateways(activeGateways);
+
+        if (activeGateways.length > 0) {
+          const defaultGateway = activeGateways.find((gateway) => gateway.is_default) ?? activeGateways[0];
+          setPaymentMethod((prev) =>
+            prev && activeGateways.some((gateway) => gateway.key === prev) ? prev : defaultGateway.key,
+          );
+        } else {
+          setPaymentMethod((prev) => prev || "manual_transfer");
+        }
+      })
+      .catch(() => {
+        setPaymentGateways([]);
+        setPaymentMethod((prev) => prev || "manual_transfer");
+      })
+      .finally(() => setIsLoadingPaymentGateways(false));
+  }, []);
+
+  useEffect(() => {
     setIsLoadingStoreLocations(true);
     getStoreLocations()
       .then((locations) => {
@@ -416,6 +443,11 @@ export default function CheckoutForm() {
   }, []);
 
   useEffect(() => {
+    if (paymentMethod !== "manual_transfer") {
+      setIsLoadingBankAccounts(false);
+      return;
+    }
+
     setIsLoadingBankAccounts(true);
     getBankAccounts()
       .then((accounts) => {
@@ -426,7 +458,7 @@ export default function CheckoutForm() {
       })
       .catch(() => setBankAccounts([]))
       .finally(() => setIsLoadingBankAccounts(false));
-  }, []);
+  }, [paymentMethod]);
 
   useEffect(() => {
     if (!showVoucherModal) return;
@@ -464,6 +496,11 @@ export default function CheckoutForm() {
 
     if (!selectedItems || selectedItems.length === 0) {
       setError("Please select at least one item in your cart.");
+      return;
+    }
+
+    if (!paymentMethod) {
+      setError("Please select a payment method.");
       return;
     }
 
@@ -1054,81 +1091,74 @@ export default function CheckoutForm() {
           <div>
             <div className="mb-1 text-xs font-medium text-[var(--foreground)]/70">Payment Method</div>
             <div className="space-y-2 text-sm">
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="payment_method"
-                  value="manual_transfer"
-                  checked={paymentMethod === "manual_transfer"}
-                  onChange={() => setPaymentMethod("manual_transfer")}
-                />
-                <span>Manual Bank Transfer</span>
-              </label>
-              {paymentMethod === "manual_transfer" && bankAccounts.length > 0 && (
-                <div className="rounded border border-[var(--muted)]/70 bg-[var(--muted)]/20 p-3 text-xs text-[var(--foreground)]">
-                  <p className="mb-2 font-medium text-[var(--foreground)]">Choose Bank</p>
-                  <div className="space-y-2">
-                    {bankAccounts.map((bank) => (
-                      <label
-                        key={bank.id}
-                        className="flex items-start gap-2 rounded border border-transparent p-2 hover:border-[var(--accent)]/60"
-                      >
-                        <input
-                          type="radio"
-                          name="bank_account"
-                          value={bank.id}
-                          checked={(selectedBank?.id ?? bankAccounts[0]?.id) === bank.id}
-                          onChange={() => setSelectedBankId(bank.id)}
-                        />
-                        <div>
-                          <div className="font-semibold">{bank.bank_name}</div>
-                          <div className="text-[var(--foreground)]/70">{bank.account_name}</div>
-                          <div className="text-[var(--foreground)]/70">{bank.account_no}</div>
-                          {/* {bank.branch && (
-                            <div className="text-[var(--foreground)]/60">Branch: {bank.branch}</div>
-                          )} */}
-                          {bank.qr_image_url && (
-                            <div className="mt-2 h-20 w-20 overflow-hidden rounded border border-[var(--card-border)] bg-[var(--card)]">
-                              <Image
-                                src={bank.qr_image_url}
-                                alt={`${bank.bank_name} QR`}
-                                width={80}
-                                height={80}
-                                className="h-full w-full object-contain"
-                              />
+              {isLoadingPaymentGateways ? (
+                <p className="text-xs text-[var(--foreground)]/70">Loading payment methods...</p>
+              ) : paymentGateways.length === 0 ? (
+                <p className="text-xs text-[var(--foreground)]/70">No payment methods available.</p>
+              ) : (
+                paymentGateways.map((gateway) => (
+                  <div key={gateway.id} className="space-y-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="payment_method"
+                        value={gateway.key}
+                        checked={paymentMethod === gateway.key}
+                        onChange={() => setPaymentMethod(gateway.key)}
+                      />
+                      <span>{gateway.name}</span>
+                    </label>
+
+                    {gateway.key === "manual_transfer" && paymentMethod === "manual_transfer" && (
+                      <>
+                        {isLoadingBankAccounts ? (
+                          <p className="text-xs text-[var(--foreground)]/70">Loading bank accounts...</p>
+                        ) : bankAccounts.length > 0 ? (
+                          <div className="rounded border border-[var(--muted)]/70 bg-[var(--muted)]/20 p-3 text-xs text-[var(--foreground)]">
+                            <p className="mb-2 font-medium text-[var(--foreground)]">Choose Bank</p>
+                            <div className="space-y-2">
+                              {bankAccounts.map((bank) => (
+                                <label
+                                  key={bank.id}
+                                  className="flex items-start gap-2 rounded border border-transparent p-2 hover:border-[var(--accent)]/60"
+                                >
+                                  <input
+                                    type="radio"
+                                    name="bank_account"
+                                    value={bank.id}
+                                    checked={(selectedBank?.id ?? bankAccounts[0]?.id) === bank.id}
+                                    onChange={() => setSelectedBankId(bank.id)}
+                                  />
+                                  <div>
+                                    <div className="font-semibold">{bank.bank_name}</div>
+                                    <div className="text-[var(--foreground)]/70">{bank.account_name}</div>
+                                    <div className="text-[var(--foreground)]/70">{bank.account_no}</div>
+                                    {bank.qr_image_url && (
+                                      <div className="mt-2 h-20 w-20 overflow-hidden rounded border border-[var(--card-border)] bg-[var(--card)]">
+                                        <Image
+                                          src={bank.qr_image_url}
+                                          alt={`${bank.bank_name} QR`}
+                                          width={80}
+                                          height={80}
+                                          className="h-full w-full object-contain"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                </label>
+                              ))}
                             </div>
-                          )}
-                        </div>
-                      </label>
-                    ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[var(--foreground)]/70">
+                            Bank transfer details will be provided after placing the order.
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
-                </div>
+                ))
               )}
-              {paymentMethod === "manual_transfer" && bankAccounts.length === 0 && (
-                <p className="text-xs text-[var(--foreground)]/70">
-                  Bank transfer details will be provided after placing the order.
-                </p>
-              )}
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="payment_method"
-                  value="billplz_fpx"
-                  checked={paymentMethod === "billplz_fpx"}
-                  onChange={() => setPaymentMethod("billplz_fpx")}
-                />
-                <span>Online Banking (Billplz FPX)</span>
-              </label>
-              {/* <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="payment_method"
-                  value="billplz_card"
-                  checked={paymentMethod === "billplz_card"}
-                  onChange={() => setPaymentMethod("billplz_card")}
-                />
-                <span>Credit Card (Billplz)</span>
-              </label> */}
             </div>
           </div>
 

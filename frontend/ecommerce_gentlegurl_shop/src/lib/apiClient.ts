@@ -240,6 +240,15 @@ export type PublicBankAccount = {
   instructions?: string | null;
 };
 
+export type PublicPaymentGateway = {
+  id: number;
+  key: string;
+  name: string;
+  is_active: boolean;
+  is_default: boolean;
+  config?: Record<string, unknown> | null;
+};
+
 export type CustomerVoucher = {
   id: number;
   status: "active" | "used" | "expired" | string;
@@ -718,6 +727,15 @@ export async function getBankAccounts(): Promise<PublicBankAccount[]> {
   });
 
   return response.data;
+}
+
+export async function getPaymentGateways(): Promise<PublicPaymentGateway[]> {
+  const response = await get<{ data?: { payment_gateways?: PublicPaymentGateway[] } }>(
+    "/public/shop/homepage",
+    { includeSessionToken: true, headers: { Accept: "application/json" } },
+  );
+
+  return response.data?.payment_gateways ?? [];
 }
 
 export async function getStoreLocations(): Promise<PublicStoreLocation[]> {
