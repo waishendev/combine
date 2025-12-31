@@ -22,6 +22,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.stores' => 'Ecommerce Stores',
             'ecommerce.seo' => 'Ecommerce SEO',
             'ecommerce.bank-accounts' => 'Ecommerce Manual Bank Account Transafer',
+            'ecommerce.payment-gateways' => 'Ecommerce Payment Gateways',
             'ecommerce.announcements' => 'Ecommerce Announcements',
             'ecommerce.marquees' => 'Ecommerce Marquee',
             'ecommerce.sliders' => 'Ecommerce Sliders',
@@ -63,6 +64,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.stores' => ['view', 'create', 'update', 'delete'],
             'ecommerce.seo' => ['view', 'update'],
             'ecommerce.bank-accounts' => ['view', 'create', 'update', 'delete'],
+            'ecommerce.payment-gateways' => ['view', 'create', 'update', 'delete'],
             'ecommerce.announcements' => ['view', 'create', 'update', 'delete'],
             'ecommerce.orders' => ['view', 'update','confirm-payment'],
             'ecommerce.returns' => ['view', 'update'],
@@ -94,4 +96,3 @@ class PermissionSeeder extends Seeder
         }
     }
 }
-

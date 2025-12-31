@@ -9,6 +9,7 @@ use App\Models\HomeSlider;
 use App\Models\Marquee;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\PaymentGateway;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\SeoGlobal;
 use App\Models\Ecommerce\ShopMenuItem;
@@ -154,6 +155,19 @@ class PublicHomepageController extends Controller
                 'page_reviews' => SettingService::get('page_reviews', ['enabled' => true]),
             ];
 
+            $paymentGateways = PaymentGateway::query()
+                ->where('is_active', true)
+                ->orderByDesc('is_default')
+                ->orderBy('id')
+                ->get([
+                    'id',
+                    'key',
+                    'name',
+                    'is_active',
+                    'is_default',
+                    'config',
+                ]);
+
             return [
                 'sliders' => $sliders,
                 'marquees' => $marquees,
@@ -165,6 +179,7 @@ class PublicHomepageController extends Controller
                 'seo' => $seo,
                 'contact' => $settings['shop_contact_widget'],
                 'settings' => $settings,
+                'payment_gateways' => $paymentGateways,
             ];
         });
 

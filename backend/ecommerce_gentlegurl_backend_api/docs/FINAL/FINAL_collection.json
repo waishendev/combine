@@ -3352,6 +3352,137 @@
               ]
             },
             {
+              "name": "Payment Gateways",
+              "item": [
+                {
+                  "name": "List Payment Gateways",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/payment-gateways",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "payment-gateways"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Create Payment Gateway",
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/payment-gateways",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "payment-gateways"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"key\": \"manual_transfer\",\n  \"name\": \"Manual Bank Transfer\",\n  \"is_active\": true,\n  \"is_default\": true,\n  \"config\": {}\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Show Payment Gateway",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/payment-gateways/{{payment_gateway_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "payment-gateways",
+                        "{{payment_gateway_id}}"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Update Payment Gateway",
+                  "request": {
+                    "method": "PUT",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/payment-gateways/{{payment_gateway_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "payment-gateways",
+                        "{{payment_gateway_id}}"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Manual Bank Transfer\",\n  \"is_active\": true,\n  \"is_default\": false,\n  \"config\": {}\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Delete Payment Gateway",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/payment-gateways/{{payment_gateway_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "payment-gateways",
+                        "{{payment_gateway_id}}"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
               "name": "Customers (Ecommerce)",
               "item": [
                 {

@@ -132,6 +132,16 @@ export type HomepageData = {
   seo: HomepageSeo | null;
   contact?: HomepageContact | null;
   settings?: HomepageSettings | null;
+  payment_gateways?: HomepagePaymentGateway[];
+};
+
+export type HomepagePaymentGateway = {
+  id: number;
+  key: string;
+  name: string;
+  is_active: boolean;
+  is_default: boolean;
+  config?: Record<string, unknown> | null;
 };
 
 export type HomepageFooter = {

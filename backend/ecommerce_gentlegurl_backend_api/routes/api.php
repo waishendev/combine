@@ -8,6 +8,7 @@ use App\Http\Controllers\Ecommerce\AnnouncementController;
 use App\Http\Controllers\Ecommerce\BankAccountController;
 use App\Http\Controllers\Ecommerce\CustomerController as EcommerceCustomerController;
 use App\Http\Controllers\Ecommerce\OrderController;
+use App\Http\Controllers\Ecommerce\PaymentGatewayController;
 use App\Http\Controllers\Ecommerce\PublicCustomerAddressController;
 use App\Http\Controllers\Ecommerce\CartMergeController;
 use App\Http\Controllers\Ecommerce\MarqueeController;
@@ -374,6 +375,25 @@ $protectedRoutes = function () {
 
         Route::delete('/bank-accounts/{bankAccount}', [BankAccountController::class, 'destroy'])
             ->middleware('permission:ecommerce.bank-accounts.delete');
+
+        // Payment Gateways Admin
+        Route::get('/payment-gateways', [PaymentGatewayController::class, 'index'])
+            ->middleware('permission:ecommerce.payment-gateways.view');
+
+        Route::post('/payment-gateways', [PaymentGatewayController::class, 'store'])
+            ->middleware('permission:ecommerce.payment-gateways.create');
+
+        Route::get('/payment-gateways/{paymentGateway}', [PaymentGatewayController::class, 'show'])
+            ->middleware('permission:ecommerce.payment-gateways.view');
+
+        Route::put('/payment-gateways/{paymentGateway}', [PaymentGatewayController::class, 'update'])
+            ->middleware('permission:ecommerce.payment-gateways.update');
+
+        Route::post('/payment-gateways/{paymentGateway}', [PaymentGatewayController::class, 'update'])
+            ->middleware('permission:ecommerce.payment-gateways.update');
+
+        Route::delete('/payment-gateways/{paymentGateway}', [PaymentGatewayController::class, 'destroy'])
+            ->middleware('permission:ecommerce.payment-gateways.delete');
 
         Route::post('/cart/merge', [CartMergeController::class, 'merge'])
             ->middleware('permission:ecommerce.carts.merge');
