@@ -75,9 +75,36 @@ export type HomepageContact = {
 export type HomepageSettings = {
   shipping?: {
     enabled?: boolean;
-    flat_fee?: number;
     currency?: string;
     label?: string;
+    free_shipping?: {
+      enabled?: boolean;
+      min_order_amount?: number;
+    };
+    zones?: {
+      MY_WEST?: {
+        label?: string;
+        countries?: string[];
+        states?: string[];
+        fee?: number;
+      };
+      MY_EAST?: {
+        label?: string;
+        countries?: string[];
+        states?: string[];
+        fee?: number;
+      };
+      SG?: {
+        label?: string;
+        countries?: string[];
+        states?: string[];
+        fee?: number;
+      };
+    };
+    fallback?: {
+      mode?: "block_checkout" | "use_default";
+      default_fee?: number;
+    };
   };
   footer?: HomepageFooter;
 };

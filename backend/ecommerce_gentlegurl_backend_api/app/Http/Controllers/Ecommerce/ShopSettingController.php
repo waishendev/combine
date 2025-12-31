@@ -29,12 +29,7 @@ class ShopSettingController extends Controller
                 'new_products_days' => 30,
                 'best_sellers_days' => 60,
             ]),
-            'shipping' => SettingService::get('shipping', [
-                'enabled' => true,
-                'flat_fee' => 0,
-                'currency' => 'MYR',
-                'label' => 'Flat Rate Shipping',
-            ]),
+            'shipping' => SettingService::get('shipping', $this->defaultShippingSetting()),
             'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
             'page_reviews' => SettingService::get('page_reviews', [
                 'enabled' => true,
@@ -82,12 +77,7 @@ class ShopSettingController extends Controller
                 'new_products_days' => 30,
                 'best_sellers_days' => 60,
             ],
-            'shipping' => [
-                'enabled' => true,
-                'flat_fee' => 0,
-                'currency' => 'MYR',
-                'label' => 'Flat Rate Shipping',
-            ],
+            'shipping' => $this->defaultShippingSetting(),
             'footer' => $this->defaultFooterSetting(),
             'page_reviews' => [
                 'enabled' => true,
@@ -209,16 +199,65 @@ class ShopSettingController extends Controller
     {
         $validated = $request->validate([
             'enabled' => ['required', 'boolean'],
-            'flat_fee' => ['required', 'numeric', 'min:0'],
             'currency' => ['required', 'string', 'max:10'],
             'label' => ['required', 'string', 'max:100'],
+            'free_shipping.enabled' => ['nullable', 'boolean'],
+            'free_shipping.min_order_amount' => ['nullable', 'numeric', 'min:0'],
+            'zones' => ['required', 'array'],
+            'zones.MY_WEST.label' => ['required', 'string', 'max:100'],
+            'zones.MY_WEST.countries' => ['required', 'array'],
+            'zones.MY_WEST.countries.*' => ['string', 'max:10'],
+            'zones.MY_WEST.states' => ['nullable', 'array'],
+            'zones.MY_WEST.states.*' => ['string', 'max:100'],
+            'zones.MY_WEST.fee' => ['required', 'numeric', 'min:0'],
+            'zones.MY_EAST.label' => ['required', 'string', 'max:100'],
+            'zones.MY_EAST.countries' => ['required', 'array'],
+            'zones.MY_EAST.countries.*' => ['string', 'max:10'],
+            'zones.MY_EAST.states' => ['nullable', 'array'],
+            'zones.MY_EAST.states.*' => ['string', 'max:100'],
+            'zones.MY_EAST.fee' => ['required', 'numeric', 'min:0'],
+            'zones.SG.label' => ['required', 'string', 'max:100'],
+            'zones.SG.countries' => ['required', 'array'],
+            'zones.SG.countries.*' => ['string', 'max:10'],
+            'zones.SG.states' => ['nullable', 'array'],
+            'zones.SG.states.*' => ['string', 'max:100'],
+            'zones.SG.fee' => ['required', 'numeric', 'min:0'],
+            'fallback.mode' => ['required', 'in:block_checkout,use_default'],
+            'fallback.default_fee' => ['required', 'numeric', 'min:0'],
         ]);
 
         return [
             'enabled' => (bool) $validated['enabled'],
-            'flat_fee' => (float) $validated['flat_fee'],
             'currency' => $validated['currency'],
             'label' => $validated['label'],
+            'free_shipping' => [
+                'enabled' => (bool) data_get($validated, 'free_shipping.enabled', false),
+                'min_order_amount' => (float) data_get($validated, 'free_shipping.min_order_amount', 0),
+            ],
+            'zones' => [
+                'MY_WEST' => [
+                    'label' => data_get($validated, 'zones.MY_WEST.label'),
+                    'countries' => array_values((array) data_get($validated, 'zones.MY_WEST.countries', [])),
+                    'states' => array_values((array) data_get($validated, 'zones.MY_WEST.states', [])),
+                    'fee' => (float) data_get($validated, 'zones.MY_WEST.fee', 0),
+                ],
+                'MY_EAST' => [
+                    'label' => data_get($validated, 'zones.MY_EAST.label'),
+                    'countries' => array_values((array) data_get($validated, 'zones.MY_EAST.countries', [])),
+                    'states' => array_values((array) data_get($validated, 'zones.MY_EAST.states', [])),
+                    'fee' => (float) data_get($validated, 'zones.MY_EAST.fee', 0),
+                ],
+                'SG' => [
+                    'label' => data_get($validated, 'zones.SG.label'),
+                    'countries' => array_values((array) data_get($validated, 'zones.SG.countries', [])),
+                    'states' => array_values((array) data_get($validated, 'zones.SG.states', [])),
+                    'fee' => (float) data_get($validated, 'zones.SG.fee', 0),
+                ],
+            ],
+            'fallback' => [
+                'mode' => data_get($validated, 'fallback.mode'),
+                'default_fee' => (float) data_get($validated, 'fallback.default_fee', 0),
+            ],
         ];
     }
 
@@ -305,6 +344,57 @@ class ShopSettingController extends Controller
                 'return_refund' => '/return-refund',
                 'privacy' => '/privacy-policy',
                 'terms' => '/terms',
+            ],
+        ];
+    }
+
+    protected function defaultShippingSetting(): array
+    {
+        return [
+            'enabled' => true,
+            'currency' => 'MYR',
+            'label' => 'Delivery',
+            'free_shipping' => [
+                'enabled' => true,
+                'min_order_amount' => 200,
+            ],
+            'zones' => [
+                'MY_WEST' => [
+                    'label' => 'Malaysia (West)',
+                    'countries' => ['MY'],
+                    'states' => [
+                        'Johor',
+                        'Kedah',
+                        'Kelantan',
+                        'Kuala Lumpur',
+                        'Melaka',
+                        'Negeri Sembilan',
+                        'Pahang',
+                        'Penang',
+                        'Perak',
+                        'Perlis',
+                        'Putrajaya',
+                        'Selangor',
+                        'Terengganu',
+                    ],
+                    'fee' => 10,
+                ],
+                'MY_EAST' => [
+                    'label' => 'Malaysia (East)',
+                    'countries' => ['MY'],
+                    'states' => ['Sabah', 'Sarawak', 'Labuan'],
+                    'fee' => 20,
+                ],
+                'SG' => [
+                    'label' => 'Singapore',
+                    'countries' => ['SG'],
+                    'states' => [],
+                    'fee' => 25,
+                ],
+            ],
+            'fallback' => [
+                'mode' => 'block_checkout',
+                'default_fee' => 0,
             ],
         ];
     }

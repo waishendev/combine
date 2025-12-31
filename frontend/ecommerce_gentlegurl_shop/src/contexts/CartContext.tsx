@@ -23,9 +23,13 @@ type Totals = {
 };
 
 type ShippingSetting = {
-  flat_fee?: number;
   label?: string;
   currency?: string;
+  free_shipping?: {
+    enabled?: boolean;
+    min_order_amount?: number;
+  };
+  zones?: Record<string, { label?: string; fee?: number }>;
 };
 
 export type CartContextValue = {

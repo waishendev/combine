@@ -9,6 +9,7 @@ import LoadingOverlay from "@/components/LoadingOverlay";
 import {
   AddressPayload,
   CheckoutPayload,
+  CheckoutPreviewResponse,
   CustomerAddress,
   CustomerVoucher,
   PublicBankAccount,
@@ -21,8 +22,46 @@ import {
   getStoreLocations,
   getCustomerVouchers,
   makeDefaultCustomerAddress,
+  previewCheckout,
   updateCustomerAddress,
 } from "@/lib/apiClient";
+
+const COUNTRY_OPTIONS = [
+  { value: "MY", label: "Malaysia" },
+  { value: "SG", label: "Singapore" },
+];
+
+const MALAYSIA_STATES_WEST = [
+  "Johor",
+  "Kedah",
+  "Kelantan",
+  "Kuala Lumpur",
+  "Melaka",
+  "Negeri Sembilan",
+  "Pahang",
+  "Penang",
+  "Perak",
+  "Perlis",
+  "Putrajaya",
+  "Selangor",
+  "Terengganu",
+];
+
+const MALAYSIA_STATES_EAST = ["Sabah", "Sarawak", "Labuan"];
+
+const normalizeCountryValue = (country?: string | null) => {
+  if (!country) return "";
+  const normalized = country.trim().toUpperCase();
+  if (normalized === "MALAYSIA") return "MY";
+  if (normalized === "SINGAPORE") return "SG";
+  if (normalized === "MY" || normalized === "SG") return normalized;
+  return country;
+};
+
+const formatCountryLabel = (country?: string | null) => {
+  const code = normalizeCountryValue(country);
+  return COUNTRY_OPTIONS.find((option) => option.value === code)?.label ?? country ?? "";
+};
 
 export default function CheckoutForm() {
   const router = useRouter();
@@ -61,6 +100,8 @@ export default function CheckoutForm() {
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [storeLocations, setStoreLocations] = useState<PublicStoreLocation[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
+  const [shippingPreview, setShippingPreview] = useState<CheckoutPreviewResponse | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
@@ -84,7 +125,7 @@ export default function CheckoutForm() {
     line2: "",
     city: "",
     state: "",
-    country: "Malaysia",
+    country: "MY",
     postcode: "",
     is_default: false,
   });
@@ -96,22 +137,44 @@ export default function CheckoutForm() {
     shipping_address_line2: "",
     shipping_city: "",
     shipping_state: "",
-    shipping_country: "Malaysia",
+    shipping_country: "MY",
     shipping_postcode: "",
   });
 
   const isSelfPickup = shippingMethod === "self_pickup";
-
+  const isShippingMalaysia = normalizeCountryValue(form.shipping_country) === "MY";
+  const isAddressMalaysia = normalizeCountryValue(addressForm.country) === "MY";
+  
   const safeTotals = useMemo(() => {
-    const subtotal = Number(totals.subtotal ?? 0);
-    const discount = Number(totals.discount_total ?? 0);
-    const shipping = isSelfPickup ? 0 : Number(totals.shipping_fee ?? shippingFlatFee ?? 0);
+    const previewSubtotal = Number(shippingPreview?.subtotal ?? totals.subtotal ?? 0);
+    const previewDiscount = Number(shippingPreview?.discount_total ?? totals.discount_total ?? 0);
+    const previewShipping = Number(shippingPreview?.shipping_fee ?? totals.shipping_fee ?? shippingFlatFee ?? 0);
+    const previewGrand = Number(shippingPreview?.grand_total ?? previewSubtotal - previewDiscount + previewShipping);
+
+    const subtotal = previewSubtotal;
+    const discount = previewDiscount;
+    const shipping = isSelfPickup ? 0 : previewShipping;
     const computedGrand = subtotal - discount + shipping;
-    const rawGrand = Number(totals.grand_total ?? computedGrand);
-    const grand = isSelfPickup ? computedGrand : rawGrand;
+    const grand = isSelfPickup ? computedGrand : previewGrand;
 
     return { subtotal, discount, shipping, grand };
-  }, [totals.discount_total, totals.grand_total, totals.shipping_fee, totals.subtotal, isSelfPickup, shippingFlatFee]);
+  }, [
+    isSelfPickup,
+    shippingFlatFee,
+    shippingPreview?.discount_total,
+    shippingPreview?.grand_total,
+    shippingPreview?.shipping_fee,
+    shippingPreview?.subtotal,
+    totals.discount_total,
+    totals.grand_total,
+    totals.shipping_fee,
+    totals.subtotal,
+  ]);
+
+  const shippingSummaryLabel = shippingPreview?.shipping?.label
+    ? `Delivery (${shippingPreview.shipping.label})`
+    : shippingLabel ?? "Delivery";
+  const shippingIsFree = shippingPreview?.shipping?.is_free ?? false;
 
   const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
 
@@ -187,7 +250,7 @@ export default function CheckoutForm() {
           shipping_address_line2: defaultAddress.line2 ?? "",
           shipping_city: defaultAddress.city,
           shipping_state: defaultAddress.state ?? "",
-          shipping_country: defaultAddress.country,
+          shipping_country: normalizeCountryValue(defaultAddress.country),
           shipping_postcode: defaultAddress.postcode ?? "",
         });
       }
@@ -201,6 +264,34 @@ export default function CheckoutForm() {
   useEffect(() => {
     fetchAddresses();
   }, [fetchAddresses]);
+
+  const selectedAddress = useMemo(
+    () => addresses.find((addr) => addr.id === selectedAddressId) ?? addresses.find((addr) => addr.is_default),
+    [addresses, selectedAddressId],
+  );
+
+  // Get current country and state for shipping fee display logic
+  const currentCountry = isLoggedIn && selectedAddress 
+    ? normalizeCountryValue(selectedAddress.country) 
+    : normalizeCountryValue(form.shipping_country);
+  const currentState = isLoggedIn && selectedAddress 
+    ? selectedAddress.state 
+    : form.shipping_state;
+  
+  const shippingFeeDisplay =
+    shippingMethod === "shipping"
+      ? !currentCountry
+        ? "Select country to see delivery fee"
+        : currentCountry === "MY" && !currentState
+          ? "Select state to see delivery fee"
+          : isPreviewLoading
+            ? "Calculating..."
+            : shippingPreview
+              ? shippingIsFree
+                ? "Free Shipping"
+                : `RM ${safeTotals.shipping.toFixed(2)}`
+              : "Calculated at checkout"
+      : "RM 0.00";
 
   // Track when all initial data is loaded
   useEffect(() => {
@@ -229,6 +320,63 @@ export default function CheckoutForm() {
       shipping_phone: prev.shipping_phone || customer?.profile.phone || "",
     }));
   }, [customer, isLoggedIn]);
+
+  useEffect(() => {
+    if (shippingMethod !== "shipping") {
+      setShippingPreview(null);
+      return;
+    }
+
+    if (selectedItems.length === 0) {
+      setShippingPreview(null);
+      return;
+    }
+
+    const addressSource = isLoggedIn ? selectedAddress : null;
+    const country = normalizeCountryValue(addressSource?.country ?? form.shipping_country);
+    const state = addressSource?.state ?? form.shipping_state;
+
+    if (!country) {
+      setShippingPreview(null);
+      return;
+    }
+
+    if (country === "MY" && !state) {
+      setShippingPreview(null);
+      return;
+    }
+
+    const payloadItems = selectedItems.map((item) => ({
+      product_id: item.product_id,
+      quantity: item.quantity,
+      is_reward: item.is_reward,
+      reward_redemption_id: item.reward_redemption_id ?? undefined,
+    }));
+
+    setIsPreviewLoading(true);
+    previewCheckout({
+      items: payloadItems,
+      shipping_method: "shipping",
+      shipping_country: country,
+      shipping_state: country === "MY" ? state ?? null : null,
+      voucher_code: appliedVoucher?.code ?? undefined,
+      customer_voucher_id: appliedVoucher?.customer_voucher_id ?? undefined,
+      session_token: sessionToken ?? undefined,
+    })
+      .then((response) => setShippingPreview(response))
+      .catch(() => setShippingPreview(null))
+      .finally(() => setIsPreviewLoading(false));
+  }, [
+    appliedVoucher?.code,
+    appliedVoucher?.customer_voucher_id,
+    form.shipping_country,
+    form.shipping_state,
+    isLoggedIn,
+    selectedAddress,
+    selectedItems,
+    sessionToken,
+    shippingMethod,
+  ]);
 
   // const shouldRedirectToCart = hasLoadedCart && selectedItems.length === 0;
 
@@ -330,17 +478,29 @@ export default function CheckoutForm() {
       return;
     }
 
+    if (isLoggedIn && shippingMethod === "shipping" && selectedAddress) {
+      const selectedCountry = normalizeCountryValue(selectedAddress.country);
+      if (selectedCountry === "MY" && !selectedAddress.state) {
+        setError("Please select a state for your shipping address.");
+        return;
+      }
+    }
+
     if (!isLoggedIn && shippingMethod === "shipping") {
       const required = [
         form.shipping_name,
         form.shipping_phone,
         form.shipping_address_line1,
         form.shipping_city,
-        form.shipping_state,
         form.shipping_country,
         form.shipping_postcode,
       ];
       if (required.some((v) => !v)) {
+        setError("Please complete your shipping details.");
+        return;
+      }
+
+      if (normalizeCountryValue(form.shipping_country) === "MY" && !form.shipping_state) {
         setError("Please complete your shipping details.");
         return;
       }
@@ -417,11 +577,6 @@ export default function CheckoutForm() {
     [bankAccounts, selectedBankId],
   );
 
-  const selectedAddress = useMemo(
-    () => addresses.find((addr) => addr.id === selectedAddressId) ?? addresses.find((addr) => addr.is_default),
-    [addresses, selectedAddressId],
-  );
-
   const updateAddressForm = (field: keyof AddressPayload, value: string | boolean) => {
     setAddressForm((prev) => ({ ...prev, [field]: value } as AddressPayload));
   };
@@ -461,7 +616,7 @@ export default function CheckoutForm() {
       city: address.city,
       state: address.state ?? "",
       postcode: address.postcode ?? "",
-      country: address.country,
+      country: normalizeCountryValue(address.country),
       is_default: address.is_default,
     });
     setAddressMode("form");
@@ -478,7 +633,7 @@ export default function CheckoutForm() {
       line2: "",
       city: "",
       state: "",
-      country: "Malaysia",
+      country: "MY",
       postcode: "",
       is_default: addresses.length === 0,
     });
@@ -505,7 +660,7 @@ export default function CheckoutForm() {
         shipping_address_line2: address.line2 ?? "",
         shipping_city: address.city,
         shipping_state: address.state ?? "",
-        shipping_country: address.country,
+        shipping_country: normalizeCountryValue(address.country),
         shipping_postcode: address.postcode ?? "",
       });
       // Small delay to show loading state
@@ -576,7 +731,9 @@ export default function CheckoutForm() {
                           .filter(Boolean)
                           .join(", ")}
                       </p>
-                      <p className="text-[var(--foreground)]/70">{selectedAddress.country}</p>
+                      <p className="text-[var(--foreground)]/70">
+                        {formatCountryLabel(selectedAddress.country)}
+                      </p>
                     </div>
                   ) : (
                     <p className="text-xs text-[var(--foreground)]/70">No saved addresses. Add one to use for this order.</p>
@@ -637,12 +794,32 @@ export default function CheckoutForm() {
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">State</label>
-                      <input
-                        required
-                        value={form.shipping_state}
-                        onChange={(e) => setForm((prev) => ({ ...prev, shipping_state: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
-                      />
+                      {isShippingMalaysia ? (
+                        <select
+                          required
+                          value={form.shipping_state}
+                          onChange={(e) => setForm((prev) => ({ ...prev, shipping_state: e.target.value }))}
+                          className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        >
+                          <option value="">Select state</option>
+                          {MALAYSIA_STATES_WEST.map((state) => (
+                            <option key={state} value={state}>
+                              {state}
+                            </option>
+                          ))}
+                          {MALAYSIA_STATES_EAST.map((state) => (
+                            <option key={state} value={state}>
+                              {state}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          value={form.shipping_state}
+                          onChange={(e) => setForm((prev) => ({ ...prev, shipping_state: e.target.value }))}
+                          className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        />
+                      )}
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Postcode</label>
@@ -657,12 +834,25 @@ export default function CheckoutForm() {
 
                   <div>
                     <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Country</label>
-                    <input
+                    <select
                       required
                       value={form.shipping_country}
-                      onChange={(e) => setForm((prev) => ({ ...prev, shipping_country: e.target.value }))}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
-                    />
+                      onChange={(e) => {
+                        const nextCountry = e.target.value;
+                        setForm((prev) => ({
+                          ...prev,
+                          shipping_country: nextCountry,
+                          shipping_state: normalizeCountryValue(nextCountry) === "MY" ? prev.shipping_state : "",
+                        }));
+                      }}
+                      className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                    >
+                      {COUNTRY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               )}
@@ -945,8 +1135,8 @@ export default function CheckoutForm() {
               <span>- RM {safeTotals.discount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
-              <span>{shippingMethod === "shipping" ? shippingLabel ?? "Shipping" : "Self Pickup"}</span>
-              <span>RM {safeTotals.shipping.toFixed(2)}</span>
+              <span>{shippingMethod === "shipping" ? shippingSummaryLabel : "Self Pickup"}</span>
+              <span>{shippingFeeDisplay}</span>
             </div>
             <div className="flex justify-between border-t pt-2 text-base font-semibold">
               <span>Grand Total</span>
@@ -1028,7 +1218,9 @@ export default function CheckoutForm() {
                             <p className="text-[var(--foreground)]/70">
                               {[address.city, address.state, address.postcode].filter(Boolean).join(", ")}
                             </p>
-                            <p className="text-[var(--foreground)]/70">{address.country}</p>
+                            <p className="text-[var(--foreground)]/70">
+                              {formatCountryLabel(address.country)}
+                            </p>
                           </div>
                         </label>
                         <div className="flex items-center gap-2">
@@ -1184,11 +1376,31 @@ export default function CheckoutForm() {
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">State</label>
-                    <input
-                      value={addressForm.state ?? ""}
-                      onChange={(e) => updateAddressForm("state", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
-                    />
+                    {isAddressMalaysia ? (
+                      <select
+                        value={addressForm.state ?? ""}
+                        onChange={(e) => updateAddressForm("state", e.target.value)}
+                        className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      >
+                        <option value="">Select state</option>
+                        {MALAYSIA_STATES_WEST.map((state) => (
+                          <option key={state} value={state}>
+                            {state}
+                          </option>
+                        ))}
+                        {MALAYSIA_STATES_EAST.map((state) => (
+                          <option key={state} value={state}>
+                            {state}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={addressForm.state ?? ""}
+                        onChange={(e) => updateAddressForm("state", e.target.value)}
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      />
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Postcode</label>
@@ -1202,11 +1414,23 @@ export default function CheckoutForm() {
 
                 <div>
                   <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Country</label>
-                  <input
+                  <select
                     value={addressForm.country}
-                    onChange={(e) => updateAddressForm("country", e.target.value)}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
-                  />
+                    onChange={(e) => {
+                      const nextCountry = e.target.value;
+                      updateAddressForm("country", nextCountry);
+                      if (normalizeCountryValue(nextCountry) !== "MY") {
+                        updateAddressForm("state", "");
+                      }
+                    }}
+                    className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                  >
+                    {COUNTRY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <label className="flex items-center gap-2 text-xs font-medium text-[var(--foreground)]/80">
