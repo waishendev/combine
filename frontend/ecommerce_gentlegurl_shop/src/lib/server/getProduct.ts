@@ -15,6 +15,7 @@ export type ProductDetail = {
   name: string;
   slug: string;
   price: string | number;
+  image_url?: string | null;
   description?: string | null;
   stock?: number | null;
   low_stock_threshold?: number | null;
@@ -29,6 +30,12 @@ export type ProductDetail = {
   review_summary?: ReviewSummary;
   recent_reviews?: ReviewItem[];
   review_settings?: ReviewSettings;
+  seo?: {
+    meta_title?: string | null;
+    meta_description?: string | null;
+    meta_keywords?: string | string[] | null;
+    meta_og_image?: string | null;
+  } | null;
   [key: string]: unknown;
 };
 
