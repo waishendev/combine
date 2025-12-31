@@ -201,8 +201,6 @@ class ShopSettingController extends Controller
             'enabled' => ['required', 'boolean'],
             'currency' => ['required', 'string', 'max:10'],
             'label' => ['required', 'string', 'max:100'],
-            'free_shipping.enabled' => ['nullable', 'boolean'],
-            'free_shipping.min_order_amount' => ['nullable', 'numeric', 'min:0'],
             'zones' => ['required', 'array'],
             'zones.MY_WEST.label' => ['required', 'string', 'max:100'],
             'zones.MY_WEST.countries' => ['required', 'array'],
@@ -210,18 +208,24 @@ class ShopSettingController extends Controller
             'zones.MY_WEST.states' => ['nullable', 'array'],
             'zones.MY_WEST.states.*' => ['string', 'max:100'],
             'zones.MY_WEST.fee' => ['required', 'numeric', 'min:0'],
+            'zones.MY_WEST.free_shipping.enabled' => ['nullable', 'boolean'],
+            'zones.MY_WEST.free_shipping.min_order_amount' => ['nullable', 'numeric', 'min:0'],
             'zones.MY_EAST.label' => ['required', 'string', 'max:100'],
             'zones.MY_EAST.countries' => ['required', 'array'],
             'zones.MY_EAST.countries.*' => ['string', 'max:10'],
             'zones.MY_EAST.states' => ['nullable', 'array'],
             'zones.MY_EAST.states.*' => ['string', 'max:100'],
             'zones.MY_EAST.fee' => ['required', 'numeric', 'min:0'],
+            'zones.MY_EAST.free_shipping.enabled' => ['nullable', 'boolean'],
+            'zones.MY_EAST.free_shipping.min_order_amount' => ['nullable', 'numeric', 'min:0'],
             'zones.SG.label' => ['required', 'string', 'max:100'],
             'zones.SG.countries' => ['required', 'array'],
             'zones.SG.countries.*' => ['string', 'max:10'],
             'zones.SG.states' => ['nullable', 'array'],
             'zones.SG.states.*' => ['string', 'max:100'],
             'zones.SG.fee' => ['required', 'numeric', 'min:0'],
+            'zones.SG.free_shipping.enabled' => ['nullable', 'boolean'],
+            'zones.SG.free_shipping.min_order_amount' => ['nullable', 'numeric', 'min:0'],
             'fallback.mode' => ['required', 'in:block_checkout,use_default'],
             'fallback.default_fee' => ['required', 'numeric', 'min:0'],
         ]);
@@ -230,28 +234,36 @@ class ShopSettingController extends Controller
             'enabled' => (bool) $validated['enabled'],
             'currency' => $validated['currency'],
             'label' => $validated['label'],
-            'free_shipping' => [
-                'enabled' => (bool) data_get($validated, 'free_shipping.enabled', false),
-                'min_order_amount' => (float) data_get($validated, 'free_shipping.min_order_amount', 0),
-            ],
             'zones' => [
                 'MY_WEST' => [
                     'label' => data_get($validated, 'zones.MY_WEST.label'),
                     'countries' => array_values((array) data_get($validated, 'zones.MY_WEST.countries', [])),
                     'states' => array_values((array) data_get($validated, 'zones.MY_WEST.states', [])),
                     'fee' => (float) data_get($validated, 'zones.MY_WEST.fee', 0),
+                    'free_shipping' => [
+                        'enabled' => (bool) data_get($validated, 'zones.MY_WEST.free_shipping.enabled', false),
+                        'min_order_amount' => data_get($validated, 'zones.MY_WEST.free_shipping.min_order_amount'),
+                    ],
                 ],
                 'MY_EAST' => [
                     'label' => data_get($validated, 'zones.MY_EAST.label'),
                     'countries' => array_values((array) data_get($validated, 'zones.MY_EAST.countries', [])),
                     'states' => array_values((array) data_get($validated, 'zones.MY_EAST.states', [])),
                     'fee' => (float) data_get($validated, 'zones.MY_EAST.fee', 0),
+                    'free_shipping' => [
+                        'enabled' => (bool) data_get($validated, 'zones.MY_EAST.free_shipping.enabled', false),
+                        'min_order_amount' => data_get($validated, 'zones.MY_EAST.free_shipping.min_order_amount'),
+                    ],
                 ],
                 'SG' => [
                     'label' => data_get($validated, 'zones.SG.label'),
                     'countries' => array_values((array) data_get($validated, 'zones.SG.countries', [])),
                     'states' => array_values((array) data_get($validated, 'zones.SG.states', [])),
                     'fee' => (float) data_get($validated, 'zones.SG.fee', 0),
+                    'free_shipping' => [
+                        'enabled' => (bool) data_get($validated, 'zones.SG.free_shipping.enabled', false),
+                        'min_order_amount' => data_get($validated, 'zones.SG.free_shipping.min_order_amount'),
+                    ],
                 ],
             ],
             'fallback' => [
@@ -354,10 +366,6 @@ class ShopSettingController extends Controller
             'enabled' => true,
             'currency' => 'MYR',
             'label' => 'Delivery',
-            'free_shipping' => [
-                'enabled' => true,
-                'min_order_amount' => 200,
-            ],
             'zones' => [
                 'MY_WEST' => [
                     'label' => 'Malaysia (West)',
@@ -378,18 +386,30 @@ class ShopSettingController extends Controller
                         'Terengganu',
                     ],
                     'fee' => 10,
+                    'free_shipping' => [
+                        'enabled' => true,
+                        'min_order_amount' => 200,
+                    ],
                 ],
                 'MY_EAST' => [
                     'label' => 'Malaysia (East)',
                     'countries' => ['MY'],
                     'states' => ['Sabah', 'Sarawak', 'Labuan'],
                     'fee' => 20,
+                    'free_shipping' => [
+                        'enabled' => true,
+                        'min_order_amount' => 300,
+                    ],
                 ],
                 'SG' => [
                     'label' => 'Singapore',
                     'countries' => ['SG'],
                     'states' => [],
                     'fee' => 25,
+                    'free_shipping' => [
+                        'enabled' => false,
+                        'min_order_amount' => null,
+                    ],
                 ],
             ],
             'fallback' => [

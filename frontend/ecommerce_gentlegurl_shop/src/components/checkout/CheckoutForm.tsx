@@ -175,8 +175,19 @@ export default function CheckoutForm() {
     ? `Delivery (${shippingPreview.shipping.label})`
     : shippingLabel ?? "Delivery";
   const shippingIsFree = shippingPreview?.shipping?.is_free ?? false;
+  const freeShippingMinOrderAmount = shippingPreview?.shipping?.free_shipping_min_order_amount;
+  const hasFreeShippingThreshold = freeShippingMinOrderAmount !== null && freeShippingMinOrderAmount !== undefined;
 
   const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
+  const freeShippingThresholdLabel = hasFreeShippingThreshold
+    ? ` (Spend ${formatCurrency(Number(freeShippingMinOrderAmount))}+)`
+    : "";
+  const shippingSummaryText =
+    shippingMethod === "shipping"
+      ? shippingIsFree
+        ? `Free Shipping${freeShippingThresholdLabel}`
+        : shippingSummaryLabel
+      : "Self Pickup";
 
   const formatExpiry = (dateValue?: string | null) => {
     if (!dateValue) return "No expiry";
@@ -288,8 +299,8 @@ export default function CheckoutForm() {
             ? "Calculating..."
             : shippingPreview
               ? shippingIsFree
-                ? "Free Shipping"
-                : `RM ${safeTotals.shipping.toFixed(2)}`
+                ? formatCurrency(0)
+                : formatCurrency(safeTotals.shipping)
               : "Calculated at checkout"
       : "RM 0.00";
 
@@ -1135,7 +1146,7 @@ export default function CheckoutForm() {
               <span>- RM {safeTotals.discount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
-              <span>{shippingMethod === "shipping" ? shippingSummaryLabel : "Self Pickup"}</span>
+              <span>{shippingSummaryText}</span>
               <span>{shippingFeeDisplay}</span>
             </div>
             <div className="flex justify-between border-t pt-2 text-base font-semibold">

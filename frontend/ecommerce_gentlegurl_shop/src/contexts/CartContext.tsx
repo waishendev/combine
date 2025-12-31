@@ -29,7 +29,17 @@ type ShippingSetting = {
     enabled?: boolean;
     min_order_amount?: number;
   };
-  zones?: Record<string, { label?: string; fee?: number }>;
+  zones?: Record<
+    string,
+    {
+      label?: string;
+      fee?: number;
+      free_shipping?: {
+        enabled?: boolean;
+        min_order_amount?: number | null;
+      };
+    }
+  >;
 };
 
 export type CartContextValue = {
