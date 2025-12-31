@@ -28,7 +28,7 @@ class DatabaseSeeder extends Seeder
             SuperAdminRoleSeeder::class,
             SuperAdminSeeder::class,
            
-            
+            PaymentGatewaySeeder::class,
             FooterWidgetSeederTesting::class,
             FrontendTestDataSeeder::class,
             LoyaltyRewardSeederTesting::class,

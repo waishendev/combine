@@ -10,18 +10,18 @@ class PaymentGatewaySeeder extends Seeder
     public function run(): void
     {
         PaymentGateway::updateOrCreate(
-            ['key' => 'billplz'],
-            ['name' => 'Billplz', 'is_active' => false, 'is_default' => false]
+            ['key' => 'billplz_fpx'],
+            ['name' => 'Online Banking (Billplz FPX)', 'is_active' => false, 'is_default' => false]
         );
 
         PaymentGateway::updateOrCreate(
-            ['key' => 'manual_bank_transfer'],
+            ['key' => 'manual_transfer'],
             ['name' => 'Manual Bank Transfer', 'is_active' => true, 'is_default' => true]
         );
 
         PaymentGateway::updateOrCreate(
-            ['key' => 'manual_bank_transfer'],
-            ['name' => 'Manual Bank Transfer', 'is_active' => true, 'is_default' => true]
+            ['key' => 'billplz_card'],
+            ['name' => 'Credit Card (Billplz)', 'is_active' => true, 'is_default' => false]
         );
     }   
 }
