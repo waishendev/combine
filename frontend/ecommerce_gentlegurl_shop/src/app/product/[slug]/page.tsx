@@ -64,7 +64,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
       title: resolvedTitle,
       description: resolvedDescription,
       url: canonicalUrl,
-      type: "product",
+      type: "website",
       ...(ogImageUrl ? { images: [{ url: ogImageUrl }] } : {}),
     },
     twitter: {
