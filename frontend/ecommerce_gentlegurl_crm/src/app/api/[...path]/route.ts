@@ -3,6 +3,34 @@ import { NextRequest, NextResponse } from 'next/server';
 // This is a catch-all proxy route for all API endpoints except /api/login
 // It forwards requests to the backend server to avoid CORS issues
 
+const AUTH_COOKIE_NAMES = [
+  'connect.sid',
+  'laravel-session',
+  'gentlegurl-api-session',
+];
+
+function clearAuthCookies(response: NextResponse) {
+  AUTH_COOKIE_NAMES.forEach((name) => {
+    response.cookies.set(name, '', { maxAge: 0, path: '/' });
+  });
+}
+
+function isUnauthenticatedResponse(data: unknown, status: number) {
+  if (status === 401 || status === 419) {
+    return true;
+  }
+
+  if (data && typeof data === 'object' && 'message' in data) {
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      const normalized = message.toLowerCase();
+      return normalized === 'unauthenticated' || normalized === 'unauthorized';
+    }
+  }
+
+  return false;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
@@ -156,6 +184,15 @@ async function handleRequest(
       );
     }
 
+    if (isUnauthenticatedResponse(data, response.status)) {
+      const nextResponse = NextResponse.json(
+        data ?? { success: false, message: 'Unauthenticated' },
+        { status: 401 },
+      );
+      clearAuthCookies(nextResponse);
+      return nextResponse;
+    }
+
     // Create response with forwarded data
     const nextResponse = NextResponse.json(data, {
       status: response.status,
@@ -228,4 +265,3 @@ async function handleRequest(
     );
   }
 }
-

@@ -8,6 +8,38 @@ export class ApiError extends Error {
   }
 }
 
+const AUTH_COOKIE_NAMES = [
+  'connect.sid',
+  'laravel-session',
+  'gentlegurl-api-session',
+];
+
+function clearAuthCookies() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  AUTH_COOKIE_NAMES.forEach((name) => {
+    document.cookie = `${name}=; Max-Age=0; path=/`;
+  });
+}
+
+function isUnauthenticatedResponse(data: unknown, status: number) {
+  if (status === 401 || status === 419) {
+    return true;
+  }
+
+  if (data && typeof data === 'object' && 'message' in data) {
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      const normalized = message.toLowerCase();
+      return normalized === 'unauthenticated' || normalized === 'unauthorized';
+    }
+  }
+
+  return false;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -57,6 +89,14 @@ export async function apiFetch<T>(
   }
 
   const data = await res.json().catch(() => null);
+
+  if (isUnauthenticatedResponse(data, res.status)) {
+    clearAuthCookies();
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login');
+    }
+    throw new ApiError('Unauthenticated', res.status || 401);
+  }
 
   if (!res.ok) {
     const message =
