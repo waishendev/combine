@@ -39,7 +39,8 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
 
   const receiptSlip = order.slips?.find((slip) => slip.type === "payment_slip") ?? null;
   const isCompleted = order.status === "completed";
-  const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
+  const resolvedOrderId = order.id ?? orderId;
+  const invoiceUrl = `/api/proxy/public/shop/orders/${resolvedOrderId}/invoice`;
   const returnWindowDays = order.return_window_days ?? 7;
   const hasReturnRequest = (order.returns?.length ?? 0) > 0;
   const returnRequestId = order.returns?.[0]?.id;
@@ -48,7 +49,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   return (
     <div className="space-y-6">
       <OrderHeaderClient
-        orderId={order.id}
+        orderId={resolvedOrderId}
         orderNo={order.order_no}
         placedAt={order.placed_at}
         status={order.status}
@@ -82,7 +83,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           {!hasReturnRequest && isCompleted && (
             <div className="flex flex-col items-end gap-2 text-sm text-[var(--foreground)]/70">
               {canRequestReturn ? (
-                <ReturnRequestButton orderId={order.id} />
+                <ReturnRequestButton orderId={resolvedOrderId} />
               ) : (
                 <span className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm">
                   Return window expired
