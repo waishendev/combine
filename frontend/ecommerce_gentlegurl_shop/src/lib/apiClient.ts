@@ -739,6 +739,25 @@ export async function payOrder(orderId: number): Promise<OrderPaymentResponse> {
   return response.data;
 }
 
+export type CompleteOrderResponse = {
+  order: {
+    id: number;
+    status: string;
+    payment_status: string;
+    completed_at?: string | null;
+  };
+};
+
+export async function completeOrder(orderId: number): Promise<CompleteOrderResponse> {
+  const response = await post<{ data: CompleteOrderResponse }>(
+    `/public/shop/orders/${orderId}/complete`,
+    undefined,
+    { headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
+}
+
 export async function getBankAccounts(): Promise<PublicBankAccount[]> {
   const response = await get<{ data: PublicBankAccount[] }>("/public/shop/bank-accounts", {
     headers: { Accept: "application/json" },

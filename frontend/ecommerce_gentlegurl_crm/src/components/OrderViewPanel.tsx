@@ -92,6 +92,9 @@ export default function OrderViewPanel({
   const [showCancel, setShowCancel] = useState(false)
   const [showShip, setShowShip] = useState(false)
   const [showRefund, setShowRefund] = useState(false)
+  const [completingOrder, setCompletingOrder] = useState(false)
+  const [completeError, setCompleteError] = useState<string | null>(null)
+  const [completeSuccess, setCompleteSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -344,7 +347,53 @@ export default function OrderViewPanel({
   const canMarkReadyForPickup = displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
   const canRefund = ['Payment Confirmed', 'Preparing', 'Ready for Pickup', 'Completed'].includes(displayStatus)
   const canDownloadInvoice = order.status === 'completed'
+  const canComplete =
+    (order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped'
   const invoiceUrl = `/api/proxy/ecommerce/orders/${order.id}/invoice`
+
+  const handleCompleteOrder = async () => {
+    setCompleteError(null)
+    setCompleteSuccess(null)
+
+    if (!window.confirm('Confirm you have received/picked up this order?')) {
+      return
+    }
+
+    setCompletingOrder(true)
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}/complete`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+        },
+      })
+
+      const data = await res.json().catch(() => null)
+      if (data && typeof data === 'object') {
+        if (data?.success === false && data?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+      }
+
+      if (!res.ok) {
+        if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string') {
+          setCompleteError(data.message)
+          return
+        }
+        setCompleteError('Failed to complete the order.')
+        return
+      }
+
+      await handleOrderUpdated()
+      setCompleteSuccess('Order marked as completed.')
+    } catch (err) {
+      console.error('Failed to complete order:', err)
+      setCompleteError('Failed to complete the order.')
+    } finally {
+      setCompletingOrder(false)
+    }
+  }
 
   return (
     <>
@@ -694,6 +743,16 @@ export default function OrderViewPanel({
           {/* Fixed Bottom Action Buttons */}
           <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg z-10 max-h-32 overflow-y-auto">
             <div className="flex flex-wrap gap-2">
+              {completeError && (
+                <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700" role="alert">
+                  {completeError}
+                </div>
+              )}
+              {completeSuccess && (
+                <div className="w-full rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700" role="status">
+                  {completeSuccess}
+                </div>
+              )}
               {canConfirmPayment && (
                 <button
                   onClick={() => setShowConfirmPayment(true)}
@@ -753,6 +812,15 @@ export default function OrderViewPanel({
                   className="px-4 py-2 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
                 >
                   Refund
+                </button>
+              )}
+              {canComplete && (
+                <button
+                  onClick={handleCompleteOrder}
+                  disabled={completingOrder}
+                  className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
+                >
+                  {completingOrder ? 'Completing...' : 'Mark as Completed'}
                 </button>
               )}
             </div>

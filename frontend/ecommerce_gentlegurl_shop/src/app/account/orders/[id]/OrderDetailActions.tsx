@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { cancelOrder, payOrder } from "@/lib/apiClient";
+import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrderDetailActionsProps = {
@@ -23,8 +23,11 @@ export function OrderDetailActions({
   const router = useRouter();
   const [isCancelling, setIsCancelling] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const [showSlipModal, setShowSlipModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+  const [completeSuccess, setCompleteSuccess] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -33,10 +36,13 @@ export function OrderDetailActions({
   }, []);
 
   const statusKey = status.toLowerCase();
+  const paymentStatusKey = paymentStatus.toLowerCase();
   const reserveExpiry = reserveExpiresAt ? new Date(reserveExpiresAt) : null;
   const remainingSeconds = reserveExpiry ? Math.max(0, Math.floor((reserveExpiry.getTime() - now) / 1000)) : null;
   const isExpired = remainingSeconds !== null && remainingSeconds === 0;
   const canPay = statusKey === "pending" && paymentStatus === "unpaid" && !isExpired;
+  const canComplete =
+    (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped";
   const canUploadSlip =
     paymentMethod === "manual_transfer" &&
     (canPay || (statusKey === "processing" && paymentStatus !== "paid"));
@@ -95,7 +101,32 @@ export function OrderDetailActions({
     }
   };
 
-  if (!canPay && !showCancelled && !showProcessing) {
+  const handleComplete = async () => {
+    setCompleteError(null);
+    setCompleteSuccess(null);
+
+    if (!window.confirm("Confirm you have received/picked up this order?")) {
+      return;
+    }
+
+    setIsCompleting(true);
+    try {
+      await completeOrder(orderId);
+      setCompleteSuccess("Order marked as completed.");
+      router.refresh();
+    } catch (error) {
+      const message =
+        typeof error === "object" && error && "data" in (error as never)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((error as any).data?.message as string | undefined) ?? "Unable to complete this order."
+          : "Unable to complete this order.";
+      setCompleteError(message);
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
+  if (!canPay && !showCancelled && !showProcessing && !canComplete) {
     return null;
   }
 
@@ -133,11 +164,22 @@ export function OrderDetailActions({
               </button>
             )}
           </>
+        ) : canComplete ? (
+          <button
+            type="button"
+            onClick={handleComplete}
+            disabled={isCompleting}
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isCompleting ? "Completing..." : "Mark as Completed"}
+          </button>
         ) : (
           <span className="text-xs font-semibold uppercase text-[color:var(--status-error)]">Cancelled</span>
         )}
       </div>
       {error && <p className="mt-2 text-xs text-[color:var(--status-error)]">{error}</p>}
+      {completeError && <p className="mt-2 text-xs text-[color:var(--status-error)]">{completeError}</p>}
+      {completeSuccess && <p className="mt-2 text-xs text-[color:var(--status-success)]">{completeSuccess}</p>}
       <UploadReceiptModal
         isOpen={showSlipModal}
         orderId={orderId}
