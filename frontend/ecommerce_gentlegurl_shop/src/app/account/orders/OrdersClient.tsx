@@ -241,6 +241,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         const isProcessing = statusKey === "processing" && paymentStatusKey === "unpaid";
         const canPay = isPendingUnpaid && !isExpired;
         const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
+        const isCompleted = statusKey === "completed";
+        const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
         
         // New status display logic based on the requirements
         let displayStatus: string;
@@ -313,22 +315,34 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 <p className="text-base font-semibold text-[var(--accent-strong)]">{order.grand_total}</p>
               </div>
               <div className="flex items-end justify-start sm:justify-end">
-                <Link
-                  href={`/account/orders/${order.id}`}
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/60"
-                >
-                  View Details
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth="1.5"
-                    stroke="currentColor"
-                    className="h-4 w-4"
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/account/orders/${order.id}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/60"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
-                  </svg>
-                </Link>
+                    View Details
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
+                      className="h-4 w-4"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
+                    </svg>
+                  </Link>
+                  {isCompleted && (
+                    <a
+                      href={invoiceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                    >
+                      Download Invoice
+                    </a>
+                  )}
+                </div>
               </div>
 
               {(canPay || isProcessing) && (

@@ -72,7 +72,7 @@ async function handleRequest(
     
     // Build cookie header - include all cookies, especially laravel-session
     const cookiePairs = allCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-    const cookieHeader = cookiePairs || request.headers.get('cookie') || '';
+    const cookieHeader = request.headers.get('cookie') || cookiePairs || '';
     console.log(`[Proxy API] Cookie header length:`, cookieHeader.length);
     console.log(`[Proxy API] Has laravel-session:`, cookieHeader.includes('laravel-session'));
 
@@ -104,8 +104,8 @@ async function handleRequest(
       
       // Only set Content-Type for non-FormData requests
       // FormData will set its own Content-Type with boundary
-      if (!isFormData) {
-        fetchHeaders['Content-Type'] = 'application/json';
+      if (!isFormData && body) {
+        fetchHeaders['Content-Type'] = contentType || 'application/json';
       }
       
       // Always include cookies if available
@@ -120,6 +120,7 @@ async function handleRequest(
       response = await fetch(fullUrl, {
         method,
         headers: fetchHeaders,
+        credentials: 'include',
         ...(body && { body }),
       });
     } catch (fetchError) {
@@ -131,40 +132,45 @@ async function handleRequest(
     console.log(`[Proxy API] Backend response headers:`, Object.fromEntries(response.headers.entries()));
 
     // Try to parse JSON, but handle non-JSON responses
-    let data: unknown;
     const responseContentType = response.headers.get('content-type') || '';
     console.log(`[Proxy API] Response Content-Type: ${responseContentType}`);
-    
+    const isJsonResponse =
+      responseContentType.includes('application/json') ||
+      responseContentType.includes('application/vnd.api+json');
+
+    if (!isJsonResponse) {
+      console.log(`[Proxy API] Non-JSON response received`);
+      const arrayBuffer = await response.arrayBuffer();
+      const nextResponse = new NextResponse(arrayBuffer, {
+        status: response.status,
+      });
+      if (responseContentType) {
+        nextResponse.headers.set('Content-Type', responseContentType);
+      }
+      const contentDisposition = response.headers.get('content-disposition');
+      if (contentDisposition) {
+        nextResponse.headers.set('Content-Disposition', contentDisposition);
+      }
+      return nextResponse;
+    }
+
+    let data: unknown;
     const responseText = await response.text();
     console.log(`[Proxy API] Response text length: ${responseText.length}`);
     console.log(`[Proxy API] Response text (first 1000 chars):`, responseText.substring(0, 1000));
-    
-    if (responseContentType.includes('application/json') || responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
-      try {
-        data = responseText ? JSON.parse(responseText) : {};
-        console.log(`[Proxy API] Successfully parsed JSON`);
-      } catch (parseError) {
-        console.error('[Proxy API] JSON parse error:', parseError);
-        console.error('[Proxy API] Response text that failed to parse:', responseText);
-        return NextResponse.json(
-          { 
-            error: 'Failed to parse JSON response from backend',
-            message: parseError instanceof Error ? parseError.message : 'Unknown parse error',
-            rawResponse: responseText.substring(0, 500)
-          },
-          { status: 500 }
-        );
-      }
-    } else {
-      // If not JSON, return as error
-      console.log(`[Proxy API] Non-JSON response received`);
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+      console.log(`[Proxy API] Successfully parsed JSON`);
+    } catch (parseError) {
+      console.error('[Proxy API] JSON parse error:', parseError);
+      console.error('[Proxy API] Response text that failed to parse:', responseText);
       return NextResponse.json(
-        { 
-          error: 'Backend returned non-JSON response',
-          contentType: responseContentType,
-          rawResponse: responseText.substring(0, 500)
+        {
+          error: 'Failed to parse JSON response from backend',
+          message: parseError instanceof Error ? parseError.message : 'Unknown parse error',
+          rawResponse: responseText.substring(0, 500),
         },
-        { status: response.status || 500 }
+        { status: 500 },
       );
     }
 
@@ -240,4 +246,3 @@ async function handleRequest(
     );
   }
 }
-
