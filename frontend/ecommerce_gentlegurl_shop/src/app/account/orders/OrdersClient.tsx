@@ -37,7 +37,6 @@ const reasonMessages: Record<string, string> = {
 
 export function OrdersClient({ orders }: OrdersClientProps) {
   const router = useRouter();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
   const [modal, setModal] = useState<ModalState | null>(null);
   const [rating, setRating] = useState<number>(5);
   const [title, setTitle] = useState<string>("");
@@ -243,7 +242,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         const canPay = isPendingUnpaid && !isExpired;
         const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
         const isCompleted = statusKey === "completed";
-        const invoiceUrl = `${apiBase}/api/public/shop/orders/${order.id}/invoice`;
+        const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
         
         // New status display logic based on the requirements
         let displayStatus: string;

@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
 import Image from "next/image";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { OrderHeaderClient } from "./OrderHeaderClient";
@@ -18,7 +17,6 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   const { id } = await params;
   const orderId = Number(id);
   const order = await getOrderDetail(orderId);
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
   if (!order) {
     redirect("/login");
@@ -30,7 +28,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
 
   const receiptSlip = order.slips?.find((slip) => slip.type === "payment_slip") ?? null;
   const isCompleted = order.status === "completed";
-  const invoiceUrl = `${apiBase}/api/public/shop/orders/${order.id}/invoice`;
+  const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
 
   return (
     <div className="space-y-6">
@@ -46,14 +44,14 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
 
       {isCompleted && (
         <div className="flex justify-end">
-          <Link
+          <a
             href={invoiceUrl}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
           >
             Download Invoice
-          </Link>
+          </a>
         </div>
       )}
 

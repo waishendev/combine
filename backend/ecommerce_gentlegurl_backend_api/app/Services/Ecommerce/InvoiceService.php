@@ -3,7 +3,6 @@
 namespace App\Services\Ecommerce;
 
 use App\Models\Ecommerce\Order;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class InvoiceService
 {
@@ -11,7 +10,7 @@ class InvoiceService
     {
         $order->loadMissing(['items', 'pickupStore']);
 
-        return Pdf::loadView('ecommerce.invoice', [
+        return app('dompdf.wrapper')->loadView('invoices.order', [
             'order' => $order,
         ]);
     }
