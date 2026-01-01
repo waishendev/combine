@@ -31,6 +31,7 @@ class ShopSettingController extends Controller
             ]),
             'shipping' => SettingService::get('shipping', $this->defaultShippingSetting()),
             'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
+            'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting()),
             'page_reviews' => SettingService::get('page_reviews', [
                 'enabled' => true,
             ]),
@@ -57,7 +58,7 @@ class ShopSettingController extends Controller
      */
     public function show(string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'page_reviews', 'product_reviews'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -79,6 +80,7 @@ class ShopSettingController extends Controller
             ],
             'shipping' => $this->defaultShippingSetting(),
             'footer' => $this->defaultFooterSetting(),
+            'invoice_profile' => $this->defaultInvoiceProfileSetting(),
             'page_reviews' => [
                 'enabled' => true,
             ],
@@ -108,7 +110,7 @@ class ShopSettingController extends Controller
      */
     public function update(Request $request, string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'page_reviews', 'product_reviews'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -131,6 +133,10 @@ class ShopSettingController extends Controller
 
             case 'footer':
                 $data = $this->validateFooter($request);
+                break;
+
+            case 'invoice_profile':
+                $data = $this->validateInvoiceProfile($request);
                 break;
 
             case 'page_reviews':
@@ -323,6 +329,29 @@ class ShopSettingController extends Controller
         ];
     }
 
+    protected function validateInvoiceProfile(Request $request): array
+    {
+        $validated = $request->validate([
+            'company_logo_url' => ['nullable', 'url'],
+            'company_name' => ['required', 'string', 'max:255'],
+            'company_address' => ['required', 'string'],
+            'company_phone' => ['nullable', 'string', 'max:50'],
+            'company_email' => ['nullable', 'email', 'max:255'],
+            'footer_note' => ['nullable', 'string', 'max:255'],
+            'currency' => ['required', 'string', 'max:10'],
+        ]);
+
+        return [
+            'company_logo_url' => $validated['company_logo_url'] ?? null,
+            'company_name' => $validated['company_name'],
+            'company_address' => $validated['company_address'],
+            'company_phone' => $validated['company_phone'] ?? null,
+            'company_email' => $validated['company_email'] ?? null,
+            'footer_note' => $validated['footer_note'] ?? null,
+            'currency' => $validated['currency'],
+        ];
+    }
+
     protected function validateProductReviews(Request $request): array
     {
         $validated = $request->validate([
@@ -357,6 +386,19 @@ class ShopSettingController extends Controller
                 'privacy' => '/privacy-policy',
                 'terms' => '/terms',
             ],
+        ];
+    }
+
+    protected function defaultInvoiceProfileSetting(): array
+    {
+        return [
+            'company_logo_url' => null,
+            'company_name' => 'Gentlegurl Shop',
+            'company_address' => "123 Gentle Lane\nKuala Lumpur\nMalaysia",
+            'company_phone' => null,
+            'company_email' => null,
+            'footer_note' => 'This is a computer-generated invoice.',
+            'currency' => 'MYR',
         ];
     }
 

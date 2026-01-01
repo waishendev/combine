@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
             ShippingSettingSeeder::class,
+            InvoiceProfileSeeder::class,
             BankAccountSeeder::class,
             LoyaltySettingSeeder::class,
             // LoyaltyRewardSeederReal::class,
