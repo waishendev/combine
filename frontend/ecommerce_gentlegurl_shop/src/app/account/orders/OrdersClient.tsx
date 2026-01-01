@@ -10,6 +10,7 @@ import {
 } from "@/lib/api/productReviews";
 import { RatingStars } from "@/components/reviews/RatingStars";
 import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
+import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrdersClientProps = {
@@ -23,6 +24,10 @@ type ModalState = {
 };
 
 type SlipModalState = {
+  orderId: number;
+};
+
+type CompleteModalState = {
   orderId: number;
 };
 
@@ -51,6 +56,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
   const [slipModal, setSlipModal] = useState<SlipModalState | null>(null);
+  const [completeModal, setCompleteModal] = useState<CompleteModalState | null>(null);
   const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
@@ -201,13 +207,9 @@ export function OrdersClient({ orders }: OrdersClientProps) {
     }
   }
 
-  async function handleComplete(orderId: number) {
+  async function handleComplete(orderId: number, onSuccess?: () => void) {
     setCompleteError(null);
     setCompleteSuccess(null);
-
-    if (!window.confirm("Confirm you have received/picked up this order?")) {
-      return;
-    }
 
     setCompletingOrderId(orderId);
     try {
@@ -217,9 +219,10 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         [orderId]: {
           status: response.order.status,
           payment_status: response.order.payment_status,
-        },
+          },
       }));
       setCompleteSuccess("Order marked as completed.");
+      onSuccess?.();
     } catch (error) {
       const message =
         typeof error === "object" && error && "data" in (error as never)
@@ -381,7 +384,11 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                   {canComplete && (
                     <button
                       type="button"
-                      onClick={() => handleComplete(order.id)}
+                      onClick={() => {
+                        setCompleteError(null);
+                        setCompleteSuccess(null);
+                        setCompleteModal({ orderId: order.id });
+                      }}
                       disabled={completingOrderId === order.id}
                       className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -587,6 +594,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         onSuccess={() => {
           setSlipModal(null);
           router.refresh();
+        }}
+      />
+      <OrderCompleteModal
+        isOpen={!!completeModal}
+        isSubmitting={completingOrderId === completeModal?.orderId}
+        error={completeError}
+        onClose={() => setCompleteModal(null)}
+        onConfirm={() => {
+          if (!completeModal) return;
+          handleComplete(completeModal.orderId, () => setCompleteModal(null));
         }}
       />
     </div>

@@ -9,6 +9,7 @@ import OrderRejectPaymentModal from './OrderRejectPaymentModal'
 import OrderCancelModal from './OrderCancelModal'
 import OrderShipModal from './OrderShipModal'
 import OrderRefundModal from './OrderRefundModal'
+import OrderCompleteModal from './OrderCompleteModal'
 
 interface OrderViewPanelProps {
   orderId: number
@@ -92,8 +93,7 @@ export default function OrderViewPanel({
   const [showCancel, setShowCancel] = useState(false)
   const [showShip, setShowShip] = useState(false)
   const [showRefund, setShowRefund] = useState(false)
-  const [completingOrder, setCompletingOrder] = useState(false)
-  const [completeError, setCompleteError] = useState<string | null>(null)
+  const [showComplete, setShowComplete] = useState(false)
   const [completeSuccess, setCompleteSuccess] = useState<string | null>(null)
 
   useEffect(() => {
@@ -350,50 +350,6 @@ export default function OrderViewPanel({
   const canComplete =
     (order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped'
   const invoiceUrl = `/api/proxy/ecommerce/orders/${order.id}/invoice`
-
-  const handleCompleteOrder = async () => {
-    setCompleteError(null)
-    setCompleteSuccess(null)
-
-    if (!window.confirm('Confirm you have received/picked up this order?')) {
-      return
-    }
-
-    setCompletingOrder(true)
-    try {
-      const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}/complete`, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-        },
-      })
-
-      const data = await res.json().catch(() => null)
-      if (data && typeof data === 'object') {
-        if (data?.success === false && data?.message === 'Unauthorized') {
-          window.location.replace('/dashboard')
-          return
-        }
-      }
-
-      if (!res.ok) {
-        if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string') {
-          setCompleteError(data.message)
-          return
-        }
-        setCompleteError('Failed to complete the order.')
-        return
-      }
-
-      await handleOrderUpdated()
-      setCompleteSuccess('Order marked as completed.')
-    } catch (err) {
-      console.error('Failed to complete order:', err)
-      setCompleteError('Failed to complete the order.')
-    } finally {
-      setCompletingOrder(false)
-    }
-  }
 
   return (
     <>
@@ -743,11 +699,6 @@ export default function OrderViewPanel({
           {/* Fixed Bottom Action Buttons */}
           <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg z-10 max-h-32 overflow-y-auto">
             <div className="flex flex-wrap gap-2">
-              {completeError && (
-                <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700" role="alert">
-                  {completeError}
-                </div>
-              )}
               {completeSuccess && (
                 <div className="w-full rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700" role="status">
                   {completeSuccess}
@@ -816,11 +767,13 @@ export default function OrderViewPanel({
               )}
               {canComplete && (
                 <button
-                  onClick={handleCompleteOrder}
-                  disabled={completingOrder}
+                  onClick={() => {
+                    setCompleteSuccess(null)
+                    setShowComplete(true)
+                  }}
                   className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
                 >
-                  {completingOrder ? 'Completing...' : 'Mark as Completed'}
+                  Mark as Completed
                 </button>
               )}
             </div>
@@ -865,6 +818,17 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowRefund(false)}
           onSuccess={handleOrderUpdated}
+        />
+      )}
+
+      {showComplete && (
+        <OrderCompleteModal
+          orderId={orderId}
+          onClose={() => setShowComplete(false)}
+          onSuccess={async () => {
+            await handleOrderUpdated()
+            setCompleteSuccess('Order marked as completed.')
+          }}
         />
       )}
     </>

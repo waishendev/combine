@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
+import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrderDetailActionsProps = {
@@ -25,6 +26,7 @@ export function OrderDetailActions({
   const [isPaying, setIsPaying] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [showSlipModal, setShowSlipModal] = useState(false);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [completeSuccess, setCompleteSuccess] = useState<string | null>(null);
@@ -105,14 +107,11 @@ export function OrderDetailActions({
     setCompleteError(null);
     setCompleteSuccess(null);
 
-    if (!window.confirm("Confirm you have received/picked up this order?")) {
-      return;
-    }
-
     setIsCompleting(true);
     try {
       await completeOrder(orderId);
       setCompleteSuccess("Order marked as completed.");
+      setShowCompleteModal(false);
       router.refresh();
     } catch (error) {
       const message =
@@ -167,7 +166,11 @@ export function OrderDetailActions({
         ) : canComplete ? (
           <button
             type="button"
-            onClick={handleComplete}
+            onClick={() => {
+              setCompleteError(null);
+              setCompleteSuccess(null);
+              setShowCompleteModal(true);
+            }}
             disabled={isCompleting}
             className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -188,6 +191,13 @@ export function OrderDetailActions({
           setShowSlipModal(false);
           router.refresh();
         }}
+      />
+      <OrderCompleteModal
+        isOpen={showCompleteModal}
+        isSubmitting={isCompleting}
+        error={completeError}
+        onClose={() => setShowCompleteModal(false)}
+        onConfirm={handleComplete}
       />
     </>
   );
