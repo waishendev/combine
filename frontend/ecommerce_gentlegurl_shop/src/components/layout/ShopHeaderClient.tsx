@@ -194,7 +194,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
             </div>
 
             {/* Services & Courses Dropdown */}
-            {/* <div className="relative" data-menu>
+            <div className="relative" data-menu>
               <button
                 type="button"
                 onClick={() => {
@@ -241,7 +241,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                   </Link>
                 </div>
               )}
-            </div> */}
+            </div>
 
             {/* Membership Dropdown */}
             <div className="relative" data-menu>

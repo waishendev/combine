@@ -62,8 +62,8 @@ async function handleRequest(
     // Forward cookies
     const allCookies = request.cookies.getAll();
     const cookieHeader =
-      request.headers.get("cookie") ||
       allCookies.map((c) => `${c.name}=${c.value}`).join("; ") ||
+      request.headers.get("cookie") ||
       "";
 
     let body: string | FormData | undefined;
@@ -100,17 +100,17 @@ async function handleRequest(
     const backendResponse = await fetch(fullUrl, {
       method,
       headers: fetchHeaders,
-      credentials: "include",
       ...(body && { body }),
     });
 
     const responseContentType = backendResponse.headers.get("content-type") || "";
-    const isJsonResponse =
-      responseContentType.includes("application/json") ||
-      responseContentType.includes("application/vnd.api+json");
+    const responseText = await backendResponse.text();
 
-    if (isJsonResponse) {
-      const responseText = await backendResponse.text();
+    if (
+      responseContentType.includes("application/json") ||
+      responseText.trim().startsWith("{") ||
+      responseText.trim().startsWith("[")
+    ) {
       let data: unknown = {};
       if (responseText.trim() !== "") {
         data = JSON.parse(responseText);
@@ -230,19 +230,16 @@ async function handleRequest(
       return nextResponse;
     }
 
-    const arrayBuffer = await backendResponse.arrayBuffer();
-    const nextResponse = new NextResponse(arrayBuffer, {
-      status: backendResponse.status,
-    });
-
-    if (responseContentType) {
-      nextResponse.headers.set("Content-Type", responseContentType);
-    }
-    const contentDisposition = backendResponse.headers.get("content-disposition");
-    if (contentDisposition) {
-      nextResponse.headers.set("Content-Disposition", contentDisposition);
-    }
-    return nextResponse;
+    // non-JSON
+    return NextResponse.json(
+      {
+        error: "Backend returned non-JSON response",
+        status: backendResponse.status,
+        contentType: responseContentType,
+        rawResponse: responseText.substring(0, 500),
+      },
+      { status: backendResponse.status || 500 },
+    );
   } catch (error) {
     console.error("[Shop Proxy] Error:", error);
     return NextResponse.json(
