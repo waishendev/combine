@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -5,17 +6,77 @@ import AddToCartButton from "@/components/cart/AddToCartButton";
 import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
 import { ProductReviewsSection } from "@/components/product/ProductReviewsSection";
 import { getProduct } from "@/lib/server/getProduct";
+import { getHomepage } from "@/lib/server/getHomepage";
 import { getProductReviewEligibility } from "@/lib/server/getProductReviewEligibility";
 import { getProductReviews } from "@/lib/server/getProductReviews";
 import { normalizeImageUrl } from "@/lib/imageUrl";
 import { ReviewSettings } from "@/lib/types/reviews";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { RewardRedeemPanel } from "@/components/product/RewardRedeemPanel";
+import { cache } from "react";
+import { mapSeoToMetadata, type SeoPayload } from "@/lib/seo";
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const getHomepageCached = cache(getHomepage);
+const getProductCached = cache(getProduct);
+
+export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const [homepage, product] = await Promise.all([
+    getHomepageCached(),
+    getProductCached(slug),
+  ]);
+
+  if (!product) {
+    return {};
+  }
+
+  const homepageSeo = homepage?.seo ?? null;
+  const productSeo = (product as { seo?: SeoPayload | null }).seo ?? null;
+  const baseMetadata = mapSeoToMetadata(productSeo, homepageSeo);
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const canonicalUrl = new URL(`/product/${slug}`, siteUrl).toString();
+
+  const resolvedTitle =
+    typeof baseMetadata.title === "string" ? baseMetadata.title : product.name;
+  const resolvedDescription = baseMetadata.description;
+
+  const ogImage =
+    productSeo?.meta_og_image ??
+    homepageSeo?.meta_og_image ??
+    (product as { image_url?: string | null }).image_url ??
+    null;
+  const ogImageUrl = ogImage ? normalizeImageUrl(ogImage) : undefined;
+
+  return {
+    ...baseMetadata,
+    title: resolvedTitle,
+    description: resolvedDescription,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      ...(baseMetadata.openGraph ?? {}),
+      title: resolvedTitle,
+      description: resolvedDescription,
+      url: canonicalUrl,
+      type: "website",
+      ...(ogImageUrl ? { images: [{ url: ogImageUrl }] } : {}),
+    },
+    twitter: {
+      ...(baseMetadata.twitter ?? {}),
+      title: resolvedTitle,
+      description: resolvedDescription,
+      ...(ogImageUrl
+        ? { images: [ogImageUrl], card: "summary_large_image" }
+        : { card: "summary" }),
+    },
+  };
+}
 
 export default async function ProductPage({ params, searchParams }: ProductPageProps) {
   const [{ slug }, searchParamsResolved] = await Promise.all([

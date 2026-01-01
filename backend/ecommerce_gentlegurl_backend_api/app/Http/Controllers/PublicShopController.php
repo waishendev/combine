@@ -417,6 +417,12 @@ class PublicShopController extends Controller
             'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),
             'related_products' => $relatedProducts,
             'is_reward_only' => $product->is_reward_only,
+            'seo' => [
+                'meta_title' => $product->meta_title,
+                'meta_description' => $product->meta_description,
+                'meta_keywords' => $product->meta_keywords,
+                'meta_og_image' => $product->meta_og_image,
+            ],
         ];
 
         $reviewService = app(ProductReviewService::class);
