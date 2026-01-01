@@ -69,12 +69,12 @@ class LoyaltyDemoCustomerSeederTesting extends Seeder
         $grandTotal = $product->price ?? 99.00;
 
         $order = Order::updateOrCreate(
-            ['order_number' => 'LOYALTY-DEMO-0001'],
+            ['order_number' => 'ORD-DEMO-0001'],
             [
                 'customer_id' => $customer->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
-                'payment_method' => 'manual',
+                'payment_method' => 'manual_transfer',
                 'payment_provider' => 'seed',
                 'subtotal' => $grandTotal,
                 'discount_total' => 0,
@@ -89,6 +89,15 @@ class LoyaltyDemoCustomerSeederTesting extends Seeder
                 'shipping_state' => $address->state,
                 'shipping_postcode' => $address->postcode,
                 'shipping_country' => $address->country,
+                'billing_same_as_shipping' => false,
+                'billing_name' => 'Invoice Contact',
+                'billing_phone' => '0123456789',
+                'billing_address_line1' => '456 Invoice Road',
+                'billing_address_line2' => 'Suite 9',
+                'billing_city' => 'Kuala Lumpur',
+                'billing_state' => 'Kuala Lumpur',
+                'billing_postcode' => '50000',
+                'billing_country' => 'Malaysia',
                 'placed_at' => $placedAt,
                 'paid_at' => $placedAt->copy()->addDay(),
                 'completed_at' => $placedAt->copy()->addDays(3),

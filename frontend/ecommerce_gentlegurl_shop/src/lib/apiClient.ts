@@ -563,6 +563,15 @@ export type CheckoutPreviewPayload = {
   shipping_postcode?: string | null;
   shipping_country?: string | null;
   shipping_state?: string | null;
+  billing_same_as_shipping?: boolean;
+  billing_name?: string;
+  billing_phone?: string;
+  billing_address_line1?: string;
+  billing_address_line2?: string | null;
+  billing_city?: string;
+  billing_state?: string;
+  billing_postcode?: string;
+  billing_country?: string;
   session_token?: string | null;
 };
 
@@ -584,6 +593,15 @@ export type CheckoutPayload = {
   shipping_state?: string;
   shipping_country?: string;
   shipping_postcode?: string;
+  billing_same_as_shipping?: boolean;
+  billing_name?: string;
+  billing_phone?: string;
+  billing_address_line1?: string;
+  billing_address_line2?: string | null;
+  billing_city?: string;
+  billing_state?: string;
+  billing_country?: string;
+  billing_postcode?: string;
   store_location_id?: number | null;
   bank_account_id?: number | null;
   voucher_code?: string | null;

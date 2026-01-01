@@ -343,6 +343,8 @@ export default function OrderViewPanel({
   const canShip = displayStatus === 'Payment Confirmed' && order.shipping_method === 'shipping'
   const canMarkReadyForPickup = displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
   const canRefund = ['Payment Confirmed', 'Preparing', 'Ready for Pickup', 'Completed'].includes(displayStatus)
+  const canDownloadInvoice = order.status === 'completed'
+  const invoiceUrl = `/api/proxy/ecommerce/orders/${order.id}/invoice`
 
   return (
     <>
@@ -514,6 +516,23 @@ export default function OrderViewPanel({
                     <div>
                       <p className="text-xs text-slate-500">Shipping Method</p>
                       <p className="font-medium text-slate-900 capitalize">{order.shipping_method || '-'}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs text-slate-500">Invoice</p>
+                      {canDownloadInvoice ? (
+                        <a
+                          href={invoiceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-blue-600 hover:underline"
+                        >
+                          Download Invoice
+                        </a>
+                      ) : (
+                        <p className="font-medium text-slate-900">-</p>
+                      )}
                     </div>
                   </div>
                 </div>

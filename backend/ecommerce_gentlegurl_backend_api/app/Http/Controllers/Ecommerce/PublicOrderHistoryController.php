@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\OrderReserveService;
+use App\Services\Ecommerce\InvoiceService;
 use App\Services\BillplzService;
 use App\Models\BillplzBill;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,8 @@ class PublicOrderHistoryController extends Controller
 {
     public function __construct(
         protected OrderReserveService $orderReserveService,
-        protected BillplzService $billplzService
+        protected BillplzService $billplzService,
+        protected InvoiceService $invoiceService,
     )
     {
     }
@@ -170,6 +172,17 @@ class PublicOrderHistoryController extends Controller
                     'postcode' => $order->shipping_postcode,
                     'country' => $order->shipping_country,
                 ],
+                'billing_same_as_shipping' => $order->billing_same_as_shipping,
+                'billing_address' => [
+                    'name' => $order->billing_name,
+                    'phone' => $order->billing_phone,
+                    'line1' => $order->billing_address_line1,
+                    'line2' => $order->billing_address_line2,
+                    'city' => $order->billing_city,
+                    'state' => $order->billing_state,
+                    'postcode' => $order->billing_postcode,
+                    'country' => $order->billing_country,
+                ],
                 'pickup_store' => $order->pickupStore ? [
                     'id' => $order->pickupStore->id,
                     'name' => $order->pickupStore->name,
@@ -194,6 +207,23 @@ class PublicOrderHistoryController extends Controller
         ];
 
         return $this->respond($data);
+    }
+
+    public function invoice(Request $request, Order $order)
+    {
+        $customer = $request->user('customer');
+
+        if ($order->customer_id !== $customer->id) {
+            return $this->respondError(__('Order not found.'), 404);
+        }
+
+        if ($order->status !== 'completed') {
+            return $this->respondError(__('Invoice is available after the order is completed.'), 403);
+        }
+
+        $pdf = $this->invoiceService->buildPdf($order);
+
+        return $pdf->stream("invoice-{$order->order_number}.pdf");
     }
 
     public function cancel(Request $request, Order $order)
