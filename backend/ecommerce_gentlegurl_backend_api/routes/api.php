@@ -131,7 +131,6 @@ Route::prefix('/public/shop')->group(function () {
         
     Route::get('/orders/lookup', [PublicCheckoutController::class, 'lookup']);
     Route::post('/orders/{order}/upload-slip', [PublicCheckoutController::class, 'uploadSlip']);
-    Route::post('/orders/{order}/returns', [PublicReturnController::class, 'store']);
 
     // Cart routes - support both authenticated and guest users via session_token
     Route::middleware('api.session')->group(function () {
@@ -164,6 +163,8 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/orders/{order}/invoice', [PublicOrderHistoryController::class, 'invoice']);
         Route::post('/orders/{order}/complete', [PublicOrderHistoryController::class, 'complete']);
 
+        Route::post('/returns', [PublicReturnController::class, 'store']);
+        Route::post('/orders/{order}/returns', [PublicReturnController::class, 'store']);
         Route::get('/returns', [PublicReturnController::class, 'index']);
         Route::get('/returns/{returnRequest}', [PublicReturnController::class, 'show']);
         Route::post('/returns/{returnRequest}/tracking', [PublicReturnController::class, 'submitTracking']);

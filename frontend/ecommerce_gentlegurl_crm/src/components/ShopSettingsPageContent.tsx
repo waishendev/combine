@@ -98,6 +98,8 @@ type ShopSettingsResponse = {
       enabled?: boolean
       review_window_days?: number
     }
+    return_window_days?: number
+    return_tracking_submit_days?: number
   }
 }
 
@@ -212,6 +214,11 @@ const defaultProductReviewsSettings = {
   review_window_days: 30,
 }
 
+const defaultReturnSettings = {
+  return_window_days: 7,
+  return_tracking_submit_days: 7,
+}
+
 type ShopSettingsPageContentProps = {
   canEdit: boolean
 }
@@ -227,6 +234,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
   const [invoiceProfileSettings, setInvoiceProfileSettings] = useState(defaultInvoiceProfileSettings)
   const [pageReviewsSettings, setPageReviewsSettings] = useState(defaultPageReviewsSettings)
   const [productReviewsSettings, setProductReviewsSettings] = useState(defaultProductReviewsSettings)
+  const [returnSettings, setReturnSettings] = useState(defaultReturnSettings)
 
   const [contactSaveState, setContactSaveState] = useState<SaveState>('idle')
   const [homepageSaveState, setHomepageSaveState] = useState<SaveState>('idle')
@@ -235,6 +243,8 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
   const [invoiceProfileSaveState, setInvoiceProfileSaveState] = useState<SaveState>('idle')
   const [pageReviewsSaveState, setPageReviewsSaveState] = useState<SaveState>('idle')
   const [productReviewsSaveState, setProductReviewsSaveState] = useState<SaveState>('idle')
+  const [returnSaveState, setReturnSaveState] = useState<SaveState>('idle')
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -261,6 +271,10 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         const invoiceProfile = payload.data?.invoice_profile ?? defaultInvoiceProfileSettings
         const pageReviews = payload.data?.page_reviews ?? defaultPageReviewsSettings
         const productReviews = payload.data?.product_reviews ?? defaultProductReviewsSettings
+        const returnWindowDays =
+          payload.data?.return_window_days ?? defaultReturnSettings.return_window_days
+        const trackingSubmitDays =
+          payload.data?.return_tracking_submit_days ?? defaultReturnSettings.return_tracking_submit_days
 
         setContactSettings({
           enabled: contact.enabled ?? false,
@@ -382,6 +396,11 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
           enabled: productReviews.enabled ?? defaultProductReviewsSettings.enabled,
           review_window_days:
             productReviews.review_window_days ?? defaultProductReviewsSettings.review_window_days,
+        })
+
+        setReturnSettings({
+          return_window_days: returnWindowDays,
+          return_tracking_submit_days: trackingSubmitDays,
         })
       } catch (err) {
         if (controller.signal.aborted) return
@@ -694,6 +713,58 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     }
   }
 
+  const handleReturnSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!canEdit) return
+    setReturnSaveState('saving')
+    setError(null)
+
+    try {
+      const windowResponse = await fetch('/api/ecommerce/shop-settings/ecommerce.return_window_days', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          value: Number(returnSettings.return_window_days) || defaultReturnSettings.return_window_days,
+        }),
+      })
+
+      if (!windowResponse.ok) {
+        throw new Error('Failed to save return window days')
+      }
+
+      const trackingResponse = await fetch(
+        '/api/ecommerce/shop-settings/ecommerce.return_tracking_submit_days',
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            value:
+              Number(returnSettings.return_tracking_submit_days) ||
+              defaultReturnSettings.return_tracking_submit_days,
+          }),
+        },
+      )
+
+      if (!trackingResponse.ok) {
+        throw new Error('Failed to save return tracking deadline')
+      }
+
+      setReturnSaveState('saved')
+      setToastMessage('Return settings saved successfully.')
+      setTimeout(() => setToastMessage(null), 2000)
+    } catch (err) {
+      console.error(err)
+      setReturnSaveState('error')
+      setError('Unable to save return settings.')
+    } finally {
+      setTimeout(() => setReturnSaveState('idle'), 2000)
+    }
+  }
+
   const renderSaveLabel = (state: SaveState) => {
     switch (state) {
       case 'saving':
@@ -717,6 +788,11 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
 
   return (
     <div className="space-y-6">
+      {toastMessage && (
+        <div className="fixed right-6 top-6 z-50 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-lg">
+          {toastMessage}
+        </div>
+      )}
       {error && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {error}
@@ -1311,6 +1387,67 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             >
               {renderSaveLabel(productReviewsSaveState)}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
+          <div>
+            <h3 className="text-2xl font-semibold text-slate-900 mt-1">Return Settings</h3>
+            <p className="text-sm text-slate-500 mt-2 max-w-2xl">
+              Configure the return eligibility window and tracking submission deadline.
+            </p>
+          </div>
+        </div>
+
+        <form className="mt-6 space-y-5" onSubmit={handleReturnSettingsSubmit}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Return Window Days</span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={returnSettings.return_window_days}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setReturnSettings((prev) => ({
+                    ...prev,
+                    return_window_days: Number(event.target.value),
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Tracking Submit Deadline Days</span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={returnSettings.return_tracking_submit_days}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setReturnSettings((prev) => ({
+                    ...prev,
+                    return_tracking_submit_days: Number(event.target.value),
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={!canEdit || returnSaveState === 'saving'}
+              className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {renderSaveLabel(returnSaveState)}
             </button>
           </div>
         </form>

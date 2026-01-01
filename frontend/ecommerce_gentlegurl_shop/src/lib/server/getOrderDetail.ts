@@ -20,6 +20,7 @@ export type OrderDetail = {
   placed_at?: string | null;
   paid_at?: string | null;
   completed_at?: string | null;
+  return_window_days?: number | null;
   items: OrderItemSummary[];
   voucher?: {
     code: string;

@@ -39,6 +39,8 @@ class ShopSettingController extends Controller
                 'enabled' => true,
                 'review_window_days' => 30,
             ]),
+            'return_window_days' => (int) SettingService::get('ecommerce.return_window_days', 7),
+            'return_tracking_submit_days' => (int) SettingService::get('ecommerce.return_tracking_submit_days', 7),
         ];
 
         return response()->json([
@@ -58,7 +60,7 @@ class ShopSettingController extends Controller
      */
     public function show(string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews', 'ecommerce.return_window_days', 'ecommerce.return_tracking_submit_days'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -88,6 +90,8 @@ class ShopSettingController extends Controller
                 'enabled' => true,
                 'review_window_days' => 30,
             ],
+            'ecommerce.return_window_days' => 7,
+            'ecommerce.return_tracking_submit_days' => 7,
         ];
 
         $value = SettingService::get($key, $defaultValues[$key]);
@@ -110,7 +114,7 @@ class ShopSettingController extends Controller
      */
     public function update(Request $request, string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews'], true)) {
+        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews', 'ecommerce.return_window_days', 'ecommerce.return_tracking_submit_days'], true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -145,6 +149,12 @@ class ShopSettingController extends Controller
 
             case 'product_reviews':
                 $data = $this->validateProductReviews($request);
+                break;
+            case 'ecommerce.return_window_days':
+                $data = $this->validateReturnWindowDays($request);
+                break;
+            case 'ecommerce.return_tracking_submit_days':
+                $data = $this->validateReturnTrackingSubmitDays($request);
                 break;
 
             default:
@@ -367,6 +377,24 @@ class ShopSettingController extends Controller
             'enabled' => (bool) $validated['enabled'],
             'review_window_days' => (int) $validated['review_window_days'],
         ];
+    }
+
+    protected function validateReturnWindowDays(Request $request): int
+    {
+        $validated = $request->validate([
+            'value' => ['required', 'integer', 'min:1', 'max:365'],
+        ]);
+
+        return (int) $validated['value'];
+    }
+
+    protected function validateReturnTrackingSubmitDays(Request $request): int
+    {
+        $validated = $request->validate([
+            'value' => ['required', 'integer', 'min:1', 'max:365'],
+        ]);
+
+        return (int) $validated['value'];
     }
 
     protected function defaultFooterSetting(): array
