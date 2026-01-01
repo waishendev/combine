@@ -162,6 +162,7 @@ Route::prefix('/public/shop')->group(function () {
         Route::post('/orders/{order}/cancel', [PublicOrderHistoryController::class, 'cancel']);
         Route::post('/orders/{order}/pay', [PublicOrderHistoryController::class, 'pay']);
         Route::get('/orders/{order}/invoice', [PublicOrderHistoryController::class, 'invoice']);
+        Route::post('/orders/{order}/complete', [PublicOrderHistoryController::class, 'complete']);
 
         Route::get('/returns', [PublicReturnController::class, 'index']);
         Route::get('/returns/{returnRequest}', [PublicReturnController::class, 'show']);
@@ -440,6 +441,8 @@ $protectedRoutes = function () {
         Route::put('/orders/{order}/refund', [OrderController::class, 'refund'])
             ->middleware('permission:ecommerce.orders.update');
         Route::post('/orders/{order}/refund', [OrderController::class, 'refund'])
+            ->middleware('permission:ecommerce.orders.update');
+        Route::post('/orders/{order}/complete', [OrderController::class, 'complete'])
             ->middleware('permission:ecommerce.orders.update');
 
         Route::get('/returns', [ReturnRequestController::class, 'index'])

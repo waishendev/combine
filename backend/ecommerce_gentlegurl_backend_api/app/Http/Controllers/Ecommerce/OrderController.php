@@ -334,4 +334,41 @@ class OrderController extends Controller
         return $this->respond($order->fresh(['items', 'customer']), __('Order Refunded.'));
     }
 
+    public function complete(Order $order)
+    {
+        if ($order->status === 'completed') {
+            return $this->respond($order, __('Order already completed.'));
+        }
+
+        $isEligible = ($order->status === 'ready_for_pickup' && $order->payment_status === 'paid')
+            || $order->status === 'shipped';
+
+        if (! $isEligible) {
+            return $this->respondError(__('Order cannot be completed in current status.'), 422);
+        }
+
+        DB::transaction(function () use ($order) {
+            $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
+
+            if (! $lockedOrder || $lockedOrder->status === 'completed') {
+                return;
+            }
+
+            $isEligible = ($lockedOrder->status === 'ready_for_pickup' && $lockedOrder->payment_status === 'paid')
+                || $lockedOrder->status === 'shipped';
+
+            if (! $isEligible) {
+                return;
+            }
+
+            $lockedOrder->status = 'completed';
+            $lockedOrder->completed_at = Carbon::now();
+            $lockedOrder->save();
+        });
+
+        $order->refresh();
+
+        return $this->respond($order, __('Order marked as completed.'));
+    }
+
 }

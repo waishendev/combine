@@ -9,6 +9,7 @@ import OrderRejectPaymentModal from './OrderRejectPaymentModal'
 import OrderCancelModal from './OrderCancelModal'
 import OrderShipModal from './OrderShipModal'
 import OrderRefundModal from './OrderRefundModal'
+import OrderCompleteModal from './OrderCompleteModal'
 
 interface OrderViewPanelProps {
   orderId: number
@@ -92,6 +93,8 @@ export default function OrderViewPanel({
   const [showCancel, setShowCancel] = useState(false)
   const [showShip, setShowShip] = useState(false)
   const [showRefund, setShowRefund] = useState(false)
+  const [showComplete, setShowComplete] = useState(false)
+  const [completeSuccess, setCompleteSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -344,6 +347,8 @@ export default function OrderViewPanel({
   const canMarkReadyForPickup = displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
   const canRefund = ['Payment Confirmed', 'Preparing', 'Ready for Pickup', 'Completed'].includes(displayStatus)
   const canDownloadInvoice = order.status === 'completed'
+  const canComplete =
+    (order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped'
   const invoiceUrl = `/api/proxy/ecommerce/orders/${order.id}/invoice`
 
   return (
@@ -694,6 +699,11 @@ export default function OrderViewPanel({
           {/* Fixed Bottom Action Buttons */}
           <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg z-10 max-h-32 overflow-y-auto">
             <div className="flex flex-wrap gap-2">
+              {completeSuccess && (
+                <div className="w-full rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700" role="status">
+                  {completeSuccess}
+                </div>
+              )}
               {canConfirmPayment && (
                 <button
                   onClick={() => setShowConfirmPayment(true)}
@@ -755,6 +765,17 @@ export default function OrderViewPanel({
                   Refund
                 </button>
               )}
+              {canComplete && (
+                <button
+                  onClick={() => {
+                    setCompleteSuccess(null)
+                    setShowComplete(true)
+                  }}
+                  className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
+                >
+                  Mark as Completed
+                </button>
+              )}
             </div>
           </div>
         </aside>
@@ -797,6 +818,17 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowRefund(false)}
           onSuccess={handleOrderUpdated}
+        />
+      )}
+
+      {showComplete && (
+        <OrderCompleteModal
+          orderId={orderId}
+          onClose={() => setShowComplete(false)}
+          onSuccess={async () => {
+            await handleOrderUpdated()
+            setCompleteSuccess('Order marked as completed.')
+          }}
         />
       )}
     </>

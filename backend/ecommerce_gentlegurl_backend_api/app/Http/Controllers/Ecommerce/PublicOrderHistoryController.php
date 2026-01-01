@@ -8,6 +8,7 @@ use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\BillplzService;
 use App\Models\BillplzBill;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -269,6 +270,53 @@ class PublicOrderHistoryController extends Controller
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
             ],
         ]);
+    }
+
+    public function complete(Request $request, Order $order)
+    {
+        $customer = $request->user('customer');
+
+        if ($order->customer_id !== $customer->id) {
+            return $this->respondError(__('Order not found.'), 404);
+        }
+
+        if ($order->status === 'completed') {
+            return $this->respond([
+                'order' => $order,
+            ], __('Order already completed.'));
+        }
+
+        $isEligible = ($order->status === 'ready_for_pickup' && $order->payment_status === 'paid')
+            || $order->status === 'shipped';
+
+        if (! $isEligible) {
+            return $this->respondError(__('Order cannot be completed in current status.'), 422);
+        }
+
+        DB::transaction(function () use ($order) {
+            $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
+
+            if (! $lockedOrder || $lockedOrder->status === 'completed') {
+                return;
+            }
+
+            $isEligible = ($lockedOrder->status === 'ready_for_pickup' && $lockedOrder->payment_status === 'paid')
+                || $lockedOrder->status === 'shipped';
+
+            if (! $isEligible) {
+                return;
+            }
+
+            $lockedOrder->status = 'completed';
+            $lockedOrder->completed_at = Carbon::now();
+            $lockedOrder->save();
+        });
+
+        $order->refresh();
+
+        return $this->respond([
+            'order' => $order,
+        ], __('Order marked as completed.'));
     }
 
     public function pay(Request $request, Order $order)

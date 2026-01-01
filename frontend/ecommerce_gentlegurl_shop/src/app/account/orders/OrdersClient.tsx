@@ -9,7 +9,8 @@ import {
   submitProductReview,
 } from "@/lib/api/productReviews";
 import { RatingStars } from "@/components/reviews/RatingStars";
-import { cancelOrder, payOrder } from "@/lib/apiClient";
+import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
+import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 
 type OrdersClientProps = {
@@ -23,6 +24,10 @@ type ModalState = {
 };
 
 type SlipModalState = {
+  orderId: number;
+};
+
+type CompleteModalState = {
   orderId: number;
 };
 
@@ -51,8 +56,12 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
   const [slipModal, setSlipModal] = useState<SlipModalState | null>(null);
+  const [completeModal, setCompleteModal] = useState<CompleteModalState | null>(null);
   const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+  const [completeSuccess, setCompleteSuccess] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const reviewedItemIds = useMemo(() => reviewedItems, [reviewedItems]);
@@ -198,6 +207,34 @@ export function OrdersClient({ orders }: OrdersClientProps) {
     }
   }
 
+  async function handleComplete(orderId: number, onSuccess?: () => void) {
+    setCompleteError(null);
+    setCompleteSuccess(null);
+
+    setCompletingOrderId(orderId);
+    try {
+      const response = await completeOrder(orderId);
+      setOrderOverrides((prev) => ({
+        ...prev,
+        [orderId]: {
+          status: response.order.status,
+          payment_status: response.order.payment_status,
+          },
+      }));
+      setCompleteSuccess("Order marked as completed.");
+      onSuccess?.();
+    } catch (error) {
+      const message =
+        typeof error === "object" && error && "data" in (error as never)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((error as any).data?.message as string | undefined) ?? "Unable to complete this order."
+          : "Unable to complete this order.";
+      setCompleteError(message);
+    } finally {
+      setCompletingOrderId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {eligibilityError && (
@@ -213,6 +250,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
       {paymentError && (
         <div className="rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[color:var(--status-error)]">
           {paymentError}
+        </div>
+      )}
+      {completeError && (
+        <div className="rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[color:var(--status-error)]">
+          {completeError}
+        </div>
+      )}
+      {completeSuccess && (
+        <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[color:var(--status-success)]">
+          {completeSuccess}
         </div>
       )}
       {submitSuccess && (
@@ -241,6 +288,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         const isProcessing = statusKey === "processing" && paymentStatusKey === "unpaid";
         const canPay = isPendingUnpaid && !isExpired;
         const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
+        const canComplete =
+          (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped";
         const isCompleted = statusKey === "completed";
         const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
         
@@ -332,6 +381,20 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
                     </svg>
                   </Link>
+                  {canComplete && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCompleteError(null);
+                        setCompleteSuccess(null);
+                        setCompleteModal({ orderId: order.id });
+                      }}
+                      disabled={completingOrderId === order.id}
+                      className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {completingOrderId === order.id ? "Completing..." : "Mark as Completed"}
+                    </button>
+                  )}
                   {isCompleted && (
                     <a
                       href={invoiceUrl}
@@ -531,6 +594,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         onSuccess={() => {
           setSlipModal(null);
           router.refresh();
+        }}
+      />
+      <OrderCompleteModal
+        isOpen={!!completeModal}
+        isSubmitting={completingOrderId === completeModal?.orderId}
+        error={completeError}
+        onClose={() => setCompleteModal(null)}
+        onConfirm={() => {
+          if (!completeModal) return;
+          handleComplete(completeModal.orderId, () => setCompleteModal(null));
         }}
       />
     </div>
