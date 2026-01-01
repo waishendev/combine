@@ -80,6 +80,17 @@ type ShopSettingsResponse = {
         terms?: string | null
       }
     }
+    invoice_profile?: {
+      company_logo_url?: string | null
+      company_name?: string
+      company_reg_no?: string | null
+      company_address?: string
+      company_phone?: string | null
+      company_email?: string | null
+      company_website?: string | null
+      footer_note?: string | null
+      currency?: string
+    }
     page_reviews?: {
       enabled?: boolean
     }
@@ -180,6 +191,18 @@ const defaultFooterSettings = {
   },
 }
 
+const defaultInvoiceProfileSettings = {
+  company_logo_url: '',
+  company_name: 'Gentlegurl Shop',
+  company_reg_no: '',
+  company_address: '123 Gentle Lane\nKuala Lumpur\nMalaysia',
+  company_phone: '',
+  company_email: '',
+  company_website: '',
+  footer_note: 'This is a computer-generated invoice.',
+  currency: 'MYR',
+}
+
 const defaultPageReviewsSettings = {
   enabled: false,
 }
@@ -201,6 +224,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
   const [homepageSettings, setHomepageSettings] = useState(defaultHomepageSettings)
   const [shippingSettings, setShippingSettings] = useState(defaultShippingSettings)
   const [footerSettings, setFooterSettings] = useState(defaultFooterSettings)
+  const [invoiceProfileSettings, setInvoiceProfileSettings] = useState(defaultInvoiceProfileSettings)
   const [pageReviewsSettings, setPageReviewsSettings] = useState(defaultPageReviewsSettings)
   const [productReviewsSettings, setProductReviewsSettings] = useState(defaultProductReviewsSettings)
 
@@ -208,6 +232,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
   const [homepageSaveState, setHomepageSaveState] = useState<SaveState>('idle')
   const [shippingSaveState, setShippingSaveState] = useState<SaveState>('idle')
   const [footerSaveState, setFooterSaveState] = useState<SaveState>('idle')
+  const [invoiceProfileSaveState, setInvoiceProfileSaveState] = useState<SaveState>('idle')
   const [pageReviewsSaveState, setPageReviewsSaveState] = useState<SaveState>('idle')
   const [productReviewsSaveState, setProductReviewsSaveState] = useState<SaveState>('idle')
 
@@ -233,6 +258,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         const shipping = payload.data?.shipping ?? defaultShippingSettings
         const legacyFreeShipping = shipping.free_shipping
         const footer = payload.data?.footer ?? defaultFooterSettings
+        const invoiceProfile = payload.data?.invoice_profile ?? defaultInvoiceProfileSettings
         const pageReviews = payload.data?.page_reviews ?? defaultPageReviewsSettings
         const productReviews = payload.data?.product_reviews ?? defaultProductReviewsSettings
 
@@ -329,6 +355,23 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
             privacy: footer.links?.privacy ?? defaultFooterSettings.links.privacy,
             terms: footer.links?.terms ?? defaultFooterSettings.links.terms,
           },
+        })
+
+        setInvoiceProfileSettings({
+          company_logo_url:
+            invoiceProfile.company_logo_url ?? defaultInvoiceProfileSettings.company_logo_url,
+          company_name: invoiceProfile.company_name ?? defaultInvoiceProfileSettings.company_name,
+          company_reg_no: invoiceProfile.company_reg_no ?? defaultInvoiceProfileSettings.company_reg_no,
+          company_address:
+            invoiceProfile.company_address ?? defaultInvoiceProfileSettings.company_address,
+          company_phone:
+            invoiceProfile.company_phone ?? defaultInvoiceProfileSettings.company_phone,
+          company_email:
+            invoiceProfile.company_email ?? defaultInvoiceProfileSettings.company_email,
+          company_website:
+            invoiceProfile.company_website ?? defaultInvoiceProfileSettings.company_website,
+          footer_note: invoiceProfile.footer_note ?? defaultInvoiceProfileSettings.footer_note,
+          currency: invoiceProfile.currency ?? defaultInvoiceProfileSettings.currency,
         })
 
         setPageReviewsSettings({
@@ -546,6 +589,45 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       setError('Unable to save footer settings.')
     } finally {
       setTimeout(() => setFooterSaveState('idle'), 2000)
+    }
+  }
+
+  const handleInvoiceProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!canEdit) return
+    setInvoiceProfileSaveState('saving')
+    setError(null)
+
+    try {
+      const response = await fetch('/api/ecommerce/shop-settings/invoice_profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          company_logo_url: invoiceProfileSettings.company_logo_url || null,
+          company_name: invoiceProfileSettings.company_name,
+          company_reg_no: invoiceProfileSettings.company_reg_no || null,
+          company_address: invoiceProfileSettings.company_address,
+          company_phone: invoiceProfileSettings.company_phone || null,
+          company_email: invoiceProfileSettings.company_email || null,
+          company_website: invoiceProfileSettings.company_website || null,
+          footer_note: invoiceProfileSettings.footer_note || null,
+          currency: invoiceProfileSettings.currency,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save invoice profile settings')
+      }
+
+      setInvoiceProfileSaveState('saved')
+    } catch (err) {
+      console.error(err)
+      setInvoiceProfileSaveState('error')
+      setError('Unable to save invoice profile settings.')
+    } finally {
+      setTimeout(() => setInvoiceProfileSaveState('idle'), 2000)
     }
   }
 
@@ -948,6 +1030,178 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             >
               {renderSaveLabel(footerSaveState)}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
+          <div>
+            <h3 className="text-2xl font-semibold text-slate-900 mt-1">Invoice Settings</h3>
+            <p className="text-sm text-slate-500 mt-2 max-w-2xl">
+              Update the company profile details that appear on your PDF invoices.
+            </p>
+          </div>
+        </div>
+
+        <form className="mt-6 space-y-5" onSubmit={handleInvoiceProfileSubmit}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2 md:col-span-2">
+              <span className="block text-sm font-medium text-slate-800">Company Logo URL</span>
+              <input
+                type="url"
+                value={invoiceProfileSettings.company_logo_url}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    company_logo_url: event.target.value,
+                  }))
+                }
+                placeholder="https://example.com/logo.png"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Company Name</span>
+              <input
+                type="text"
+                value={invoiceProfileSettings.company_name}
+                disabled={!canEdit}
+                required
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({ ...prev, company_name: event.target.value }))
+                }
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Company Reg No</span>
+              <input
+                type="text"
+                value={invoiceProfileSettings.company_reg_no}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    company_reg_no: event.target.value,
+                  }))
+                }
+                placeholder="e.g. 202401234567"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Currency</span>
+              <input
+                type="text"
+                value={invoiceProfileSettings.currency}
+                disabled={!canEdit}
+                required
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({ ...prev, currency: event.target.value }))
+                }
+                placeholder="MYR"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2 md:col-span-2">
+              <span className="block text-sm font-medium text-slate-800">Company Address</span>
+              <textarea
+                value={invoiceProfileSettings.company_address}
+                disabled={!canEdit}
+                required
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    company_address: event.target.value,
+                  }))
+                }
+                rows={3}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Company Phone</span>
+              <input
+                type="text"
+                value={invoiceProfileSettings.company_phone}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    company_phone: event.target.value,
+                  }))
+                }
+                placeholder="+60123456789"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Company Email</span>
+              <input
+                type="email"
+                value={invoiceProfileSettings.company_email}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    company_email: event.target.value,
+                  }))
+                }
+                placeholder="support@example.com"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Company Website</span>
+              <input
+                type="url"
+                value={invoiceProfileSettings.company_website}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    company_website: event.target.value,
+                  }))
+                }
+                placeholder="https://example.com"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2 md:col-span-2">
+              <span className="block text-sm font-medium text-slate-800">Footer Note</span>
+              <textarea
+                value={invoiceProfileSettings.footer_note}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    footer_note: event.target.value,
+                  }))
+                }
+                rows={2}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={!canEdit || invoiceProfileSaveState === 'saving'}
+              className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {renderSaveLabel(invoiceProfileSaveState)}
             </button>
           </div>
         </form>

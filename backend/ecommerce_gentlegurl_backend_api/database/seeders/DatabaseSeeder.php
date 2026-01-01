@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
             ShippingSettingSeeder::class,
+            InvoiceProfileSeeder::class,
             BankAccountSeeder::class,
             LoyaltySettingSeeder::class,
             // LoyaltyRewardSeederReal::class,
@@ -32,7 +33,9 @@ class DatabaseSeeder extends Seeder
             FooterWidgetSeederTesting::class,
             FrontendTestDataSeeder::class,
             LoyaltyRewardSeederTesting::class,
-            LoyaltyDemoCustomerSeederTesting::class
+            LoyaltyDemoCustomerSeederTesting::class,
+            SelfPickupCompletedOrderSeeder::class,
+            GuestCompletedOrderSeeder::class,
             // SalesReportSeeder::class,
             //ReturnRequestSeeder::class,
 
