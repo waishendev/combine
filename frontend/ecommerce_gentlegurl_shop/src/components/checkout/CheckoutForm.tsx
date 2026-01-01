@@ -144,10 +144,22 @@ export default function CheckoutForm() {
     shipping_country: "MY",
     shipping_postcode: "",
   });
+  const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
+  const [billingForm, setBillingForm] = useState({
+    billing_name: "",
+    billing_phone: "",
+    billing_address_line1: "",
+    billing_address_line2: "",
+    billing_city: "",
+    billing_state: "",
+    billing_country: "MY",
+    billing_postcode: "",
+  });
 
   const isSelfPickup = shippingMethod === "self_pickup";
   const isShippingMalaysia = normalizeCountryValue(form.shipping_country) === "MY";
   const isAddressMalaysia = normalizeCountryValue(addressForm.country) === "MY";
+  const isBillingMalaysia = normalizeCountryValue(billingForm.billing_country) === "MY";
   
   const safeTotals = useMemo(() => {
     const previewSubtotal = Number(shippingPreview?.subtotal ?? totals.subtotal ?? 0);
@@ -377,6 +389,19 @@ export default function CheckoutForm() {
       voucher_code: appliedVoucher?.code ?? undefined,
       customer_voucher_id: appliedVoucher?.customer_voucher_id ?? undefined,
       session_token: sessionToken ?? undefined,
+      billing_same_as_shipping: billingSameAsShipping,
+      ...(billingSameAsShipping
+        ? {}
+        : {
+            billing_name: billingForm.billing_name,
+            billing_phone: billingForm.billing_phone,
+            billing_address_line1: billingForm.billing_address_line1,
+            billing_address_line2: billingForm.billing_address_line2 || null,
+            billing_city: billingForm.billing_city,
+            billing_state: billingForm.billing_state,
+            billing_country: billingForm.billing_country,
+            billing_postcode: billingForm.billing_postcode,
+          }),
     })
       .then((response) => setShippingPreview(response))
       .catch(() => setShippingPreview(null))
@@ -384,6 +409,8 @@ export default function CheckoutForm() {
   }, [
     appliedVoucher?.code,
     appliedVoucher?.customer_voucher_id,
+    billingForm,
+    billingSameAsShipping,
     form.shipping_country,
     form.shipping_state,
     isLoggedIn,
@@ -459,6 +486,10 @@ export default function CheckoutForm() {
       .catch(() => setBankAccounts([]))
       .finally(() => setIsLoadingBankAccounts(false));
   }, [paymentMethod]);
+
+  useEffect(() => {
+    setBillingSameAsShipping(true);
+  }, [shippingMethod]);
 
   useEffect(() => {
     if (!showVoucherModal) return;
@@ -554,6 +585,26 @@ export default function CheckoutForm() {
       }
     }
 
+    if (!billingSameAsShipping) {
+      const required = [
+        billingForm.billing_name,
+        billingForm.billing_phone,
+        billingForm.billing_address_line1,
+        billingForm.billing_city,
+        billingForm.billing_country,
+        billingForm.billing_postcode,
+      ];
+      if (required.some((v) => !v)) {
+        setError("Please complete your billing details.");
+        return;
+      }
+
+      if (normalizeCountryValue(billingForm.billing_country) === "MY" && !billingForm.billing_state) {
+        setError("Please complete your billing details.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const trimmedVoucherCode = voucherCode.trim();
@@ -571,11 +622,22 @@ export default function CheckoutForm() {
         payment_method: paymentMethod,
         shipping_method: shippingMethod,
         ...form,
+        billing_same_as_shipping: billingSameAsShipping,
         voucher_code: voucherCodeForSubmit,
         customer_voucher_id: selectedVoucherId ?? undefined,
         store_location_id: shippingMethod === "self_pickup" ? selectedStoreId ?? undefined : undefined,
         bank_account_id: paymentMethod === "manual_transfer" ? selectedBankId ?? undefined : undefined,
       };
+      if (!billingSameAsShipping) {
+        payload.billing_name = billingForm.billing_name;
+        payload.billing_phone = billingForm.billing_phone;
+        payload.billing_address_line1 = billingForm.billing_address_line1;
+        payload.billing_address_line2 = billingForm.billing_address_line2 || null;
+        payload.billing_city = billingForm.billing_city;
+        payload.billing_state = billingForm.billing_state;
+        payload.billing_country = billingForm.billing_country;
+        payload.billing_postcode = billingForm.billing_postcode;
+      }
 
       const order = await createOrder(payload);
 
@@ -796,7 +858,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_name}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_name: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                     <div>
@@ -805,7 +867,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_phone}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_phone: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                   </div>
@@ -817,7 +879,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_address_line1}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_address_line1: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                     <div>
@@ -825,7 +887,7 @@ export default function CheckoutForm() {
                       <input
                         value={form.shipping_address_line2}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_address_line2: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                   </div>
@@ -837,7 +899,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_city}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_city: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                     <div>
@@ -847,7 +909,7 @@ export default function CheckoutForm() {
                           required
                           value={form.shipping_state}
                           onChange={(e) => setForm((prev) => ({ ...prev, shipping_state: e.target.value }))}
-                          className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                          className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                         >
                           <option value="">Select state</option>
                           {MALAYSIA_STATES_WEST.map((state) => (
@@ -865,7 +927,7 @@ export default function CheckoutForm() {
                         <input
                           value={form.shipping_state}
                           onChange={(e) => setForm((prev) => ({ ...prev, shipping_state: e.target.value }))}
-                          className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                          className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                         />
                       )}
                     </div>
@@ -875,7 +937,7 @@ export default function CheckoutForm() {
                         required
                         value={form.shipping_postcode}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_postcode: e.target.value }))}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                       />
                     </div>
                   </div>
@@ -893,7 +955,7 @@ export default function CheckoutForm() {
                           shipping_state: normalizeCountryValue(nextCountry) === "MY" ? prev.shipping_state : "",
                         }));
                       }}
-                      className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                     >
                       {COUNTRY_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -917,7 +979,7 @@ export default function CheckoutForm() {
                     required
                     value={form.shipping_name}
                     onChange={(e) => setForm((prev) => ({ ...prev, shipping_name: e.target.value }))}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
                 <div>
@@ -926,7 +988,7 @@ export default function CheckoutForm() {
                     required
                     value={form.shipping_phone}
                     onChange={(e) => setForm((prev) => ({ ...prev, shipping_phone: e.target.value }))}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
               </div>
@@ -935,6 +997,153 @@ export default function CheckoutForm() {
               </p>
             </section>
           )}
+
+          <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold">Billing Address</h2>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-[var(--foreground)]/80">
+              <input
+                type="checkbox"
+                checked={billingSameAsShipping}
+                onChange={(event) => setBillingSameAsShipping(event.target.checked)}
+                className="h-4 w-4 rounded border border-[var(--muted)] text-[var(--accent)] focus:ring-[var(--accent)] ios-input"
+              />
+              <span>
+                {shippingMethod === "self_pickup"
+                  ? "Same as Pickup Contact"
+                  : "Same as Shipping Address"}
+              </span>
+            </label>
+
+            {!billingSameAsShipping && (
+              <div className="mt-4 space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Full Name</label>
+                    <input
+                      required
+                      value={billingForm.billing_name}
+                      onChange={(e) => setBillingForm((prev) => ({ ...prev, billing_name: e.target.value }))}
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Phone Number</label>
+                    <input
+                      required
+                      value={billingForm.billing_phone}
+                      onChange={(e) => setBillingForm((prev) => ({ ...prev, billing_phone: e.target.value }))}
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 1</label>
+                    <input
+                      required
+                      value={billingForm.billing_address_line1}
+                      onChange={(e) =>
+                        setBillingForm((prev) => ({ ...prev, billing_address_line1: e.target.value }))
+                      }
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 2 (Optional)</label>
+                    <input
+                      value={billingForm.billing_address_line2}
+                      onChange={(e) =>
+                        setBillingForm((prev) => ({ ...prev, billing_address_line2: e.target.value }))
+                      }
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">City</label>
+                    <input
+                      required
+                      value={billingForm.billing_city}
+                      onChange={(e) => setBillingForm((prev) => ({ ...prev, billing_city: e.target.value }))}
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">State</label>
+                    {isBillingMalaysia ? (
+                      <select
+                        required
+                        value={billingForm.billing_state}
+                        onChange={(e) =>
+                          setBillingForm((prev) => ({ ...prev, billing_state: e.target.value }))
+                        }
+                        className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                      >
+                        <option value="">Select state</option>
+                        {MALAYSIA_STATES_WEST.map((state) => (
+                          <option key={state} value={state}>
+                            {state}
+                          </option>
+                        ))}
+                        {MALAYSIA_STATES_EAST.map((state) => (
+                          <option key={state} value={state}>
+                            {state}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={billingForm.billing_state}
+                        onChange={(e) =>
+                          setBillingForm((prev) => ({ ...prev, billing_state: e.target.value }))
+                        }
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Postcode</label>
+                    <input
+                      required
+                      value={billingForm.billing_postcode}
+                      onChange={(e) =>
+                        setBillingForm((prev) => ({ ...prev, billing_postcode: e.target.value }))
+                      }
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Country</label>
+                  <select
+                    required
+                    value={billingForm.billing_country}
+                    onChange={(e) => {
+                      const nextCountry = e.target.value;
+                      setBillingForm((prev) => ({
+                        ...prev,
+                        billing_country: nextCountry,
+                        billing_state: normalizeCountryValue(nextCountry) === "MY" ? prev.billing_state : "",
+                      }));
+                    }}
+                    className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                  >
+                    {COUNTRY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </section>
 
           <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -1354,7 +1563,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.label ?? ""}
                       onChange={(e) => updateAddressForm("label", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                   <div>
@@ -1362,7 +1571,7 @@ export default function CheckoutForm() {
                     <select
                       value={addressForm.type}
                       onChange={(e) => updateAddressForm("type", e.target.value as AddressPayload["type"])}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                     >
                       <option value="shipping">Shipping</option>
                       <option value="billing">Billing</option>
@@ -1376,7 +1585,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.name}
                       onChange={(e) => updateAddressForm("name", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                   <div>
@@ -1384,7 +1593,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.phone}
                       onChange={(e) => updateAddressForm("phone", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                 </div>
@@ -1394,7 +1603,7 @@ export default function CheckoutForm() {
                   <input
                     value={addressForm.line1}
                     onChange={(e) => updateAddressForm("line1", e.target.value)}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
                 <div>
@@ -1402,7 +1611,7 @@ export default function CheckoutForm() {
                   <input
                     value={addressForm.line2 ?? ""}
                     onChange={(e) => updateAddressForm("line2", e.target.value)}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                   />
                 </div>
 
@@ -1412,7 +1621,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.city}
                       onChange={(e) => updateAddressForm("city", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                   <div>
@@ -1421,7 +1630,7 @@ export default function CheckoutForm() {
                       <select
                         value={addressForm.state ?? ""}
                         onChange={(e) => updateAddressForm("state", e.target.value)}
-                        className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                       >
                         <option value="">Select state</option>
                         {MALAYSIA_STATES_WEST.map((state) => (
@@ -1439,7 +1648,7 @@ export default function CheckoutForm() {
                       <input
                         value={addressForm.state ?? ""}
                         onChange={(e) => updateAddressForm("state", e.target.value)}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                       />
                     )}
                   </div>
@@ -1448,7 +1657,7 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.postcode ?? ""}
                       onChange={(e) => updateAddressForm("postcode", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                     />
                   </div>
                 </div>
@@ -1464,7 +1673,7 @@ export default function CheckoutForm() {
                         updateAddressForm("state", "");
                       }
                     }}
-                    className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                    className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                   >
                     {COUNTRY_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1537,7 +1746,7 @@ export default function CheckoutForm() {
                     value={voucherCode}
                     onChange={(e) => handleVoucherChange(e.target.value)}
                     placeholder="Enter voucher code"
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] ios-input"
+                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
                   />
                   <button
                     type="button"

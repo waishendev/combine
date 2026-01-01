@@ -18,6 +18,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   const { id } = await params;
   const orderId = Number(id);
   const order = await getOrderDetail(orderId);
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
   if (!order) {
     redirect("/login");
@@ -28,6 +29,8 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   }
 
   const receiptSlip = order.slips?.find((slip) => slip.type === "payment_slip") ?? null;
+  const isCompleted = order.status === "completed";
+  const invoiceUrl = `${apiBase}/api/public/shop/orders/${order.id}/invoice`;
 
   return (
     <div className="space-y-6">
@@ -40,6 +43,19 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
         paymentMethod={order.payment_method}
         reserveExpiresAt={order.reserve_expires_at ?? null}
       />
+
+      {isCompleted && (
+        <div className="flex justify-end">
+          <Link
+            href={invoiceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+          >
+            Download Invoice
+          </Link>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-[var(--foreground)]">Items</h2>
@@ -156,6 +172,24 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Billing Address</h3>
+          <div className="mt-2 text-sm text-[var(--foreground)]/80">
+            <p className="font-semibold text-[var(--foreground)]">
+              {order.billing_address?.name ?? "-"}
+            </p>
+            {order.billing_address?.line1 && <p>{order.billing_address.line1}</p>}
+            {order.billing_address?.line2 && <p>{order.billing_address.line2}</p>}
+            {(order.billing_address?.postcode || order.billing_address?.city || order.billing_address?.state) && (
+              <p>
+                {order.billing_address?.postcode} {order.billing_address?.city}, {order.billing_address?.state}
+              </p>
+            )}
+            {order.billing_address?.country && <p>{order.billing_address.country}</p>}
+            {order.billing_address?.phone && <p>Phone: {order.billing_address.phone}</p>}
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Payment</h3>
           <div className="mt-2 text-sm text-[var(--foreground)]/80">
