@@ -176,6 +176,9 @@ status = ready_for_pickup AND payment_status = paid
 Shipped
 status = shipped
 
+Refunded
+status=cancelled + payment_status = refunded 
+
 Completed
 status = completed
 

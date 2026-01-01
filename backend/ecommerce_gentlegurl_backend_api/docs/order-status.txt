@@ -1,0 +1,34 @@
+
+SHOW ORDER 里面 / 给顾客看的
+Awaiting Payment
+payment_status = unpaid AND status = pending
+
+Waiting for Verification
+payment_status = unpaid AND status = processing
+
+Payment Proof Rejected
+status = reject_payment_proof AND payment_status = unpaid
+
+Payment Failed
+payment_status = failed
+
+Cancelled 
+status=cancelled
+
+Payment Confirmed
+status = confirmed AND payment_status = paid
+
+Preparing
+status = processing AND payment_status = paid
+
+Ready for Pickup
+status = ready_for_pickup AND payment_status = paid
+
+Shipped
+status = shipped
+
+Refunded
+status=cancelled + payment_status = refunded 
+
+Completed
+status = completed

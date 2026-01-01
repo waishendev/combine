@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
+use App\Services\SettingService;
 use App\Services\BillplzService;
 use App\Models\BillplzBill;
 use Carbon\Carbon;
@@ -152,6 +153,7 @@ class PublicOrderHistoryController extends Controller
                 'placed_at' => $order->placed_at,
                 'paid_at' => $order->paid_at,
                 'completed_at' => $order->completed_at,
+                'return_window_days' => (int) SettingService::get('ecommerce.return_window_days', 7),
                 'items' => $items,
                 'voucher' => $order->voucher ? [
                     'code' => $order->voucher->code_snapshot,
