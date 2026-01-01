@@ -8,7 +8,7 @@
             margin: 24px;
         }
         body {
-            font-family: DejaVu Sans, Arial, sans-serif;
+            font-family: "Noto Sans CJK SC", "Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Heiti SC", "SimHei", "WenQuanYi Micro Hei", DejaVu Sans, Arial, sans-serif;
             font-size: 12px;
             color: #1f2937;
             margin: 0;
@@ -35,6 +35,7 @@
         }
         .header-table td {
             vertical-align: top;
+            padding-bottom: 12px;
         }
         .company-logo {
             max-width: 120px;
@@ -53,6 +54,14 @@
             text-align: right;
             letter-spacing: 1px;
         }
+        .invoice-subtitle {
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6b7280;
+            text-align: right;
+            margin-top: 2px;
+        }
         .meta-table {
             width: 100%;
             border-collapse: collapse;
@@ -68,12 +77,18 @@
             white-space: nowrap;
             width: 120px;
         }
+        .meta-table td:last-child {
+            text-align: right;
+            white-space: nowrap;
+        }
         .info-table th {
             text-align: left;
             font-size: 12px;
             padding-bottom: 6px;
             padding-top: 8px;
             border-top: 1px solid #e5e7eb;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
         .info-table td {
             padding-right: 20px;
@@ -95,6 +110,9 @@
         .items-table .numeric {
             text-align: right;
             white-space: nowrap;
+        }
+        .items-table td:first-child {
+            width: 55%;
         }
         .sku {
             font-size: 10px;
@@ -198,6 +216,7 @@
                     </td>
                     <td style="text-align: right;">
                         <div class="invoice-title">INVOICE</div>
+                        <div class="invoice-subtitle">Ecommerce Invoice</div>
                         <table class="meta-table">
                             <tr>
                                 <td>Invoice No</td>
