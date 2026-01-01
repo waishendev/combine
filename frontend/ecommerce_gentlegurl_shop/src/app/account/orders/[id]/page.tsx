@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { OrderHeaderClient } from "./OrderHeaderClient";
+import { ReturnRequestButton } from "./ReturnRequestButton";
 
 type OrderDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -81,12 +82,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           {!hasReturnRequest && isCompleted && (
             <div className="flex flex-col items-end gap-2 text-sm text-[var(--foreground)]/70">
               {canRequestReturn ? (
-                <Link
-                  href={`/account/returns/new?order_id=${order.id}`}
-                  className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)]"
-                >
-                  Request Return
-                </Link>
+                <ReturnRequestButton orderId={order.id} />
               ) : (
                 <span className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm">
                   Return window expired

@@ -54,7 +54,7 @@ type ReturnRow = {
   createdAt: string
 }
 
-const statusOptions = ['requested', 'approved', 'rejected', 'in_transit', 'received', 'refunded'] as const
+const statusOptions = ['requested', 'approved', 'rejected', 'in_transit', 'received', 'refunded', 'cancelled'] as const
 
 const badgeStyle = (status: string) => {
   switch (status) {
@@ -70,6 +70,8 @@ const badgeStyle = (status: string) => {
       return 'bg-green-50 text-green-700'
     case 'rejected':
       return 'bg-rose-50 text-rose-700'
+    case 'cancelled':
+      return 'bg-gray-200 text-gray-700'
     default:
       return 'bg-gray-100 text-gray-700'
   }

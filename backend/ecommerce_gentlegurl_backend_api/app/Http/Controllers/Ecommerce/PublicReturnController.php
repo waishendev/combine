@@ -234,14 +234,9 @@ class PublicReturnController extends Controller
             $request->merge(['return_tracking_no' => $request->input('tracking_no')]);
         }
 
-        if (! $request->has('return_shipped_at') && $request->has('shipped_at')) {
-            $request->merge(['return_shipped_at' => $request->input('shipped_at')]);
-        }
-
         $validated = $request->validate([
             'return_courier_name' => ['required', 'string', 'max:100'],
             'return_tracking_no' => ['required', 'string', 'max:100'],
-            'return_shipped_at' => ['nullable', 'date'],
         ]);
 
         if ($returnRequest->customer_id !== (int) $customer->id) {
@@ -255,7 +250,7 @@ class PublicReturnController extends Controller
         $returnRequest->update([
             'return_courier_name' => $validated['return_courier_name'],
             'return_tracking_no' => $validated['return_tracking_no'],
-            'return_shipped_at' => $validated['return_shipped_at'] ? Carbon::parse($validated['return_shipped_at']) : Carbon::now(),
+            'return_shipped_at' => Carbon::now(),
             'status' => 'in_transit',
         ]);
 

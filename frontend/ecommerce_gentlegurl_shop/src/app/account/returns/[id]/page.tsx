@@ -24,6 +24,7 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
   }
 
   const canSubmitTracking = returnRequest.status === "approved";
+  const isCancelled = returnRequest.status === "cancelled";
 
   return (
     <div className="space-y-6">
@@ -114,7 +115,9 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
             <TrackingFormClient returnId={returnRequest.id} />
           ) : (
             <p className="mt-2 text-sm text-[var(--foreground)]/70">
-              Tracking can be submitted once your return has been approved.
+              {isCancelled
+                ? "Cancelled (No tracking submitted)."
+                : "Tracking can be submitted once your return has been approved."}
             </p>
           )}
         </div>

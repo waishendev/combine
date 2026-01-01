@@ -56,5 +56,10 @@ class SettingSeeder extends Seeder
             ['key' => 'ecommerce.return_window_days'],
             ['value' => 7]
         );
+
+        Setting::updateOrCreate(
+            ['key' => 'ecommerce.return_tracking_submit_days'],
+            ['value' => 7]
+        );
     }
 }
