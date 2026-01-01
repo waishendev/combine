@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\Ecommerce\InvoiceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +15,10 @@ use Illuminate\Support\Facades\Storage;
 
 class OrderController extends Controller
 {
-    public function __construct(protected OrderPaymentService $paymentService)
+    public function __construct(
+        protected OrderPaymentService $paymentService,
+        protected InvoiceService $invoiceService,
+    )
     {
     }
 
@@ -124,6 +128,17 @@ class OrderController extends Controller
                 'shipping_postcode' => $order->shipping_postcode,
                 'shipping_country' => $order->shipping_country,
             ],
+            'billing_same_as_shipping' => $order->billing_same_as_shipping,
+            'billing_address' => [
+                'name' => $order->billing_name,
+                'phone' => $order->billing_phone,
+                'line1' => $order->billing_address_line1,
+                'line2' => $order->billing_address_line2,
+                'city' => $order->billing_city,
+                'state' => $order->billing_state,
+                'postcode' => $order->billing_postcode,
+                'country' => $order->billing_country,
+            ],
             'customer' => $order->customer,
             'items' => $order->items->map(function ($item) {
                 $images = $item->product?->images
@@ -168,6 +183,17 @@ class OrderController extends Controller
                     ]),
             ],
         ]);
+    }
+
+    public function invoice(Order $order)
+    {
+        if ($order->status !== 'completed') {
+            return $this->respondError(__('Invoice is available after the order is completed.'), 403);
+        }
+
+        $pdf = $this->invoiceService->buildPdf($order);
+
+        return $pdf->stream("invoice-{$order->order_number}.pdf");
     }
 
     public function update(Request $request, Order $order)

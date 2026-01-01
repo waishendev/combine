@@ -11,7 +11,7 @@ class PaymentGatewaySeeder extends Seeder
     {
         PaymentGateway::updateOrCreate(
             ['key' => 'billplz_fpx'],
-            ['name' => 'Online Banking (Billplz FPX)', 'is_active' => false, 'is_default' => false]
+            ['name' => 'Online Banking (Billplz FPX)', 'is_active' => true, 'is_default' => true]
         );
 
         PaymentGateway::updateOrCreate(

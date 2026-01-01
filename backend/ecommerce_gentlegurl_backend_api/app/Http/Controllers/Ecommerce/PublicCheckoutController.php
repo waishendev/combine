@@ -159,13 +159,39 @@ class PublicCheckoutController extends Controller
         $shippingName = $validated['shipping_name'] ?? data_get($validated, 'customer.name') ?? $customer?->name;
         $shippingPhone = $validated['shipping_phone'] ?? data_get($validated, 'customer.phone') ?? $customer?->phone;
         $shippingAddressLine1 = $validated['shipping_address_line1'] ?? ($validated['shipping_address'] ?? null);
+        $billingSameAsShipping = filter_var(
+            $validated['billing_same_as_shipping'] ?? true,
+            FILTER_VALIDATE_BOOLEAN,
+            FILTER_NULL_ON_FAILURE
+        );
+        $billingSameAsShipping = $billingSameAsShipping ?? true;
+
+        if ($billingSameAsShipping) {
+            $billingName = $shippingName;
+            $billingPhone = $shippingPhone;
+            $billingAddressLine1 = $shippingAddressLine1;
+            $billingAddressLine2 = $validated['shipping_address_line2'] ?? null;
+            $billingCity = $validated['shipping_city'] ?? null;
+            $billingState = $validated['shipping_state'] ?? null;
+            $billingPostcode = $validated['shipping_postcode'] ?? null;
+            $billingCountry = $validated['shipping_country'] ?? 'MY';
+        } else {
+            $billingName = $validated['billing_name'] ?? null;
+            $billingPhone = $validated['billing_phone'] ?? null;
+            $billingAddressLine1 = $validated['billing_address_line1'] ?? null;
+            $billingAddressLine2 = $validated['billing_address_line2'] ?? null;
+            $billingCity = $validated['billing_city'] ?? null;
+            $billingState = $validated['billing_state'] ?? null;
+            $billingPostcode = $validated['billing_postcode'] ?? null;
+            $billingCountry = $validated['billing_country'] ?? 'MY';
+        }
 
         $paymentProvider = str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual';
         $billplzUrl = null;
         $billplzId = null;
 
         try {
-            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod) {
+            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry) {
                 $this->orderReserveService->reserveStockForItems($calculation['items']);
 
                 $order = Order::create([
@@ -193,6 +219,15 @@ class PublicCheckoutController extends Controller
                     'shipping_state' => $validated['shipping_state'] ?? null,
                     'shipping_country' => $validated['shipping_country'] ?? null,
                     'shipping_postcode' => $validated['shipping_postcode'] ?? null,
+                    'billing_same_as_shipping' => $billingSameAsShipping,
+                    'billing_name' => $billingName,
+                    'billing_phone' => $billingPhone,
+                    'billing_address_line1' => $billingAddressLine1,
+                    'billing_address_line2' => $billingAddressLine2,
+                    'billing_city' => $billingCity,
+                    'billing_state' => $billingState,
+                    'billing_postcode' => $billingPostcode,
+                    'billing_country' => $billingCountry,
                 ]);
 
                 if ($customer) {
@@ -536,6 +571,43 @@ class PublicCheckoutController extends Controller
             'shipping_city' => ['nullable', 'string'],
             'shipping_state' => ['nullable', 'string'],
             'shipping_country' => ['nullable', 'string'],
+            'billing_same_as_shipping' => ['nullable', 'boolean'],
+            'billing_name' => [
+                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                'nullable',
+                'string',
+            ],
+            'billing_phone' => [
+                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                'nullable',
+                'string',
+            ],
+            'billing_address_line1' => [
+                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                'nullable',
+                'string',
+            ],
+            'billing_address_line2' => ['nullable', 'string'],
+            'billing_city' => [
+                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                'nullable',
+                'string',
+            ],
+            'billing_state' => [
+                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                'nullable',
+                'string',
+            ],
+            'billing_postcode' => [
+                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                'nullable',
+                'string',
+            ],
+            'billing_country' => [
+                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                'nullable',
+                'string',
+            ],
             'session_token' => ['nullable', 'string', 'max:100'],
             'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card'],
             'bank_account_id' => [

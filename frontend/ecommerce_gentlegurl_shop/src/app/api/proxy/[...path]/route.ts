@@ -104,6 +104,23 @@ async function handleRequest(
     });
 
     const responseContentType = backendResponse.headers.get("content-type") || "";
+
+    if (responseContentType.includes("application/pdf")) {
+      const pdfBuffer = await backendResponse.arrayBuffer();
+      const headers = new Headers();
+      headers.set("Content-Type", responseContentType);
+
+      const contentDisposition = backendResponse.headers.get("content-disposition");
+      if (contentDisposition) {
+        headers.set("Content-Disposition", contentDisposition);
+      }
+
+      return new NextResponse(pdfBuffer, {
+        status: backendResponse.status,
+        headers,
+      });
+    }
+
     const responseText = await backendResponse.text();
 
     if (

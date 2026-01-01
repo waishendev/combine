@@ -46,6 +46,17 @@ export type OrderDetail = {
     postcode?: string | null;
     country?: string | null;
   } | null;
+  billing_address?: {
+    name?: string | null;
+    phone?: string | null;
+    line1?: string | null;
+    line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postcode?: string | null;
+    country?: string | null;
+  } | null;
+  billing_same_as_shipping?: boolean | null;
   pickup_store?: {
     id: number;
     name: string;

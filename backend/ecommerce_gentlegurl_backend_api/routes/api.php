@@ -161,6 +161,7 @@ Route::prefix('/public/shop')->group(function () {
         'showById']);
         Route::post('/orders/{order}/cancel', [PublicOrderHistoryController::class, 'cancel']);
         Route::post('/orders/{order}/pay', [PublicOrderHistoryController::class, 'pay']);
+        Route::get('/orders/{order}/invoice', [PublicOrderHistoryController::class, 'invoice']);
 
         Route::get('/returns', [PublicReturnController::class, 'index']);
         Route::get('/returns/{returnRequest}', [PublicReturnController::class, 'show']);
@@ -419,6 +420,8 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.orders.view');
 
         Route::get('/orders/{order}', [OrderController::class, 'show'])
+            ->middleware('permission:ecommerce.orders.view');
+        Route::get('/orders/{order}/invoice', [OrderController::class, 'invoice'])
             ->middleware('permission:ecommerce.orders.view');
 
         Route::put('/orders/{order}', [OrderController::class, 'update'])
