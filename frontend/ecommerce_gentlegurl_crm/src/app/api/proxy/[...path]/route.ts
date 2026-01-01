@@ -134,7 +134,23 @@ async function handleRequest(
     let data: unknown;
     const responseContentType = response.headers.get('content-type') || '';
     console.log(`[Proxy API] Response Content-Type: ${responseContentType}`);
-    
+
+    if (responseContentType.includes('application/pdf')) {
+      const pdfBuffer = await response.arrayBuffer();
+      const headers = new Headers();
+      headers.set('Content-Type', responseContentType);
+
+      const contentDisposition = response.headers.get('content-disposition');
+      if (contentDisposition) {
+        headers.set('Content-Disposition', contentDisposition);
+      }
+
+      return new NextResponse(pdfBuffer, {
+        status: response.status,
+        headers,
+      });
+    }
+
     const responseText = await response.text();
     console.log(`[Proxy API] Response text length: ${responseText.length}`);
     console.log(`[Proxy API] Response text (first 1000 chars):`, responseText.substring(0, 1000));
@@ -240,4 +256,3 @@ async function handleRequest(
     );
   }
 }
-
