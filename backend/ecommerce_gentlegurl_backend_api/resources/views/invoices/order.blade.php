@@ -37,14 +37,15 @@
             vertical-align: top;
         }
         .company-logo {
-            max-width: 140px;
-            max-height: 70px;
-            margin-bottom: 10px;
+            max-width: 120px;
+            height: 32px;
+            margin-right: 10px;
+            object-fit: contain;
         }
         .company-name {
             font-size: 16px;
             font-weight: bold;
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
         .invoice-title {
             font-size: 24px;
@@ -65,16 +66,20 @@
             color: #6b7280;
             padding-right: 12px;
             white-space: nowrap;
+            width: 120px;
         }
         .info-table th {
             text-align: left;
             font-size: 12px;
             padding-bottom: 6px;
+            padding-top: 8px;
+            border-top: 1px solid #e5e7eb;
         }
         .info-table td {
             padding-right: 20px;
             vertical-align: top;
             width: 50%;
+            padding-top: 6px;
         }
         .items-table th,
         .items-table td {
@@ -114,9 +119,10 @@
             font-size: 11px;
             margin-top: 6px;
             text-align: right;
+            color: #6b7280;
         }
         .footer-note {
-            font-size: 10px;
+            font-size: 9px;
             color: #6b7280;
             text-align: center;
             margin-top: 24px;
@@ -146,24 +152,48 @@
     $billingState = $useShippingForBilling ? $order->shipping_state : $order->billing_state;
     $billingPostcode = $useShippingForBilling ? $order->shipping_postcode : $order->billing_postcode;
     $billingCountry = $useShippingForBilling ? $order->shipping_country : $order->billing_country;
+    $paymentMethodRaw = $order->payment_method ?? '';
+    $paymentMethodMap = [
+        'manual_transfer' => 'Manual Transfer',
+        'billplz' => 'Billplz',
+    ];
+    $paymentMethodLabel = $paymentMethodMap[$paymentMethodRaw] ?? ($paymentMethodRaw ?: '-');
+    $paymentMethodDisplay = $paymentMethodLabel;
+    if ($paymentMethodRaw && $paymentMethodLabel !== $paymentMethodRaw) {
+        $paymentMethodDisplay .= " ({$paymentMethodRaw})";
+    }
 @endphp
     <div class="page">
         <div class="section">
             <table class="header-table">
                 <tr>
                     <td>
-                        @if(!empty($profile['company_logo_url']))
-                            <img class="company-logo" src="{{ $profile['company_logo_url'] }}" alt="Company Logo">
-                        @endif
-                        <div class="company-name">{{ $profile['company_name'] ?? 'Company Name' }}</div>
+                        <table>
+                            <tr>
+                                @if(!empty($profile['company_logo_url']))
+                                    <td style="vertical-align: top;">
+                                        <img class="company-logo" src="{{ $profile['company_logo_url'] }}" alt="Company Logo">
+                                    </td>
+                                @endif
+                                <td style="vertical-align: top;">
+                                    <div class="company-name">{{ $profile['company_name'] ?? 'Company Name' }}</div>
+                                    @if(!empty($profile['company_reg_no']))
+                                        <div>Company Reg No: {{ $profile['company_reg_no'] }}</div>
+                                    @endif
+                                    @if(!empty($profile['company_phone']))
+                                        <div>Phone: {{ $profile['company_phone'] }}</div>
+                                    @endif
+                                    @if(!empty($profile['company_email']))
+                                        <div>Email: {{ $profile['company_email'] }}</div>
+                                    @endif
+                                    @if(!empty($profile['company_website']))
+                                        <div>Website: {{ $profile['company_website'] }}</div>
+                                    @endif
+                                </td>
+                            </tr>
+                        </table>
                         @if(!empty($profile['company_address']))
                             <div>{!! nl2br(e($profile['company_address'])) !!}</div>
-                        @endif
-                        @if(!empty($profile['company_phone']))
-                            <div>Phone: {{ $profile['company_phone'] }}</div>
-                        @endif
-                        @if(!empty($profile['company_email']))
-                            <div>Email: {{ $profile['company_email'] }}</div>
                         @endif
                     </td>
                     <td style="text-align: right;">
@@ -187,7 +217,7 @@
                             </tr>
                             <tr>
                                 <td>Payment Method</td>
-                                <td>{{ $order->payment_method ?? '-' }}</td>
+                                <td>{{ $paymentMethodDisplay }}</td>
                             </tr>
                         </table>
                     </td>
@@ -199,7 +229,7 @@
             <table class="info-table">
                 <tr>
                     <th>Bill To</th>
-                    <th>Ship To / Pickup</th>
+                    <th>{{ $order->pickup_or_shipping === 'pickup' ? 'Pickup' : 'Ship To' }}</th>
                 </tr>
                 <tr>
                     <td>
@@ -218,20 +248,24 @@
                     </td>
                     <td>
                         @if($order->pickup_or_shipping === 'pickup')
-                            <div>Pickup Contact: {{ $order->shipping_name ?? '-' }}</div>
-                            @if($order->shipping_phone)
-                                <div>Phone: {{ $order->shipping_phone }}</div>
-                            @endif
                             @if($order->pickupStore)
-                                <div style="margin-top: 6px;"><strong>{{ $order->pickupStore->name }}</strong></div>
-                                <div>{{ $order->pickupStore->address_line1 }}</div>
+                                <div><strong>{{ $order->pickupStore->name }}</strong></div>
+                                @if($order->pickupStore->address_line1)
+                                    <div>{{ $order->pickupStore->address_line1 }}</div>
+                                @endif
                                 @if($order->pickupStore->address_line2)
                                     <div>{{ $order->pickupStore->address_line2 }}</div>
                                 @endif
                                 <div>
                                     {{ trim(collect([$order->pickupStore->postcode, $order->pickupStore->city, $order->pickupStore->state])->filter()->implode(' ')) }}
                                 </div>
-                                <div>{{ $order->pickupStore->country }}</div>
+                                @if($order->pickupStore->country)
+                                    <div>{{ $order->pickupStore->country }}</div>
+                                @endif
+                            @endif
+                            <div style="margin-top: 6px;">Pickup Contact: {{ $order->shipping_name ?? '-' }}</div>
+                            @if($order->shipping_phone)
+                                <div>Phone: {{ $order->shipping_phone }}</div>
                             @endif
                         @else
                             <div>{{ $order->shipping_name ?? '-' }}</div>
@@ -268,7 +302,7 @@
                     @foreach($order->items as $item)
                         <tr>
                             <td>
-                                <div>{{ $item->product_name_snapshot }}</div>
+                                <div><strong>{{ $item->product_name_snapshot }}</strong></div>
                                 @if($item->sku_snapshot)
                                     <div class="sku">SKU: {{ $item->sku_snapshot }}</div>
                                 @endif

@@ -334,9 +334,11 @@ class ShopSettingController extends Controller
         $validated = $request->validate([
             'company_logo_url' => ['nullable', 'url'],
             'company_name' => ['required', 'string', 'max:255'],
+            'company_reg_no' => ['nullable', 'string', 'max:100'],
             'company_address' => ['required', 'string'],
             'company_phone' => ['nullable', 'string', 'max:50'],
             'company_email' => ['nullable', 'email', 'max:255'],
+            'company_website' => ['nullable', 'url', 'max:255'],
             'footer_note' => ['nullable', 'string', 'max:255'],
             'currency' => ['required', 'string', 'max:10'],
         ]);
@@ -344,9 +346,11 @@ class ShopSettingController extends Controller
         return [
             'company_logo_url' => $validated['company_logo_url'] ?? null,
             'company_name' => $validated['company_name'],
+            'company_reg_no' => $validated['company_reg_no'] ?? null,
             'company_address' => $validated['company_address'],
             'company_phone' => $validated['company_phone'] ?? null,
             'company_email' => $validated['company_email'] ?? null,
+            'company_website' => $validated['company_website'] ?? null,
             'footer_note' => $validated['footer_note'] ?? null,
             'currency' => $validated['currency'],
         ];
@@ -394,9 +398,11 @@ class ShopSettingController extends Controller
         return [
             'company_logo_url' => null,
             'company_name' => 'Gentlegurl Shop',
+            'company_reg_no' => null,
             'company_address' => "123 Gentle Lane\nKuala Lumpur\nMalaysia",
             'company_phone' => null,
             'company_email' => null,
+            'company_website' => null,
             'footer_note' => 'This is a computer-generated invoice.',
             'currency' => 'MYR',
         ];

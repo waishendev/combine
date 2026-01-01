@@ -83,9 +83,11 @@ type ShopSettingsResponse = {
     invoice_profile?: {
       company_logo_url?: string | null
       company_name?: string
+      company_reg_no?: string | null
       company_address?: string
       company_phone?: string | null
       company_email?: string | null
+      company_website?: string | null
       footer_note?: string | null
       currency?: string
     }
@@ -192,9 +194,11 @@ const defaultFooterSettings = {
 const defaultInvoiceProfileSettings = {
   company_logo_url: '',
   company_name: 'Gentlegurl Shop',
+  company_reg_no: '',
   company_address: '123 Gentle Lane\nKuala Lumpur\nMalaysia',
   company_phone: '',
   company_email: '',
+  company_website: '',
   footer_note: 'This is a computer-generated invoice.',
   currency: 'MYR',
 }
@@ -357,12 +361,15 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
           company_logo_url:
             invoiceProfile.company_logo_url ?? defaultInvoiceProfileSettings.company_logo_url,
           company_name: invoiceProfile.company_name ?? defaultInvoiceProfileSettings.company_name,
+          company_reg_no: invoiceProfile.company_reg_no ?? defaultInvoiceProfileSettings.company_reg_no,
           company_address:
             invoiceProfile.company_address ?? defaultInvoiceProfileSettings.company_address,
           company_phone:
             invoiceProfile.company_phone ?? defaultInvoiceProfileSettings.company_phone,
           company_email:
             invoiceProfile.company_email ?? defaultInvoiceProfileSettings.company_email,
+          company_website:
+            invoiceProfile.company_website ?? defaultInvoiceProfileSettings.company_website,
           footer_note: invoiceProfile.footer_note ?? defaultInvoiceProfileSettings.footer_note,
           currency: invoiceProfile.currency ?? defaultInvoiceProfileSettings.currency,
         })
@@ -600,9 +607,11 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         body: JSON.stringify({
           company_logo_url: invoiceProfileSettings.company_logo_url || null,
           company_name: invoiceProfileSettings.company_name,
+          company_reg_no: invoiceProfileSettings.company_reg_no || null,
           company_address: invoiceProfileSettings.company_address,
           company_phone: invoiceProfileSettings.company_phone || null,
           company_email: invoiceProfileSettings.company_email || null,
+          company_website: invoiceProfileSettings.company_website || null,
           footer_note: invoiceProfileSettings.footer_note || null,
           currency: invoiceProfileSettings.currency,
         }),
@@ -1070,6 +1079,23 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
             </label>
 
             <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Company Reg No</span>
+              <input
+                type="text"
+                value={invoiceProfileSettings.company_reg_no}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    company_reg_no: event.target.value,
+                  }))
+                }
+                placeholder="e.g. 202401234567"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Currency</span>
               <input
                 type="text"
@@ -1131,6 +1157,23 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                   }))
                 }
                 placeholder="support@example.com"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Company Website</span>
+              <input
+                type="url"
+                value={invoiceProfileSettings.company_website}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    company_website: event.target.value,
+                  }))
+                }
+                placeholder="https://example.com"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </label>
