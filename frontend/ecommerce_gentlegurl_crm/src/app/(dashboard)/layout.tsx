@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import Header from '@/components/Header'
@@ -20,11 +20,76 @@ type ProfileResponse = {
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
+  const hasRedirected = useRef(false)
   // Mobile: start collapsed (hidden), Desktop: start expanded
   const [collapsed, setCollapsed] = useState(true)
   const [userEmail, setUserEmail] = useState('')
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [permissions, setPermissions] = useState<string[]>([])
+
+  useEffect(() => {
+    const authCookieNames = [
+      'connect.sid',
+      'laravel-session',
+      'gentlegurl-api-session',
+    ]
+
+    const clearAuthCookies = () => {
+      authCookieNames.forEach((name) => {
+        document.cookie = `${name}=; Max-Age=0; path=/`
+      })
+    }
+
+    const isUnauthenticated = (data: unknown, status: number) => {
+      if (status === 401 || status === 419) {
+        return true
+      }
+
+      if (data && typeof data === 'object' && 'message' in data) {
+        const message = (data as { message?: unknown }).message
+        if (typeof message === 'string') {
+          const normalized = message.toLowerCase()
+          return normalized === 'unauthenticated' || normalized === 'unauthorized'
+        }
+      }
+
+      return false
+    }
+
+    const originalFetch = window.fetch.bind(window)
+
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args)
+
+      if (hasRedirected.current) {
+        return response
+      }
+
+      if (response.status === 401 || response.status === 419) {
+        clearAuthCookies()
+        hasRedirected.current = true
+        router.replace('/login')
+        return response
+      }
+
+      try {
+        const data = await response.clone().json()
+        if (isUnauthenticated(data, response.status)) {
+          clearAuthCookies()
+          hasRedirected.current = true
+          router.replace('/login')
+        }
+      } catch {
+        // Ignore non-JSON responses
+      }
+
+      return response
+    }
+
+    return () => {
+      window.fetch = originalFetch
+    }
+  }, [router])
 
   useEffect(() => {
     let isActive = true

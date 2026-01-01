@@ -3,6 +3,34 @@ import { NextRequest, NextResponse } from 'next/server';
 // Proxy route for /api/proxy/* that forwards to backend
 // Example: /api/proxy/admins -> http://localhost:8000/api/admins
 
+const AUTH_COOKIE_NAMES = [
+  'connect.sid',
+  'laravel-session',
+  'gentlegurl-api-session',
+];
+
+function clearAuthCookies(response: NextResponse) {
+  AUTH_COOKIE_NAMES.forEach((name) => {
+    response.cookies.set(name, '', { maxAge: 0, path: '/' });
+  });
+}
+
+function isUnauthenticatedResponse(data: unknown, status: number) {
+  if (status === 401 || status === 419) {
+    return true;
+  }
+
+  if (data && typeof data === 'object' && 'message' in data) {
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      const normalized = message.toLowerCase();
+      return normalized === 'unauthenticated' || normalized === 'unauthorized';
+    }
+  }
+
+  return false;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
@@ -182,6 +210,15 @@ async function handleRequest(
         },
         { status: response.status || 500 }
       );
+    }
+
+    if (isUnauthenticatedResponse(data, response.status)) {
+      const nextResponse = NextResponse.json(
+        data ?? { success: false, message: 'Unauthenticated' },
+        { status: 401 },
+      );
+      clearAuthCookies(nextResponse);
+      return nextResponse;
     }
 
     // Create response with forwarded data
