@@ -109,7 +109,7 @@ class ReturnRequestController extends Controller
     public function updateStatus(Request $request, ReturnRequest $returnRequest)
     {
         $validated = $request->validate([
-            'action' => ['required', 'in:approve,reject,mark_received,complete'],
+            'action' => ['required', 'in:approve,reject,mark_in_transit,mark_received,mark_refunded'],
             'admin_note' => ['nullable', 'string'],
             'status_note' => ['nullable', 'string'],
         ]);
@@ -118,37 +118,59 @@ class ReturnRequestController extends Controller
 
         switch ($action) {
             case 'approve':
-                if ($returnRequest->status !== 'pending_review') {
-                    return $this->respond(null, __('Return request not in pending review state.'), false, 422);
+                if ($returnRequest->status !== 'requested') {
+                    return $this->respond(null, __('Return request not in requested state.'), false, 422);
                 }
-                $returnRequest->status = 'approved_waiting_return';
+                $returnRequest->status = 'approved';
                 $returnRequest->reviewed_at = Carbon::now();
                 break;
             case 'reject':
-                if ($returnRequest->status !== 'pending_review') {
-                    return $this->respond(null, __('Return request not in pending review state.'), false, 422);
+                if ($returnRequest->status !== 'requested') {
+                    return $this->respond(null, __('Return request not in requested state.'), false, 422);
+                }
+                if (empty($validated['admin_note'])) {
+                    return $this->respond(null, __('Admin note is required for rejection.'), false, 422);
                 }
                 $returnRequest->status = 'rejected';
                 $returnRequest->reviewed_at = Carbon::now();
                 break;
+            case 'mark_in_transit':
+                if ($returnRequest->status !== 'approved') {
+                    return $this->respond(null, __('Return request must be approved before marking in transit.'), false, 422);
+                }
+                $returnRequest->status = 'in_transit';
+                break;
             case 'mark_received':
-                if (!in_array($returnRequest->status, ['approved_waiting_return', 'in_transit'])) {
+                if (! in_array($returnRequest->status, ['approved', 'in_transit'], true)) {
                     return $this->respond(null, __('Return request not awaiting receipt.'), false, 422);
                 }
                 $returnRequest->status = 'received';
                 $returnRequest->received_at = Carbon::now();
                 break;
-            case 'complete':
+            case 'mark_refunded':
                 if ($returnRequest->status !== 'received') {
-                    return $this->respond(null, __('Return request must be received before completion.'), false, 422);
+                    return $this->respond(null, __('Return request must be received before refunding.'), false, 422);
                 }
-                $returnRequest->status = 'completed';
+                if (empty($validated['admin_note'])) {
+                    return $this->respond(null, __('Admin note is required for refunding.'), false, 422);
+                }
+                $returnRequest->status = 'refunded';
                 $returnRequest->completed_at = Carbon::now();
                 break;
         }
 
         $returnRequest->admin_note = $validated['admin_note'] ?? $validated['status_note'] ?? $returnRequest->admin_note;
         $returnRequest->save();
+
+        if ($action === 'mark_refunded' && $returnRequest->relationLoaded('order') === false) {
+            $returnRequest->load('order');
+        }
+
+        if ($action === 'mark_refunded' && $returnRequest->order) {
+            $returnRequest->order->update([
+                'payment_status' => 'refunded',
+            ]);
+        }
 
         return $this->respond($returnRequest->fresh(), __('Status updated.'));
     }
