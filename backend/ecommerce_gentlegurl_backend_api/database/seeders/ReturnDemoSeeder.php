@@ -10,6 +10,7 @@ use App\Models\Ecommerce\ReturnRequest;
 use App\Models\Ecommerce\ReturnRequestItem;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class ReturnDemoSeeder extends Seeder
 {
@@ -26,6 +27,10 @@ class ReturnDemoSeeder extends Seeder
             [
                 'name' => 'Return Demo Customer',
                 'phone' => '010-0000000',
+                'password' => Hash::make('password'),
+                'tier' => 'bronze',
+                'is_active' => true,
+                
             ]
         );
 
