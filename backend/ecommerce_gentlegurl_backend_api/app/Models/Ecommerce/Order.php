@@ -58,6 +58,7 @@ class Order extends Model
         'pickup_ready_at',
         'refund_proof_path',
         'refunded_at',
+        'refund_total',
     ];
 
     protected function casts(): array
@@ -75,6 +76,7 @@ class Order extends Model
             'shipped_at' => 'datetime',
             'pickup_ready_at' => 'datetime',
             'refunded_at' => 'datetime',
+            'refund_total' => 'decimal:2',
         ];
     }
 

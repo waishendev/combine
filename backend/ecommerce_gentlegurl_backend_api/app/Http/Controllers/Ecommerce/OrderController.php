@@ -109,6 +109,7 @@ class OrderController extends Controller
                     'grand_total' => $order->grand_total,
                     'shipping_method' => $order->pickup_or_shipping,
                     'created_at' => $order->created_at,
+                    'refund_total' => $order->refund_total,
                     'return_summary' => $returnSummary,
                 ];
             });
@@ -143,6 +144,7 @@ class OrderController extends Controller
             'pickup_ready_at' => $order->pickup_ready_at,
             'notes' => $order->notes,
             'admin_note' => $order->admin_note,
+            'refund_total' => $order->refund_total,
             'address' => [
                 'shipping_name' => $order->shipping_name,
                 'shipping_phone' => $order->shipping_phone,
@@ -209,7 +211,7 @@ class OrderController extends Controller
                     'refund' => [
                         'status' => $refundStatus,
                         'refunded_at' => $refundStatus === 'refunded' ? $order->refunded_at : null,
-                        'amount' => '0.00',
+                        'amount' => $return->refund_amount ?? '0.00',
                     ],
                 ];
             }),
@@ -363,26 +365,44 @@ class OrderController extends Controller
 
         $validated = $request->validate([
             'admin_note' => ['required', 'string', 'min:1'],
+            'refund_amount' => ['required', 'numeric', 'min:0.01'],
             'refund_proof_path' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ]);
 
-        DB::transaction(function () use ($order, $validated, $request) {
-            $order->status = 'cancelled';
-            $order->payment_status = 'refunded';
-            
-            if (!empty($validated['admin_note'])) {
-                $order->admin_note = trim(($order->admin_note ?? '') . "\n" . $validated['admin_note']);
-            }
+        $refundAmount = (float) $validated['refund_amount'];
 
-            // Handle file upload if provided
-            if ($request->hasFile('refund_proof_path')) {
-                $filePath = $request->file('refund_proof_path')->store('refund-photos', 'public');
-                $order->refund_proof_path = $filePath;
-                $order->refunded_at = Carbon::now();
-            }
+        try {
+            DB::transaction(function () use ($order, $validated, $request, $refundAmount) {
+                $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
+                if (! $lockedOrder) {
+                    return;
+                }
 
-            $order->save();
-        });
+                $remaining = (float) $lockedOrder->grand_total - (float) $lockedOrder->refund_total;
+                if ($refundAmount > $remaining) {
+                    throw new \RuntimeException('Refund amount exceeds remaining refundable total.');
+                }
+
+                $lockedOrder->status = 'cancelled';
+                $lockedOrder->payment_status = 'refunded';
+                $lockedOrder->refund_total = (float) $lockedOrder->refund_total + $refundAmount;
+                
+                if (!empty($validated['admin_note'])) {
+                    $lockedOrder->admin_note = trim(($lockedOrder->admin_note ?? '') . "\n" . $validated['admin_note']);
+                }
+
+                // Handle file upload if provided
+                if ($request->hasFile('refund_proof_path')) {
+                    $filePath = $request->file('refund_proof_path')->store('refund-photos', 'public');
+                    $lockedOrder->refund_proof_path = $filePath;
+                }
+
+                $lockedOrder->refunded_at = Carbon::now();
+                $lockedOrder->save();
+            });
+        } catch (\RuntimeException $exception) {
+            return $this->respond(null, __($exception->getMessage()), false, 422);
+        }
 
         return $this->respond($order->fresh(['items', 'customer']), __('Order Refunded.'));
     }

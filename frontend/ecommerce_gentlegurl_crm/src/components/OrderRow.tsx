@@ -14,6 +14,7 @@ export interface OrderRowData {
   grandTotal: number
   createdAt: string
   updatedAt: string
+  refundTotal?: number
   returnSummary?: {
     hasReturn: boolean
     returnCount: number
@@ -62,6 +63,7 @@ export default function OrderRow({
   }
 
   const hasRefund = order.paymentStatus?.toLowerCase() === 'refunded'
+  const refundTotal = order.refundTotal ?? 0
   const returnSummary = order.returnSummary
   const returnStatus = returnSummary?.returnStatuses?.[0]
   const returnStatusLabel = returnStatus ? formatReturnStatus(returnStatus) : ''
@@ -78,7 +80,12 @@ export default function OrderRow({
       <td className="px-4 py-2 border border-gray-200">
         <div className="flex flex-col gap-2">
           <StatusBadge status={order.status.toLowerCase()} label={order.status} />
-          {hasRefund ? (
+          {refundTotal > 0 ? (
+            <StatusBadge
+              status="refunded"
+              label={`Refunded: RM ${formatAmount(refundTotal)}`}
+            />
+          ) : hasRefund ? (
             <StatusBadge status="refunded" label="Refunded" />
           ) : returnSummary?.hasReturn ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">

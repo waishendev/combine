@@ -77,6 +77,7 @@ type OrderDetailData = {
     }>
   }
   admin_note?: string | null
+  refund_total?: string | number
   returns?: Array<{
     id: number
     status: string
@@ -217,6 +218,11 @@ export default function OrderViewPanel({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })
+  }
+
+  const toNumber = (value: string | number | null | undefined) => {
+    if (value === null || value === undefined) return 0
+    return typeof value === 'string' ? Number.parseFloat(value) : Number(value)
   }
 
   const formatPaymentMethod = (method: string | null | undefined) => {
@@ -467,6 +473,22 @@ export default function OrderViewPanel({
                     <span className="text-slate-500">Shipping Fee</span>
                     <span className="font-medium text-slate-900">RM {formatAmount(order.shipping_fee)}</span>
                   </div>
+                  {toNumber(order.refund_total) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Refunded</span>
+                      <span className="font-medium text-slate-900">
+                        RM {formatAmount(order.refund_total ?? 0)}
+                      </span>
+                    </div>
+                  )}
+                  {toNumber(order.refund_total) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Net</span>
+                      <span className="font-medium text-slate-900">
+                        RM {formatAmount(toNumber(order.grand_total) - toNumber(order.refund_total))}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold">
                     <span className="text-slate-900">Grand Total</span>
                     <span className="text-slate-900">RM {formatAmount(order.grand_total)}</span>
@@ -774,6 +796,15 @@ export default function OrderViewPanel({
                               <p className="text-xs text-slate-500">Refund Status</p>
                               <StatusBadge status={refundStatus} label={refundLabel} />
                             </div>
+                            {returnRequest.refund?.amount &&
+                              toNumber(returnRequest.refund.amount) > 0 && (
+                                <div>
+                                  <p className="text-xs text-slate-500">Refund Amount</p>
+                                  <p className="font-medium text-slate-900">
+                                    RM {formatAmount(returnRequest.refund.amount)}
+                                  </p>
+                                </div>
+                              )}
                           </div>
                         </div>
                       )

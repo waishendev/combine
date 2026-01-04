@@ -36,6 +36,10 @@ type ReturnDetail = {
   return_courier_name?: string | null
   return_tracking_no?: string | null
   return_shipped_at?: string | null
+  refund_amount?: string | number | null
+  refund_method?: string | null
+  refund_proof_path?: string | null
+  refunded_at?: string | null
   items?: ReturnItem[]
   timeline?: {
     created_at?: string | null
@@ -84,6 +88,28 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleString()
 }
 
+const formatAmount = (value?: string | number | null) => {
+  if (value === null || value === undefined) return '0.00'
+  const num = typeof value === 'string' ? Number.parseFloat(value) : Number(value)
+  if (Number.isNaN(num)) return '0.00'
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+const getFileUrl = (path?: string | null) => {
+  if (!path) return null
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000'
+  if (path.startsWith('/')) {
+    return `${baseUrl}${path}`
+  }
+  return `${baseUrl}/storage/${path}`
+}
+
 export default function ReturnOrdersTable() {
   const [rows, setRows] = useState<ReturnRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,6 +122,9 @@ export default function ReturnOrdersTable() {
   const [actionNote, setActionNote] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [refundAmount, setRefundAmount] = useState('')
+  const [refundMethod, setRefundMethod] = useState('')
+  const [refundProof, setRefundProof] = useState<File | null>(null)
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
@@ -154,6 +183,9 @@ export default function ReturnOrdersTable() {
     setDetail(null)
     setActionNote('')
     setActionError(null)
+    setRefundAmount('')
+    setRefundMethod('')
+    setRefundProof(null)
 
     try {
       const res = await fetch(`/api/proxy/ecommerce/returns/${id}`, {
@@ -189,13 +221,36 @@ export default function ReturnOrdersTable() {
       return
     }
 
+    if (action === 'mark_refunded' && (!refundAmount || Number(refundAmount) <= 0)) {
+      setActionError('Refund amount is required for refunding.')
+      return
+    }
+
     setActionLoading(true)
     try {
-      const res = await fetch(`/api/proxy/ecommerce/returns/${selectedId}/status`, {
+      const requestUrl = `/api/proxy/ecommerce/returns/${selectedId}/status`
+      const requestInit: RequestInit = {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, admin_note: actionNote }),
-      })
+      }
+
+      if (action === 'mark_refunded') {
+        const formData = new FormData()
+        formData.append('action', action)
+        formData.append('admin_note', actionNote)
+        formData.append('refund_amount', refundAmount)
+        if (refundMethod) {
+          formData.append('refund_method', refundMethod)
+        }
+        if (refundProof) {
+          formData.append('refund_proof_path', refundProof)
+        }
+        requestInit.body = formData
+      } else {
+        requestInit.headers = { 'Content-Type': 'application/json' }
+        requestInit.body = JSON.stringify({ action, admin_note: actionNote })
+      }
+
+      const res = await fetch(requestUrl, requestInit)
 
       const json = await res.json().catch(() => null)
       if (!res.ok) {
@@ -206,6 +261,9 @@ export default function ReturnOrdersTable() {
       await fetchReturns()
       await fetchDetail(selectedId)
       setActionNote('')
+      setRefundAmount('')
+      setRefundMethod('')
+      setRefundProof(null)
     } finally {
       setActionLoading(false)
     }
@@ -393,6 +451,28 @@ export default function ReturnOrdersTable() {
               <p>Refunded: {formatDate(detail.timeline?.completed_at)}</p>
             </div>
 
+            {(detail.refund_amount ||
+              detail.refund_method ||
+              detail.refund_proof_path ||
+              detail.refunded_at) && (
+              <div className="space-y-1">
+                <p className="font-medium text-gray-700">Refund</p>
+                <p>Amount: RM {formatAmount(detail.refund_amount)}</p>
+                <p>Method: {detail.refund_method ?? '—'}</p>
+                <p>Refunded At: {formatDate(detail.refunded_at)}</p>
+                {detail.refund_proof_path && (
+                  <a
+                    href={getFileUrl(detail.refund_proof_path) ?? '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    View refund proof
+                  </a>
+                )}
+              </div>
+            )}
+
             {availableActions.length > 0 && (
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase text-gray-400">Update Status</label>
@@ -404,6 +484,51 @@ export default function ReturnOrdersTable() {
                   rows={3}
                 />
                 {actionError && <p className="text-sm text-rose-600">{actionError}</p>}
+                {detail.status === 'received' && (
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs font-semibold uppercase text-gray-400">
+                        Refund Amount (RM)
+                      </label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={refundAmount}
+                        onChange={(event) => setRefundAmount(event.target.value)}
+                        className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold uppercase text-gray-400">
+                        Refund Method (Optional)
+                      </label>
+                      <select
+                        value={refundMethod}
+                        onChange={(event) => setRefundMethod(event.target.value)}
+                        className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                      >
+                        <option value="">Select method</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="cash">Cash</option>
+                        <option value="card_refund">Card Refund</option>
+                        <option value="store_credit">Store Credit</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold uppercase text-gray-400">
+                        Refund Proof (Optional)
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(event) => setRefundProof(event.target.files?.[0] || null)}
+                        className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {availableActions.map((action) => (
                     <button
