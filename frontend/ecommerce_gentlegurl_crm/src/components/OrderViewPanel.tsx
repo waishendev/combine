@@ -77,6 +77,25 @@ type OrderDetailData = {
     }>
   }
   admin_note?: string | null
+  returns?: Array<{
+    id: number
+    status: string
+    reason?: string | null
+    requested_at?: string | null
+    reviewed_at?: string | null
+    received_at?: string | null
+    completed_at?: string | null
+    items?: Array<{
+      order_item_id: number
+      product_name: string
+      qty: number
+    }>
+    refund?: {
+      status: string
+      refunded_at?: string | null
+      amount?: string
+    }
+  }>
 }
 
 export default function OrderViewPanel({
@@ -212,6 +231,14 @@ export default function OrderViewPanel({
       default:
         return method
     }
+  }
+
+  const formatReturnStatus = (status: string | null | undefined) => {
+    if (!status) return '-'
+    return status
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
   }
 
   const getImageUrl = (imagePath: string | null | undefined) => {
@@ -676,6 +703,84 @@ export default function OrderViewPanel({
                 </section>
               )}
 
+              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-slate-900">Returns</p>
+                </div>
+                <div className="space-y-4 px-4 py-3 text-sm">
+                  {!order.returns || order.returns.length === 0 ? (
+                    <p className="text-slate-500">No return requests</p>
+                  ) : (
+                    order.returns.map((returnRequest) => {
+                      const refundStatus =
+                        returnRequest.refund?.status ||
+                        (order.payment_status === 'refunded' ? 'refunded' : 'not_refunded')
+                      const refundLabel =
+                        refundStatus === 'refunded' ? 'Refunded' : 'Not Refunded'
+
+                      return (
+                        <div
+                          key={returnRequest.id}
+                          className="rounded-lg border border-slate-200 bg-slate-50 p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-semibold text-slate-900">
+                                  Return #{returnRequest.id}
+                                </p>
+                                <StatusBadge
+                                  status={returnRequest.status?.toLowerCase() || ''}
+                                  label={formatReturnStatus(returnRequest.status)}
+                                />
+                              </div>
+                              <p className="text-xs text-slate-500">
+                                Requested: {formatDate(returnRequest.requested_at)}
+                              </p>
+                            </div>
+                            <a
+                              href={`/returns?return_id=${returnRequest.id}`}
+                              className="inline-flex items-center rounded border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                            >
+                              View Return
+                            </a>
+                          </div>
+
+                          <div className="mt-3 space-y-2">
+                            <div>
+                              <p className="text-xs text-slate-500">Reason</p>
+                              <p className="font-medium text-slate-900">
+                                {returnRequest.reason || '-'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">Items</p>
+                              {returnRequest.items && returnRequest.items.length > 0 ? (
+                                <ul className="mt-1 space-y-1">
+                                  {returnRequest.items.map((item) => (
+                                    <li key={`${returnRequest.id}-${item.order_item_id}`}>
+                                      <span className="font-medium text-slate-900">
+                                        {item.product_name || 'Item'}
+                                      </span>{' '}
+                                      <span className="text-slate-600">× {item.qty}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-slate-500">-</p>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">Refund Status</p>
+                              <StatusBadge status={refundStatus} label={refundLabel} />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </section>
 
               {/* Vouchers */}
               {order.vouchers && order.vouchers.length > 0 && (

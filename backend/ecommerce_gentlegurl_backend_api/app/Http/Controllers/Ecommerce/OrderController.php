@@ -44,7 +44,11 @@ class OrderController extends Controller
             $paymentStatus = !empty($paymentStatus) ? $paymentStatus : null;
         }
     
-        $orders = Order::with(['customer:id,name,email'])
+        $orders = Order::with([
+            'customer:id,name,email',
+            'returns:id,order_id,status,created_at',
+            'returns.items:id,return_request_id,quantity',
+        ])
             ->when($status, function ($q) use ($status, $paymentStatus) {
                 // If filtering ONLY by cancelled status (no other statuses) and payment_status is not specified 
                 // (or doesn't include 'refunded'), exclude refunded orders to show only cancelled (non-refunded) orders
@@ -75,6 +79,20 @@ class OrderController extends Controller
             ->orderByDesc('created_at')
             ->paginate($perPage)
             ->through(function (Order $order) {
+                $latestReturn = $order->returns
+                    ->sortByDesc('created_at')
+                    ->first();
+                $returnItemsTotalQty = $order->returns
+                    ->flatMap(fn($return) => $return->items)
+                    ->sum('quantity');
+                $returnSummary = [
+                    'has_return' => $order->returns->isNotEmpty(),
+                    'return_count' => $order->returns->count(),
+                    'return_statuses' => $latestReturn ? [$latestReturn->status] : [],
+                    'return_items_total_qty' => $returnItemsTotalQty,
+                    'latest_return_id' => $latestReturn?->id,
+                ];
+
                 return [
                     'id' => $order->id,
                     'order_no' => $order->order_number,
@@ -91,6 +109,7 @@ class OrderController extends Controller
                     'grand_total' => $order->grand_total,
                     'shipping_method' => $order->pickup_or_shipping,
                     'created_at' => $order->created_at,
+                    'return_summary' => $returnSummary,
                 ];
             });
     
@@ -100,7 +119,13 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        $order->load(['items.product.images', 'customer', 'vouchers', 'vouchers.voucher']);
+        $order->load([
+            'items.product.images',
+            'customer',
+            'vouchers',
+            'vouchers.voucher',
+            'returns.items.orderItem',
+        ]);
 
         return $this->respond([
             'id' => $order->id,
@@ -158,6 +183,34 @@ class OrderController extends Controller
                     'unit_price' => $item->price_snapshot ?? $item->unit_price,
                     'line_total' => $item->line_total,
                     'product_image' => $thumbnail,
+                ];
+            }),
+            'returns' => $order->returns->map(function ($return) use ($order) {
+                $refundStatus = $order->payment_status === 'refunded' ? 'refunded' : 'not_refunded';
+
+                return [
+                    'id' => $return->id,
+                    'status' => $return->status,
+                    'reason' => $return->reason,
+                    'requested_at' => $return->created_at,
+                    'reviewed_at' => $return->reviewed_at,
+                    'received_at' => $return->received_at,
+                    'completed_at' => $return->completed_at,
+                    'items' => $return->items->map(function ($item) {
+                        $orderItem = $item->orderItem;
+                        $productName = $orderItem?->product_name_snapshot ?? $orderItem?->product_name ?? '';
+
+                        return [
+                            'order_item_id' => $item->order_item_id,
+                            'product_name' => $productName,
+                            'qty' => $item->quantity,
+                        ];
+                    }),
+                    'refund' => [
+                        'status' => $refundStatus,
+                        'refunded_at' => $refundStatus === 'refunded' ? $order->refunded_at : null,
+                        'amount' => '0.00',
+                    ],
                 ];
             }),
             'vouchers' => $order->vouchers->map(function ($voucher) {
