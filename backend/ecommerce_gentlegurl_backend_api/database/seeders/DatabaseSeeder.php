@@ -36,7 +36,7 @@ class DatabaseSeeder extends Seeder
             LoyaltyDemoCustomerSeederTesting::class,
             SelfPickupCompletedOrderSeeder::class,
             GuestCompletedOrderSeeder::class,
-            ReturnDemoSeeder::class,
+            //ReturnDemoSeeder::class,
             // SalesReportSeeder::class,
             //ReturnRequestSeeder::class,
 

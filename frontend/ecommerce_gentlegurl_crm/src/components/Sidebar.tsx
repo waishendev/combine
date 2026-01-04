@@ -100,12 +100,12 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/orders/completed',
             requiredPermission: 'ecommerce.orders.view',
           },
-          // {
-          //   key: 'orders-returns',
-          //   label: 'Return Orders',
-          //   href: '/returns',
-          //   requiredPermission: 'ecommerce.returns.view',
-          // },
+          {
+            key: 'orders-returns',
+            label: 'Return Orders',
+            href: '/returns',
+            requiredPermission: 'ecommerce.returns.view',
+          },
         ],
       },
   

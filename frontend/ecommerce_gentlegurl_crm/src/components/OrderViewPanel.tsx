@@ -378,7 +378,7 @@ export default function OrderViewPanel({
   const canCancel = displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification' || displayStatus === 'Ready for Pickup'
   const canShip = displayStatus === 'Payment Confirmed' && order.shipping_method === 'shipping'
   const canMarkReadyForPickup = displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
-  const canRefund = ['Payment Confirmed', 'Preparing', 'Ready for Pickup', 'Completed'].includes(displayStatus)
+  // const canRefund = ['Payment Confirmed', 'Preparing', 'Ready for Pickup', 'Completed'].includes(displayStatus)
   const canDownloadInvoice = order.status === 'completed'
   const canComplete =
     (order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped'
@@ -893,14 +893,14 @@ export default function OrderViewPanel({
                   Mark as Ready for Pickup
                 </button>
               )}
-              {canRefund && (
+              {/* {canRefund && (
                 <button
                   onClick={() => setShowRefund(true)}
                   className="px-4 py-2 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
                 >
                   Refund
                 </button>
-              )}
+              )} */}
               {canComplete && (
                 <button
                   onClick={() => {

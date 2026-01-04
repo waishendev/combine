@@ -19,7 +19,7 @@ class SelfPickupCompletedOrderSeeder extends Seeder
             ['email' => 'pickup.tester@example.com'],
             [
                 'name' => 'Pickup Tester',
-                'phone' => '0123456789',
+                'phone' => '0183561824',
                 'password' => Hash::make('password'),
                 'tier' => 'bronze',
                 'is_active' => true,
