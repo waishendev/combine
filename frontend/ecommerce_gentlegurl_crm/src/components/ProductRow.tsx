@@ -5,9 +5,21 @@ import { useI18n } from '@/lib/i18n'
 
 export interface ProductImage {
   id: number
-  path: string
+  url: string
   isMain: boolean
   sortOrder: number
+  sizeBytes?: number
+}
+
+export interface ProductVideo {
+  id: number
+  url: string
+  thumbnailUrl?: string
+  status?: string
+  sizeBytes?: number
+  durationSeconds?: number
+  width?: number
+  height?: number
 }
 
 export interface ProductRowData {
@@ -34,6 +46,7 @@ export interface ProductRowData {
   categoryIds: number[]
   categories: string
   images: ProductImage[]
+  video?: ProductVideo | null
 }
 
 interface ProductRowProps {
@@ -62,9 +75,9 @@ export default function ProductRow({
     <tr className="text-sm">
       <td className="px-4 py-2 border border-gray-200">
         <div className="flex items-center gap-3">
-          {mainImage?.path ? (
+          {mainImage?.url ? (
             <img
-              src={mainImage.path}
+              src={mainImage.url}
               alt={product.name}
               className="h-10 w-10 rounded object-cover border border-gray-200 bg-gray-50"
               loading="lazy"

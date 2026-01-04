@@ -46,6 +46,7 @@ use App\Http\Controllers\NotificationTemplateController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\PermissionGroupController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductMediaController;
 use App\Http\Controllers\PublicShopController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SeoGlobalController;
@@ -315,6 +316,16 @@ $protectedRoutes = function () {
 
         Route::delete('/products/{product}', [ProductController::class, 'destroy'])
             ->middleware('permission:ecommerce.products.delete');
+
+        Route::post('/products/{product}/media', [ProductMediaController::class, 'store'])
+            ->middleware('permission:ecommerce.products.update');
+
+        Route::delete('/products/{product}/media/{media}', [ProductMediaController::class, 'destroy'])
+            ->middleware('permission:ecommerce.products.update')
+            ->scopeBindings();
+
+        Route::put('/products/{product}/media/reorder', [ProductMediaController::class, 'reorder'])
+            ->middleware('permission:ecommerce.products.update');
 
         // Shop Menu Items
         Route::get('/shop-menu-items', [ShopMenuItemController::class, 'index'])

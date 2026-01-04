@@ -137,6 +137,7 @@ class PublicShopController extends Controller
             'images' => function ($query) {
                 $query->orderBy('sort_order')->orderBy('id');
             },
+            'video',
         ])
             ->where('is_active', true)
             ->where('is_reward_only', false);
@@ -344,7 +345,7 @@ class PublicShopController extends Controller
     {
         $allowRewardOnly = $request->boolean('reward', false);
 
-        $product = Product::with(['categories', 'images', 'packageChildren.childProduct'])
+        $product = Product::with(['categories', 'images', 'video', 'packageChildren.childProduct'])
             ->where('slug', $slug)
             ->where('is_active', true)
             ->when(!$allowRewardOnly, fn($query) => $query->where('is_reward_only', false))
@@ -363,7 +364,7 @@ class PublicShopController extends Controller
             ];
         });
 
-        $gallery = $product->images->pluck('image_path')->values();
+        $gallery = $product->images->pluck('url')->values();
 
         $isInStock = $product->track_stock ? $product->stock > 0 : true;
 
@@ -387,7 +388,7 @@ class PublicShopController extends Controller
                         'thumbnail' => optional($related->images
                             ->sortBy('id')
                             ->sortBy('sort_order')
-                            ->first())->image_path,
+                            ->first())->url,
                     ];
                 });
         }
@@ -411,6 +412,7 @@ class PublicShopController extends Controller
             'real_sold_count' => $realSoldCount,
             'sold_count' => $soldCount,
             'images' => $product->images,
+            'video' => $product->video,
             'gallery' => $gallery,
             'categories' => $categories,
             'package_children' => $product->packageChildren,

@@ -8,9 +8,26 @@ export type ProductApiCategory = {
 export type ProductApiImage = {
   id?: number | string | null
   product_id?: number | string | null
+  url?: string | null
   image_path?: string | null
-  is_main?: boolean | number | string | null
+  thumbnail_url?: string | null
   sort_order?: number | string | null
+  status?: string | null
+  size_bytes?: number | string | null
+  width?: number | string | null
+  height?: number | string | null
+  duration_seconds?: number | string | null
+}
+
+export type ProductApiVideo = {
+  id?: number | string | null
+  url?: string | null
+  thumbnail_url?: string | null
+  status?: string | null
+  size_bytes?: number | string | null
+  width?: number | string | null
+  height?: number | string | null
+  duration_seconds?: number | string | null
 }
 
 export type ProductApiItem = {
@@ -37,6 +54,7 @@ export type ProductApiItem = {
   track_stock?: boolean | number | string | null
   categories?: ProductApiCategory[] | null
   images?: ProductApiImage[] | null
+  video?: ProductApiVideo | null
 }
 
 export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => {
@@ -123,15 +141,60 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     images: Array.isArray(item.images)
       ? item.images.map((image) => ({
         id: typeof image.id === 'number' ? image.id : Number(image.id) || 0,
-        path: image.image_path ?? '',
-        isMain: toBoolean(image.is_main),
+        url: image.url ?? image.image_path ?? '',
+        isMain: typeof image.sort_order === 'number'
+          ? image.sort_order === 0
+          : typeof image.sort_order === 'string'
+            ? Number.parseInt(image.sort_order, 10) === 0
+            : false,
         sortOrder:
           typeof image.sort_order === 'number'
             ? image.sort_order
             : typeof image.sort_order === 'string'
               ? Number.parseInt(image.sort_order, 10)
               : 0,
+        sizeBytes:
+          typeof image.size_bytes === 'number'
+            ? image.size_bytes
+            : typeof image.size_bytes === 'string'
+              ? Number.parseInt(image.size_bytes, 10)
+              : undefined,
       }))
       : [],
+    video: item.video
+      ? {
+          id:
+            typeof item.video.id === 'number'
+              ? item.video.id
+              : Number(item.video.id) || 0,
+          url: item.video.url ?? '',
+          thumbnailUrl: item.video.thumbnail_url ?? '',
+          status: item.video.status ?? undefined,
+          sizeBytes:
+            typeof item.video.size_bytes === 'number'
+              ? item.video.size_bytes
+              : typeof item.video.size_bytes === 'string'
+                ? Number.parseInt(item.video.size_bytes, 10)
+                : undefined,
+          durationSeconds:
+            typeof item.video.duration_seconds === 'number'
+              ? item.video.duration_seconds
+              : typeof item.video.duration_seconds === 'string'
+                ? Number.parseFloat(item.video.duration_seconds)
+                : undefined,
+          width:
+            typeof item.video.width === 'number'
+              ? item.video.width
+              : typeof item.video.width === 'string'
+                ? Number.parseInt(item.video.width, 10)
+                : undefined,
+          height:
+            typeof item.video.height === 'number'
+              ? item.video.height
+              : typeof item.video.height === 'string'
+                ? Number.parseInt(item.video.height, 10)
+                : undefined,
+        }
+      : null,
   }
 }

@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 're
 import { useRouter } from 'next/navigation'
 
 import { mapProductApiItemToRow, type ProductApiItem } from './productUtils'
-import type { ProductImage, ProductRowData } from './ProductRow'
+import type { ProductImage, ProductRowData, ProductVideo } from './ProductRow'
 import { useI18n } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
 import ErrorBox from './ErrorBox'
@@ -15,6 +15,21 @@ interface CategoryOption {
 }
 
 type ProductFormMode = 'create' | 'edit'
+
+type PendingImageUpload = {
+  id: string
+  file: File
+  preview: string
+  progress: number
+  status: 'pending' | 'uploading' | 'failed'
+}
+
+type PendingVideoUpload = {
+  file: File
+  preview: string
+  progress: number
+  status: 'pending' | 'uploading' | 'failed'
+}
 
 type ProductFormValues = {
   name: string
@@ -35,8 +50,6 @@ type ProductFormValues = {
   status: 'active' | 'inactive'
   categoryIds: number[]
   metaOgImageFile?: File | null
-  galleryFiles: File[]
-  mainImageIndex: number
 }
 
 const emptyForm: ProductFormValues = {
@@ -58,8 +71,6 @@ const emptyForm: ProductFormValues = {
   status: 'active',
   categoryIds: [],
   metaOgImageFile: null,
-  galleryFiles: [],
-  mainImageIndex: 0,
 }
 
 type RewardFormValues = {
@@ -99,8 +110,6 @@ export default function ProductForm({
 }: ProductFormProps) {
   const { t } = useI18n()
   const router = useRouter()
-  const mainImageFromProduct =
-    product?.images?.findIndex((image) => image.isMain) ?? 0
   const [form, setForm] = useState<ProductFormValues>(() => {
     if (mode === 'edit' && product) {
       return {
@@ -126,11 +135,6 @@ export default function ProductForm({
         status: product.isActive ? 'active' : 'inactive',
         categoryIds: showCategories ? (product.categoryIds ?? []) : [],
         metaOgImageFile: null,
-        galleryFiles: [],
-        mainImageIndex:
-          typeof mainImageFromProduct === 'number' && mainImageFromProduct >= 0
-            ? mainImageFromProduct
-            : 0,
       }
     }
     return {
@@ -144,11 +148,12 @@ export default function ProductForm({
   const [existingImages, setExistingImages] = useState<ProductImage[]>(
     product?.images ?? [],
   )
-  const [deletedImageIds, setDeletedImageIds] = useState<number[]>([])
-  const [galleryPreviews, setGalleryPreviews] = useState<
-    { file: File; preview: string }[]
-  >([])
-  const galleryPreviewsRef = useRef<{ file: File; preview: string }[]>([])
+  const [pendingImages, setPendingImages] = useState<PendingImageUpload[]>([])
+  const [pendingVideo, setPendingVideo] = useState<PendingVideoUpload | null>(null)
+  const [existingVideo, setExistingVideo] = useState<ProductVideo | null>(
+    product?.video ?? null,
+  )
+  const pendingImagesRef = useRef<PendingImageUpload[]>([])
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
   const [draggingType, setDraggingType] = useState<'new' | 'existing' | null>(null)
   const [categories, setCategories] = useState<CategoryOption[]>([])
@@ -158,9 +163,11 @@ export default function ProductForm({
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
   const [categorySearchQuery, setCategorySearchQuery] = useState('')
   const [isSeoMetadataOpen, setIsSeoMetadataOpen] = useState(false)
+  const [createdProductId, setCreatedProductId] = useState<number | null>(null)
   const categoryDropdownRef = useRef<HTMLDivElement>(null)
   const categorySearchRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
   const metaOgImageFileInputRef = useRef<HTMLInputElement>(null)
   const [metaOgImagePreview, setMetaOgImagePreview] = useState<string | null>(null)
   const metaOgImagePreviewRef = useRef<string | null>(null)
@@ -249,13 +256,11 @@ export default function ProductForm({
 
   useEffect(() => {
     setExistingImages(product?.images ?? [])
-    setDeletedImageIds([])
+    setExistingVideo(product?.video ?? null)
+    setPendingImages([])
+    setPendingVideo(null)
     if (mode === 'edit' && product) {
-      const mainIdx = product.images.findIndex((img) => img.isMain)
-      setForm((prev) => ({
-        ...prev,
-        mainImageIndex: mainIdx >= 0 ? mainIdx : prev.mainImageIndex,
-      }))
+      setForm((prev) => ({ ...prev }))
     }
   }, [mode, product])
 
@@ -333,8 +338,8 @@ export default function ProductForm({
 
   // Keep track of the latest previews for cleanup on unmount
   useEffect(() => {
-    galleryPreviewsRef.current = galleryPreviews
-  }, [galleryPreviews])
+    pendingImagesRef.current = pendingImages
+  }, [pendingImages])
 
   // Keep track of meta OG image preview for cleanup
   useEffect(() => {
@@ -344,16 +349,19 @@ export default function ProductForm({
   // Clean up object URLs on unmount
   useEffect(() => {
     return () => {
-      galleryPreviewsRef.current.forEach((item) => {
+      pendingImagesRef.current.forEach((item) => {
         if (item.preview) {
           URL.revokeObjectURL(item.preview)
         }
       })
+      if (pendingVideo?.preview) {
+        URL.revokeObjectURL(pendingVideo.preview)
+      }
       if (metaOgImagePreviewRef.current) {
         URL.revokeObjectURL(metaOgImagePreviewRef.current)
       }
     }
-  }, [])
+  }, [pendingVideo])
 
   const handleChange = (
     event: ChangeEvent<
@@ -450,13 +458,156 @@ export default function ProductForm({
   }
 
   const MAX_IMAGES = 6
+  const IMAGE_MAX_MB = 10
+  const VIDEO_MAX_MB = 50
+  const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+  const VIDEO_TYPES = ['video/mp4', 'video/quicktime']
+
+  const activeProductId = product?.id ?? createdProductId
+
+  const formatBytes = (bytes?: number) => {
+    if (!bytes) return ''
+    const units = ['B', 'KB', 'MB', 'GB']
+    let value = bytes
+    let index = 0
+    while (value >= 1024 && index < units.length - 1) {
+      value /= 1024
+      index += 1
+    }
+    return `${value.toFixed(1)} ${units[index]}`
+  }
+
+  const uploadMediaFile = (
+    mediaType: 'image' | 'video',
+    file: File,
+    onProgress: (progress: number) => void,
+    productId?: number,
+  ) => {
+    const targetProductId = productId ?? activeProductId
+    if (!targetProductId) {
+      return Promise.reject(new Error('Product ID is missing.'))
+    }
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `/api/proxy/ecommerce/products/${targetProductId}/media`)
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText))
+          } catch (error) {
+            reject(error)
+          }
+        } else {
+          reject(new Error(xhr.responseText))
+        }
+      }
+      xhr.onerror = () => reject(new Error('Upload failed.'))
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100)
+          onProgress(percent)
+        }
+      }
+      const formData = new FormData()
+      formData.append('type', mediaType)
+      formData.append('file', file)
+      xhr.send(formData)
+    })
+  }
+
+  const buildImageFromResponse = (payload: { data?: unknown } | unknown) => {
+    const media =
+      payload && typeof payload === 'object' && 'data' in payload
+        ? (payload as { data?: unknown }).data
+        : payload
+    if (!media || typeof media !== 'object') return null
+    const item = media as {
+      id?: number | string
+      url?: string | null
+      sort_order?: number | string | null
+      size_bytes?: number | string | null
+    }
+    const id =
+      typeof item.id === 'number' ? item.id : Number(item.id) || Number.parseInt(String(item.id ?? ''), 10)
+    return {
+      id: Number.isFinite(id) ? id : 0,
+      url: item.url ?? '',
+      isMain: typeof item.sort_order === 'number'
+        ? item.sort_order === 0
+        : typeof item.sort_order === 'string'
+          ? Number.parseInt(item.sort_order, 10) === 0
+          : false,
+      sortOrder:
+        typeof item.sort_order === 'number'
+          ? item.sort_order
+          : typeof item.sort_order === 'string'
+            ? Number.parseInt(item.sort_order, 10)
+            : 0,
+      sizeBytes:
+        typeof item.size_bytes === 'number'
+          ? item.size_bytes
+          : typeof item.size_bytes === 'string'
+            ? Number.parseInt(item.size_bytes, 10)
+            : undefined,
+    }
+  }
+
+  const buildVideoFromResponse = (payload: { data?: unknown } | unknown): ProductVideo | null => {
+    const media =
+      payload && typeof payload === 'object' && 'data' in payload
+        ? (payload as { data?: unknown }).data
+        : payload
+    if (!media || typeof media !== 'object') return null
+    const item = media as {
+      id?: number | string
+      url?: string | null
+      thumbnail_url?: string | null
+      status?: string | null
+      size_bytes?: number | string | null
+      duration_seconds?: number | string | null
+      width?: number | string | null
+      height?: number | string | null
+    }
+    const id =
+      typeof item.id === 'number' ? item.id : Number(item.id) || Number.parseInt(String(item.id ?? ''), 10)
+    return {
+      id: Number.isFinite(id) ? id : 0,
+      url: item.url ?? '',
+      thumbnailUrl: item.thumbnail_url ?? undefined,
+      status: item.status ?? undefined,
+      sizeBytes:
+        typeof item.size_bytes === 'number'
+          ? item.size_bytes
+          : typeof item.size_bytes === 'string'
+            ? Number.parseInt(item.size_bytes, 10)
+            : undefined,
+      durationSeconds:
+        typeof item.duration_seconds === 'number'
+          ? item.duration_seconds
+          : typeof item.duration_seconds === 'string'
+            ? Number.parseFloat(item.duration_seconds)
+            : undefined,
+      width:
+        typeof item.width === 'number'
+          ? item.width
+          : typeof item.width === 'string'
+            ? Number.parseInt(item.width, 10)
+            : undefined,
+      height:
+        typeof item.height === 'number'
+          ? item.height
+          : typeof item.height === 'string'
+            ? Number.parseInt(item.height, 10)
+            : undefined,
+    }
+  }
 
   const handleGalleryChange = (event: ChangeEvent<HTMLInputElement>) => {
     const newFiles = event.target.files ? Array.from(event.target.files) : []
     if (newFiles.length === 0) return
 
-    // Calculate how many images we currently have (including existing in edit mode)
-    const currentTotal = galleryPreviews.length + (mode === 'edit' ? existingImages.length : 0)
+    const currentTotal = pendingImages.length + existingImages.length
     const remainingSlots = MAX_IMAGES - currentTotal
 
     if (remainingSlots <= 0) {
@@ -467,79 +618,128 @@ export default function ProductForm({
       return
     }
 
-    // Limit the number of files to the remaining slots
     const filesToAdd = newFiles.slice(0, remainingSlots)
     if (newFiles.length > remainingSlots) {
       const plural = remainingSlots === 1 ? '' : 's'
-      alert(t('product.maxImagesAddAlert').replace('{count}', String(remainingSlots)).replace('{plural}', plural))
+      alert(
+        t('product.maxImagesAddAlert')
+          .replace('{count}', String(remainingSlots))
+          .replace('{plural}', plural),
+      )
     }
 
-    // Append new files to existing ones instead of replacing
-    const newPreviews = filesToAdd.map((file) => ({
+    const validFiles = filesToAdd.filter((file) => {
+      const isValidType = IMAGE_TYPES.includes(file.type)
+      const isValidSize = file.size <= IMAGE_MAX_MB * 1024 * 1024
+      return isValidType && isValidSize
+    })
+
+    if (validFiles.length !== filesToAdd.length) {
+      setError(t('product.invalidImage'))
+    }
+
+    const newUploads = validFiles.map((file) => ({
+      id: crypto.randomUUID(),
       file,
       preview: URL.createObjectURL(file),
+      progress: 0,
+      status: 'pending' as const,
     }))
 
-    setGalleryPreviews((prev) => [...prev, ...newPreviews])
-    setForm((prev) => ({
-      ...prev,
-      galleryFiles: [...prev.galleryFiles, ...filesToAdd],
-      // First image is always the cover (index 0)
-      mainImageIndex: 0,
-    }))
+    setPendingImages((prev) => [...prev, ...newUploads])
 
-    // Reset the input so the same file can be selected again if needed
+    if (activeProductId) {
+      newUploads.forEach((upload) => {
+        setPendingImages((prev) =>
+          prev.map((item) =>
+            item.id === upload.id ? { ...item, status: 'uploading' } : item,
+          ),
+        )
+        uploadMediaFile('image', upload.file, (progress) => {
+          setPendingImages((prev) =>
+            prev.map((item) => (item.id === upload.id ? { ...item, progress } : item)),
+          )
+        })
+          .then((response) => {
+            const mediaItem = buildImageFromResponse(response as { data?: unknown })
+            if (mediaItem) {
+              setExistingImages((prev) => [...prev, mediaItem])
+            }
+            setPendingImages((prev) => prev.filter((item) => item.id !== upload.id))
+          })
+          .catch(() => {
+            setPendingImages((prev) =>
+              prev.map((item) =>
+                item.id === upload.id ? { ...item, status: 'failed' } : item,
+              ),
+            )
+          })
+      })
+    }
+
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
 
-  const handleGalleryReorder = (fromIndex: number, toSlotIndex: number, fromType: 'new' | 'existing' = 'new') => {
+  const persistImageOrder = async (images: ProductImage[]) => {
+    if (!activeProductId) return
+
+    const items = images.map((image, index) => ({
+      id: image.id,
+      sort_order: index,
+    }))
+
+    await fetch(`/api/proxy/ecommerce/products/${activeProductId}/media/reorder`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ items }),
+    })
+  }
+
+  const handleGalleryReorder = (
+    fromIndex: number,
+    toSlotIndex: number,
+    fromType: 'new' | 'existing' = 'new',
+  ) => {
     const existingCount = existingImages.length
-    
+
     if (fromType === 'existing') {
-      // Moving an existing image
       if (fromIndex < 0 || fromIndex >= existingCount) return
-      
+
       const imageToMove = existingImages[fromIndex]
       if (!imageToMove) return
-      
-      // Remove from existing images
+
       const newExisting = [...existingImages]
       newExisting.splice(fromIndex, 1)
-      
-      // Calculate target position within existing images
-      // If toSlotIndex is within existing images range, reorder there
+
       if (toSlotIndex < existingCount) {
         const targetIndex = Math.max(0, Math.min(toSlotIndex, newExisting.length))
         newExisting.splice(targetIndex, 0, imageToMove)
       } else {
-        // If moving beyond existing images, just move to end of existing
         newExisting.push(imageToMove)
       }
-      
-      setExistingImages(newExisting)
+
+      const reordered = newExisting.map((image, index) => ({
+        ...image,
+        sortOrder: index,
+        isMain: index === 0,
+      }))
+
+      setExistingImages(reordered)
+      void persistImageOrder(reordered)
     } else {
-      // Moving a new image
-      if (fromIndex < 0 || fromIndex >= galleryPreviews.length) return
-      
-      setGalleryPreviews((prev) => {
+      if (fromIndex < 0 || fromIndex >= pendingImages.length) return
+
+      setPendingImages((prev) => {
         const next = [...prev]
         const [moved] = next.splice(fromIndex, 1)
         if (!moved) return prev
-        
-        // Calculate the target index in the new images array
-        // toSlotIndex might include existing images, so we need to adjust
+
         const targetIndex = Math.max(0, Math.min(toSlotIndex - existingCount, next.length))
-        
         next.splice(targetIndex, 0, moved)
-        const files = next.map((item) => item.file)
-        setForm((formState) => ({
-          ...formState,
-          galleryFiles: files,
-          // First image (index 0) is always the cover
-          mainImageIndex: 0,
-        }))
         return next
       })
     }
@@ -547,95 +747,247 @@ export default function ProductForm({
 
   const handleGalleryRemove = (index: number, isExisting: boolean = false) => {
     if (isExisting) {
-      // Remove existing image - mark for deletion
       const imageToRemove = existingImages[index]
-      if (imageToRemove?.id) {
-        setDeletedImageIds((prev) => [...prev, imageToRemove.id])
+      if (!imageToRemove) return
+
+      if (activeProductId) {
+        void fetch(`/api/proxy/ecommerce/products/${activeProductId}/media/${imageToRemove.id}`, {
+          method: 'DELETE',
+        })
       }
-      setExistingImages((prev) => prev.filter((_, idx) => idx !== index))
+
+      const nextImages = existingImages.filter((_, idx) => idx !== index)
+      setExistingImages(
+        nextImages.map((image, idx) => ({
+          ...image,
+          sortOrder: idx,
+          isMain: idx === 0,
+        })),
+      )
+      void persistImageOrder(
+        nextImages.map((image, idx) => ({
+          ...image,
+          sortOrder: idx,
+          isMain: idx === 0,
+        })),
+      )
     } else {
-      // Remove new image
-      setGalleryPreviews((prev) => {
+      setPendingImages((prev) => {
         const next = prev.filter((_, idx) => idx !== index)
         const removedItem = prev[index]
-        // Clean up the object URL to prevent memory leaks
         if (removedItem?.preview) {
           URL.revokeObjectURL(removedItem.preview)
         }
-        const files = next.map((item) => item.file)
-        setForm((formState) => ({
-          ...formState,
-          galleryFiles: files,
-          mainImageIndex:
-            files.length === 0
-              ? 0
-              : Math.min(formState.mainImageIndex, Math.max(files.length - 1, 0)),
-        }))
         return next
       })
     }
   }
 
-  const handleGalleryReplace = (index: number, isExisting: boolean = false, existingIndex?: number) => {
-    // Create a temporary input element to trigger file selection
+  const handleGalleryReplace = (
+    index: number,
+    isExisting: boolean = false,
+    existingIndex?: number,
+  ) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/*'
+    input.accept = IMAGE_TYPES.join(',')
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
 
+      if (!IMAGE_TYPES.includes(file.type) || file.size > IMAGE_MAX_MB * 1024 * 1024) {
+        setError(t('product.invalidImage'))
+        return
+      }
+
       if (isExisting && typeof existingIndex === 'number') {
-        // Replace existing image: remove from existingImages and add new file
-        setExistingImages((prev) => {
-          return prev.filter((_, idx) => idx !== existingIndex)
-        })
-        
-        // Add new file to galleryPreviews at the appropriate position
-        const newItem = {
-          file,
-          preview: URL.createObjectURL(file),
+        const existing = existingImages[existingIndex]
+        if (existing && activeProductId) {
+          void fetch(`/api/proxy/ecommerce/products/${activeProductId}/media/${existing.id}`, {
+            method: 'DELETE',
+          })
         }
-        
-        setGalleryPreviews((prev) => {
-          const next = [...prev, newItem]
-          const files = next.map((item) => item.file)
-          setForm((formState) => ({
-            ...formState,
-            galleryFiles: files,
-          }))
-          return next
-        })
-      } else {
-        // Replace new image at the specified index
-        setGalleryPreviews((prev) => {
-          if (index < 0 || index >= prev.length) return prev
-          
-          // Clean up the old object URL
-          const oldItem = prev[index]
+        setExistingImages((prev) => prev.filter((_, idx) => idx !== existingIndex))
+      }
+
+      const newUpload: PendingImageUpload = {
+        id: crypto.randomUUID(),
+        file,
+        preview: URL.createObjectURL(file),
+        progress: 0,
+        status: 'pending',
+      }
+
+      setPendingImages((prev) => {
+        if (!isExisting && index >= 0 && index < prev.length) {
+          const next = [...prev]
+          const oldItem = next[index]
           if (oldItem?.preview) {
             URL.revokeObjectURL(oldItem.preview)
           }
-
-          // Create new preview
-          const newItem = {
-            file,
-            preview: URL.createObjectURL(file),
-          }
-
-          const next = [...prev]
-          next[index] = newItem
-
-          const files = next.map((item) => item.file)
-          setForm((formState) => ({
-            ...formState,
-            galleryFiles: files,
-          }))
+          next[index] = newUpload
           return next
+        }
+        return [...prev, newUpload]
+      })
+
+      if (activeProductId) {
+        setPendingImages((prev) =>
+          prev.map((item) =>
+            item.id === newUpload.id ? { ...item, status: 'uploading' } : item,
+          ),
+        )
+        uploadMediaFile('image', file, (progress) => {
+          setPendingImages((prev) =>
+            prev.map((item) => (item.id === newUpload.id ? { ...item, progress } : item)),
+          )
         })
+          .then((response) => {
+            const mediaItem = buildImageFromResponse(response as { data?: unknown })
+            if (mediaItem) {
+              setExistingImages((prev) => [...prev, mediaItem])
+            }
+            setPendingImages((prev) => prev.filter((item) => item.id !== newUpload.id))
+          })
+          .catch(() => {
+            setPendingImages((prev) =>
+              prev.map((item) =>
+                item.id === newUpload.id ? { ...item, status: 'failed' } : item,
+              ),
+            )
+          })
       }
     }
     input.click()
+  }
+
+  const uploadPendingMedia = async (productId: number) => {
+    const imageUploads = pendingImages.map((upload) => {
+      setPendingImages((prev) =>
+        prev.map((item) =>
+          item.id === upload.id ? { ...item, status: 'uploading' } : item,
+        ),
+      )
+      return uploadMediaFile(
+        'image',
+        upload.file,
+        (progress) => {
+          setPendingImages((prev) =>
+            prev.map((item) => (item.id === upload.id ? { ...item, progress } : item)),
+          )
+        },
+        productId,
+      )
+        .then((response) => {
+          const mediaItem = buildImageFromResponse(response as { data?: unknown })
+          if (mediaItem) {
+            setExistingImages((prev) => [...prev, mediaItem])
+          }
+          setPendingImages((prev) => prev.filter((item) => item.id !== upload.id))
+        })
+        .catch(() => {
+          setPendingImages((prev) =>
+            prev.map((item) =>
+              item.id === upload.id ? { ...item, status: 'failed' } : item,
+            ),
+          )
+        })
+    })
+
+    if (pendingVideo) {
+      setPendingVideo({ ...pendingVideo, status: 'uploading' })
+    }
+
+    const videoUpload = pendingVideo
+      ? uploadMediaFile(
+          'video',
+          pendingVideo.file,
+          (progress) => {
+            setPendingVideo((prev) => (prev ? { ...prev, progress } : prev))
+          },
+          productId,
+        )
+          .then((response) => {
+            const videoItem = buildVideoFromResponse(response as { data?: unknown })
+            if (videoItem) {
+              setExistingVideo(videoItem)
+            }
+            setPendingVideo(null)
+          })
+          .catch(() => {
+            setPendingVideo((prev) => (prev ? { ...prev, status: 'failed' } : prev))
+          })
+      : Promise.resolve()
+
+    await Promise.all([...imageUploads, videoUpload])
+  }
+
+  const handleVideoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!VIDEO_TYPES.includes(file.type) || file.size > VIDEO_MAX_MB * 1024 * 1024) {
+      setError(t('product.invalidVideo'))
+      if (videoInputRef.current) {
+        videoInputRef.current.value = ''
+      }
+      return
+    }
+
+    if (pendingVideo?.preview) {
+      URL.revokeObjectURL(pendingVideo.preview)
+    }
+
+    if (existingVideo && activeProductId) {
+      void fetch(`/api/proxy/ecommerce/products/${activeProductId}/media/${existingVideo.id}`, {
+        method: 'DELETE',
+      })
+      setExistingVideo(null)
+    }
+
+    const newVideo: PendingVideoUpload = {
+      file,
+      preview: URL.createObjectURL(file),
+      progress: 0,
+      status: 'pending',
+    }
+
+    setPendingVideo(newVideo)
+
+    if (activeProductId) {
+      setPendingVideo({ ...newVideo, status: 'uploading' })
+      uploadMediaFile('video', file, (progress) => {
+        setPendingVideo((prev) => (prev ? { ...prev, progress } : prev))
+      })
+        .then((response) => {
+          const videoItem = buildVideoFromResponse(response as { data?: unknown })
+          if (videoItem) {
+            setExistingVideo(videoItem)
+          }
+          setPendingVideo(null)
+        })
+        .catch(() => {
+          setPendingVideo((prev) => (prev ? { ...prev, status: 'failed' } : prev))
+        })
+    }
+  }
+
+  const handleVideoRemove = () => {
+    if (pendingVideo?.preview) {
+      URL.revokeObjectURL(pendingVideo.preview)
+    }
+    setPendingVideo(null)
+
+    if (existingVideo && activeProductId) {
+      void fetch(`/api/proxy/ecommerce/products/${activeProductId}/media/${existingVideo.id}`, {
+        method: 'DELETE',
+      })
+      setExistingVideo(null)
+    }
+
+    if (videoInputRef.current) {
+      videoInputRef.current.value = ''
+    }
   }
 
   // Removed handleSetMainImage - first image is always the cover
@@ -649,9 +1001,11 @@ export default function ProductForm({
     setRewardForm({ ...emptyRewardForm })
     setRewardId(null)
     setError(null)
-    setGalleryPreviews([])
+    setPendingImages([])
+    setPendingVideo(null)
     setExistingImages([])
-    setDeletedImageIds([])
+    setExistingVideo(null)
+    setCreatedProductId(null)
   }
 
   const handleCancel = () => {
@@ -723,20 +1077,6 @@ export default function ProductForm({
 
     if (form.metaOgImageFile) {
       formData.append('meta_og_image_file', form.metaOgImageFile)
-    }
-
-    if (form.galleryFiles.length > 0) {
-      form.galleryFiles.forEach((file) => {
-        formData.append('images[]', file)
-      })
-      formData.append('main_image_index', String(form.mainImageIndex || 0))
-    }
-
-    // Add deleted image IDs for edit mode
-    if (mode === 'edit' && deletedImageIds.length > 0) {
-      deletedImageIds.forEach((id) => {
-        formData.append('delete_image_ids[]', String(id))
-      })
     }
 
     if (rewardOnly) {
@@ -842,7 +1182,16 @@ export default function ProductForm({
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             images: [],
+            video: null,
           }
+
+      if (mode === 'create') {
+        setCreatedProductId(productRow.id)
+      }
+
+      if (pendingImages.length > 0 || pendingVideo) {
+        await uploadPendingMedia(productRow.id)
+      }
 
       if (rewardOnly) {
         const rewardPayload = {
@@ -1033,7 +1382,7 @@ export default function ProductForm({
                 id="galleryFiles"
                 name="galleryFiles"
                 type="file"
-                accept="image/*"
+                accept={IMAGE_TYPES.join(',')}
                 multiple
                 onChange={handleGalleryChange}
                 className="hidden"
@@ -1044,19 +1393,17 @@ export default function ProductForm({
                 {Array.from({ length: MAX_IMAGES }).map((_, slotIndex) => {
                   // Combine new previews and existing images for display
                   const allImages = [
-                    ...galleryPreviews.map((item, idx) => ({
+                    ...existingImages.map((img, idx) => ({
+                      type: 'existing' as const,
+                      preview: img.url,
+                      isMain: img.isMain,
+                      index: idx,
+                    })),
+                    ...pendingImages.map((item, idx) => ({
                       type: 'new' as const,
                       preview: item.preview,
                       index: idx,
                     })),
-                    ...(mode === 'edit'
-                      ? existingImages.map((img, idx) => ({
-                          type: 'existing' as const,
-                          preview: img.path,
-                          isMain: img.isMain,
-                          index: idx,
-                        }))
-                      : []),
                   ]
 
                   const imageInSlot = allImages[slotIndex]
@@ -1064,6 +1411,10 @@ export default function ProductForm({
                   const isEmpty = !imageInSlot
                   const isNewImage = imageInSlot?.type === 'new'
                   const imageIndex = imageInSlot?.index ?? -1
+                  const pendingUpload = isNewImage ? pendingImages[imageIndex] : null
+                  const displaySize = isNewImage
+                    ? pendingUpload?.file?.size
+                    : existingImages[imageIndex]?.sizeBytes
 
                   return (
                     <div
@@ -1075,7 +1426,7 @@ export default function ProductForm({
                       } ${isFirstSlot && !isEmpty ? 'ring-2 ring-blue-500 border-blue-500 shadow-lg' : ''}`}
                       onClick={() => {
                         if (isEmpty) {
-                          const currentTotal = galleryPreviews.length + (mode === 'edit' ? existingImages.length : 0)
+                          const currentTotal = pendingImages.length + existingImages.length
                           if (currentTotal < MAX_IMAGES) {
                             fileInputRef.current?.click()
                           }
@@ -1128,6 +1479,27 @@ export default function ProductForm({
                             alt={t('product.imageAlt').replace('{index}', String(slotIndex + 1))}
                             className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-200"
                           />
+                          {pendingUpload?.status === 'uploading' && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white text-xs font-medium">
+                              <div className="mb-2">{t('product.uploading')}</div>
+                              <div className="w-3/4 h-2 bg-white/30 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-blue-400 transition-all"
+                                  style={{ width: `${pendingUpload.progress}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          {pendingUpload?.status === 'failed' && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-red-600/70 text-white text-xs font-medium">
+                              {t('product.uploadFailed')}
+                            </div>
+                          )}
+                          {displaySize ? (
+                            <div className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                              {formatBytes(displaySize)}
+                            </div>
+                          ) : null}
 
                           {/* Drag Handle, Replace & Remove Button - Only show on hover */}
                           {isNewImage && (
@@ -1250,9 +1622,116 @@ export default function ProductForm({
                   {t('product.imageHelper')}
                 </span>
                 <span>
-                  {galleryPreviews.length + (mode === 'edit' ? existingImages.length : 0)} / {MAX_IMAGES}
+                  {pendingImages.length + existingImages.length} / {MAX_IMAGES}
                 </span>
               </div>
+            </div>
+
+            {/* Video Upload */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                {t('product.productVideo')}
+              </label>
+              <input
+                ref={videoInputRef}
+                id="productVideo"
+                name="productVideo"
+                type="file"
+                accept={VIDEO_TYPES.join(',')}
+                onChange={handleVideoChange}
+                className="hidden"
+              />
+              {existingVideo || pendingVideo ? (
+                <div className="relative rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="h-16 w-24 overflow-hidden rounded-md bg-gray-100">
+                      {existingVideo?.thumbnailUrl ? (
+                        <img
+                          src={existingVideo.thumbnailUrl}
+                          alt={t('product.videoThumbnailAlt')}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : pendingVideo ? (
+                        <video
+                          src={pendingVideo.preview}
+                          className="h-full w-full object-cover"
+                          muted
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-gray-400 text-xs">
+                          {t('product.video')}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <div className="text-sm font-medium text-gray-800">
+                        {existingVideo ? t('product.videoUploaded') : t('product.videoUploading')}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {existingVideo?.sizeBytes
+                          ? formatBytes(existingVideo.sizeBytes)
+                          : pendingVideo
+                            ? formatBytes(pendingVideo.file.size)
+                            : ''}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {existingVideo?.status
+                          ? t(`product.videoStatus.${existingVideo.status}`)
+                          : pendingVideo?.status === 'uploading'
+                            ? t('product.videoStatus.processing')
+                            : ''}
+                      </div>
+                      {existingVideo?.status === 'processing' && (
+                        <div className="flex items-center text-xs text-blue-600">
+                          <i className="fa-solid fa-spinner mr-1 animate-spin" />
+                          {t('product.videoProcessing')}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600"
+                        onClick={() => videoInputRef.current?.click()}
+                        aria-label={t('product.replaceVideo')}
+                      >
+                        <i className="fa-solid fa-video" />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+                        onClick={handleVideoRemove}
+                        aria-label={t('product.removeVideo')}
+                      >
+                        <i className="fa-solid fa-trash" />
+                      </button>
+                    </div>
+                  </div>
+                  {pendingVideo?.status === 'uploading' && (
+                    <div className="mt-3 h-2 w-full rounded-full bg-gray-100">
+                      <div
+                        className="h-full rounded-full bg-blue-500 transition-all"
+                        style={{ width: `${pendingVideo.progress}%` }}
+                      />
+                    </div>
+                  )}
+                  {pendingVideo?.status === 'failed' && (
+                    <p className="mt-2 text-xs text-red-500">{t('product.uploadFailed')}</p>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="flex h-24 w-full items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600"
+                  onClick={() => videoInputRef.current?.click()}
+                >
+                  <i className="fa-solid fa-video mr-2" />
+                  {t('product.uploadVideo')}
+                </button>
+              )}
+              <p className="text-xs text-gray-500">
+                {t('product.videoHelper').replace('{size}', String(VIDEO_MAX_MB))}
+              </p>
             </div>
           </div>
 
