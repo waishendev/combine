@@ -24,6 +24,10 @@ class ReturnRequest extends Model
         'reviewed_at',
         'received_at',
         'completed_at',
+        'refund_amount',
+        'refund_method',
+        'refund_proof_path',
+        'refunded_at',
     ];
 
     protected $casts = [
@@ -32,6 +36,8 @@ class ReturnRequest extends Model
         'reviewed_at' => 'datetime',
         'received_at' => 'datetime',
         'completed_at' => 'datetime',
+        'refund_amount' => 'decimal:2',
+        'refunded_at' => 'datetime',
     ];
 
     public function order()

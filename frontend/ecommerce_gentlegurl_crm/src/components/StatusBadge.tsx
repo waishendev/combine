@@ -52,6 +52,26 @@ export default function StatusBadge({
       bgColor: 'bg-orange-100',
       dotColor: 'bg-orange-500',
     },
+    approved: {
+      textColor: 'text-green-700',
+      bgColor: 'bg-green-100',
+      dotColor: 'bg-green-500',
+    },
+    received: {
+      textColor: 'text-blue-700',
+      bgColor: 'bg-blue-100',
+      dotColor: 'bg-blue-500',
+    },
+    rejected: {
+      textColor: 'text-red-700',
+      bgColor: 'bg-red-100',
+      dotColor: 'bg-red-500',
+    },
+    not_refunded: {
+      textColor: 'text-slate-600',
+      bgColor: 'bg-slate-100',
+      dotColor: 'bg-slate-400',
+    },
     'payment confirmed': {
       textColor: 'text-blue-700',
       bgColor: 'bg-blue-100',

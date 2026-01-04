@@ -320,6 +320,7 @@ export default function OrdersTable({
     status?: string
     payment_status?: string
     grand_total?: string | number
+    refund_total?: string | number
     shipping_method?: string
     created_at?: string
     updated_at?: string
