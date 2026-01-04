@@ -13,7 +13,13 @@ class InvoiceService
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
 
-        return app('dompdf.wrapper')->loadView('invoices.order', [
+        $pdf = app('dompdf.wrapper');
+        $options = $pdf->getDomPDF()->getOptions();
+        $options->set('isFontSubsettingEnabled', true);
+        $options->set('isRemoteEnabled', true);
+        $pdf->getDomPDF()->setOptions($options);
+
+        return $pdf->loadView('invoices.order', [
             'order' => $order,
             'invoiceProfile' => $invoiceProfile,
         ]);
