@@ -4,6 +4,7 @@ namespace App\Services\Notifications;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class EmailSender
 {
@@ -19,8 +20,16 @@ class EmailSender
             return;
         }
 
-        Mail::raw($body, function ($message) use ($to, $subject) {
-            $message->to($to)->subject($subject);
-        });
+        try {
+            Mail::raw($body, function ($message) use ($to, $subject) {
+                $message->to($to)->subject($subject);
+            });
+        } catch (TransportExceptionInterface $exception) {
+            Log::error('EmailSender: failed to send email.', [
+                'to' => $to,
+                'subject' => $subject,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 }
