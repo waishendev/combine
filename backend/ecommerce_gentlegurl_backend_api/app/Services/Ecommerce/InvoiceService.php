@@ -16,7 +16,6 @@ class InvoiceService
         $pdf = app('dompdf.wrapper');
         $options = $pdf->getDomPDF()->getOptions();
         $options->set('isFontSubsettingEnabled', true);
-        $options->set('isRemoteEnabled', true);
         $pdf->getDomPDF()->setOptions($options);
 
         return $pdf->loadView('invoices.order', [
