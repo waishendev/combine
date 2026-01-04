@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
@@ -36,6 +36,10 @@ type ReturnDetail = {
   return_courier_name?: string | null
   return_tracking_no?: string | null
   return_shipped_at?: string | null
+  refund_amount?: string | number | null
+  refund_method?: string | null
+  refund_proof_path?: string | null
+  refunded_at?: string | null
   items?: ReturnItem[]
   timeline?: {
     created_at?: string | null
@@ -84,6 +88,28 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleString()
 }
 
+const formatAmount = (value?: string | number | null) => {
+  if (value === null || value === undefined) return '0.00'
+  const num = typeof value === 'string' ? Number.parseFloat(value) : Number(value)
+  if (Number.isNaN(num)) return '0.00'
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+const getFileUrl = (path?: string | null) => {
+  if (!path) return null
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000'
+  if (path.startsWith('/')) {
+    return `${baseUrl}${path}`
+  }
+  return `${baseUrl}/storage/${path}`
+}
+
 export default function ReturnOrdersTable() {
   const [rows, setRows] = useState<ReturnRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,6 +122,7 @@ export default function ReturnOrdersTable() {
   const [actionNote, setActionNote] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [showRefundModal, setShowRefundModal] = useState(false)
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
@@ -154,6 +181,7 @@ export default function ReturnOrdersTable() {
     setDetail(null)
     setActionNote('')
     setActionError(null)
+    setShowRefundModal(false)
 
     try {
       const res = await fetch(`/api/proxy/ecommerce/returns/${id}`, {
@@ -393,6 +421,28 @@ export default function ReturnOrdersTable() {
               <p>Refunded: {formatDate(detail.timeline?.completed_at)}</p>
             </div>
 
+            {(detail.refund_amount ||
+              detail.refund_method ||
+              detail.refund_proof_path ||
+              detail.refunded_at) && (
+              <div className="space-y-1">
+                <p className="font-medium text-gray-700">Refund</p>
+                <p>Amount: RM {formatAmount(detail.refund_amount)}</p>
+                <p>Method: {detail.refund_method ?? '—'}</p>
+                <p>Refunded At: {formatDate(detail.refunded_at)}</p>
+                {detail.refund_proof_path && (
+                  <a
+                    href={getFileUrl(detail.refund_proof_path) ?? '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    View refund proof
+                  </a>
+                )}
+              </div>
+            )}
+
             {availableActions.length > 0 && (
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase text-gray-400">Update Status</label>
@@ -409,7 +459,13 @@ export default function ReturnOrdersTable() {
                     <button
                       key={action.action}
                       type="button"
-                      onClick={() => applyAction(action.action)}
+                      onClick={() => {
+                        if (action.action === 'mark_refunded') {
+                          setShowRefundModal(true)
+                          return
+                        }
+                        applyAction(action.action)
+                      }}
                       disabled={actionLoading}
                       className="rounded-md border border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
                     >
@@ -421,6 +477,199 @@ export default function ReturnOrdersTable() {
             )}
           </div>
         )}
+      </div>
+      {showRefundModal && selectedId && (
+        <ReturnRefundModal
+          returnId={selectedId}
+          onClose={() => setShowRefundModal(false)}
+          onSuccess={async () => {
+            await fetchReturns()
+            await fetchDetail(selectedId)
+            setShowRefundModal(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function ReturnRefundModal({
+  returnId,
+  onClose,
+  onSuccess,
+}: {
+  returnId: number
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [adminNote, setAdminNote] = useState('')
+  const [refundAmount, setRefundAmount] = useState('')
+  const [refundMethod, setRefundMethod] = useState('')
+  const [refundProof, setRefundProof] = useState<File | null>(null)
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError(null)
+
+    if (!adminNote.trim()) {
+      setError('Admin note is required')
+      return
+    }
+
+    if (!refundAmount || Number(refundAmount) <= 0) {
+      setError('Refund amount is required')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const formData = new FormData()
+      formData.append('action', 'mark_refunded')
+      formData.append('admin_note', adminNote.trim())
+      formData.append('refund_amount', refundAmount)
+      if (refundMethod) {
+        formData.append('refund_method', refundMethod)
+      }
+      if (refundProof) {
+        formData.append('refund_proof_path', refundProof)
+      }
+
+      formData.append('_method', 'PUT')
+
+      const res = await fetch(`/api/proxy/ecommerce/returns/${returnId}/status`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(json?.message ?? 'Unable to update refund.')
+        return
+      }
+
+      onSuccess()
+    } catch (err) {
+      setError('Unable to update refund.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={() => {
+          if (!submitting) onClose()
+        }}
+      />
+      <div className="relative w-full max-w-md mx-auto bg-white rounded-lg shadow-lg">
+        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+          <h2 className="text-lg font-semibold">Refund Return</h2>
+          <button
+            onClick={() => {
+              if (!submitting) onClose()
+            }}
+            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+            aria-label="Close"
+            type="button"
+          >
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          <div>
+            <label htmlFor="refundAmount" className="block text-sm font-medium text-gray-700 mb-1">
+              Refund Amount (RM) <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="refundAmount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={refundAmount}
+              onChange={(event) => setRefundAmount(event.target.value)}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              placeholder="0.00"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="refundMethod" className="block text-sm font-medium text-gray-700 mb-1">
+              Refund Method (Optional)
+            </label>
+            <select
+              id="refundMethod"
+              value={refundMethod}
+              onChange={(event) => setRefundMethod(event.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Select method</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="cash">Cash</option>
+              <option value="card_refund">Card Refund</option>
+              <option value="store_credit">Store Credit</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="adminNote" className="block text-sm font-medium text-gray-700 mb-1">
+              Admin Note <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              id="adminNote"
+              value={adminNote}
+              onChange={(event) => setAdminNote(event.target.value)}
+              rows={4}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter refund notes..."
+            />
+          </div>
+
+          <div>
+            <label htmlFor="refundProof" className="block text-sm font-medium text-gray-700 mb-1">
+              Refund Proof (Optional)
+            </label>
+            <input
+              id="refundProof"
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(event) => setRefundProof(event.target.files?.[0] || null)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+              {error}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+              onClick={() => {
+                if (!submitting) onClose()
+              }}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm text-white bg-orange-600 rounded-md hover:bg-orange-700 disabled:opacity-50"
+              disabled={submitting}
+            >
+              {submitting ? 'Processing...' : 'Process Refund'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

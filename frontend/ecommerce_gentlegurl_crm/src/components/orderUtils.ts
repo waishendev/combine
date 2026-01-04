@@ -11,6 +11,14 @@ export type OrderApiItem = {
   } | null
   status?: string | null
   payment_status?: string | null
+  refund_total?: string | number | null
+  return_summary?: {
+    has_return?: boolean
+    return_count?: number
+    return_statuses?: string[]
+    return_items_total_qty?: number
+    latest_return_id?: number | null
+  } | null
   subtotal?: string | number | null
   discount_total?: string | number | null
   shipping_fee?: string | number | null
@@ -40,6 +48,16 @@ export const mapOrderApiItemToRow = (item: OrderApiItem): OrderRowData => {
       : Number(item.grand_total)
     : 0
 
+  const returnSummary = item.return_summary
+    ? {
+        hasReturn: Boolean(item.return_summary.has_return),
+        returnCount: Number(item.return_summary.return_count ?? 0),
+        returnStatuses: item.return_summary.return_statuses ?? [],
+        returnItemsTotalQty: Number(item.return_summary.return_items_total_qty ?? 0),
+        latestReturnId: item.return_summary.latest_return_id ?? null,
+      }
+    : null
+
   return {
     id: normalizedId,
     orderNo: String(orderNo),
@@ -51,6 +69,12 @@ export const mapOrderApiItemToRow = (item: OrderApiItem): OrderRowData => {
     grandTotal,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
+    returnSummary,
+    refundTotal: item.refund_total
+      ? typeof item.refund_total === 'string'
+        ? Number.parseFloat(item.refund_total)
+        : Number(item.refund_total)
+      : 0,
   }
 }
 
@@ -65,6 +89,7 @@ export function convertOrderDetailToApiItem(orderDetail: {
   shipping_method?: string
   created_at?: string
   updated_at?: string
+  refund_total?: string | number
   customer?: {
     id?: number
     name?: string
@@ -81,6 +106,7 @@ export function convertOrderDetailToApiItem(orderDetail: {
     shipping_method: orderDetail.shipping_method ?? null,
     created_at: orderDetail.created_at ?? null,
     updated_at: orderDetail.updated_at ?? null,
+    refund_total: orderDetail.refund_total ?? null,
     customer: orderDetail.customer
       ? {
           id: orderDetail.customer.id ?? undefined,
@@ -218,4 +244,3 @@ export function mapDisplayStatusToApiFilters(displayStatus: string): {
       return {}
   }
 }
-

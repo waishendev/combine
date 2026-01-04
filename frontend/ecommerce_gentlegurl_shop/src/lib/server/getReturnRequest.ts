@@ -21,6 +21,10 @@ export type ReturnRequestDetail = {
   return_courier_name?: string | null;
   return_tracking_no?: string | null;
   return_shipped_at?: string | null;
+  refund_amount?: string | number | null;
+  refund_method?: string | null;
+  refund_proof_url?: string | null;
+  refunded_at?: string | null;
   items?: ReturnRequestItem[];
   timestamps?: {
     created_at?: string | null;

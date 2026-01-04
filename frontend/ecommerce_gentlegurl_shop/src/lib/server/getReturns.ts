@@ -10,6 +10,10 @@ export type ReturnRequestSummary = {
   created_at?: string | null;
   total_items?: number | null;
   total_quantity?: number | null;
+  refund_amount?: string | number | null;
+  refund_method?: string | null;
+  refund_proof_url?: string | null;
+  refunded_at?: string | null;
 };
 
 export type ReturnsResult = {

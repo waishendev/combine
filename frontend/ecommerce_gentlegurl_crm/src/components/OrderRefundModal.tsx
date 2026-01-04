@@ -19,6 +19,8 @@ export default function OrderRefundModal({
   const [error, setError] = useState<string | null>(null)
   const [adminNote, setAdminNote] = useState('')
   const [refundProof, setRefundProof] = useState<File | null>(null)
+  const [refundAmount, setRefundAmount] = useState('')
+  const [refundMethod, setRefundMethod] = useState('')
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -31,9 +33,19 @@ export default function OrderRefundModal({
       return
     }
 
+    if (!refundAmount || Number(refundAmount) <= 0) {
+      setError('Refund amount is required')
+      setSubmitting(false)
+      return
+    }
+
     try {
       const formData = new FormData()
       formData.append('admin_note', adminNote.trim())
+      formData.append('refund_amount', refundAmount)
+      if (refundMethod) {
+        formData.append('refund_method', refundMethod)
+      }
       if (refundProof) {
         formData.append('refund_proof_path', refundProof)
       }
@@ -112,6 +124,41 @@ export default function OrderRefundModal({
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <div>
+            <label htmlFor="refundAmount" className="block text-sm font-medium text-gray-700 mb-1">
+              Refund Amount (RM) <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="refundAmount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              placeholder="0.00"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="refundMethod" className="block text-sm font-medium text-gray-700 mb-1">
+              Refund Method (Optional)
+            </label>
+            <select
+              id="refundMethod"
+              value={refundMethod}
+              onChange={(e) => setRefundMethod(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Select method</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="cash">Cash</option>
+              <option value="card_refund">Card Refund</option>
+              <option value="store_credit">Store Credit</option>
+            </select>
+          </div>
+
+          <div>
             <label htmlFor="adminNote" className="block text-sm font-medium text-gray-700 mb-1">
               Admin Note <span className="text-red-500">*</span>
             </label>
@@ -169,4 +216,3 @@ export default function OrderRefundModal({
     </div>
   )
 }
-
