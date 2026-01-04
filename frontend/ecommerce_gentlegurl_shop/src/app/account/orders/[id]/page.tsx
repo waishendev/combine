@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { OrderHeaderClient } from "./OrderHeaderClient";
+import { ReturnRequestButton } from "./ReturnRequestButton";
 
 type OrderDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -11,6 +13,15 @@ const formatDateTime = (value?: string | null) => {
   if (!value) return null;
   const date = new Date(value);
   return date.toLocaleString();
+};
+
+const isWithinReturnWindow = (completedAt?: string | null, windowDays?: number | null) => {
+  if (!completedAt || !windowDays) return false;
+  const completedDate = new Date(completedAt);
+  if (Number.isNaN(completedDate.getTime())) return false;
+  const windowEnds = new Date(completedDate);
+  windowEnds.setDate(windowEnds.getDate() + windowDays);
+  return windowEnds.getTime() >= Date.now();
 };
 
 export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
@@ -28,12 +39,17 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
 
   const receiptSlip = order.slips?.find((slip) => slip.type === "payment_slip") ?? null;
   const isCompleted = order.status === "completed";
-  const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
+  const resolvedOrderId = order.id ?? orderId;
+  const invoiceUrl = `/api/proxy/public/shop/orders/${resolvedOrderId}/invoice`;
+  const returnWindowDays = order.return_window_days ?? 7;
+  const hasReturnRequest = (order.returns?.length ?? 0) > 0;
+  const returnRequestId = order.returns?.[0]?.id;
+  const canRequestReturn = isCompleted && isWithinReturnWindow(order.completed_at, returnWindowDays);
 
   return (
     <div className="space-y-6">
       <OrderHeaderClient
-        orderId={order.id}
+        orderId={resolvedOrderId}
         orderNo={order.order_no}
         placedAt={order.placed_at}
         status={order.status}
@@ -42,16 +58,39 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
         reserveExpiresAt={order.reserve_expires_at ?? null}
       />
 
-      {isCompleted && (
-        <div className="flex justify-end">
-          <a
-            href={invoiceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
-          >
-            Download Invoice
-          </a>
+      {(isCompleted || hasReturnRequest) && (
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {isCompleted && (
+            <a
+              href={invoiceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+            >
+              Download Invoice
+            </a>
+          )}
+
+          {hasReturnRequest && returnRequestId && (
+            <Link
+              href={`/account/returns/${returnRequestId}`}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--foreground)]/20 px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]/40"
+            >
+              View Return
+            </Link>
+          )}
+
+          {!hasReturnRequest && isCompleted && (
+            <div className="flex flex-col items-end gap-2 text-sm text-[var(--foreground)]/70">
+              {canRequestReturn ? (
+                <ReturnRequestButton orderId={resolvedOrderId} />
+              ) : (
+                <span className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm">
+                  Return window expired
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 

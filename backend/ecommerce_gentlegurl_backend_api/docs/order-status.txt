@@ -1,0 +1,73 @@
+# Order Status Reference
+
+## Customer display statuses
+These labels describe how customers see order progress in the shop UI.
+
+- cancelled
+  - Display: Cancelled
+- payment_status = failed
+  - Display: Payment Failed
+- status = reject_payment_proof + payment_status = unpaid
+  - Display: Payment Proof Rejected
+- status = pending + payment_status = unpaid
+  - Display: Awaiting Payment (shows reserve countdown if available)
+- status = processing + payment_status = unpaid
+  - Display: Waiting for Verification
+- status = confirmed + payment_status = paid
+  - Display: Payment Confirmed
+- status = processing + payment_status = paid
+  - Display: Preparing
+- status = ready_for_pickup + payment_status = paid
+  - Display: Ready for Pickup
+- status = shipped
+  - Display: Shipped
+- status = completed
+  - Display: Completed
+
+## Return Request Flow
+Return requests use the existing `return_requests.status` string field.
+
+### Allowed return statuses
+- requested
+  - Customer submitted a return request.
+- approved
+  - Admin approved the return request. Customer can submit tracking.
+- rejected
+  - Admin rejected the return request. `admin_note` should record the reason.
+- in_transit
+  - Customer submitted tracking; return shipment is on the way.
+- received
+  - Admin confirmed receipt of the return shipment.
+- refunded
+  - Admin completed refund and recorded reference in `admin_note`.
+- cancelled
+  - System auto-cancelled due to missing tracking submission.
+
+### Key timestamps
+- reviewed_at: set when admin approves or rejects.
+- return_shipped_at: set when customer submits tracking.
+- received_at: set when admin marks received.
+- completed_at: set when admin marks refunded.
+
+### Return window rules
+- `ecommerce.return_window_days`
+  - Customer can only create returns for orders with `status = completed` and
+    `now <= completed_at + return_window_days`.
+  - If the window is expired, the Shop UI should show “Return window expired.”
+
+### Tracking submission deadline
+- `ecommerce.return_tracking_submit_days`
+  - If a return is `approved` and no tracking is submitted before
+    `reviewed_at + return_tracking_submit_days`, the system auto-cancels it
+    with status `cancelled` and `admin_note = "Cancelled (No tracking submitted)."`.
+
+### Action ownership
+- Customer actions
+  - Create return request (requested)
+  - Submit return tracking (in_transit)
+- Admin actions
+  - Approve or reject (approved / rejected)
+  - Mark received (received)
+  - Mark refunded (refunded)
+- System actions
+  - Auto-cancel approved returns with overdue tracking submissions (cancelled)

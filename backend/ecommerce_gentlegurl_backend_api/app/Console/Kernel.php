@@ -10,6 +10,7 @@ class Kernel extends ConsoleKernel
     protected $commands = [
         Commands\SendLowStockSummary::class,
         Commands\ExpirePendingOrders::class,
+        Commands\ExpireApprovedReturns::class,
     ];
 
     protected function schedule(Schedule $schedule): void
@@ -19,6 +20,9 @@ class Kernel extends ConsoleKernel
 
         $schedule->command('ecommerce:expire-pending-orders')
             ->everyMinute();
+
+        $schedule->command('ecommerce:expire-approved-returns')
+            ->daily();
     }
 
     protected function commands(): void

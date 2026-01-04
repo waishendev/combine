@@ -11,41 +11,84 @@ use App\Models\Ecommerce\ReturnRequestItem;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\SettingService;
 
 class PublicReturnController extends Controller
 {
     use ResolvesCurrentCustomer;
 
-    public function store(Request $request, Order $order)
+    public function store(Request $request, ?Order $order = null)
     {
+        if (! $request->has('items') && $request->has('item_ids')) {
+            $request->merge(['items' => $request->input('item_ids')]);
+        }
+
+        if (! $request->has('initial_image_urls') && $request->has('image_urls')) {
+            $request->merge(['initial_image_urls' => $request->input('image_urls')]);
+        }
+
         $validated = $request->validate([
-            'request_type' => ['required', 'in:refund,return'],
+            'order_id' => [$order ? 'nullable' : 'required', 'integer', 'exists:orders,id'],
+            'request_type' => ['required', 'in:return'],
             'reason' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'item_ids' => ['required', 'array', 'min:1'],
-            'item_ids.*.order_item_id' => ['required', 'integer', 'exists:order_items,id'],
-            'item_ids.*.quantity' => ['required', 'integer', 'min:1'],
-            'image_urls' => ['nullable', 'array'],
-            'image_urls.*' => ['url'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.order_item_id' => ['required', 'integer', 'exists:order_items,id'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'initial_image_urls' => ['nullable', 'array'],
+            'initial_image_urls.*' => ['url'],
         ]);
 
         $customer = $this->requireCustomer();
+
+        $order = $order ?? Order::query()->find($validated['order_id']);
+
+        if (! $order) {
+            return $this->respond(null, __('Order not found.'), false, 404);
+        }
 
         if ($order->customer_id !== (int) $customer->id) {
             return $this->respond(null, __('You are not allowed to access this order.'), false, 403);
         }
 
-        if ($order->status === 'cancelled') {
-            return $this->respond(null, __('This order cannot be returned.'), false, 422);
+        if ($order->status !== 'completed') {
+            return $this->respond(null, __('Only completed orders can be returned.'), false, 422);
+        }
+
+        if (! $order->completed_at) {
+            return $this->respond(null, __('Return window expired.'), false, 422);
+        }
+
+        $returnWindowDays = (int) SettingService::get('ecommerce.return_window_days', 7);
+        $returnWindowEndsAt = Carbon::parse($order->completed_at)->addDays($returnWindowDays);
+
+        if (Carbon::now()->greaterThan($returnWindowEndsAt)) {
+            return $this->respond(null, __('Return window expired.'), false, 422);
+        }
+
+        $activeStatuses = ['requested', 'approved', 'in_transit', 'received'];
+        $activeReturnExists = ReturnRequest::where('order_id', $order->id)
+            ->whereIn('status', $activeStatuses)
+            ->exists();
+
+        if ($activeReturnExists) {
+            return $this->respond(null, __('An active return request already exists for this order.'), false, 422);
         }
 
         $orderItems = OrderItem::where('order_id', $order->id)
-            ->whereIn('id', collect($validated['item_ids'])->pluck('order_item_id'))
+            ->whereIn('id', collect($validated['items'])->pluck('order_item_id'))
             ->get()
             ->keyBy('id');
 
-        if ($orderItems->count() !== count($validated['item_ids'])) {
+        if ($orderItems->count() !== count($validated['items'])) {
             return $this->respond(null, __('One or more order items are invalid.'), false, 422);
+        }
+
+        foreach ($validated['items'] as $item) {
+            $orderItem = $orderItems->get($item['order_item_id']);
+            if (! $orderItem || $item['quantity'] > $orderItem->quantity) {
+                return $this->respond(null, __('Return quantity exceeds purchased quantity.'), false, 422);
+            }
         }
 
         $returnRequest = DB::transaction(function () use ($validated, $orderItems, $order, $customer) {
@@ -53,13 +96,13 @@ class PublicReturnController extends Controller
                 'order_id' => $order->id,
                 'customer_id' => $customer->id,
                 'request_type' => $validated['request_type'],
-                'status' => 'pending_review',
+                'status' => 'requested',
                 'reason' => $validated['reason'] ?? null,
                 'description' => $validated['description'] ?? null,
-                'initial_image_urls' => $validated['image_urls'] ?? [],
+                'initial_image_urls' => $validated['initial_image_urls'] ?? [],
             ]);
 
-            foreach ($validated['item_ids'] as $item) {
+            foreach ($validated['items'] as $item) {
                 ReturnRequestItem::create([
                     'return_request_id' => $requestModel->id,
                     'order_item_id' => $item['order_item_id'],
@@ -80,6 +123,7 @@ class PublicReturnController extends Controller
             'status' => $returnRequest->status,
             'reason' => $returnRequest->reason,
             'description' => $returnRequest->description,
+            'initial_image_urls' => $returnRequest->initial_image_urls,
             'item_summaries' => $returnRequest->items->map(function (ReturnRequestItem $item) use ($orderItems) {
                 $orderItem = $orderItems->get($item->order_item_id);
                 return [
@@ -156,6 +200,7 @@ class PublicReturnController extends Controller
             'reason' => $returnRequest->reason,
             'description' => $returnRequest->description,
             'initial_image_urls' => $returnRequest->initial_image_urls,
+            'admin_note' => $returnRequest->admin_note,
             'return_courier_name' => $returnRequest->return_courier_name,
             'return_tracking_no' => $returnRequest->return_tracking_no,
             'return_shipped_at' => $returnRequest->return_shipped_at,
@@ -181,32 +226,31 @@ class PublicReturnController extends Controller
     {
         $customer = $this->requireCustomer();
 
+        if (! $request->has('return_courier_name') && $request->has('courier_name')) {
+            $request->merge(['return_courier_name' => $request->input('courier_name')]);
+        }
+
+        if (! $request->has('return_tracking_no') && $request->has('tracking_no')) {
+            $request->merge(['return_tracking_no' => $request->input('tracking_no')]);
+        }
+
         $validated = $request->validate([
-            'courier_name' => ['required', 'string', 'max:100'],
-            'tracking_no' => ['required', 'string', 'max:100'],
-            'shipped_at' => ['nullable', 'date'],
-            'image_urls' => ['nullable', 'array'],
-            'image_urls.*' => ['url'],
+            'return_courier_name' => ['required', 'string', 'max:100'],
+            'return_tracking_no' => ['required', 'string', 'max:100'],
         ]);
 
         if ($returnRequest->customer_id !== (int) $customer->id) {
             return $this->respond(null, __('You are not allowed to access this return request.'), false, 403);
         }
 
-        if ($returnRequest->status !== 'approved_waiting_return') {
+        if ($returnRequest->status !== 'approved') {
             return $this->respond(null, __('Current status does not allow submitting tracking information.'), false, 422);
         }
 
-        $imageUrls = $returnRequest->initial_image_urls ?? [];
-        if (!empty($validated['image_urls'])) {
-            $imageUrls = array_values(array_unique(array_merge($imageUrls, $validated['image_urls'])));
-        }
-
         $returnRequest->update([
-            'return_courier_name' => $validated['courier_name'],
-            'return_tracking_no' => $validated['tracking_no'],
-            'return_shipped_at' => $validated['shipped_at'] ? Carbon::parse($validated['shipped_at']) : Carbon::now(),
-            'initial_image_urls' => $imageUrls,
+            'return_courier_name' => $validated['return_courier_name'],
+            'return_tracking_no' => $validated['return_tracking_no'],
+            'return_shipped_at' => Carbon::now(),
             'status' => 'in_transit',
         ]);
 
