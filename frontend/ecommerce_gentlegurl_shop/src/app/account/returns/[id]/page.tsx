@@ -14,6 +14,16 @@ const formatDateTime = (value?: string | null) => {
   return date.toLocaleString();
 };
 
+const formatAmount = (value?: string | number | null) => {
+  if (value === null || value === undefined) return "0.00";
+  const num = typeof value === "string" ? Number.parseFloat(value) : Number(value);
+  if (Number.isNaN(num)) return "0.00";
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
 export default async function ReturnDetailPage({ params }: ReturnDetailPageProps) {
   const { id } = await params;
   const returnId = Number(id);
@@ -62,6 +72,27 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
             <p>Received: {formatDateTime(returnRequest.timestamps?.received_at)}</p>
             <p>Refunded: {formatDateTime(returnRequest.timestamps?.completed_at)}</p>
           </div>
+          {(returnRequest.refund_amount ||
+            returnRequest.refund_method ||
+            returnRequest.refund_proof_url ||
+            returnRequest.refunded_at) && (
+            <div>
+              <p className="font-semibold text-[var(--foreground)]">Refund</p>
+              <p>Amount: RM {formatAmount(returnRequest.refund_amount)}</p>
+              <p>Method: {returnRequest.refund_method ?? "—"}</p>
+              <p>Refunded At: {formatDateTime(returnRequest.refunded_at)}</p>
+              {returnRequest.refund_proof_url && (
+                <a
+                  href={returnRequest.refund_proof_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[var(--accent)] hover:underline"
+                >
+                  View refund proof
+                </a>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

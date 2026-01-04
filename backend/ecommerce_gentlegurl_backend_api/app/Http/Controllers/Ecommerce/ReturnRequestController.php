@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\ReturnRequest;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class ReturnRequestController extends Controller
 {
@@ -88,6 +91,10 @@ class ReturnRequestController extends Controller
             'return_courier_name' => $returnRequest->return_courier_name,
             'return_tracking_no' => $returnRequest->return_tracking_no,
             'return_shipped_at' => $returnRequest->return_shipped_at,
+            'refund_amount' => $returnRequest->refund_amount,
+            'refund_method' => $returnRequest->refund_method,
+            'refund_proof_path' => $returnRequest->refund_proof_path,
+            'refunded_at' => $returnRequest->refunded_at,
             'items' => $returnRequest->items->map(function ($item) {
                 return [
                     'order_item_id' => $item->order_item_id,
@@ -102,74 +109,137 @@ class ReturnRequestController extends Controller
                 'reviewed_at' => $returnRequest->reviewed_at,
                 'received_at' => $returnRequest->received_at,
                 'completed_at' => $returnRequest->completed_at,
+                'refunded_at' => $returnRequest->refunded_at,
             ],
         ]);
     }
 
     public function updateStatus(Request $request, ReturnRequest $returnRequest)
     {
-        $validated = $request->validate([
-            'action' => ['required', 'in:approve,reject,mark_in_transit,mark_received,mark_refunded'],
-            'admin_note' => ['nullable', 'string'],
-            'status_note' => ['nullable', 'string'],
-        ]);
+        $action = $request->input('action')
+            ?? $request->input('mark')
+            ?? $request->input('status_action');
 
-        $action = $validated['action'];
+        $validator = Validator::make(
+            array_merge($request->all(), ['action' => $action]),
+            [
+                'action' => ['required', Rule::in(['approve', 'reject', 'mark_in_transit', 'mark_received', 'mark_refunded'])],
+                'admin_note' => ['nullable', 'string'],
+                'status_note' => ['nullable', 'string'],
+                'refund_amount' => [
+                    Rule::requiredIf($action === 'mark_refunded'),
+                    'numeric',
+                    'min:0.01',
+                ],
+                'refund_method' => ['nullable', 'string', 'max:30'],
+                'refund_proof_path' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+            ]
+        );
 
-        switch ($action) {
-            case 'approve':
-                if ($returnRequest->status !== 'requested') {
-                    return $this->respond(null, __('Return request not in requested state.'), false, 422);
-                }
-                $returnRequest->status = 'approved';
-                $returnRequest->reviewed_at = Carbon::now();
-                break;
-            case 'reject':
-                if ($returnRequest->status !== 'requested') {
-                    return $this->respond(null, __('Return request not in requested state.'), false, 422);
-                }
-                if (empty($validated['admin_note'])) {
-                    return $this->respond(null, __('Admin note is required for rejection.'), false, 422);
-                }
-                $returnRequest->status = 'rejected';
-                $returnRequest->reviewed_at = Carbon::now();
-                break;
-            case 'mark_in_transit':
-                if ($returnRequest->status !== 'approved') {
-                    return $this->respond(null, __('Return request must be approved before marking in transit.'), false, 422);
-                }
-                $returnRequest->status = 'in_transit';
-                break;
-            case 'mark_received':
-                if (! in_array($returnRequest->status, ['approved', 'in_transit'], true)) {
-                    return $this->respond(null, __('Return request not awaiting receipt.'), false, 422);
-                }
-                $returnRequest->status = 'received';
-                $returnRequest->received_at = Carbon::now();
-                break;
-            case 'mark_refunded':
-                if ($returnRequest->status !== 'received') {
-                    return $this->respond(null, __('Return request must be received before refunding.'), false, 422);
-                }
-                if (empty($validated['admin_note'])) {
-                    return $this->respond(null, __('Admin note is required for refunding.'), false, 422);
-                }
-                $returnRequest->status = 'refunded';
-                $returnRequest->completed_at = Carbon::now();
-                break;
+        $validated = $validator->validate();
+
+        $refundAmount = isset($validated['refund_amount'])
+            ? (float) $validated['refund_amount']
+            : null;
+
+        if ($action !== 'mark_refunded') {
+            switch ($action) {
+                case 'approve':
+                    if ($returnRequest->status !== 'requested') {
+                        return $this->respond(null, __('Return request not in requested state.'), false, 422);
+                    }
+                    $returnRequest->status = 'approved';
+                    $returnRequest->reviewed_at = Carbon::now();
+                    break;
+                case 'reject':
+                    if ($returnRequest->status !== 'requested') {
+                        return $this->respond(null, __('Return request not in requested state.'), false, 422);
+                    }
+                    if (empty($validated['admin_note'])) {
+                        return $this->respond(null, __('Admin note is required for rejection.'), false, 422);
+                    }
+                    $returnRequest->status = 'rejected';
+                    $returnRequest->reviewed_at = Carbon::now();
+                    break;
+                case 'mark_in_transit':
+                    if ($returnRequest->status !== 'approved') {
+                        return $this->respond(null, __('Return request must be approved before marking in transit.'), false, 422);
+                    }
+                    $returnRequest->status = 'in_transit';
+                    break;
+                case 'mark_received':
+                    if (! in_array($returnRequest->status, ['approved', 'in_transit'], true)) {
+                        return $this->respond(null, __('Return request not awaiting receipt.'), false, 422);
+                    }
+                    $returnRequest->status = 'received';
+                    $returnRequest->received_at = Carbon::now();
+                    break;
+            }
+
+            $returnRequest->admin_note = $validated['admin_note'] ?? $validated['status_note'] ?? $returnRequest->admin_note;
+            $returnRequest->save();
         }
 
-        $returnRequest->admin_note = $validated['admin_note'] ?? $validated['status_note'] ?? $returnRequest->admin_note;
-        $returnRequest->save();
+        if ($action === 'mark_refunded') {
+            if ($returnRequest->status !== 'received') {
+                return $this->respond(null, __('Return request must be received before refunding.'), false, 422);
+            }
+            if (empty($validated['admin_note'])) {
+                return $this->respond(null, __('Admin note is required for refunding.'), false, 422);
+            }
 
-        if ($action === 'mark_refunded' && $returnRequest->relationLoaded('order') === false) {
-            $returnRequest->load('order');
-        }
+            if ($returnRequest->relationLoaded('order') === false) {
+                $returnRequest->load('order');
+            }
 
-        if ($action === 'mark_refunded' && $returnRequest->order) {
-            $returnRequest->order->update([
-                'payment_status' => 'refunded',
-            ]);
+            if (! $returnRequest->order) {
+                return $this->respond(null, __('Return request has no associated order.'), false, 422);
+            }
+
+            $uploadedProofPath = null;
+            if ($request->hasFile('refund_proof_path')) {
+                $uploadedProofPath = $request->file('refund_proof_path')->store('refund-photos', 'public');
+            }
+
+            try {
+                DB::transaction(function () use (
+                    $returnRequest,
+                    $validated,
+                    $refundAmount,
+                    $uploadedProofPath
+                ) {
+                    $lockedOrder = $returnRequest->order->newQuery()->lockForUpdate()->find($returnRequest->order->id);
+                    if (! $lockedOrder) {
+                        return;
+                    }
+
+                    $remaining = (float) $lockedOrder->grand_total - (float) $lockedOrder->refund_total;
+                    if ($refundAmount > $remaining) {
+                        throw new \RuntimeException('Refund amount exceeds remaining refundable total.');
+                    }
+
+                    $returnRequest->status = 'refunded';
+                    $returnRequest->completed_at = Carbon::now();
+                    $returnRequest->refunded_at = Carbon::now();
+                    $returnRequest->refund_amount = $refundAmount;
+                    $returnRequest->refund_method = $validated['refund_method'] ?? $returnRequest->refund_method;
+                    if ($uploadedProofPath) {
+                        $returnRequest->refund_proof_path = $uploadedProofPath;
+                    }
+                    $returnRequest->admin_note = $validated['admin_note'] ?? $validated['status_note'] ?? $returnRequest->admin_note;
+                    $returnRequest->save();
+
+                    $lockedOrder->refund_total = (float) $lockedOrder->refund_total + $refundAmount;
+                    $lockedOrder->payment_status = 'refunded';
+                    if ($uploadedProofPath) {
+                        $lockedOrder->refund_proof_path = $uploadedProofPath;
+                    }
+                    $lockedOrder->refunded_at = Carbon::now();
+                    $lockedOrder->save();
+                });
+            } catch (\RuntimeException $exception) {
+                return $this->respond(null, __($exception->getMessage()), false, 422);
+            }
         }
 
         return $this->respond($returnRequest->fresh(), __('Status updated.'));

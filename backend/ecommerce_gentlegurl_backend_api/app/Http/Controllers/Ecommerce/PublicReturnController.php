@@ -11,6 +11,7 @@ use App\Models\Ecommerce\ReturnRequestItem;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use App\Services\SettingService;
 
 class PublicReturnController extends Controller
@@ -164,6 +165,10 @@ class PublicReturnController extends Controller
             ->paginate($validated['per_page'] ?? 15);
 
         $returns->getCollection()->transform(function (ReturnRequest $request) {
+            $refundProofUrl = $request->refund_proof_path
+                ? Storage::disk('public')->url($request->refund_proof_path)
+                : null;
+
             return [
                 'id' => $request->id,
                 'order_id' => $request->order_id,
@@ -174,6 +179,10 @@ class PublicReturnController extends Controller
                 'created_at' => $request->created_at,
                 'total_items' => $request->items_count,
                 'total_quantity' => $request->items_quantity,
+                'refund_amount' => $request->refund_amount,
+                'refund_method' => $request->refund_method,
+                'refund_proof_url' => $refundProofUrl,
+                'refunded_at' => $request->refunded_at,
             ];
         });
 
@@ -189,6 +198,9 @@ class PublicReturnController extends Controller
         }
 
         $returnRequest->load(['items.orderItem', 'order']);
+        $refundProofUrl = $returnRequest->refund_proof_path
+            ? Storage::disk('public')->url($returnRequest->refund_proof_path)
+            : null;
 
         return $this->respond([
             'id' => $returnRequest->id,
@@ -204,6 +216,10 @@ class PublicReturnController extends Controller
             'return_courier_name' => $returnRequest->return_courier_name,
             'return_tracking_no' => $returnRequest->return_tracking_no,
             'return_shipped_at' => $returnRequest->return_shipped_at,
+            'refund_amount' => $returnRequest->refund_amount,
+            'refund_method' => $returnRequest->refund_method,
+            'refund_proof_url' => $refundProofUrl,
+            'refunded_at' => $returnRequest->refunded_at,
             'items' => $returnRequest->items->map(function (ReturnRequestItem $item) {
                 return [
                     'order_item_id' => $item->order_item_id,
