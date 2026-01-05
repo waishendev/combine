@@ -650,35 +650,6 @@ export default function ProductForm({
 
     setPendingImages((prev) => [...prev, ...newUploads])
 
-    if (activeProductId) {
-      newUploads.forEach((upload) => {
-        setPendingImages((prev) =>
-          prev.map((item) =>
-            item.id === upload.id ? { ...item, status: 'uploading' } : item,
-          ),
-        )
-        uploadMediaFile('image', upload.file, (progress) => {
-          setPendingImages((prev) =>
-            prev.map((item) => (item.id === upload.id ? { ...item, progress } : item)),
-          )
-        })
-          .then((response) => {
-            const mediaItem = buildImageFromResponse(response as { data?: unknown })
-            if (mediaItem) {
-              setExistingImages((prev) => [...prev, mediaItem])
-            }
-            setPendingImages((prev) => prev.filter((item) => item.id !== upload.id))
-          })
-          .catch(() => {
-            setPendingImages((prev) =>
-              prev.map((item) =>
-                item.id === upload.id ? { ...item, status: 'failed' } : item,
-              ),
-            )
-          })
-      })
-    }
-
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -1002,13 +973,6 @@ export default function ProductForm({
       URL.revokeObjectURL(pendingVideo.preview)
     }
 
-    if (existingVideo && activeProductId) {
-      void fetch(`/api/proxy/ecommerce/products/${activeProductId}/media/${existingVideo.id}`, {
-        method: 'DELETE',
-      })
-      setExistingVideo(null)
-    }
-
     const newVideo: PendingVideoUpload = {
       file,
       preview: URL.createObjectURL(file),
@@ -1017,23 +981,6 @@ export default function ProductForm({
     }
 
     setPendingVideo(newVideo)
-
-    if (activeProductId) {
-      setPendingVideo({ ...newVideo, status: 'uploading' })
-      uploadMediaFile('video', file, (progress) => {
-        setPendingVideo((prev) => (prev ? { ...prev, progress } : prev))
-      })
-        .then((response) => {
-          const videoItem = buildVideoFromResponse(response as { data?: unknown })
-          if (videoItem) {
-            setExistingVideo(videoItem)
-          }
-          setPendingVideo(null)
-        })
-        .catch(() => {
-          setPendingVideo((prev) => (prev ? { ...prev, status: 'failed' } : prev))
-        })
-    }
   }
 
   const handleVideoRemove = () => {
