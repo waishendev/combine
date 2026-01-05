@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PLACEHOLDER_IMAGE, type ProductMediaItem } from "@/lib/productMedia";
 
 type ProductGalleryProps = {
@@ -16,6 +16,7 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
     initialIndex >= 0 && initialIndex < safeMedia.length ? initialIndex : 0,
   );
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+  const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
 
   const handleImageError = (src: string) => {
     setImageErrors((prev) => new Set(prev).add(src));
@@ -24,6 +25,7 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
   const getImageSrc = (src: string) => (imageErrors.has(src) ? PLACEHOLDER_IMAGE : src);
 
   const activeMedia = safeMedia[activeIndex] ?? safeMedia[0];
+  const videoSource = safeMedia.find((item) => item.type === "video")?.url ?? null;
 
   if (!safeMedia.length || !activeMedia) {
     return (
@@ -37,6 +39,62 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
   const poster = activeMedia.thumbnail_url
     ? getImageSrc(activeMedia.thumbnail_url)
     : videoPoster || undefined;
+
+  useEffect(() => {
+    if (!videoSource) {
+      setVideoThumbnail(null);
+      return;
+    }
+
+    let isCancelled = false;
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.crossOrigin = "anonymous";
+    video.src = videoSource;
+
+    const handleLoaded = () => {
+      if (isCancelled) return;
+      const width = video.videoWidth || 320;
+      const height = video.videoHeight || 180;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setVideoThumbnail(null);
+        return;
+      }
+      ctx.drawImage(video, 0, 0, width, height);
+      try {
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        if (!isCancelled) {
+          setVideoThumbnail(dataUrl);
+        }
+      } catch {
+        if (!isCancelled) {
+          setVideoThumbnail(null);
+        }
+      }
+    };
+
+    const handleError = () => {
+      if (!isCancelled) {
+        setVideoThumbnail(null);
+      }
+    };
+
+    video.addEventListener("loadeddata", handleLoaded);
+    video.addEventListener("error", handleError);
+    video.load();
+
+    return () => {
+      isCancelled = true;
+      video.removeEventListener("loadeddata", handleLoaded);
+      video.removeEventListener("error", handleError);
+    };
+  }, [videoSource]);
 
   return (
     <div>
@@ -71,7 +129,7 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
           {safeMedia.map((item, index) => {
             const isVideo = item.type === "video";
             const thumbnailSrc = isVideo
-              ? item.thumbnail_url || videoPoster || null
+              ? item.thumbnail_url || videoThumbnail || null
               : item.url || PLACEHOLDER_IMAGE;
             const resolvedThumbnail = thumbnailSrc ? getImageSrc(thumbnailSrc) : null;
 
@@ -102,10 +160,16 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
                   </div>
                 )}
                 {isVideo && (
-                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/35 text-white text-[10px] font-semibold uppercase tracking-wide">
-                    <i className="fa-solid fa-play text-base" />
-                    Video
-                  </span>
+                  <>
+                    <span className="absolute right-2 top-2 rounded bg-black/65 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
+                      Video
+                    </span>
+                    <span className="absolute inset-0 flex items-center justify-center text-white">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55">
+                        <i className="fa-solid fa-play text-xs" />
+                      </span>
+                    </span>
+                  </>
                 )}
               </button>
             );
