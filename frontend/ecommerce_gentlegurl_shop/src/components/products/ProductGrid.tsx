@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
+import { getCoverImageUrl } from "@/lib/productMedia";
 
 interface ProductGridProps {
   items: Array<{
@@ -10,13 +11,13 @@ interface ProductGridProps {
     name: string;
     price: number | string;
     slug?: string;
-    images?: Array<{ image_path?: string }>;
+    cover_image_url?: string | null;
+    images?: Array<{ image_path?: string | null; url?: string | null; sort_order?: number | null }>;
+    media?: Array<{ type?: string; url?: string | null; sort_order?: number | null }>;
     is_in_wishlist?: boolean;
     sold_count?: number | string;
   }>;
 }
-
-const PLACEHOLDER_IMAGE = "/images/placeholder.png";
 
 export default function ProductGrid({ items }: ProductGridProps) {
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
@@ -25,9 +26,8 @@ export default function ProductGrid({ items }: ProductGridProps) {
     setImageErrors((prev) => new Set(prev).add(imageSrc));
   };
 
-  const getImageSrc = (imageSrc: string) => {
-    return imageErrors.has(imageSrc) ? PLACEHOLDER_IMAGE : imageSrc;
-  };
+  const getImageSrc = (imageSrc: string) =>
+    imageErrors.has(imageSrc) ? "/images/placeholder.png" : imageSrc;
 
   return (
     <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
@@ -35,7 +35,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
         const productSlug = product.slug ?? product.id;
         const priceNumber = Number(product.price);
         const priceLabel = Number.isFinite(priceNumber) ? priceNumber.toFixed(2) : product.price;
-        const image = product.images?.[0]?.image_path;
+        const image = getCoverImageUrl(product);
         const soldCountValue = Number(product.sold_count ?? 0);
         const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
 
@@ -52,8 +52,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
             </div>
 
             <Link href={`/product/${productSlug}`} className="block">
-              {image && (
-                <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">         
+              <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {/* <Image
                     // src={image}
@@ -62,14 +61,13 @@ export default function ProductGrid({ items }: ProductGridProps) {
                     fill
                     className="object-cover transition duration-500 ease-out group-hover:scale-105"
                   /> */}
-                  <img
-                    src={getImageSrc(image)}
-                    alt={product.name}
-                    className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
-                    onError={() => handleImageError(image)}
-                  />
-                </div>
-              )}
+                <img
+                  src={getImageSrc(image)}
+                  alt={product.name}
+                  className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
+                  onError={() => handleImageError(image)}
+                />
+              </div>
               <div className="space-y-2 p-4">
                 <h3 className="text-sm font-semibold leading-snug text-[var(--foreground)] md:text-base">
                   {product.name}

@@ -152,7 +152,9 @@ export type CartItem = {
   locked?: boolean;
   product?: {
     slug?: string;
-    images?: { image_path: string; is_main: boolean }[];
+    cover_image_url?: string | null;
+    images?: { image_path: string; is_main?: boolean; sort_order?: number | null }[];
+    media?: { type?: string; url?: string | null; sort_order?: number | null }[];
   };
 };
 
@@ -182,7 +184,9 @@ export type WishlistItem = {
     slug?: string;
     name?: string;
     price?: number | string;
-    images?: { image_path?: string }[];
+    cover_image_url?: string | null;
+    images?: { image_path?: string; sort_order?: number | null }[];
+    media?: { type?: string; url?: string | null; sort_order?: number | null }[];
     thumbnail?: string | null;
   };
 };
@@ -207,6 +211,7 @@ export type CheckoutPreviewResponse = {
     is_reward?: boolean;
     reward_redemption_id?: number | null;
     locked?: boolean;
+    cover_image_url?: string | null;
   }[];
   subtotal: number | string;
   discount_total: number | string;
@@ -675,6 +680,7 @@ export type OrderTrackingResponse = {
       product_name: string;
       product_slug?: string | null;
       product_image?: string | null;
+      cover_image_url?: string | null;
       quantity: number;
       unit_price: number | string;
       line_total: number | string;

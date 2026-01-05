@@ -23,21 +23,14 @@ class PublicOrderTrackingController extends Controller
         }
 
         $items = $order->items->map(function ($item) {
-            $images = $item->product?->images
-                ? $item->product->images
-                    ->sortBy('id')
-                    ->sortBy('sort_order')
-                : collect();
-
-            $thumbnail = optional(
-                $images->firstWhere('is_main', true) ?? $images->first()
-            )->image_path;
+            $thumbnail = $item->product?->cover_image_url;
 
             return [
                 'product_id' => $item->product_id,
                 'product_name' => $item->product_name_snapshot ?? $item->product?->name,
                 'product_slug' => $item->product?->slug,
                 'product_image' => $thumbnail,
+                'cover_image_url' => $thumbnail,
                 'quantity' => $item->quantity,
                 'unit_price' => $item->price_snapshot,
                 'line_total' => $item->line_total,

@@ -47,7 +47,6 @@ export type HomepageProductImage = {
   id: number;
   product_id: number;
   image_path: string;
-  is_main: boolean;
   sort_order: number;
 };
 
@@ -60,7 +59,9 @@ export type HomepageProduct = {
   stock: number | null;
   low_stock_threshold: number | null;
   description: string | null;
+  cover_image_url?: string | null;
   images?: HomepageProductImage[];
+  media?: { type?: string; url?: string | null; sort_order?: number | null }[];
   [key: string]: unknown;
 };
 

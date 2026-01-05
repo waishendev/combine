@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { toggleWishlist, type WishlistItem } from "@/lib/apiClient";
-import { WishlistToggleButton } from "../wishlist/WishlistToggleButton";
+import { getCoverImageUrl } from "@/lib/productMedia";
 
 type AccountWishlistGridProps = {
   initialItems: WishlistItem[];
@@ -41,7 +41,12 @@ export function AccountWishlistGrid({ initialItems }: AccountWishlistGridProps) 
         const productId = item.product_id ?? item.id ?? item.product?.id;
         const productName = item.name ?? item.product_name ?? item.product?.name ?? "Wishlist item";
         const price = item.price ?? item.product_price ?? item.product?.price;
-        const image = item.image ?? item.thumbnail ?? item.product?.thumbnail ?? item.product?.images?.[0]?.image_path;
+        const image = getCoverImageUrl({
+          image_url: item.image ?? item.thumbnail ?? item.product?.thumbnail ?? null,
+          cover_image_url: (item.product as { cover_image_url?: string | null })?.cover_image_url ?? null,
+          images: item.product?.images,
+          media: item.product?.media,
+        });
         const key = productId ?? `${productSlug}-${index}`;
 
         return (

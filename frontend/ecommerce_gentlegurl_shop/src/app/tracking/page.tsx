@@ -7,7 +7,7 @@ import Link from "next/link";
 
 import type { OrderTrackingResponse } from "@/lib/apiClient";
 import { trackGuestOrder } from "@/lib/apiClient";
-import { normalizeImageUrl } from "@/lib/imageUrl";
+import { getCoverImageUrl } from "@/lib/productMedia";
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "Not shipped yet";
@@ -138,9 +138,7 @@ export default function TrackingPage() {
               </div>
               {/* Table Rows */}
               {result.items.map((item, idx) => {
-                const imageUrl = item.product_image
-                  ? normalizeImageUrl(item.product_image)
-                  : "/images/placeholder.png";
+                const imageUrl = getCoverImageUrl(item);
 
                 return (
                   <div

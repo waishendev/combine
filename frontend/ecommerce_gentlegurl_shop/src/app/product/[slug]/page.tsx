@@ -10,6 +10,7 @@ import { getHomepage } from "@/lib/server/getHomepage";
 import { getProductReviewEligibility } from "@/lib/server/getProductReviewEligibility";
 import { getProductReviews } from "@/lib/server/getProductReviews";
 import { normalizeImageUrl } from "@/lib/imageUrl";
+import { buildProductGalleryMedia, getCoverImageUrl } from "@/lib/productMedia";
 import { ReviewSettings } from "@/lib/types/reviews";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { RewardRedeemPanel } from "@/components/product/RewardRedeemPanel";
@@ -48,9 +49,13 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   const ogImage =
     productSeo?.meta_og_image ??
     homepageSeo?.meta_og_image ??
-    (product as { image_url?: string | null }).image_url ??
+    getCoverImageUrl(product) ??
     null;
-  const ogImageUrl = ogImage ? normalizeImageUrl(ogImage) : undefined;
+  const ogImageUrl = ogImage
+    ? ogImage.startsWith("/images/")
+      ? ogImage
+      : normalizeImageUrl(ogImage)
+    : undefined;
 
   return {
     ...baseMetadata,
@@ -105,25 +110,8 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
     getProductReviewEligibility(slug),
   ]);
 
-  const normalizedImages = (product.images ?? []).map((img) => ({
-    ...img,
-    image_path: normalizeImageUrl(img.image_path),
-  }));
-
-  const gallerySources = product.gallery?.length
-    ? product.gallery
-    : normalizedImages;
-
-  const galleryImages = gallerySources
-    .map((image) => normalizeImageUrl(typeof image === "string" ? image : image.image_path))
-    .filter(Boolean);
-
-  const mainImage =
-    normalizedImages.find((img) => img.is_main) ?? normalizedImages.find((img) => !!img.image_path);
-
-  const initialIndex = mainImage
-    ? galleryImages.findIndex((image) => image === mainImage.image_path)
-    : 0;
+  const galleryMedia = buildProductGalleryMedia(product);
+  const initialIndex = galleryMedia.findIndex((item) => item.type === "video");
   const soldCountValue = Number(product.sold_count ?? 0);
   const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
   const relatedProducts = Array.isArray(product.related_products)
@@ -142,7 +130,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
         {/* 左边图片 */}
         <div className="relative">
           <ProductGallery
-            images={galleryImages}
+            media={galleryMedia}
             initialIndex={initialIndex >= 0 ? initialIndex : 0}
             alt={product.name}
           />

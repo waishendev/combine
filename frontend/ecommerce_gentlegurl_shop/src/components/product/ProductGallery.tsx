@@ -1,85 +1,103 @@
 "use client";
 
 import { useState } from "react";
+import { PLACEHOLDER_IMAGE, type ProductMediaItem } from "@/lib/productMedia";
 
 type ProductGalleryProps = {
-  images: string[];
+  media: ProductMediaItem[];
   initialIndex?: number;
   alt: string;
 };
 
-const PLACEHOLDER_IMAGE = "/images/placeholder.png";
-
-export function ProductGallery({ images, initialIndex = 0, alt }: ProductGalleryProps) {
-  const safeImages = images.filter(Boolean);
+export function ProductGallery({ media, initialIndex = 0, alt }: ProductGalleryProps) {
+  const safeMedia = media.filter((item) => item.url);
   const [activeIndex, setActiveIndex] = useState(
-    initialIndex >= 0 && initialIndex < safeImages.length ? initialIndex : 0,
+    initialIndex >= 0 && initialIndex < safeMedia.length ? initialIndex : 0,
   );
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
-  const handleImageError = (imageSrc: string) => {
-    setImageErrors((prev) => new Set(prev).add(imageSrc));
+  const handleImageError = (src: string) => {
+    setImageErrors((prev) => new Set(prev).add(src));
   };
 
-  const getImageSrc = (imageSrc: string) => {
-    return imageErrors.has(imageSrc) ? PLACEHOLDER_IMAGE : imageSrc;
-  };
+  const getImageSrc = (src: string) => (imageErrors.has(src) ? PLACEHOLDER_IMAGE : src);
 
-  const activeImage = safeImages[activeIndex] ?? safeImages[0];
+  const activeMedia = safeMedia[activeIndex] ?? safeMedia[0];
 
-  if (!safeImages.length) {
+  if (!safeMedia.length || !activeMedia) {
     return (
       <div className="flex aspect-square items-center justify-center rounded-lg bg-[var(--muted)]/40 text-[color:var(--text-muted)]">
-        No Image
+        No Media
       </div>
     );
   }
 
+  const isVideoActive = activeMedia.type === "video";
+  const poster = activeMedia.thumbnail_url ? getImageSrc(activeMedia.thumbnail_url) : PLACEHOLDER_IMAGE;
+
   return (
     <div>
       <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-[var(--muted)]/40">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img 
-          src={getImageSrc(activeImage)} 
-          alt={alt} 
-          className="h-full w-full object-cover"
-          onError={() => handleImageError(activeImage)}
-        />
-
-{/* <Image 
-        // src={activeImage} 
-        src={"/images/placeholder.png"}
-        alt={alt} fill className="object-cover" /> */}
+        {isVideoActive ? (
+          <>
+            <video
+              className="h-full w-full object-cover"
+              src={activeMedia.url ?? undefined}
+              poster={poster}
+              controls
+              playsInline
+            />
+            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-xs font-semibold text-white">
+              <i className="fa-solid fa-play" />
+              Video
+            </span>
+          </>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={getImageSrc(activeMedia.url ?? "")}
+            alt={alt}
+            className="h-full w-full object-cover"
+            onError={() => handleImageError(activeMedia.url ?? "")}
+          />
+        )}
       </div>
 
-      {safeImages.length > 1 && (
+      {safeMedia.length > 1 && (
         <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
-          {safeImages.map((img, index) => (
-            <button
-              key={`${img}-${index}`}
-              type="button"
-              onClick={() => setActiveIndex(index)}
-              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded border transition ${
-                index === activeIndex
-                  ? "border-[var(--accent-strong)]"
-                  : "border-[var(--card-border)] hover:border-[var(--accent)]"
-              }`}
-            >
+          {safeMedia.map((item, index) => {
+            const isVideo = item.type === "video";
+            const thumbnailSrc = isVideo
+              ? item.thumbnail_url || PLACEHOLDER_IMAGE
+              : item.url || PLACEHOLDER_IMAGE;
+            const resolvedThumbnail = getImageSrc(thumbnailSrc);
 
-{/* <Image 
-              // src={img}
-              src={"/images/placeholder.png"}
-              alt={`${alt} thumbnail ${index + 1}`} fill className="object-cover" />
-               */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img 
-                src={getImageSrc(img)}
-                alt={`${alt} thumbnail ${index + 1}`} 
-                className="h-full w-full object-cover"
-                onError={() => handleImageError(img)}
-              />
-            </button>
-          ))}
+            return (
+              <button
+                key={`${item.id ?? item.url}-${index}`}
+                type="button"
+                onClick={() => setActiveIndex(index)}
+                className={`relative h-16 w-16 shrink-0 overflow-hidden rounded border transition ${
+                  index === activeIndex
+                    ? "border-[var(--accent-strong)]"
+                    : "border-[var(--card-border)] hover:border-[var(--accent)]"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resolvedThumbnail}
+                  alt={`${alt} thumbnail ${index + 1}`}
+                  className="h-full w-full object-cover"
+                  onError={() => handleImageError(thumbnailSrc)}
+                />
+                {isVideo && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-white">
+                    <i className="fa-solid fa-play" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

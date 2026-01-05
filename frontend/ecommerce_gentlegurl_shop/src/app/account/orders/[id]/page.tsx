@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import Image from "next/image";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { OrderHeaderClient } from "./OrderHeaderClient";
 import { ReturnRequestButton } from "./ReturnRequestButton";
+import { getCoverImageUrl } from "@/lib/productMedia";
 
 type OrderDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -103,16 +103,12 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex items-center gap-3">
-                {item.product_image ? ( 
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.product_image}
-                    alt={item.name ?? "Product image"}
-                    className="h-14 w-14 rounded-lg object-cover"
-                  />
-                ) : (
-                  <div className="h-14 w-14 rounded-lg bg-[var(--muted)]" />
-                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={getCoverImageUrl(item)}
+                  alt={item.name ?? "Product image"}
+                  className="h-14 w-14 rounded-lg object-cover"
+                />
                 <div>
                   <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
                   <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>

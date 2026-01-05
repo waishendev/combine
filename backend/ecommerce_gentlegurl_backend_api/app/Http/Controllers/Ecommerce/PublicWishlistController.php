@@ -43,6 +43,8 @@ class PublicWishlistController extends Controller
                         }
                     }
                 }
+                $item->cover_image_url = $item->thumbnail;
+
                 return $item;
             });
 
@@ -155,15 +157,16 @@ class PublicWishlistController extends Controller
 
         $query = DB::table($table)
             ->join('products', 'products.id', '=', 'w.product_id')
-            ->leftJoin('product_images', function ($join) {
-                $join->on('product_images.product_id', '=', 'products.id')
-                    ->where('product_images.is_main', true);
+            ->leftJoin('product_media', function ($join) {
+                $join->on('product_media.product_id', '=', 'products.id')
+                    ->where('product_media.type', 'image')
+                    ->where('product_media.sort_order', 0);
             })
             ->select([
                 'products.id as product_id',
                 'products.name as product_name',
                 'products.slug as product_slug',
-                'product_images.image_path as thumbnail',
+                'product_media.path as thumbnail',
                 'w.created_at',
             ])
             ->orderByDesc('w.created_at');

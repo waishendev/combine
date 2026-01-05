@@ -10,6 +10,7 @@ export type OrderItemSummary = {
   unit_price?: string | number;
   line_total?: string | number;
   product_image?: string | null;
+  cover_image_url?: string | null;
 };
 
 export type OrderSummary = {

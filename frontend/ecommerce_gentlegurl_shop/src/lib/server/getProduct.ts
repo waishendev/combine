@@ -7,7 +7,17 @@ export type ProductImage = {
   image_path: string;
   is_main?: boolean;
   sort_order?: number;
+  url?: string | null;
   [key: string]: unknown;
+};
+
+export type ProductMedia = {
+  id?: number | string;
+  type?: "image" | "video" | string;
+  url?: string | null;
+  thumbnail_url?: string | null;
+  sort_order?: number | null;
+  status?: string | null;
 };
 
 export type ProductDetail = {
@@ -16,10 +26,13 @@ export type ProductDetail = {
   slug: string;
   price: string | number;
   image_url?: string | null;
+  cover_image_url?: string | null;
   description?: string | null;
   stock?: number | null;
   low_stock_threshold?: number | null;
   images?: ProductImage[];
+  media?: ProductMedia[];
+  video?: ProductMedia | null;
   gallery?: (ProductImage | string)[];
   is_in_wishlist?: boolean;
   dummy_sold_count?: number | null;
@@ -40,14 +53,27 @@ export type ProductDetail = {
 };
 
 function normalizeProductImages(product: ProductDetail): ProductDetail {
-  if (!product.images?.length) return product;
+  const images = (product.images ?? []).map((image) => {
+    const resolvedPath = image.image_path ?? image.url ?? "";
+    const normalizedPath = normalizeImageUrl(resolvedPath);
+    return {
+      ...image,
+      image_path: normalizedPath,
+      url: normalizeImageUrl(image.url ?? image.image_path ?? resolvedPath),
+    };
+  });
 
-  const images = product.images.map((image) => ({
-    ...image,
-    image_path: normalizeImageUrl(image.image_path),
+  const media = (product.media ?? []).map((item) => ({
+    ...item,
+    url: normalizeImageUrl(item.url ?? ""),
+    thumbnail_url: normalizeImageUrl(item.thumbnail_url ?? ""),
   }));
 
-  return { ...product, images };
+  const coverImageUrl = product.cover_image_url
+    ? normalizeImageUrl(product.cover_image_url)
+    : null;
+
+  return { ...product, images, media, cover_image_url: coverImageUrl };
 }
 
 export async function getProduct(slug: string, options?: { reward?: boolean }): Promise<ProductDetail | null> {

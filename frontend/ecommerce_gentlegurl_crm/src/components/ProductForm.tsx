@@ -745,6 +745,68 @@ export default function ProductForm({
     }
   }
 
+  const moveImage = (index: number, direction: 'up' | 'down', type: 'existing' | 'new') => {
+    if (type === 'existing') {
+      const nextIndex = direction === 'up' ? index - 1 : index + 1
+      if (nextIndex < 0 || nextIndex >= existingImages.length) {
+        return
+      }
+      const nextImages = [...existingImages]
+      const [moved] = nextImages.splice(index, 1)
+      if (!moved) return
+      nextImages.splice(nextIndex, 0, moved)
+      const reordered = nextImages.map((image, idx) => ({
+        ...image,
+        sortOrder: idx,
+        isMain: idx === 0,
+      }))
+      setExistingImages(reordered)
+      void persistImageOrder(reordered)
+      return
+    }
+
+    const nextIndex = direction === 'up' ? index - 1 : index + 1
+    if (nextIndex < 0 || nextIndex >= pendingImages.length) {
+      return
+    }
+    setPendingImages((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(index, 1)
+      if (!moved) return prev
+      next.splice(nextIndex, 0, moved)
+      return next
+    })
+  }
+
+  const setCoverImage = (index: number, type: 'existing' | 'new') => {
+    if (type === 'existing') {
+      if (index === 0) return
+      const nextImages = [...existingImages]
+      const [moved] = nextImages.splice(index, 1)
+      if (!moved) return
+      nextImages.unshift(moved)
+      const reordered = nextImages.map((image, idx) => ({
+        ...image,
+        sortOrder: idx,
+        isMain: idx === 0,
+      }))
+      setExistingImages(reordered)
+      void persistImageOrder(reordered)
+      return
+    }
+
+    if (existingImages.length > 0 || index === 0) {
+      return
+    }
+    setPendingImages((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(index, 1)
+      if (!moved) return prev
+      next.unshift(moved)
+      return next
+    })
+  }
+
   const handleGalleryRemove = (index: number, isExisting: boolean = false) => {
     if (isExisting) {
       const imageToRemove = existingImages[index]
@@ -1479,6 +1541,9 @@ export default function ProductForm({
                             alt={t('product.imageAlt').replace('{index}', String(slotIndex + 1))}
                             className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-200"
                           />
+                          <div className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                            {t('product.mediaTypeImage')}
+                          </div>
                           {pendingUpload?.status === 'uploading' && (
                             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white text-xs font-medium">
                               <div className="mb-2">{t('product.uploading')}</div>
@@ -1496,7 +1561,7 @@ export default function ProductForm({
                             </div>
                           )}
                           {displaySize ? (
-                            <div className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                            <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
                               {formatBytes(displaySize)}
                             </div>
                           ) : null}
@@ -1536,6 +1601,41 @@ export default function ProductForm({
                               >
                                 <i className="fa-solid fa-image text-xs" />
                               </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  moveImage(imageIndex, 'up', 'new')
+                                }}
+                                className="w-8 h-8 bg-white/95 backdrop-blur-md text-gray-700 rounded-full flex items-center justify-center shadow-lg border border-gray-200/50 hover:bg-white hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                aria-label={t('product.moveUp')}
+                              >
+                                <i className="fa-solid fa-arrow-up text-xs" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  moveImage(imageIndex, 'down', 'new')
+                                }}
+                                className="w-8 h-8 bg-white/95 backdrop-blur-md text-gray-700 rounded-full flex items-center justify-center shadow-lg border border-gray-200/50 hover:bg-white hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                aria-label={t('product.moveDown')}
+                              >
+                                <i className="fa-solid fa-arrow-down text-xs" />
+                              </button>
+                              {existingImages.length === 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setCoverImage(imageIndex, 'new')
+                                  }}
+                                  className="w-8 h-8 bg-yellow-400/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-yellow-300/50 hover:bg-yellow-500 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                  aria-label={t('product.setCover')}
+                                >
+                                  <i className="fa-solid fa-star text-xs" />
+                                </button>
+                              )}
                               {/* Remove Button */}
                               <button
                                 type="button"
@@ -1584,6 +1684,39 @@ export default function ProductForm({
                                 aria-label={t('product.replaceImage')}
                               >
                                 <i className="fa-solid fa-image text-xs" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  moveImage(imageIndex, 'up', 'existing')
+                                }}
+                                className="w-8 h-8 bg-white/95 backdrop-blur-md text-gray-700 rounded-full flex items-center justify-center shadow-lg border border-gray-200/50 hover:bg-white hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                aria-label={t('product.moveUp')}
+                              >
+                                <i className="fa-solid fa-arrow-up text-xs" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  moveImage(imageIndex, 'down', 'existing')
+                                }}
+                                className="w-8 h-8 bg-white/95 backdrop-blur-md text-gray-700 rounded-full flex items-center justify-center shadow-lg border border-gray-200/50 hover:bg-white hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                aria-label={t('product.moveDown')}
+                              >
+                                <i className="fa-solid fa-arrow-down text-xs" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setCoverImage(imageIndex, 'existing')
+                                }}
+                                className="w-8 h-8 bg-yellow-400/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-yellow-300/50 hover:bg-yellow-500 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                aria-label={t('product.setCover')}
+                              >
+                                <i className="fa-solid fa-star text-xs" />
                               </button>
                               {/* Remove Button */}
                               <button
@@ -1643,6 +1776,9 @@ export default function ProductForm({
               />
               {existingVideo || pendingVideo ? (
                 <div className="relative rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                  <div className="absolute top-3 left-3 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-white">
+                    {t('product.mediaTypeVideo')}
+                  </div>
                   <div className="flex items-center gap-3">
                     <div className="h-16 w-24 overflow-hidden rounded-md bg-gray-100">
                       {existingVideo?.thumbnailUrl ? (

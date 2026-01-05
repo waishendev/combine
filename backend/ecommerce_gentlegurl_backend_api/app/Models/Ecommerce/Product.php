@@ -14,6 +14,10 @@ class Product extends Model
 {
     use HasFactory;
 
+    protected $appends = [
+        'cover_image_url',
+    ];
+
     protected $fillable = [
         'name',
         'slug',
@@ -67,6 +71,20 @@ class Product extends Model
     {
         return $this->hasOne(ProductMedia::class)
             ->where('type', 'video');
+    }
+
+    public function getCoverImageUrlAttribute(): ?string
+    {
+        $images = $this->relationLoaded('images')
+            ? $this->images
+            : $this->images()->get();
+
+        $cover = $images
+            ->sortBy('sort_order')
+            ->sortBy('id')
+            ->first();
+
+        return $cover?->url;
     }
 
     public function categories()

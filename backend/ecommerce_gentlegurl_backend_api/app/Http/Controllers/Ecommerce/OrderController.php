@@ -168,15 +168,7 @@ class OrderController extends Controller
             ],
             'customer' => $order->customer,
             'items' => $order->items->map(function ($item) {
-                $images = $item->product?->images
-                    ? $item->product->images
-                        ->sortBy('id')
-                        ->sortBy('sort_order')
-                    : collect();
-
-                $thumbnail = optional(
-                    $images->firstWhere('is_main', true) ?? $images->first()
-                )->image_path;
+                $thumbnail = $item->product?->cover_image_url;
 
                 return [
                     'product_id' => $item->product_id,
@@ -185,6 +177,7 @@ class OrderController extends Controller
                     'unit_price' => $item->price_snapshot ?? $item->unit_price,
                     'line_total' => $item->line_total,
                     'product_image' => $thumbnail,
+                    'cover_image_url' => $thumbnail,
                 ];
             }),
             'returns' => $order->returns->map(function ($return) use ($order) {
