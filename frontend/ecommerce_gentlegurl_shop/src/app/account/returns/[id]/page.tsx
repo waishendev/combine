@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getReturnRequest } from "@/lib/server/getReturnRequest";
-import { getCoverImageUrl } from "@/lib/productMedia";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 import { TrackingFormClient } from "./TrackingFormClient";
 
 type ReturnDetailPageProps = {
@@ -108,7 +108,7 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
               <div className="flex items-center gap-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={getCoverImageUrl(item)}
+                  src={getPrimaryProductImage(item)}
                   alt={item.product_name ?? "Item"}
                   className="h-12 w-12 rounded-lg object-cover"
                 />

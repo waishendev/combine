@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import Image from "next/image";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { OrderHeaderClient } from "./OrderHeaderClient";
 import { ReturnRequestButton } from "./ReturnRequestButton";
-import { getCoverImageUrl } from "@/lib/productMedia";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 
 type OrderDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -105,7 +106,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               <div className="flex items-center gap-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={getCoverImageUrl(item)}
+                  src={getPrimaryProductImage(item)}
                   alt={item.name ?? "Product image"}
                   className="h-14 w-14 rounded-lg object-cover"
                 />

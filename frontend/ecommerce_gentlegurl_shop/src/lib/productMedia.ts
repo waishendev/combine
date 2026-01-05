@@ -6,6 +6,7 @@ export type ProductMediaItem = {
   url?: string | null;
   image_path?: string | null;
   thumbnail_url?: string | null;
+  poster_url?: string | null;
   sort_order?: number | null;
   status?: string | null;
 };
@@ -32,8 +33,43 @@ const toNumber = (value: unknown) =>
 const normalizeMediaUrl = (value?: string | null) =>
   value ? normalizeImageUrl(value) : "";
 
-// Cover image rule: always the first image by sort_order (never a video).
-export function getCoverImageUrl(source: ProductMediaSource): string {
+const resolveLegacyImage = (value?: string | null) => {
+  if (!value) return "";
+  if (value.startsWith("/images/")) {
+    return value;
+  }
+  return normalizeMediaUrl(value);
+};
+
+const sortByOrder = <T extends { sort_order?: number | null }>(items: T[]) =>
+  [...items].sort((a, b) => toNumber(a.sort_order) - toNumber(b.sort_order));
+
+export function getVideoPoster(
+  source: ProductMediaSource,
+  video?: ProductMediaItem | null,
+): string {
+  const poster =
+    video?.thumbnail_url ??
+    (video as { poster_url?: string | null })?.poster_url ??
+    null;
+
+  if (poster) {
+    return resolveLegacyImage(poster) || PLACEHOLDER_IMAGE;
+  }
+
+  const image = getPrimaryProductImage({
+    ...source,
+    video: null,
+  }, { allowVideoPoster: false });
+
+  return image || PLACEHOLDER_IMAGE;
+}
+
+// Cover/primary image rule: first image by sort_order (never a video).
+export function getPrimaryProductImage(
+  source: ProductMediaSource,
+  options: { allowVideoPoster?: boolean } = {},
+): string {
   const direct =
     source.cover_image_url ??
     source.product_image ??
@@ -42,27 +78,30 @@ export function getCoverImageUrl(source: ProductMediaSource): string {
     null;
 
   if (direct) {
-    if (direct.startsWith("/images/")) {
-      return direct;
-    }
-    const normalized = normalizeMediaUrl(direct);
-    return normalized || PLACEHOLDER_IMAGE;
+    return resolveLegacyImage(direct) || PLACEHOLDER_IMAGE;
   }
 
   const mediaImages =
     source.media?.filter((item) => item.type === "image") ?? [];
 
   if (mediaImages.length > 0) {
-    const sorted = [...mediaImages].sort((a, b) => toNumber(a.sort_order) - toNumber(b.sort_order));
+    const sorted = sortByOrder(mediaImages);
     const url = normalizeMediaUrl(sorted[0]?.url ?? sorted[0]?.image_path ?? null);
     return url || PLACEHOLDER_IMAGE;
   }
 
   const images = source.images ?? [];
   if (images.length > 0) {
-    const sorted = [...images].sort((a, b) => toNumber(a.sort_order) - toNumber(b.sort_order));
+    const sorted = sortByOrder(images);
     const url = normalizeMediaUrl(sorted[0]?.url ?? sorted[0]?.image_path ?? null);
     return url || PLACEHOLDER_IMAGE;
+  }
+
+  if (options.allowVideoPoster !== false) {
+    const video = source.media?.find((item) => item.type === "video") ?? source.video ?? null;
+    if (video) {
+      return getVideoPoster(source, video);
+    }
   }
 
   return PLACEHOLDER_IMAGE;

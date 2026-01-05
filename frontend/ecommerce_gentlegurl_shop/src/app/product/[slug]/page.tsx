@@ -10,7 +10,7 @@ import { getHomepage } from "@/lib/server/getHomepage";
 import { getProductReviewEligibility } from "@/lib/server/getProductReviewEligibility";
 import { getProductReviews } from "@/lib/server/getProductReviews";
 import { normalizeImageUrl } from "@/lib/imageUrl";
-import { buildProductGalleryMedia, getCoverImageUrl } from "@/lib/productMedia";
+import { buildProductGalleryMedia, getPrimaryProductImage, getVideoPoster } from "@/lib/productMedia";
 import { ReviewSettings } from "@/lib/types/reviews";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { RewardRedeemPanel } from "@/components/product/RewardRedeemPanel";
@@ -49,7 +49,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   const ogImage =
     productSeo?.meta_og_image ??
     homepageSeo?.meta_og_image ??
-    getCoverImageUrl(product) ??
+    getPrimaryProductImage(product) ??
     null;
   const ogImageUrl = ogImage
     ? ogImage.startsWith("/images/")
@@ -111,6 +111,8 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   ]);
 
   const galleryMedia = buildProductGalleryMedia(product);
+  const videoItem = galleryMedia.find((item) => item.type === "video");
+  const videoPoster = videoItem ? getVideoPoster(product, videoItem) : null;
   const initialIndex = galleryMedia.findIndex((item) => item.type === "video");
   const soldCountValue = Number(product.sold_count ?? 0);
   const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
@@ -132,6 +134,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           <ProductGallery
             media={galleryMedia}
             initialIndex={initialIndex >= 0 ? initialIndex : 0}
+            videoPoster={videoPoster}
             alt={product.name}
           />
           <div className="absolute right-3 top-3 z-10">

@@ -6,10 +6,11 @@ import { PLACEHOLDER_IMAGE, type ProductMediaItem } from "@/lib/productMedia";
 type ProductGalleryProps = {
   media: ProductMediaItem[];
   initialIndex?: number;
+  videoPoster?: string | null;
   alt: string;
 };
 
-export function ProductGallery({ media, initialIndex = 0, alt }: ProductGalleryProps) {
+export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: ProductGalleryProps) {
   const safeMedia = media.filter((item) => item.url);
   const [activeIndex, setActiveIndex] = useState(
     initialIndex >= 0 && initialIndex < safeMedia.length ? initialIndex : 0,
@@ -33,7 +34,9 @@ export function ProductGallery({ media, initialIndex = 0, alt }: ProductGalleryP
   }
 
   const isVideoActive = activeMedia.type === "video";
-  const poster = activeMedia.thumbnail_url ? getImageSrc(activeMedia.thumbnail_url) : PLACEHOLDER_IMAGE;
+  const poster = activeMedia.thumbnail_url
+    ? getImageSrc(activeMedia.thumbnail_url)
+    : videoPoster || PLACEHOLDER_IMAGE;
 
   return (
     <div>
@@ -68,7 +71,7 @@ export function ProductGallery({ media, initialIndex = 0, alt }: ProductGalleryP
           {safeMedia.map((item, index) => {
             const isVideo = item.type === "video";
             const thumbnailSrc = isVideo
-              ? item.thumbnail_url || PLACEHOLDER_IMAGE
+              ? item.thumbnail_url || videoPoster || PLACEHOLDER_IMAGE
               : item.url || PLACEHOLDER_IMAGE;
             const resolvedThumbnail = getImageSrc(thumbnailSrc);
 

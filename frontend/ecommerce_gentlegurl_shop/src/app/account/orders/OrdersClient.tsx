@@ -12,7 +12,7 @@ import { RatingStars } from "@/components/reviews/RatingStars";
 import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
 import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
-import { getCoverImageUrl } from "@/lib/productMedia";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 
 type OrdersClientProps = {
   orders: OrderSummary[];
@@ -463,7 +463,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                           <div className="flex items-center gap-3">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={getCoverImageUrl(item)}
+                              src={getPrimaryProductImage(item)}
                               alt={item.name ?? "Product image"}
                               className="h-12 w-12 rounded-lg object-cover"
                             />

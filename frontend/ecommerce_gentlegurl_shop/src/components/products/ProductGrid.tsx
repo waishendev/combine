@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
-import { getCoverImageUrl } from "@/lib/productMedia";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 
 interface ProductGridProps {
   items: Array<{
@@ -35,7 +35,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
         const productSlug = product.slug ?? product.id;
         const priceNumber = Number(product.price);
         const priceLabel = Number.isFinite(priceNumber) ? priceNumber.toFixed(2) : product.price;
-        const image = getCoverImageUrl(product);
+        const image = getPrimaryProductImage(product);
         const soldCountValue = Number(product.sold_count ?? 0);
         const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
 
