@@ -215,6 +215,8 @@
   "product.moveUp": "Move up",
   "product.moveDown": "Move down",
   "product.setCover": "Set as cover",
+  "product.pendingUploads": "Pending uploads",
+  "product.files": "files",
   "product.namePlaceholder": "Enter product name",
   "product.slug": "Slug",
   "product.slugPlaceholder": "product-slug",

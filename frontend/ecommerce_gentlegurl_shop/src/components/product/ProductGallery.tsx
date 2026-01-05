@@ -36,7 +36,7 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
   const isVideoActive = activeMedia.type === "video";
   const poster = activeMedia.thumbnail_url
     ? getImageSrc(activeMedia.thumbnail_url)
-    : videoPoster || PLACEHOLDER_IMAGE;
+    : videoPoster || undefined;
 
   return (
     <div>
@@ -71,9 +71,9 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
           {safeMedia.map((item, index) => {
             const isVideo = item.type === "video";
             const thumbnailSrc = isVideo
-              ? item.thumbnail_url || videoPoster || PLACEHOLDER_IMAGE
+              ? item.thumbnail_url || videoPoster || null
               : item.url || PLACEHOLDER_IMAGE;
-            const resolvedThumbnail = getImageSrc(thumbnailSrc);
+            const resolvedThumbnail = thumbnailSrc ? getImageSrc(thumbnailSrc) : null;
 
             return (
               <button
@@ -86,16 +86,25 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
                     : "border-[var(--card-border)] hover:border-[var(--accent)]"
                 }`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={resolvedThumbnail}
-                  alt={`${alt} thumbnail ${index + 1}`}
-                  className="h-full w-full object-cover"
-                  onError={() => handleImageError(thumbnailSrc)}
-                />
+                {resolvedThumbnail ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolvedThumbnail}
+                      alt={`${alt} thumbnail ${index + 1}`}
+                      className="h-full w-full object-cover"
+                      onError={() => thumbnailSrc && handleImageError(thumbnailSrc)}
+                    />
+                  </>
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/40 text-[color:var(--text-muted)]">
+                    <i className="fa-solid fa-video" />
+                  </div>
+                )}
                 {isVideo && (
-                  <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-white">
-                    <i className="fa-solid fa-play" />
+                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/35 text-white text-[10px] font-semibold uppercase tracking-wide">
+                    <i className="fa-solid fa-play text-base" />
+                    Video
                   </span>
                 )}
               </button>

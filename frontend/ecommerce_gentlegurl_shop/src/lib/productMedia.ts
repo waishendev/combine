@@ -45,24 +45,19 @@ const sortByOrder = <T extends { sort_order?: number | null }>(items: T[]) =>
   [...items].sort((a, b) => toNumber(a.sort_order) - toNumber(b.sort_order));
 
 export function getVideoPoster(
-  source: ProductMediaSource,
+  _source: ProductMediaSource,
   video?: ProductMediaItem | null,
-): string {
+): string | null {
   const poster =
     video?.thumbnail_url ??
     (video as { poster_url?: string | null })?.poster_url ??
     null;
 
   if (poster) {
-    return resolveLegacyImage(poster) || PLACEHOLDER_IMAGE;
+    return resolveLegacyImage(poster) || null;
   }
 
-  const image = getPrimaryProductImage({
-    ...source,
-    video: null,
-  }, { allowVideoPoster: false });
-
-  return image || PLACEHOLDER_IMAGE;
+  return null;
 }
 
 // Cover/primary image rule: first image by sort_order (never a video).
@@ -100,7 +95,10 @@ export function getPrimaryProductImage(
   if (options.allowVideoPoster !== false) {
     const video = source.media?.find((item) => item.type === "video") ?? source.video ?? null;
     if (video) {
-      return getVideoPoster(source, video);
+      const poster = getVideoPoster(source, video);
+      if (poster) {
+        return poster;
+      }
     }
   }
 

@@ -111,6 +111,7 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
           mode="edit"
           product={product}
           redirectPath="/product"
+          showPendingMediaPreviews
         />
       </div>
     </div>
