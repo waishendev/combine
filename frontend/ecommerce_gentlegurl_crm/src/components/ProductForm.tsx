@@ -96,7 +96,6 @@ interface ProductFormProps {
   showCategories?: boolean
   showFeatured?: boolean
   rewardOnly?: boolean
-  showPendingMediaPreviews?: boolean
 }
 
 export default function ProductForm({
@@ -108,7 +107,6 @@ export default function ProductForm({
   showCategories = true,
   showFeatured = true,
   rewardOnly = false,
-  showPendingMediaPreviews = true,
 }: ProductFormProps) {
   const { t } = useI18n()
   const router = useRouter()
@@ -477,6 +475,13 @@ export default function ProductForm({
       index += 1
     }
     return `${value.toFixed(1)} ${units[index]}`
+  }
+
+  const getFileNameFromUrl = (url?: string) => {
+    if (!url) return ''
+    const baseUrl = url.split('?')[0] ?? url
+    const parts = baseUrl.split('/')
+    return parts[parts.length - 1] ?? ''
   }
 
   const uploadMediaFile = (
@@ -971,6 +976,10 @@ export default function ProductForm({
 
     if (pendingVideo?.preview) {
       URL.revokeObjectURL(pendingVideo.preview)
+    }
+
+    if (existingVideo) {
+      setExistingVideo(null)
     }
 
     const newVideo: PendingVideoUpload = {
@@ -1729,28 +1738,29 @@ export default function ProductForm({
                     {t('product.mediaTypeVideo')}
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="h-16 w-24 overflow-hidden rounded-md bg-gray-100">
-                      {existingVideo?.thumbnailUrl ? (
-                        <img
-                          src={existingVideo.thumbnailUrl}
-                          alt={t('product.videoThumbnailAlt')}
+                    <div className="h-20 w-28 overflow-hidden rounded-md bg-gray-100">
+                      {existingVideo ? (
+                        <video
+                          src={existingVideo.url}
                           className="h-full w-full object-cover"
+                          controls
+                          preload="metadata"
                         />
                       ) : pendingVideo ? (
                         <video
                           src={pendingVideo.preview}
                           className="h-full w-full object-cover"
+                          controls
+                          preload="metadata"
                           muted
                         />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-gray-400 text-xs">
-                          {t('product.video')}
-                        </div>
-                      )}
+                      ) : null}
                     </div>
                     <div className="flex-1 space-y-1">
                       <div className="text-sm font-medium text-gray-800">
-                        {existingVideo ? t('product.videoUploaded') : t('product.videoUploading')}
+                        {pendingVideo?.file.name ||
+                          getFileNameFromUrl(existingVideo?.url) ||
+                          t('product.video')}
                       </div>
                       <div className="text-xs text-gray-500">
                         {existingVideo?.sizeBytes
@@ -1762,8 +1772,8 @@ export default function ProductForm({
                       <div className="text-xs text-gray-500">
                         {existingVideo?.status
                           ? t(`product.videoStatus.${existingVideo.status}`)
-                          : pendingVideo?.status === 'uploading'
-                            ? t('product.videoStatus.processing')
+                          : pendingVideo
+                            ? t('product.videoPending')
                             : ''}
                       </div>
                       {existingVideo?.status === 'processing' && (
@@ -1818,65 +1828,6 @@ export default function ProductForm({
                 {t('product.videoHelper').replace('{size}', String(VIDEO_MAX_MB))}
               </p>
             </div>
-
-            {showPendingMediaPreviews && (pendingImages.length > 0 || pendingVideo) && (
-              <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-gray-800">
-                    {t('product.pendingUploads')}
-                  </h4>
-                  <span className="text-xs text-gray-500">
-                    {pendingImages.length + (pendingVideo ? 1 : 0)} {t('product.files')}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {pendingImages.map((item, index) => (
-                    <div
-                      key={item.id}
-                      className="relative overflow-hidden rounded-lg border border-gray-200 bg-white"
-                    >
-                      <img
-                        src={item.preview}
-                        alt={t('product.imageAlt').replace('{index}', String(index + 1))}
-                        className="h-24 w-full object-cover"
-                      />
-                      <div className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-white">
-                        {t('product.mediaTypeImage')}
-                      </div>
-                      <button
-                        type="button"
-                        className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/90 text-gray-700 shadow-sm hover:bg-white"
-                        onClick={() => handleGalleryRemove(index, false)}
-                        aria-label={t('product.removeImage')}
-                      >
-                        <i className="fa-solid fa-xmark text-xs" />
-                      </button>
-                    </div>
-                  ))}
-                  {pendingVideo && (
-                    <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-white">
-                      <video
-                        src={pendingVideo.preview}
-                        className="h-24 w-full object-cover"
-                        muted
-                        playsInline
-                      />
-                      <div className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-white">
-                        {t('product.mediaTypeVideo')}
-                      </div>
-                      <button
-                        type="button"
-                        className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/90 text-gray-700 shadow-sm hover:bg-white"
-                        onClick={handleVideoRemove}
-                        aria-label={t('product.removeVideo')}
-                      >
-                        <i className="fa-solid fa-xmark text-xs" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Image Preview Modal */}

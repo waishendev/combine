@@ -61,7 +61,6 @@ export default async function ProductCreatePage() {
           mode="create"
           product={null}
           redirectPath="/product"
-          showPendingMediaPreviews
         />
       </div>
     </div>

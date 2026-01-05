@@ -201,6 +201,7 @@
   "product.video": "Video",
   "product.videoUploaded": "Video uploaded",
   "product.videoUploading": "Uploading video...",
+  "product.videoPending": "Ready to upload",
   "product.videoProcessing": "Processing video...",
   "product.videoThumbnailAlt": "Video thumbnail",
   "product.replaceVideo": "Replace video",
