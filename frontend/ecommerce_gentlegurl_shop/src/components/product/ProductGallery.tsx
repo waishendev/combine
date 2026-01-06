@@ -132,6 +132,7 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
               ? item.thumbnail_url || videoThumbnail || null
               : item.url || PLACEHOLDER_IMAGE;
             const resolvedThumbnail = thumbnailSrc ? getImageSrc(thumbnailSrc) : null;
+            const videoThumbnailSource = item.url || videoSource || undefined;
 
             return (
               <button
@@ -154,6 +155,14 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
                       onError={() => thumbnailSrc && handleImageError(thumbnailSrc)}
                     />
                   </>
+                ) : isVideo && videoThumbnailSource ? (
+                  <video
+                    className="h-full w-full object-cover"
+                    src={videoThumbnailSource}
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/40 text-[color:var(--text-muted)]">
                     <i className="fa-solid fa-video" />
