@@ -1155,12 +1155,17 @@ export default function CheckoutForm() {
             <div className="space-y-3">
               {selectedItems.map((item) => {
                 const unitPrice = Number(item.unit_price ?? 0);
-                const imageUrl = getPrimaryProductImage({
-                  product_image: item.product_image ?? null,
-                  cover_image_url: (item as { cover_image_url?: string | null }).cover_image_url ?? item.product?.cover_image_url ?? null,
-                  images: item.product?.images,
-                  media: item.product?.media,
-                });
+                const imageUrl =
+                  item.product_image ??
+                  getPrimaryProductImage({
+                    product_image: item.product_image ?? null,
+                    cover_image_url:
+                      (item as { cover_image_url?: string | null }).cover_image_url ??
+                      item.product?.cover_image_url ??
+                      null,
+                    images: item.product?.images,
+                    media: item.product?.media,
+                  });
 
                 return (
                   <div

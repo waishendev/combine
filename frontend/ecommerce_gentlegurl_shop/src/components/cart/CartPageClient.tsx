@@ -240,12 +240,17 @@ export default function CartPageClient() {
                 );
                 const lineTotal = unitPrice * item.quantity;
                 const isReward = item.is_reward || item.locked;
-                const imageUrl = getPrimaryProductImage({
-                  product_image: item.product_image ?? null,
-                  cover_image_url: (item as { cover_image_url?: string | null }).cover_image_url ?? item.product?.cover_image_url ?? null,
-                  images: item.product?.images,
-                  media: item.product?.media,
-                });
+                const imageUrl =
+                  item.product_image ??
+                  getPrimaryProductImage({
+                    product_image: item.product_image ?? null,
+                    cover_image_url:
+                      (item as { cover_image_url?: string | null }).cover_image_url ??
+                      item.product?.cover_image_url ??
+                      null,
+                    images: item.product?.images,
+                    media: item.product?.media,
+                  });
                 const name =
                   item.name ??
                   (item.product as { name?: string })?.name ??
