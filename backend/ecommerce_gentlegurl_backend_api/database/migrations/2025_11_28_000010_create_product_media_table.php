@@ -11,21 +11,27 @@ return new class extends Migration {
         Schema::create('product_media', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->foreignId('product_id')->constrained('products')->cascadeOnDelete();
-            $table->string('type', 20);
+        
+            $table->string('type', 20); // image | video
             $table->string('disk', 50)->default('public');
             $table->string('path', 255);
             $table->string('thumbnail_path', 255)->nullable();
-            $table->integer('sort_order')->default(0);
-            $table->string('mime_type', 100);
-            $table->unsignedBigInteger('size_bytes')->default(0);
+        
+            $table->unsignedInteger('sort_order')->default(0);
+        
+            $table->string('mime_type', 100)->nullable();
+            $table->unsignedBigInteger('size_bytes')->nullable();
+        
             $table->unsignedInteger('width')->nullable();
             $table->unsignedInteger('height')->nullable();
-            $table->unsignedDecimal('duration_seconds', 8, 2)->nullable();
-            $table->string('status', 20)->default('ready');
+            $table->unsignedInteger('duration_seconds')->nullable(); // video only
+        
+            $table->string('status', 30)->default('ready'); // ready | processing | failed
             $table->timestamps();
-
+        
             $table->index(['product_id', 'type']);
         });
+        
 
         if (Schema::hasTable('product_images')) {
             $images = DB::table('product_images')

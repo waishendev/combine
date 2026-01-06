@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { PLACEHOLDER_IMAGE, type ProductMediaItem } from "@/lib/productMedia";
 
 type ProductGalleryProps = {
@@ -16,7 +16,8 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
     initialIndex >= 0 && initialIndex < safeMedia.length ? initialIndex : 0,
   );
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
-  const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
+  const [videoThumbnails, setVideoThumbnails] = useState<Map<string, string>>(new Map());
+  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
 
   const handleImageError = (src: string) => {
     setImageErrors((prev) => new Set(prev).add(src));
@@ -25,7 +26,6 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
   const getImageSrc = (src: string) => (imageErrors.has(src) ? PLACEHOLDER_IMAGE : src);
 
   const activeMedia = safeMedia[activeIndex] ?? safeMedia[0];
-  const videoSource = safeMedia.find((item) => item.type === "video")?.url ?? null;
 
   if (!safeMedia.length || !activeMedia) {
     return (
@@ -40,61 +40,86 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
     ? getImageSrc(activeMedia.thumbnail_url)
     : videoPoster || undefined;
 
+  // Generate thumbnails for all video items
   useEffect(() => {
-    if (!videoSource) {
-      setVideoThumbnail(null);
-      return;
-    }
+    const videoItems = safeMedia.filter((item) => item.type === "video" && item.url);
+    if (videoItems.length === 0) return;
 
+    const thumbnails = new Map<string, string>();
     let isCancelled = false;
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.muted = true;
-    video.playsInline = true;
-    video.crossOrigin = "anonymous";
-    video.src = videoSource;
+    const cleanupFunctions: Array<() => void> = [];
 
-    const handleLoaded = () => {
-      if (isCancelled) return;
-      const width = video.videoWidth || 320;
-      const height = video.videoHeight || 180;
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        setVideoThumbnail(null);
-        return;
-      }
-      ctx.drawImage(video, 0, 0, width, height);
-      try {
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-        if (!isCancelled) {
-          setVideoThumbnail(dataUrl);
-        }
-      } catch {
-        if (!isCancelled) {
-          setVideoThumbnail(null);
-        }
-      }
+    const generateThumbnail = (videoUrl: string) => {
+      return new Promise<void>((resolve) => {
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        video.muted = true;
+        video.playsInline = true;
+        video.crossOrigin = "anonymous";
+        video.src = videoUrl;
+
+        const handleSeeked = () => {
+          if (isCancelled) {
+            resolve();
+            return;
+          }
+          try {
+            const width = video.videoWidth || 320;
+            const height = video.videoHeight || 180;
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, width, height);
+              const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+              if (!isCancelled) {
+                thumbnails.set(videoUrl, dataUrl);
+              }
+            }
+          } catch (error) {
+            // Silently fail
+          }
+          resolve();
+        };
+
+        const handleError = () => {
+          resolve();
+        };
+
+        const handleLoadedMetadata = () => {
+          if (isCancelled) {
+            resolve();
+            return;
+          }
+          video.currentTime = 0.1; // Seek to first frame
+        };
+
+        video.addEventListener("loadedmetadata", handleLoadedMetadata);
+        video.addEventListener("seeked", handleSeeked);
+        video.addEventListener("error", handleError);
+        video.load();
+
+        // Store cleanup function
+        cleanupFunctions.push(() => {
+          video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+          video.removeEventListener("seeked", handleSeeked);
+          video.removeEventListener("error", handleError);
+        });
+      });
     };
 
-    const handleError = () => {
+    Promise.all(videoItems.map((item) => generateThumbnail(item.url!))).then(() => {
       if (!isCancelled) {
-        setVideoThumbnail(null);
+        setVideoThumbnails(thumbnails);
       }
-    };
-
-    video.addEventListener("loadeddata", handleLoaded);
-    video.addEventListener("error", handleError);
-    video.load();
+    });
 
     return () => {
       isCancelled = true;
-      video.removeEventListener("loadeddata", handleLoaded);
-      video.removeEventListener("error", handleError);
+      cleanupFunctions.forEach((cleanup) => cleanup());
     };
-  }, [videoSource]);
+  }, [safeMedia]);
 
   return (
     <div>
@@ -128,11 +153,19 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
         <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
           {safeMedia.map((item, index) => {
             const isVideo = item.type === "video";
-            const thumbnailSrc = isVideo
-              ? item.thumbnail_url || videoThumbnail || null
-              : item.url || PLACEHOLDER_IMAGE;
+            let thumbnailSrc: string | null = null;
+
+            if (isVideo) {
+              // Priority: 1. item.thumbnail_url, 2. generated thumbnail, 3. null (will show video element)
+              thumbnailSrc = item.thumbnail_url
+                ? getImageSrc(item.thumbnail_url)
+                : (item.url ? videoThumbnails.get(item.url) || null : null);
+            } else {
+              thumbnailSrc = item.url || PLACEHOLDER_IMAGE;
+            }
+
             const resolvedThumbnail = thumbnailSrc ? getImageSrc(thumbnailSrc) : null;
-            const videoThumbnailSource = item.url || videoSource || undefined;
+            const videoUrl = isVideo && item.url ? item.url : undefined;
 
             return (
               <button
@@ -155,13 +188,31 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
                       onError={() => thumbnailSrc && handleImageError(thumbnailSrc)}
                     />
                   </>
-                ) : isVideo && videoThumbnailSource ? (
+                ) : isVideo && videoUrl ? (
                   <video
+                    ref={(el) => {
+                      if (el && !videoRefs.current.has(videoUrl)) {
+                        videoRefs.current.set(videoUrl, el);
+                        // Ensure video shows first frame
+                        el.currentTime = 0.1;
+                        el.addEventListener("loadedmetadata", () => {
+                          el.currentTime = 0.1;
+                        });
+                      }
+                    }}
                     className="h-full w-full object-cover"
-                    src={videoThumbnailSource}
+                    src={videoUrl}
                     muted
                     playsInline
                     preload="metadata"
+                    onLoadedMetadata={(e) => {
+                      const video = e.currentTarget;
+                      video.currentTime = 0.1;
+                    }}
+                    onSeeked={(e) => {
+                      const video = e.currentTarget;
+                      video.pause();
+                    }}
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/40 text-[color:var(--text-muted)]">
