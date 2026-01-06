@@ -166,7 +166,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' })
+      await fetch('/api/logout', { method: 'POST' })
     } catch (error) {
       console.error('Logout failed', error)
     } finally {
