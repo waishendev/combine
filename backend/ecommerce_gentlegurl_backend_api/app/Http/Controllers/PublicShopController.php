@@ -137,6 +137,7 @@ class PublicShopController extends Controller
             'images' => function ($query) {
                 $query->orderBy('sort_order')->orderBy('id');
             },
+            'video',
         ])
             ->where('is_active', true)
             ->where('is_reward_only', false);
@@ -237,7 +238,7 @@ class PublicShopController extends Controller
                     ->values()
                     ->map(function ($image) {
                         return [
-                            'image_path' => $image->image_path,
+                            'image_path' => $image->url,
                             'sort_order' => $image->sort_order,
                         ];
                     });
@@ -253,6 +254,7 @@ class PublicShopController extends Controller
                     'real_sold_count' => $realSoldCount,
                     'sold_count' => $soldCount,
                     'images' => $sortedImages,
+                    'cover_image_url' => $product->cover_image_url,
                 ];
             })
         );
@@ -344,7 +346,7 @@ class PublicShopController extends Controller
     {
         $allowRewardOnly = $request->boolean('reward', false);
 
-        $product = Product::with(['categories', 'images', 'packageChildren.childProduct'])
+        $product = Product::with(['categories', 'images', 'video', 'packageChildren.childProduct'])
             ->where('slug', $slug)
             ->where('is_active', true)
             ->when(!$allowRewardOnly, fn($query) => $query->where('is_reward_only', false))
@@ -363,7 +365,7 @@ class PublicShopController extends Controller
             ];
         });
 
-        $gallery = $product->images->pluck('image_path')->values();
+        $gallery = $product->images->pluck('url')->values();
 
         $isInStock = $product->track_stock ? $product->stock > 0 : true;
 
@@ -384,10 +386,8 @@ class PublicShopController extends Controller
                         'name' => $related->name,
                         'slug' => $related->slug,
                         'price' => $related->price,
-                        'thumbnail' => optional($related->images
-                            ->sortBy('id')
-                            ->sortBy('sort_order')
-                            ->first())->image_path,
+                        'thumbnail' => $related->cover_image_url,
+                        'cover_image_url' => $related->cover_image_url,
                     ];
                 });
         }
@@ -396,6 +396,32 @@ class PublicShopController extends Controller
         $realSoldCount = $realSoldCountLookup[$product->id] ?? 0;
         $dummySoldCount = (int) ($product->dummy_sold_count ?? 0);
         $soldCount = $realSoldCount + $dummySoldCount;
+
+        $media = collect();
+        if ($product->video) {
+            $media->push([
+                'id' => $product->video->id,
+                'type' => 'video',
+                'url' => $product->video->url,
+                'thumbnail_url' => $product->video->thumbnail_url,
+                'sort_order' => 0,
+                'status' => $product->video->status,
+            ]);
+        }
+
+        $media = $media->merge(
+            $product->images
+                ->sortBy('sort_order')
+                ->sortBy('id')
+                ->values()
+                ->map(fn($image) => [
+                    'id' => $image->id,
+                    'type' => 'image',
+                    'url' => $image->url,
+                    'thumbnail_url' => null,
+                    'sort_order' => $image->sort_order,
+                ])
+        );
 
         $data = [
             'id' => $product->id,
@@ -411,7 +437,10 @@ class PublicShopController extends Controller
             'real_sold_count' => $realSoldCount,
             'sold_count' => $soldCount,
             'images' => $product->images,
+            'video' => $product->video,
             'gallery' => $gallery,
+            'media' => $media->values(),
+            'cover_image_url' => $product->cover_image_url,
             'categories' => $categories,
             'package_children' => $product->packageChildren,
             'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),

@@ -18,7 +18,9 @@ type Product = {
   name: string;
   price: number | string;
   slug?: string;
-  images?: Array<{ image_path?: string }>;
+  cover_image_url?: string | null;
+  images?: Array<{ image_path?: string | null; url?: string | null; sort_order?: number | null }>;
+  media?: Array<{ type?: string; url?: string | null; sort_order?: number | null }>;
   is_in_wishlist?: boolean;
   sold_count?: number | string;
 };

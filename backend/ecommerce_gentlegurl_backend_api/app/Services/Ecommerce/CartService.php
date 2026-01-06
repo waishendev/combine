@@ -5,6 +5,7 @@ namespace App\Services\Ecommerce;
 use App\Models\Ecommerce\Cart;
 use App\Models\Ecommerce\CartItem;
 use App\Models\Ecommerce\Customer;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class CartService
@@ -53,23 +54,20 @@ class CartService
         $items = $cart->items->map(function ($item) {
             $lineTotal = (float) $item->unit_price_snapshot * (int) $item->quantity;
 
-            $images = $item->product?->images
-                ? $item->product->images
-                    ->sortBy('id')
-                    ->sortBy('sort_order')
-                : collect();
-
-            $thumbnail = optional(
-                $images->firstWhere('is_main', true) ?? $images->first()
-            )->image_path;
+            $product = $item->product;
+            $thumbnail = $product?->cover_image_url;
+            if (!$thumbnail) {
+                $legacyImage = $product?->image_url ?? $product?->image_path ?? null;
+                $thumbnail = $this->resolveImageUrl($legacyImage);
+            }
 
             return [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
-                'product_name' => $item->product?->name,
-                'product_slug' => $item->product?->slug,
+                'product_name' => $product?->name,
+                'product_slug' => $product?->slug,
                 'product_image' => $thumbnail,
-                'product_stock' => $item->product?->stock,
+                'product_stock' => $product?->stock,
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price_snapshot,
                 'line_total' => $lineTotal,
@@ -88,6 +86,19 @@ class CartService
                 'subtotal' => $items->sum(fn($item) => $item['line_total']),
             ],
         ];
+    }
+
+    private function resolveImageUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        if (Str::startsWith($path, ['http://', 'https://'])) {
+            return $path;
+        }
+
+        return Storage::disk('public')->url($path);
     }
 
     public function mergeGuestCartIntoCustomer(string $sessionToken, Customer $customer): ?Cart

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
 import { CustomerVoucher, getCustomerVouchers } from "@/lib/apiClient";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 
 export default function CartPageClient() {
   const router = useRouter();
@@ -239,7 +240,17 @@ export default function CartPageClient() {
                 );
                 const lineTotal = unitPrice * item.quantity;
                 const isReward = item.is_reward || item.locked;
-                const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
+                const imageUrl =
+                  item.product_image ??
+                  getPrimaryProductImage({
+                    product_image: item.product_image ?? null,
+                    cover_image_url:
+                      (item as { cover_image_url?: string | null }).cover_image_url ??
+                      item.product?.cover_image_url ??
+                      null,
+                    images: item.product?.images,
+                    media: item.product?.media,
+                  });
                 const name =
                   item.name ??
                   (item.product as { name?: string })?.name ??
@@ -384,7 +395,12 @@ export default function CartPageClient() {
                 item.unit_price ?? (item as { price?: number | string }).price ?? 0,
               );
               const isReward = item.is_reward || item.locked;
-              const imageUrl = item.product_image ?? item.product?.images?.[0]?.image_path;
+              const imageUrl = getPrimaryProductImage({
+                product_image: item.product_image ?? null,
+                cover_image_url: (item as { cover_image_url?: string | null }).cover_image_url ?? item.product?.cover_image_url ?? null,
+                images: item.product?.images,
+                media: item.product?.media,
+              });
               const name =
                 item.name ?? (item.product as { name?: string })?.name ?? "Unnamed Product";
               const sku = item.sku ?? (item.product as { sku?: string })?.sku;

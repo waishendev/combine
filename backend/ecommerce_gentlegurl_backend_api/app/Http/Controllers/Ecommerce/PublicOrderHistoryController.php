@@ -47,15 +47,7 @@ class PublicOrderHistoryController extends Controller
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'items' => $order->items->map(function ($item) {
-                    $images = $item->product?->images
-                        ? $item->product->images
-                            ->sortBy('id')
-                            ->sortBy('sort_order')
-                        : collect();
-
-                    $thumbnail = optional(
-                        $images->firstWhere('is_main', true) ?? $images->first()
-                    )->image_path;
+                    $thumbnail = $item->product?->cover_image_url;
 
                     return [
                         'id' => $item->id,
@@ -67,6 +59,7 @@ class PublicOrderHistoryController extends Controller
                         'unit_price' => $item->price_snapshot,
                         'line_total' => $item->line_total,
                         'product_image' => $thumbnail,
+                        'cover_image_url' => $thumbnail,
                     ];
                 })->values(),
             ])->all(),
@@ -100,15 +93,7 @@ class PublicOrderHistoryController extends Controller
             ->firstOrFail();
 
         $items = $order->items->map(function ($item) {
-            $images = $item->product?->images
-                ? $item->product->images
-                    ->sortBy('id')
-                    ->sortBy('sort_order')
-                : collect();
-
-            $thumbnail = optional(
-                $images->firstWhere('is_main', true) ?? $images->first()
-            )->image_path;
+            $thumbnail = $item->product?->cover_image_url;
 
             return [
                 'id' => $item->id,
@@ -120,6 +105,7 @@ class PublicOrderHistoryController extends Controller
                 'unit_price' => $item->price_snapshot,
                 'line_total' => $item->line_total,
                 'product_image' => $thumbnail,
+                'cover_image_url' => $thumbnail,
             ];
         })->values();
 

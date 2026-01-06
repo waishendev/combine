@@ -4,9 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
-use App\Models\Ecommerce\ProductImage;
+use App\Models\Ecommerce\ProductMedia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
@@ -15,7 +16,7 @@ class ProductController extends Controller
     {
         $perPage = $request->integer('per_page', 15);
 
-        $products = Product::with(['categories', 'images'])
+        $products = Product::with(['categories', 'images', 'video'])
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })
@@ -40,6 +41,9 @@ class ProductController extends Controller
 
     public function store(Request $request)
     {
+        $imageMaxKilobytes = (int) config('ecommerce.product_media.image_max_mb') * 1024;
+        $imageExtensions = implode(',', config('ecommerce.product_media.image_extensions'));
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:products,slug'],
@@ -62,7 +66,7 @@ class ProductController extends Controller
             'category_ids' => ['array'],
             'category_ids.*' => ['integer', 'exists:categories,id'],
             'images' => ['nullable', 'array'],
-            'images.*' => ['image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'], // 最大 5MB
+            'images.*' => ['image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
         ]);
 
@@ -86,16 +90,19 @@ class ProductController extends Controller
         // 处理产品图片上传
         $this->handleImageUpload($product, $request);
 
-        return $this->respond($product->load(['categories', 'images', 'packageChildren']), __('Product created successfully.'));
+        return $this->respond($product->load(['categories', 'images', 'video', 'packageChildren']), __('Product created successfully.'));
     }
 
     public function show(Product $product)
     {
-        return $this->respond($product->load(['categories', 'images', 'packageChildren.childProduct']));
+        return $this->respond($product->load(['categories', 'images', 'video', 'packageChildren.childProduct']));
     }
 
     public function update(Request $request, Product $product)
     {
+        $imageMaxKilobytes = (int) config('ecommerce.product_media.image_max_mb') * 1024;
+        $imageExtensions = implode(',', config('ecommerce.product_media.image_extensions'));
+
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'slug' => ['sometimes', 'string', 'max:255', Rule::unique('products', 'slug')->ignore($product->id)],
@@ -118,10 +125,10 @@ class ProductController extends Controller
             'category_ids' => ['sometimes', 'array'],
             'category_ids.*' => ['integer', 'exists:categories,id'],
             'images' => ['sometimes', 'array'],
-            'images.*' => ['image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+            'images.*' => ['image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
             'delete_image_ids' => ['nullable', 'array'],
-            'delete_image_ids.*' => ['integer', 'exists:product_images,id'],
+            'delete_image_ids.*' => ['integer', 'exists:product_media,id'],
         ]);
 
         $product->fill($validated);
@@ -147,17 +154,21 @@ class ProductController extends Controller
             $this->handleImageUpload($product, $request);
         }
 
-        return $this->respond($product->load(['categories', 'images', 'packageChildren.childProduct']), __('Product updated successfully.'));
+        return $this->respond($product->load(['categories', 'images', 'video', 'packageChildren.childProduct']), __('Product updated successfully.'));
     }
 
     public function destroy(Product $product)
     {
-        // 删除产品时，同时删除所有图片文件
-        foreach ($product->images as $image) {
-            // 使用原始属性值（相对路径），而不是 accessor 返回的 URL
-            $imagePath = $image->getRawOriginal('image_path');
-            if ($imagePath && Storage::disk('public')->exists($imagePath)) {
-                Storage::disk('public')->delete($imagePath);
+        // 删除产品时，同时删除所有媒体文件
+        foreach ($product->media as $media) {
+            $mediaPath = $media->getRawOriginal('path');
+            if ($mediaPath && Storage::disk($media->disk)->exists($mediaPath)) {
+                Storage::disk($media->disk)->delete($mediaPath);
+            }
+
+            $thumbnailPath = $media->getRawOriginal('thumbnail_path');
+            if ($thumbnailPath && Storage::disk($media->disk)->exists($thumbnailPath)) {
+                Storage::disk($media->disk)->delete($thumbnailPath);
             }
         }
 
@@ -185,39 +196,27 @@ class ProductController extends Controller
         }
 
         $images = $request->file('images');
-        $mainImageIndex = $request->integer('main_image_index', null);
-
-        // 获取当前产品已有的主图片数量，用于设置 sort_order
         $existingImagesCount = $product->images()->count();
-        $hasExistingMainImage = $product->images()->where('is_main', true)->exists();
 
         foreach ($images as $index => $image) {
-            // 生成唯一的文件名
-            $filename = 'products/' . $product->id . '/' . uniqid() . '.' . $image->getClientOriginalExtension();
+            $filename = sprintf(
+                'products/%s/images/%s.%s',
+                $product->id,
+                Str::uuid(),
+                $image->getClientOriginalExtension()
+            );
 
-            // 存储图片到 public 磁盘
             $path = $image->storeAs('', $filename, 'public');
 
-            // 判断是否为主图片
-            // 如果没有指定主图片索引，且没有现有主图片，则第一个自动成为主图片
-            if ($mainImageIndex === null && ! $hasExistingMainImage && $index === 0) {
-                $isMain = true;
-            } else {
-                $isMain = $mainImageIndex !== null && $index === $mainImageIndex;
-            }
-
-            // 如果设置了新的主图片，先取消其他主图片
-            if ($isMain) {
-                $product->images()->update(['is_main' => false]);
-                $hasExistingMainImage = true; // 标记已有主图片，后续图片不再自动设置
-            }
-
-            // 创建图片记录
-            ProductImage::create([
+            ProductMedia::create([
                 'product_id' => $product->id,
-                'image_path' => $path,
-                'is_main' => $isMain,
+                'type' => 'image',
+                'disk' => 'public',
+                'path' => $path,
                 'sort_order' => $existingImagesCount + $index,
+                'mime_type' => $image->getMimeType() ?? 'image/jpeg',
+                'size_bytes' => $image->getSize() ?? 0,
+                'status' => 'ready',
             ]);
         }
     }
@@ -230,15 +229,12 @@ class ProductController extends Controller
         $images = $product->images()->whereIn('id', $imageIds)->get();
 
         foreach ($images as $image) {
-            // 使用原始属性值（相对路径），而不是 accessor 返回的 URL
-            $imagePath = $image->getRawOriginal('image_path');
-            
-            // 删除文件
-            if ($imagePath && Storage::disk('public')->exists($imagePath)) {
-                Storage::disk('public')->delete($imagePath);
+            $imagePath = $image->getRawOriginal('path');
+
+            if ($imagePath && Storage::disk($image->disk)->exists($imagePath)) {
+                Storage::disk($image->disk)->delete($imagePath);
             }
 
-            // 删除数据库记录
             $image->delete();
         }
     }

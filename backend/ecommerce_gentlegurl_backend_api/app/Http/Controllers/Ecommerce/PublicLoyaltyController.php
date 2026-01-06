@@ -10,7 +10,6 @@ use App\Services\Ecommerce\MembershipTierService;
 use App\Services\Ecommerce\LoyaltySummaryService;
 use App\Services\Loyalty\PointsService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class PublicLoyaltyController extends Controller
 {
@@ -51,12 +50,8 @@ class PublicLoyaltyController extends Controller
 
         $payload = $rewards->map(function (LoyaltyReward $reward) {
             $product = $reward->product;
-            $productImage = $product?->images
-                ? $product->images->sortBy('sort_order')->sortBy('id')->first()
-                : null;
-
-            $thumbnail = $productImage?->image_path;
-            $imageUrl = $thumbnail ? Storage::disk('public')->url($thumbnail) : self::PRODUCT_PLACEHOLDER;
+            $thumbnail = $product?->cover_image_url;
+            $imageUrl = $thumbnail ?: self::PRODUCT_PLACEHOLDER;
             $remaining = null;
 
             if ($reward->type === 'voucher') {

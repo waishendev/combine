@@ -197,7 +197,7 @@ class PublicReturnController extends Controller
             return $this->respond(null, __('You are not allowed to access this return request.'), false, 403);
         }
 
-        $returnRequest->load(['items.orderItem', 'order']);
+        $returnRequest->load(['items.orderItem.product.images', 'order']);
         $refundProofUrl = $returnRequest->refund_proof_path
             ? Storage::disk('public')->url($returnRequest->refund_proof_path)
             : null;
@@ -221,12 +221,16 @@ class PublicReturnController extends Controller
             'refund_proof_url' => $refundProofUrl,
             'refunded_at' => $returnRequest->refunded_at,
             'items' => $returnRequest->items->map(function (ReturnRequestItem $item) {
+                $thumbnail = $item->orderItem?->product?->cover_image_url;
+
                 return [
                     'order_item_id' => $item->order_item_id,
                     'product_name' => $item->orderItem?->product_name_snapshot,
                     'sku' => $item->orderItem?->sku_snapshot,
                     'order_quantity' => $item->orderItem?->quantity,
                     'requested_quantity' => $item->quantity,
+                    'product_image' => $thumbnail,
+                    'cover_image_url' => $thumbnail,
                 ];
             }),
             'timestamps' => [

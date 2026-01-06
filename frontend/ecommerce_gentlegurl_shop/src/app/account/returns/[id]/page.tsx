@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getReturnRequest } from "@/lib/server/getReturnRequest";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 import { TrackingFormClient } from "./TrackingFormClient";
 
 type ReturnDetailPageProps = {
@@ -104,9 +105,17 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
               key={item.order_item_id}
               className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--card-border)] px-3 py-2"
             >
-              <div>
-                <p className="text-sm font-semibold text-[var(--foreground)]">{item.product_name ?? "Item"}</p>
-                <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku ?? "—"}</p>
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={getPrimaryProductImage(item)}
+                  alt={item.product_name ?? "Item"}
+                  className="h-12 w-12 rounded-lg object-cover"
+                />
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">{item.product_name ?? "Item"}</p>
+                  <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku ?? "—"}</p>
+                </div>
               </div>
               <div className="text-sm text-[var(--foreground)]/70">
                 Qty: {item.requested_quantity ?? 0} / {item.order_quantity ?? 0}

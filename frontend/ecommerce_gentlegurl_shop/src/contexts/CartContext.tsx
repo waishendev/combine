@@ -14,6 +14,7 @@ import {
   resetCartSession,
 } from "../lib/apiClient";
 import { clearSessionToken, getOrCreateSessionToken, setSessionToken as persistSessionToken } from "../lib/sessionToken";
+import { getPrimaryProductImage } from "../lib/productMedia";
 
 type Totals = {
   subtotal: string;
@@ -144,11 +145,12 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
         ((item as unknown as { product_slug?: string }).product_slug
           ? { slug: (item as unknown as { product_slug?: string }).product_slug }
           : undefined),
-      product_image:
-        item.product_image ??
-        (item as unknown as { product_image?: string | null }).product_image ??
-        item.product?.images?.find((img) => img.is_main)?.image_path ??
-        item.product?.images?.[0]?.image_path,
+      product_image: getPrimaryProductImage({
+        product_image: item.product_image ?? (item as { product_image?: string | null }).product_image ?? null,
+        cover_image_url: (item as { cover_image_url?: string | null }).cover_image_url ?? item.product?.cover_image_url ?? null,
+        images: item.product?.images,
+        media: item.product?.media,
+      }),
     }));
 
     setItems(normalizedItems);

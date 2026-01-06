@@ -5,6 +5,7 @@ namespace App\Models\Ecommerce;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Ecommerce\ProductReview;
+use App\Models\Ecommerce\ProductMedia;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use DateTimeInterface;
@@ -12,6 +13,10 @@ use DateTimeInterface;
 class Product extends Model
 {
     use HasFactory;
+
+    protected $appends = [
+        'cover_image_url',
+    ];
 
     protected $fillable = [
         'name',
@@ -49,9 +54,37 @@ class Product extends Model
         ];
     }
 
+    public function media()
+    {
+        return $this->hasMany(ProductMedia::class);
+    }
+
     public function images()
     {
-        return $this->hasMany(ProductImage::class);
+        return $this->media()
+            ->where('type', 'image')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
+    public function video()
+    {
+        return $this->hasOne(ProductMedia::class)
+            ->where('type', 'video');
+    }
+
+    public function getCoverImageUrlAttribute(): ?string
+    {
+        $images = $this->relationLoaded('images')
+            ? $this->images
+            : $this->images()->get();
+
+        $cover = $images
+            ->sortBy('sort_order')
+            ->sortBy('id')
+            ->first();
+
+        return $cover?->url;
     }
 
     public function categories()

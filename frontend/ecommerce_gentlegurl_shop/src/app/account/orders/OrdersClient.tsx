@@ -12,6 +12,7 @@ import { RatingStars } from "@/components/reviews/RatingStars";
 import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
 import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 
 type OrdersClientProps = {
   orders: OrderSummary[];
@@ -460,16 +461,12 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                         >
                           <div className="flex items-center gap-3">
-                            {item.product_image ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={item.product_image}
-                                alt={item.name ?? "Product image"}
-                                className="h-12 w-12 rounded-lg object-cover"
-                              />
-                            ) : (
-                              <div className="h-12 w-12 rounded-lg bg-[var(--muted)]" />
-                            )}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={getPrimaryProductImage(item)}
+                              alt={item.name ?? "Product image"}
+                              className="h-12 w-12 rounded-lg object-cover"
+                            />
                             <div>
                               <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
