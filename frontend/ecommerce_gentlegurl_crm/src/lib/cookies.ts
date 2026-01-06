@@ -7,6 +7,7 @@ export async function hasSessionCookie(): Promise<boolean> {
   const ck = await cookies()
   const sessionCookie = 
     ck.get('laravel-session') || 
-    ck.get('connect.sid')
+    ck.get('connect.sid') || 
+    ck.get('gentlegurl-api-session')
   return !!sessionCookie
 }
