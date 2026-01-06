@@ -19,7 +19,6 @@ services:
     volumes:
       - laravel_storage:/var/www/storage:rw
       - laravel_cache:/var/www/bootstrap/cache:rw
-      - .:/var/www:ro
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -46,6 +45,107 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "7"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - appnet
+
+  laravel-queue:
+    container_name: laravel_queue_prod
+    build:
+      context: .
+      dockerfile: Dockerfile-prod
+      target: app
+    labels:
+      - com.dkwatch.enable=${WATCH_ENABLE}
+      - com.dkwatch.group=${WATCH_NAME}
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      LOG_CHANNEL: stderr
+    volumes:
+      - laravel_storage:/var/www/storage:rw
+      - laravel_cache:/var/www/bootstrap/cache:rw
+    command: php artisan queue:work --sleep=2 --tries=3 --timeout=120 --max-time=3600 --max-jobs=500
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /usr/local/var/run/php:size=16m,mode=755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    ulimits:
+      nofile:
+        soft: 2048
+        hard: 4096
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
+          pids: 150
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "7"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - appnet
+
+  laravel-scheduler:
+    container_name: laravel_scheduler_prod
+    build:
+      context: .
+      dockerfile: Dockerfile-prod
+      target: app
+    labels:
+      - com.dkwatch.enable=${WATCH_ENABLE}
+      - com.dkwatch.group=${WATCH_NAME}
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      LOG_CHANNEL: stderr
+    volumes:
+      - laravel_storage:/var/www/storage:rw
+      - laravel_cache:/var/www/bootstrap/cache:rw
+    command: php artisan schedule:work
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /usr/local/var/run/php:size=16m,mode=755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    ulimits:
+      nofile:
+        soft: 2048
+        hard: 4096
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
+          pids: 150
     logging:
       driver: json-file
       options:
@@ -89,10 +189,21 @@ services:
     networks:
       - appnet
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis_prod
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - appnet
+
 volumes:
   laravel_storage:
   laravel_cache:
   postgres_data:
+  redis_data:
 
 networks:
   appnet:
