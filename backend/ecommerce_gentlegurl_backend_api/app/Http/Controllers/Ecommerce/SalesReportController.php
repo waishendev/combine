@@ -41,41 +41,47 @@ class SalesReportController extends Controller
         [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $perPage = (int) $request->query('per_page', $request->query('limit', 15));
         $page = (int) $request->query('page', 1);
-        $data = $this->service->getByCategory($start, $end, $perPage, $page);
+        $top = (int) $request->query('top', 5);
+        $data = $this->service->getByCategory($start, $end, $perPage, $page, $top);
 
         $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'per_page' => $perPage,
             'page' => $page,
+            'top' => $top,
         ]);
 
         return response()->json($data);
     }
 
-    public function topProducts(Request $request)
+    public function byProducts(Request $request)
     {
         [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $perPage = (int) $request->query('per_page', $request->query('limit', 15));
         $page = (int) $request->query('page', 1);
-        $data = $this->service->getTopProducts($start, $end, $perPage, $page);
+        $top = (int) $request->query('top', 5);
+        $data = $this->service->getByProducts($start, $end, $perPage, $page, $top);
 
         $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'per_page' => $perPage,
             'page' => $page,
+            'top' => $top,
         ]);
 
         return response()->json($data);
     }
 
-    public function topCustomers(Request $request)
+    public function byCustomers(Request $request)
     {
         [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $perPage = (int) $request->query('per_page', $request->query('limit', 15));
         $page = (int) $request->query('page', 1);
-        $data = $this->service->getTopCustomers($start, $end, $perPage, $page);
+        $top = (int) $request->query('top', 5);
+        $data = $this->service->getByCustomers($start, $end, $perPage, $page, $top);
 
         $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'per_page' => $perPage,
             'page' => $page,
+            'top' => $top,
         ]);
 
         return response()->json($data);

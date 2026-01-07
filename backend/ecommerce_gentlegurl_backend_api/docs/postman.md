@@ -317,9 +317,9 @@
 ### 5.x Ecommerce / Reports / Sales
 - `GET /ecommerce/reports/sales/overview` — 权限：`permission:ecommerce.reports.sales.view`。销售概况（订单数、件数、营业额、按状态）。Query：`date_from?`, `date_to?`（默认今天）。
 - `GET /ecommerce/reports/sales/daily` — 权限：`permission:ecommerce.reports.sales.view`。按天或按月汇总销售。Query：`date_from?`, `date_to?`（默认最近 30 天），`group_by=day|month`。
-- `GET /ecommerce/reports/sales/by-category` — 权限：`permission:ecommerce.reports.sales.view`。按分类汇总销售。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1）。
-- `GET /ecommerce/reports/sales/top-products` — 权限：`permission:ecommerce.reports.sales.view`。热销产品榜。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1）。
-- `GET /ecommerce/reports/sales/top-customers` — 权限：`permission:ecommerce.reports.sales.view`。顾客消费榜。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1）。
+- `GET /ecommerce/reports/sales/by-category` — 权限：`permission:ecommerce.reports.sales.view`。按分类汇总销售。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1），`top?`（默认 5）。
+- `GET /ecommerce/reports/sales/by-products` — 权限：`permission:ecommerce.reports.sales.view`。热销产品榜。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1），`top?`（默认 5）。
+- `GET /ecommerce/reports/sales/by-customers` — 权限：`permission:ecommerce.reports.sales.view`。顾客消费榜。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1），`top?`（默认 5）。
   
   Response 示例详见任务需求：均返回 `date_range`（from/to），以及对应报表的 `rows`/`totals` 字段。
 
