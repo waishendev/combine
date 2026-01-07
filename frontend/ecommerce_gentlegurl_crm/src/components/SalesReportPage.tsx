@@ -166,7 +166,6 @@ export default function SalesReportPage({
     last_page: 1,
   })
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(
     null,
@@ -333,6 +332,25 @@ export default function SalesReportPage({
     return `/api/proxy/ecommerce/reports/sales/export/${reportType}?${qs.toString()}`
   }, [canExport, reportType, resolvedParams.dateFrom, resolvedParams.dateTo])
 
+  const activeFilters = useMemo(() => {
+    const filters: Array<{ key: string; label: string; value: string }> = []
+    if (resolvedParams.hasDateFrom && resolvedParams.hasDateTo) {
+      filters.push({
+        key: 'date_range',
+        label: 'Date Range',
+        value: showingRange,
+      })
+    }
+    if (resolvedParams.top !== DEFAULT_TOP_COUNT) {
+      filters.push({
+        key: 'top',
+        label: 'Top N',
+        value: String(resolvedParams.top),
+      })
+    }
+    return filters
+  }, [resolvedParams.hasDateFrom, resolvedParams.hasDateTo, resolvedParams.top, showingRange])
+
   const columns = useMemo(() => {
     const baseColumns =
       reportType === 'by-category'
@@ -369,36 +387,14 @@ export default function SalesReportPage({
     ]
   }, [reportType, showProfit])
 
-  const filteredRows = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase()
-    if (!query) return rows
-    if (reportType === 'by-category') {
-      return (rows as CategoryRow[]).filter((row) =>
-        row.category_name?.toLowerCase().includes(query),
-      )
-    }
-    if (reportType === 'by-products') {
-      return (rows as ProductRow[]).filter((row) => {
-        const sku = row.sku ?? ''
-        return (
-          row.product_name?.toLowerCase().includes(query) || sku.toLowerCase().includes(query)
-        )
-      })
-    }
-    return (rows as CustomerRow[]).filter((row) => {
-      const email = row.customer_email ?? ''
-      return (
-        row.customer_name?.toLowerCase().includes(query) || email.toLowerCase().includes(query)
-      )
-    })
-  }, [reportType, rows, searchTerm])
+  const filteredRows = rows
 
   const sortedRows = useMemo(() => {
     if (!sortConfig) return filteredRows
     const { key, direction } = sortConfig
     return [...filteredRows].sort((a, b) => {
-      const aValue = Number((a as Record<string, number | null>)[key] ?? 0)
-      const bValue = Number((b as Record<string, number | null>)[key] ?? 0)
+      const aValue = Number((a as unknown as Record<string, number | null>)[key] ?? 0)
+      const bValue = Number((b as unknown as Record<string, number | null>)[key] ?? 0)
       if (aValue === bValue) return 0
       return direction === 'asc' ? aValue - bValue : bValue - aValue
     })
@@ -438,6 +434,18 @@ export default function SalesReportPage({
     { label: 'Gross Profit', value: grandTotals?.gross_profit, isMoney: true },
     { label: 'Gross Margin %', value: grandTotals?.gross_margin, isMoney: false },
   ]
+
+  // Get amount columns for tfoot
+  const amountColumns = useMemo(() => {
+    const cols: Array<{ key: string; label: string }> = [
+      { key: 'revenue', label: 'Revenue' },
+    ]
+    if (showProfit) {
+      cols.push({ key: 'cogs', label: 'COGS' })
+      cols.push({ key: 'gross_profit', label: 'Gross Profit' })
+    }
+    return cols
+  }, [showProfit])
 
   const renderProfitCells = (row: CategoryRow | ProductRow | CustomerRow) => {
     if (!showProfit) return null
@@ -544,56 +552,82 @@ export default function SalesReportPage({
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setIsFilterOpen(true)}
-              className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsFilterOpen(true)}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+            disabled={loading}
+          >
+            <i className="fa-solid fa-filter" />
+            Filter
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {canExport ? (
+            <a
+              href={exportUrl}
+              className="flex items-center gap-2 rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
-              <span className="text-xs">🔍</span>
-              Filter
-            </button>
-            {canExport ? (
-              <a
-                href={exportUrl}
-                className="flex items-center gap-2 rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-              >
-                <span className="text-xs">⬇️</span>
-                Export CSV
-              </a>
-            ) : null}
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-semibold text-slate-500">Show</label>
-              <select
-                className="h-10 rounded border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm"
-                value={resolvedParams.perPage}
-                onChange={(event) => {
-                  updateQuery({
-                    per_page: event.target.value,
-                    page: String(DEFAULT_PAGE),
-                  })
-                }}
-              >
-                {PAGE_SIZE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="text-sm text-slate-600">
-            <div>
-              <span className="font-semibold text-slate-700">Showing:</span> {showingRange}
-            </div>
-            {meta?.default_range_applied ? (
-              <div className="text-xs text-slate-400">Default range applied (This month)</div>
-            ) : null}
-          </div>
+              <i className="fa-solid fa-download" />
+              Export CSV
+            </a>
+          ) : null}
+          <label htmlFor="pageSize" className="text-sm text-gray-700">
+            Show
+          </label>
+          <select
+            id="pageSize"
+            value={resolvedParams.perPage}
+            onChange={(event) => {
+              updateQuery({
+                per_page: event.target.value,
+                page: String(DEFAULT_PAGE),
+              })
+            }}
+            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {activeFilters.map((filter) => (
+            <span
+              key={filter.key}
+              className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs"
+            >
+              <span className="font-medium">{filter.label}</span>
+              <span>{filter.value}</span>
+              <button
+                type="button"
+                className="text-blue-600 hover:text-blue-800"
+                onClick={() => {
+                  if (filter.key === 'date_range') {
+                    handleReset()
+                  } else if (filter.key === 'top') {
+                    updateQuery({
+                      top: String(DEFAULT_TOP_COUNT),
+                    })
+                  }
+                }}
+                aria-label={`Remove ${filter.label} filter`}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
@@ -635,35 +669,9 @@ export default function SalesReportPage({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="text-sm font-semibold text-slate-700">
-            {reportType === 'by-category'
-              ? 'Category Sales'
-              : reportType === 'by-products'
-              ? 'Product Sales (by Revenue)'
-              : 'Customer Sales (by Revenue)'}
-          </div>
-          <div className="w-full lg:w-80">
-            <label className="text-xs font-semibold text-slate-500">Search</label>
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={
-                reportType === 'by-category'
-                  ? 'Search category name'
-                  : reportType === 'by-products'
-                  ? 'Search product name or SKU'
-                  : 'Search customer name or email'
-              }
-              className="mt-1 h-10 w-full rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-            />
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
               <tr>
                 {columns.map((column) => {
                   const isSortable = column.sortable
@@ -673,22 +681,47 @@ export default function SalesReportPage({
                   return (
                     <th
                       key={column.label}
-                      className={`px-4 py-3 border border-slate-200 font-semibold ${
-                        isSortable ? 'cursor-pointer select-none' : ''
-                      }`}
-                      onClick={() => {
-                        if (!isSortable) return
-                        setSortConfig({ key: column.key, direction: nextDirection })
-                      }}
+                      className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
                     >
-                      <span className="inline-flex items-center gap-1">
-                        {column.label}
+                      <button
+                        type="button"
+                        className={`flex items-center gap-1 ${
+                          isSortable ? 'cursor-pointer select-none' : 'cursor-default'
+                        }`}
+                        onClick={() => {
+                          if (!isSortable) return
+                          setSortConfig({ key: column.key, direction: nextDirection })
+                        }}
+                      >
+                        <span>{column.label}</span>
                         {isSortable ? (
-                          <span className="text-slate-400">
-                            {isActive ? (sortConfig?.direction === 'desc' ? '▼' : '▲') : '↕'}
-                          </span>
+                          <svg
+                            className="ml-1 inline-block align-middle"
+                            width="15"
+                            height="15"
+                            viewBox="0 0 10 12"
+                            aria-hidden="true"
+                            focusable="false"
+                          >
+                            <path
+                              d="M5 1 L9 5 H1 Z"
+                              fill={
+                                isActive && sortConfig?.direction === 'asc'
+                                  ? '#122350ff'
+                                  : '#afb2b8ff'
+                              }
+                            />
+                            <path
+                              d="M5 11 L1 7 H9 Z"
+                              fill={
+                                isActive && sortConfig?.direction === 'desc'
+                                  ? '#122350ff'
+                                  : '#afb2b8ff'
+                              }
+                            />
+                          </svg>
                         ) : null}
-                      </span>
+                      </button>
                     </th>
                   )
                 })}
@@ -745,84 +778,74 @@ export default function SalesReportPage({
                 ))
               )}
             </tbody>
-            <tfoot className="bg-slate-50">
-              <tr>
-                <td colSpan={columns.length} className="px-4 py-4">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span className="font-semibold uppercase tracking-wide text-slate-500">
-                      Totals (Page)
-                    </span>
-                    {totalsPageSource.isFallback ? <span>Based on current page</span> : null}
-                  </div>
-                  <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {summaryCards.map((card) => {
-                      const value =
-                        card.value === null || card.value === undefined
-                          ? '—'
-                          : card.isMoney
-                          ? `RM ${formatAmount(card.value)}`
-                          : formatMargin(card.value)
-
-                      return (
-                        <div
-                          key={card.label}
-                          className="rounded-lg border border-slate-200 bg-white px-4 py-3"
-                        >
-                          <div className="text-xs font-semibold uppercase text-slate-400">
-                            {card.label}
-                          </div>
-                          <div className="mt-1 text-lg font-semibold text-slate-700">{value}</div>
-                        </div>
-                      )
-                    })}
-                  </div>
+            <tfoot>
+              <tr className="bg-gray-100 font-semibold">
+                <td className="border border-gray-300 px-4 py-2 text-left">
+                  Totals (Page)
                 </td>
+                {columns.map((column) => {
+                  const isAmountColumn = amountColumns.some((ac) => ac.key === column.key)
+                  if (!isAmountColumn) {
+                    return (
+                      <td
+                        key={column.key}
+                        className="border border-gray-300 px-4 py-2 text-right text-sm"
+                      >
+                        —
+                      </td>
+                    )
+                  }
+                  const amountKey = column.key as keyof ReportSummary
+                  const amountValue = totalsPageSource.summary[amountKey] ?? 0
+                  return (
+                    <td
+                      key={column.key}
+                      className="border border-gray-300 px-4 py-2 text-right text-sm"
+                    >
+                      <span>RM {formatAmount(Number(amountValue))}</span>
+                    </td>
+                  )
+                })}
               </tr>
-              <tr>
-                <td colSpan={columns.length} className="px-4 pb-4">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span className="font-semibold uppercase tracking-wide text-slate-500">
-                      Grand Totals
-                    </span>
-                    <span>All pages within the selected date range</span>
-                  </div>
-                  <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {grandTotalCards.map((card) => {
-                      const value =
-                        card.value === null || card.value === undefined
-                          ? '—'
-                          : card.isMoney
-                          ? `RM ${formatAmount(card.value)}`
-                          : formatMargin(card.value)
-
-                      return (
-                        <div
-                          key={card.label}
-                          className="rounded-lg border border-slate-200 bg-white px-4 py-3"
-                        >
-                          <div className="text-xs font-semibold uppercase text-slate-400">
-                            {card.label}
-                          </div>
-                          <div className="mt-1 text-lg font-semibold text-slate-700">{value}</div>
-                        </div>
-                      )
-                    })}
-                  </div>
+              <tr className="bg-gray-100 font-bold">
+                <td className="border border-gray-300 px-4 py-2 text-left">
+                  Grand Totals
                 </td>
+                {columns.map((column) => {
+                  const isAmountColumn = amountColumns.some((ac) => ac.key === column.key)
+                  if (!isAmountColumn) {
+                    return (
+                      <td
+                        key={column.key}
+                        className="border border-gray-300 px-4 py-2 text-right text-sm"
+                      >
+                        —
+                      </td>
+                    )
+                  }
+                  const amountKey = column.key as keyof ReportSummary
+                  const amountValue = grandTotals?.[amountKey] ?? 0
+                  return (
+                    <td
+                      key={column.key}
+                      className="border border-gray-300 px-4 py-2 text-right text-sm"
+                    >
+                      <span>RM {formatAmount(Number(amountValue))}</span>
+                    </td>
+                  )
+                })}
               </tr>
             </tfoot>
           </table>
-        </div>
-        <div className="px-4 pb-4">
-          <PaginationControls
-            currentPage={pagination.current_page}
-            totalPages={pagination.last_page}
-            pageSize={pagination.per_page}
-            onPageChange={(page) => updateQuery({ page: String(page) })}
-            disabled={loading}
-          />
-        </div>
       </div>
+
+      <PaginationControls
+        currentPage={pagination.current_page}
+        totalPages={pagination.last_page}
+        pageSize={pagination.per_page}
+        onPageChange={(page) => updateQuery({ page: String(page) })}
+        disabled={loading}
+      />
     </div>
   )
 }
