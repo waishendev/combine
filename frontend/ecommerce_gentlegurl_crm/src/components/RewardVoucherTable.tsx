@@ -296,7 +296,7 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
               ).map(({ key, label }) => (
                 <th
                   key={key}
-                  className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
+                  className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider"
                 >
                   <span>{label}</span>
                 </th>

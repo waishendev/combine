@@ -536,22 +536,22 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600tracking-wider">
                 Date
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Orders
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Items
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Revenue
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 COGS
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Gross Profit
               </th>
             </tr>
