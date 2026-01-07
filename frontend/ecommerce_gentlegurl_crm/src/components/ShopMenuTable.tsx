@@ -50,12 +50,8 @@ export default function ShopMenuTable({
   const [rows, setRows] = useState<ShopMenuRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof ShopMenuRowData | null>(
-    'name',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof ShopMenuRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingShopMenuId, setEditingShopMenuId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ShopMenuRowData | null>(null)
   const [movingShopMenuId, setMovingShopMenuId] = useState<number | null>(null)
@@ -672,4 +668,3 @@ export default function ShopMenuTable({
     </div>
   )
 }
-

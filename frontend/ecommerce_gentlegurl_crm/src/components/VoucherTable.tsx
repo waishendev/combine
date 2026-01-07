@@ -60,12 +60,8 @@ export default function VoucherTable({
   const [rows, setRows] = useState<VoucherRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof VoucherRowData | null>(
-    'code',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof VoucherRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingVoucherId, setEditingVoucherId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<VoucherRowData | null>(null)
 

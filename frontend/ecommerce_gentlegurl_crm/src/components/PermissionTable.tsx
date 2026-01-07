@@ -59,12 +59,8 @@ export default function PermissionTable({
   const [rows, setRows] = useState<PermissionRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof PermissionRowData | null>(
-    'name',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof PermissionRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [groups, setGroups] = useState<PermissionGroupOption[]>([])
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [hasFetchedGroups, setHasFetchedGroups] = useState(false)

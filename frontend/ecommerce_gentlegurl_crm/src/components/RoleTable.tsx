@@ -72,12 +72,8 @@ export default function RoleTable({
   const [rows, setRows] = useState<RoleRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof RoleRowData | null>(
-    'name',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof RoleRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingRoleId, setEditingRoleId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RoleRowData | null>(null)
   const [viewingPermissions, setViewingPermissions] = useState<RoleRowData | null>(null)

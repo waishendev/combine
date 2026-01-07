@@ -58,12 +58,8 @@ export default function MarqueeTable({
   const [rows, setRows] = useState<MarqueeRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof MarqueeRowData | null>(
-    'text',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof MarqueeRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingMarqueeId, setEditingMarqueeId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MarqueeRowData | null>(null)
   const [movingMarqueeId, setMovingMarqueeId] = useState<number | null>(null)
@@ -776,4 +772,3 @@ export default function MarqueeTable({
     </div>
   )
 }
-

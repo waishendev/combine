@@ -62,12 +62,8 @@ export default function AdminTable({
   const [rows, setRows] = useState<AdminRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof AdminRowData | null>(
-    'username',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof AdminRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [roles, setRoles] = useState<AdminRoleOption[]>([])
   const [rolesLoading, setRolesLoading] = useState(false)
   const [hasFetchedRoles, setHasFetchedRoles] = useState(false)

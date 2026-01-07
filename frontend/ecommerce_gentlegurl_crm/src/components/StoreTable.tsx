@@ -58,12 +58,8 @@ export default function StoreTable({
   const [rows, setRows] = useState<StoreRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof StoreRowData | null>(
-    'name',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof StoreRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingStoreId, setEditingStoreId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StoreRowData | null>(null)
 
