@@ -66,6 +66,7 @@ class PublicCheckoutController extends Controller
             $validated['customer_voucher_id'] ?? null,
             $validated['shipping_country'] ?? null,
             $validated['shipping_state'] ?? null,
+            true,
         );
 
         $this->orderReserveService->validateStockForItems($calculation['items']);
@@ -651,6 +652,7 @@ class PublicCheckoutController extends Controller
         ?int $customerVoucherId,
         ?string $shippingCountry,
         ?string $shippingState,
+        bool $allowMissingShippingAddress = false,
     ): array
     {
         $items = [];
@@ -835,23 +837,28 @@ class PublicCheckoutController extends Controller
         $shippingFee = 0;
         $shippingInfo = null;
         if ($shippingMethod === 'shipping') {
-            $shippingSetting = Setting::where('key', 'shipping')->first();
-            $shippingConfig = (array) data_get($shippingSetting?->value, []);
-            $shippingResult = $this->shippingService->calculateShippingFee(
-                $subtotal,
-                $shippingCountry,
-                $shippingState,
-                $shippingConfig,
-            );
+            if ($allowMissingShippingAddress && (empty($shippingCountry) || empty($shippingState))) {
+                $shippingFee = 0;
+                $shippingInfo = null;
+            } else {
+                $shippingSetting = Setting::where('key', 'shipping')->first();
+                $shippingConfig = (array) data_get($shippingSetting?->value, []);
+                $shippingResult = $this->shippingService->calculateShippingFee(
+                    $subtotal,
+                    $shippingCountry,
+                    $shippingState,
+                    $shippingConfig,
+                );
 
-            $shippingFee = (float) $shippingResult['fee'];
-            $shippingInfo = [
-                'zone' => $shippingResult['zone'],
-                'label' => $shippingResult['label'],
-                'fee' => $shippingFee,
-                'is_free' => $shippingResult['is_free'],
-                'free_shipping_min_order_amount' => $shippingResult['free_threshold'],
-            ];
+                $shippingFee = (float) $shippingResult['fee'];
+                $shippingInfo = [
+                    'zone' => $shippingResult['zone'],
+                    'label' => $shippingResult['label'],
+                    'fee' => $shippingFee,
+                    'is_free' => $shippingResult['is_free'],
+                    'free_shipping_min_order_amount' => $shippingResult['free_threshold'],
+                ];
+            }
         }
         $discountTotal = 0;
         $voucherData = null;
