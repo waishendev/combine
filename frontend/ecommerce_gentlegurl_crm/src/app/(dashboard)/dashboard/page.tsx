@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from 'react'
 
 import DashboardSectionCard from '@/components/DashboardSectionCard'
 import DashboardStatCard from '@/components/DashboardStatCard'
-import { apiFetch } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 
 type MonthlySalesPoint = {
@@ -59,22 +58,41 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let active = true
+    const controller = new AbortController()
 
     const fetchOverview = async () => {
       setLoading(true)
       setError(null)
+
       try {
-        const response = await apiFetch<DashboardOverviewResponse>('/ecommerce/dashboard/overview')
-        if (active) {
-          setData(response)
+        const res = await fetch('/api/proxy/ecommerce/dashboard/overview', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+
+        if (!res.ok) {
+          const message = await res.text()
+          setError(message || 'Failed to load dashboard overview.')
+          setData(null)
+          return
         }
+
+        const response: DashboardOverviewResponse & { success?: boolean; message?: string } = await res.json()
+          .catch(() => ({} as DashboardOverviewResponse))
+
+        if (response?.success === false && response?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+
+        setData(response)
       } catch (err) {
-        if (active) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setError(err instanceof Error ? err.message : 'Failed to load dashboard overview.')
+          setData(null)
         }
       } finally {
-        if (active) {
+        if (!controller.signal.aborted) {
           setLoading(false)
         }
       }
@@ -82,9 +100,7 @@ export default function DashboardPage() {
 
     fetchOverview()
 
-    return () => {
-      active = false
-    }
+    return () => controller.abort()
   }, [])
 
   const monthlySales = data?.charts.monthly_sales ?? []
