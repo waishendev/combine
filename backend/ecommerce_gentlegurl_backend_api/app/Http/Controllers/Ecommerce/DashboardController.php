@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Services\Dashboard\DashboardService;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
@@ -15,25 +14,9 @@ class DashboardController extends Controller
 
     public function overview(Request $request)
     {
-        [$start, $end] = $this->resolveDateRange($request);
+        [$start, $end, $defaultRangeApplied] = $this->service->resolveCurrentRange($request);
+        [$previousStart, $previousEnd] = $this->service->resolvePreviousRange($start, $end, $defaultRangeApplied);
 
-        return response()->json($this->service->getOverview($start, $end));
-    }
-
-    private function resolveDateRange(Request $request): array
-    {
-        $hasDateFrom = $request->filled('date_from');
-        $hasDateTo = $request->filled('date_to');
-
-        if (!($hasDateFrom && $hasDateTo)) {
-            $today = Carbon::today();
-            $start = $today->copy()->startOfMonth();
-            $end = $today->copy()->endOfMonth()->endOfDay();
-        } else {
-            $start = Carbon::parse($request->query('date_from'))->startOfDay();
-            $end = Carbon::parse($request->query('date_to'))->endOfDay();
-        }
-
-        return [$start, $end];
+        return response()->json($this->service->getOverview($start, $end, $previousStart, $previousEnd));
     }
 }

@@ -3,7 +3,8 @@ interface DashboardStatCardProps {
   value: string
   helperText?: string
   changeLabel?: string
-  trend?: 'up' | 'down'
+  comparisonText?: string
+  trend?: 'up' | 'down' | 'flat'
 }
 
 export default function DashboardStatCard({
@@ -11,10 +12,12 @@ export default function DashboardStatCard({
   value,
   helperText,
   changeLabel,
+  comparisonText,
   trend = 'up',
 }: DashboardStatCardProps) {
-  const trendColor = trend === 'down' ? 'text-rose-600' : 'text-emerald-600'
-  const trendSymbol = trend === 'down' ? '▼' : '▲'
+  const trendColor =
+    trend === 'down' ? 'text-rose-600' : trend === 'flat' ? 'text-slate-500' : 'text-emerald-600'
+  const trendSymbol = trend === 'down' ? '▼' : trend === 'flat' ? '•' : '▲'
 
   return (
     <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -27,7 +30,11 @@ export default function DashboardStatCard({
           </span>
         )}
       </div>
-      {helperText && <p className="mt-1 text-xs text-slate-500">{helperText}</p>}
-    </div>
-  )
+      {comparisonText ? (
+        <p className={`mt-1 text-xs ${trendColor}`}>{comparisonText}</p>
+      ) : helperText ? (
+        <p className="mt-1 text-xs text-slate-500">{helperText}</p>
+      ) : null}
+  </div>
+)
 }

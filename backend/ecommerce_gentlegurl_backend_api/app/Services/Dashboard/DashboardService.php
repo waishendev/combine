@@ -8,19 +8,15 @@ use App\Models\Ecommerce\ReturnRequest;
 use App\Services\Reports\SalesReportService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
-    public function getOverview(Carbon $start, Carbon $end): array
+    public function getOverview(Carbon $start, Carbon $end, Carbon $previousStart, Carbon $previousEnd): array
     {
-        $baseQuery = $this->baseOrdersQuery($start, $end);
-        $revenue = (float) (clone $baseQuery)->sum('grand_total');
-        $ordersCount = (int) (clone $baseQuery)->count();
-        $newCustomers = (int) Customer::query()
-            ->whereBetween('created_at', [$start, $end])
-            ->count();
-        $refundAmount = $this->refundAmountForRange($start, $end);
+        $currentKpis = $this->calculateKpis($start, $end);
+        $previousKpis = $this->calculateKpis($previousStart, $previousEnd);
         $monthlySales = $this->monthlySales();
         $topProducts = $this->topProducts($start, $end);
 
@@ -30,16 +26,50 @@ class DashboardService
                 'to' => $end->toDateString(),
             ],
             'kpis' => [
-                'revenue' => $revenue,
-                'orders_count' => $ordersCount,
-                'new_customers' => $newCustomers,
-                'refund_amount' => $refundAmount,
+                'revenue' => $this->withComparison($currentKpis['revenue'], $previousKpis['revenue']),
+                'orders_count' => $this->withComparison($currentKpis['orders_count'], $previousKpis['orders_count']),
+                'new_customers' => $this->withComparison($currentKpis['new_customers'], $previousKpis['new_customers']),
+                'refund_amount' => $this->withComparison($currentKpis['refund_amount'], $previousKpis['refund_amount']),
             ],
             'charts' => [
                 'monthly_sales' => $monthlySales,
             ],
             'top_products' => $topProducts,
         ];
+    }
+
+    public function resolveCurrentRange(Request $request): array
+    {
+        $hasDateFrom = $request->filled('date_from');
+        $hasDateTo = $request->filled('date_to');
+        $defaultRangeApplied = !($hasDateFrom && $hasDateTo);
+
+        if ($defaultRangeApplied) {
+            $today = Carbon::today();
+            $start = $today->copy()->startOfMonth();
+            $end = $today->copy()->endOfMonth()->endOfDay();
+        } else {
+            $start = Carbon::parse($request->query('date_from'))->startOfDay();
+            $end = Carbon::parse($request->query('date_to'))->endOfDay();
+        }
+
+        return [$start, $end, $defaultRangeApplied];
+    }
+
+    public function resolvePreviousRange(Carbon $start, Carbon $end, bool $defaultRangeApplied): array
+    {
+        if ($defaultRangeApplied) {
+            $previousStart = $start->copy()->subMonthNoOverflow()->startOfMonth();
+            $previousEnd = $start->copy()->subMonthNoOverflow()->endOfMonth()->endOfDay();
+
+            return [$previousStart, $previousEnd];
+        }
+
+        $days = $start->diffInDays($end) + 1;
+        $previousStart = $start->copy()->subDays($days);
+        $previousEnd = $end->copy()->subDays($days);
+
+        return [$previousStart, $previousEnd];
     }
 
     private function baseOrdersQuery(Carbon $start, Carbon $end): Builder
@@ -56,6 +86,24 @@ class DashboardService
             ->whereNotNull('refunded_at')
             ->whereBetween('refunded_at', [$start, $end])
             ->sum('refund_amount');
+    }
+
+    private function calculateKpis(Carbon $start, Carbon $end): array
+    {
+        $baseQuery = $this->baseOrdersQuery($start, $end);
+        $revenue = (float) (clone $baseQuery)->sum('grand_total');
+        $ordersCount = (int) (clone $baseQuery)->count();
+        $newCustomers = (int) Customer::query()
+            ->whereBetween('created_at', [$start, $end])
+            ->count();
+        $refundAmount = $this->refundAmountForRange($start, $end);
+
+        return [
+            'revenue' => $revenue,
+            'orders_count' => $ordersCount,
+            'new_customers' => $newCustomers,
+            'refund_amount' => $refundAmount,
+        ];
     }
 
     private function monthlySales(): array
@@ -131,5 +179,31 @@ class DashboardService
             })
             ->values()
             ->all();
+    }
+
+    private function withComparison(float|int $current, float|int $previous): array
+    {
+        $delta = $current - $previous;
+
+        if ($previous == 0.0) {
+            $deltaPercent = $current == 0.0 ? 0.0 : 100.0;
+        } else {
+            $deltaPercent = ($delta / $previous) * 100;
+        }
+
+        $trend = 'flat';
+        if ($delta > 0) {
+            $trend = 'up';
+        } elseif ($delta < 0) {
+            $trend = 'down';
+        }
+
+        return [
+            'current' => $current,
+            'previous' => $previous,
+            'delta' => $delta,
+            'delta_percent' => round($deltaPercent, 2),
+            'trend' => $trend,
+        ];
     }
 }

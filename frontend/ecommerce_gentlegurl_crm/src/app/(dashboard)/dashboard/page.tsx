@@ -13,6 +13,14 @@ type MonthlySalesPoint = {
   orders_count: number
 }
 
+type KpiComparison = {
+  current: number
+  previous: number
+  delta: number
+  delta_percent: number
+  trend: 'up' | 'down' | 'flat'
+}
+
 type TopProduct = {
   product_id: number
   product_name: string
@@ -29,10 +37,10 @@ type DashboardOverviewResponse = {
     to: string
   }
   kpis: {
-    revenue: number
-    orders_count: number
-    new_customers: number
-    refund_amount: number
+    revenue: KpiComparison
+    orders_count: KpiComparison
+    new_customers: KpiComparison
+    refund_amount: KpiComparison
   }
   charts: {
     monthly_sales: MonthlySalesPoint[]
@@ -50,6 +58,16 @@ const formatCurrency = (value: number) => `$${numberFormatter.format(value)}`
 const formatNumber = (value: number) => numberFormatter.format(value)
 
 const formatPercent = (value: number) => `${value.toFixed(2)}%`
+
+const formatSigned = (value: number, formatter: (value: number) => string) => {
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}${formatter(Math.abs(value))}`
+}
+
+const buildComparisonText = (label: string, comparison: KpiComparison, formatter: (value: number) => string) => {
+  const deltaText = formatSigned(comparison.delta, formatter)
+  return `${label} ${deltaText} (${formatPercent(comparison.delta_percent)})`
+}
 
 export default function DashboardPage() {
   const { t } = useI18n()
@@ -116,23 +134,27 @@ export default function DashboardPage() {
     return [
       {
         title: t('dashboard.revenue'),
-        value: formatCurrency(data.kpis.revenue),
-        helperText: 'This Month',
+        value: formatCurrency(data.kpis.revenue.current),
+        comparisonText: buildComparisonText('vs last month', data.kpis.revenue, formatCurrency),
+        trend: data.kpis.revenue.trend,
       },
       {
         title: t('dashboard.orders'),
-        value: formatNumber(data.kpis.orders_count),
-        helperText: 'This Month',
+        value: formatNumber(data.kpis.orders_count.current),
+        comparisonText: buildComparisonText('vs last month', data.kpis.orders_count, formatNumber),
+        trend: data.kpis.orders_count.trend,
       },
       {
         title: t('dashboard.newCustomers'),
-        value: formatNumber(data.kpis.new_customers),
-        helperText: 'This Month',
+        value: formatNumber(data.kpis.new_customers.current),
+        comparisonText: buildComparisonText('vs last month', data.kpis.new_customers, formatNumber),
+        trend: data.kpis.new_customers.trend,
       },
       {
         title: 'Refund Amount',
-        value: formatCurrency(data.kpis.refund_amount),
-        helperText: 'This Month',
+        value: formatCurrency(data.kpis.refund_amount.current),
+        comparisonText: buildComparisonText('vs last month', data.kpis.refund_amount, formatCurrency),
+        trend: data.kpis.refund_amount.trend,
       },
     ]
   }, [data, t])
