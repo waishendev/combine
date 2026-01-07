@@ -566,15 +566,6 @@ export default function SalesReportPage({
         </div>
 
         <div className="flex items-center gap-3">
-          {canExport ? (
-            <a
-              href={exportUrl}
-              className="flex items-center gap-2 rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              <i className="fa-solid fa-download" />
-              Export CSV
-            </a>
-          ) : null}
           <label htmlFor="pageSize" className="text-sm text-gray-700">
             Show
           </label>
@@ -596,6 +587,15 @@ export default function SalesReportPage({
               </option>
             ))}
           </select>
+          {canExport ? (
+            <a
+              href={exportUrl}
+              className="flex items-center gap-2 rounded border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:border-emerald-700 hover:bg-emerald-700"
+            >
+              <i className="fa-solid fa-download" />
+              Export CSV
+            </a>
+          ) : null}
         </div>
       </div>
 
@@ -630,11 +630,10 @@ export default function SalesReportPage({
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
+        <div className="text-sm font-semibold text-slate-700">
           <span>
             Top {resolvedParams.top} {topTitle}
           </span>
-          <span className="text-xs font-semibold uppercase text-slate-400">KPI Cards</span>
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {loading ? (
@@ -658,10 +657,11 @@ export default function SalesReportPage({
                 >
                   <p className="text-xs font-semibold uppercase text-slate-400">{topLabel}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-700">{name}</p>
-                  <p className="mt-3 text-lg font-semibold text-slate-700">
+                  <p className="text-xs font-semibold uppercase text-slate-400 mt-2">Revenue</p>
+                  <p className="text-lg font-semibold text-slate-700">
                     RM {formatAmount(row.revenue)}
                   </p>
-                  <p className="text-xs text-slate-400">Revenue</p>
+
                 </div>
               )
             })
@@ -781,15 +781,15 @@ export default function SalesReportPage({
             <tfoot>
               <tr className="bg-gray-100 font-semibold">
                 <td className="border border-gray-300 px-4 py-2 text-left">
-                  Totals (Page)
+                  Page Totals
                 </td>
-                {columns.map((column) => {
+                {columns.slice(1).map((column) => {
                   const isAmountColumn = amountColumns.some((ac) => ac.key === column.key)
                   if (!isAmountColumn) {
                     return (
                       <td
                         key={column.key}
-                        className="border border-gray-300 px-4 py-2 text-right text-sm"
+                        className="border border-gray-300 px-4 py-2 text-left text-sm"
                       >
                         —
                       </td>
@@ -800,7 +800,7 @@ export default function SalesReportPage({
                   return (
                     <td
                       key={column.key}
-                      className="border border-gray-300 px-4 py-2 text-right text-sm"
+                      className="border border-gray-300 px-4 py-2 text-left text-sm"
                     >
                       <span>RM {formatAmount(Number(amountValue))}</span>
                     </td>
@@ -811,13 +811,13 @@ export default function SalesReportPage({
                 <td className="border border-gray-300 px-4 py-2 text-left">
                   Grand Totals
                 </td>
-                {columns.map((column) => {
+                {columns.slice(1).map((column) => {
                   const isAmountColumn = amountColumns.some((ac) => ac.key === column.key)
                   if (!isAmountColumn) {
                     return (
                       <td
                         key={column.key}
-                        className="border border-gray-300 px-4 py-2 text-right text-sm"
+                        className="border border-gray-300 px-4 py-2 text-left text-sm"
                       >
                         —
                       </td>
@@ -828,7 +828,7 @@ export default function SalesReportPage({
                   return (
                     <td
                       key={column.key}
-                      className="border border-gray-300 px-4 py-2 text-right text-sm"
+                      className="border border-gray-300 px-4 py-2 text-left text-sm"
                     >
                       <span>RM {formatAmount(Number(amountValue))}</span>
                     </td>
