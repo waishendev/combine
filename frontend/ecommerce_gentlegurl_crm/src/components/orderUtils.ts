@@ -244,3 +244,47 @@ export function mapDisplayStatusToApiFilters(displayStatus: string): {
       return {}
   }
 }
+
+export function mapApiFiltersToDisplayStatus(
+  status?: string | null,
+  paymentStatus?: string | null,
+): string {
+  const normalizedStatus = status?.toLowerCase() ?? ''
+  const normalizedPayment = paymentStatus?.toLowerCase() ?? ''
+
+  if (normalizedPayment === 'unpaid' && normalizedStatus === 'pending') {
+    return 'Awaiting Payment'
+  }
+  if (normalizedPayment === 'unpaid' && normalizedStatus === 'processing') {
+    return 'Waiting for Verification'
+  }
+  if (normalizedStatus === 'reject_payment_proof' && normalizedPayment === 'unpaid') {
+    return 'Payment Proof Rejected'
+  }
+  if (normalizedPayment === 'failed') {
+    return 'Payment Failed'
+  }
+  if (normalizedStatus === 'cancelled' && normalizedPayment === 'refunded') {
+    return 'Refunded'
+  }
+  if (normalizedStatus === 'cancelled') {
+    return 'Cancelled'
+  }
+  if (normalizedStatus === 'confirmed' && normalizedPayment === 'paid') {
+    return 'Payment Confirmed'
+  }
+  if (normalizedStatus === 'processing' && normalizedPayment === 'paid') {
+    return 'Preparing'
+  }
+  if (normalizedStatus === 'ready_for_pickup' && normalizedPayment === 'paid') {
+    return 'Ready for Pickup'
+  }
+  if (normalizedStatus === 'shipped') {
+    return 'Shipped'
+  }
+  if (normalizedStatus === 'completed') {
+    return 'Completed'
+  }
+
+  return ''
+}

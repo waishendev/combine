@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 import OrderFiltersWrapper from './OrderFiltersWrapper'
 import TableEmptyState from './TableEmptyState'
@@ -17,6 +18,7 @@ import {
   mapOrderApiItemToRow,
   convertOrderDetailToApiItem,
   mapDisplayStatusToApiFilters,
+  mapApiFiltersToDisplayStatus,
 } from './orderUtils'
 import { useI18n } from '@/lib/i18n'
 
@@ -58,6 +60,7 @@ export default function OrdersTable({
   allowedStatusOptions,
 }: OrdersTableProps) {
   const { t } = useI18n()
+  const searchParams = useSearchParams()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [inputs, setInputs] = useState<OrderFilterValues>({ ...emptyOrderFilters })
   const [filters, setFilters] = useState<OrderFilterValues>({ ...emptyOrderFilters })
@@ -83,6 +86,39 @@ export default function OrdersTable({
     total: 0,
   })
   const [loading, setLoading] = useState(true)
+
+  const queryFilters = useMemo(() => {
+    const collectValues = (keys: string[]) => {
+      const values = keys.flatMap((key) => searchParams.getAll(key).filter(Boolean))
+      return Array.from(new Set(values))
+    }
+
+    return {
+      dateFrom: searchParams.get('date_from') ?? '',
+      dateTo: searchParams.get('date_to') ?? '',
+      statuses: collectValues(['status', 'status[]']),
+      paymentStatuses: collectValues(['payment_status', 'payment_status[]']),
+    }
+  }, [searchParams])
+
+  const queryDisplayStatus = useMemo(() => {
+    if (queryFilters.statuses.length !== 1) {
+      return ''
+    }
+    if (queryFilters.paymentStatuses.length > 1) {
+      return ''
+    }
+    return mapApiFiltersToDisplayStatus(
+      queryFilters.statuses[0],
+      queryFilters.paymentStatuses[0],
+    )
+  }, [queryFilters.paymentStatuses, queryFilters.statuses])
+
+  useEffect(() => {
+    if (!queryDisplayStatus) return
+    setInputs((prev) => (prev.status ? prev : { ...prev, status: queryDisplayStatus }))
+    setFilters((prev) => (prev.status ? prev : { ...prev, status: queryDisplayStatus }))
+  }, [queryDisplayStatus])
 
   function DualSortIcons({
     active,
@@ -121,6 +157,8 @@ export default function OrdersTable({
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
+        if (queryFilters.dateFrom) qs.set('date_from', queryFilters.dateFrom)
+        if (queryFilters.dateTo) qs.set('date_to', queryFilters.dateTo)
         if (filters.orderNo) qs.set('order_no', filters.orderNo)
         if (filters.customerName) qs.set('customer_name', filters.customerName)
         if (filters.customerEmail) qs.set('customer_email', filters.customerEmail)
@@ -143,6 +181,11 @@ export default function OrdersTable({
               : [apiFilters.payment_status]
             paymentStatusArray.forEach(paymentStatus => qs.append('payment_status[]', paymentStatus))
           }
+        } else if (queryFilters.statuses.length > 0 || queryFilters.paymentStatuses.length > 0) {
+          queryFilters.statuses.forEach((status) => qs.append('status[]', status))
+          queryFilters.paymentStatuses.forEach((status) =>
+            qs.append('payment_status[]', status),
+          )
         } else if (initialStatusFilters) {
           // Use initial filters when no user filter is applied
           if (initialStatusFilters.status && initialStatusFilters.status.length > 0) {
@@ -228,7 +271,7 @@ export default function OrdersTable({
 
     fetchOrders()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize, refreshTrigger])
+  }, [filters, currentPage, pageSize, queryFilters, refreshTrigger])
 
   const handleSort = (column: keyof OrderRowData) => {
     if (sortColumn === column) {
