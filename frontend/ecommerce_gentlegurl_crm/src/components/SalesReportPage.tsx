@@ -210,7 +210,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
 
       try {
         const response = await fetch(
-          `/api/proxy/reports/sales/${reportType}?${qs.toString()}`,
+          `/api/proxy/ecommerce/reports/sales/${reportType}?${qs.toString()}`,
           {
             cache: 'no-store',
             signal: controller.signal,
