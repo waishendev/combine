@@ -173,6 +173,7 @@ class SalesReportService
                 'from' => $start->toDateString(),
                 'to' => $end->toDateString(),
             ],
+            'summary' => $this->buildSummary($start, $end, $profitSupported),
             'rows' => $rows,
             'pagination' => [
                 'total' => $paginator->total(),
@@ -233,6 +234,7 @@ class SalesReportService
                 'from' => $start->toDateString(),
                 'to' => $end->toDateString(),
             ],
+            'summary' => $this->buildSummary($start, $end, $profitSupported),
             'rows' => $rows,
             'pagination' => [
                 'total' => $paginator->total(),
@@ -303,6 +305,7 @@ class SalesReportService
                 'from' => $start->toDateString(),
                 'to' => $end->toDateString(),
             ],
+            'summary' => $this->buildSummary($start, $end, $profitSupported),
             'rows' => $rows,
             'pagination' => [
                 'total' => $paginator->total(),
@@ -377,6 +380,21 @@ class SalesReportService
             'average_order_value' => $ordersCount > 0 ? $revenue / $ordersCount : 0.0,
             'cogs' => $profitSupported ? $cogs : null,
             'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+        ];
+    }
+
+    private function buildSummary(Carbon $start, Carbon $end, bool $profitSupported): array
+    {
+        $revenue = (float) $this->baseOrdersQuery($start, $end)->sum('grand_total');
+        $cogs = $profitSupported ? $this->cogsForOrderItems($start, $end) : null;
+        $grossProfit = $profitSupported && $cogs !== null ? $revenue - $cogs : null;
+        $grossMargin = $grossProfit !== null && $revenue > 0 ? ($grossProfit / $revenue) * 100 : null;
+
+        return [
+            'revenue' => $revenue,
+            'cogs' => $cogs,
+            'gross_profit' => $grossProfit,
+            'gross_margin' => $grossMargin,
         ];
     }
 }
