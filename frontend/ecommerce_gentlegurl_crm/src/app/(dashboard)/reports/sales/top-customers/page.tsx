@@ -14,6 +14,9 @@ export default async function TopCustomersPage() {
   const hasPermission = user.permissions.some(
     (perm) => perm === 'ecommerce.reports.sales.view',
   )
+  const canExport = user.permissions.some(
+    (perm) => perm === 'ecommerce.reports.sales.export',
+  )
 
   if (!hasPermission) {
     redirect('/dashboard')
@@ -29,7 +32,7 @@ export default async function TopCustomersPage() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Top Customers</h2>
-      <SalesReportPage reportType="by-customers" />
+      <SalesReportPage reportType="by-customers" canExport={canExport} />
     </div>
   )
 }

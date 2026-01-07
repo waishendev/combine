@@ -117,7 +117,13 @@ const formatAmount = (amount: number) =>
 
 const formatMargin = (value: number) => `${value.toFixed(2)}%`
 
-export default function SalesReportPage({ reportType }: { reportType: ReportType }) {
+export default function SalesReportPage({
+  reportType,
+  canExport = false,
+}: {
+  reportType: ReportType
+  canExport?: boolean
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -318,6 +324,14 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
   const showingRange = `${formatDisplayDate(resolvedParams.dateFrom)} – ${formatDisplayDate(
     resolvedParams.dateTo,
   )}`
+  const exportUrl = useMemo(() => {
+    if (!canExport) return ''
+    const qs = new URLSearchParams()
+    qs.set('date_from', resolvedParams.dateFrom)
+    qs.set('date_to', resolvedParams.dateTo)
+    qs.set('format', 'csv')
+    return `/api/proxy/ecommerce/reports/sales/export/${reportType}?${qs.toString()}`
+  }, [canExport, reportType, resolvedParams.dateFrom, resolvedParams.dateTo])
 
   const columns = useMemo(() => {
     const baseColumns =
@@ -541,6 +555,15 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
               <span className="text-xs">🔍</span>
               Filter
             </button>
+            {canExport ? (
+              <a
+                href={exportUrl}
+                className="flex items-center gap-2 rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                <span className="text-xs">⬇️</span>
+                Export CSV
+              </a>
+            ) : null}
             <div className="flex items-center gap-3">
               <label className="text-sm font-semibold text-slate-500">Show</label>
               <select

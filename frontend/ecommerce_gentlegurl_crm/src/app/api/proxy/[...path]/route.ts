@@ -127,7 +127,7 @@ async function handleRequest(
     let response: Response;
     try {
       const fetchHeaders: HeadersInit = {
-        Accept: 'application/json',
+        Accept: '*/*',
       };
       
       // Only set Content-Type for non-FormData requests
@@ -163,17 +163,21 @@ async function handleRequest(
     const responseContentType = response.headers.get('content-type') || '';
     console.log(`[Proxy API] Response Content-Type: ${responseContentType}`);
 
-    if (responseContentType.includes('application/pdf')) {
-      const pdfBuffer = await response.arrayBuffer();
+    if (
+      responseContentType.includes('application/pdf') ||
+      responseContentType.includes('text/csv') ||
+      responseContentType.startsWith('text/')
+    ) {
+      const buffer = await response.arrayBuffer();
       const headers = new Headers();
-      headers.set('Content-Type', responseContentType);
+      headers.set('Content-Type', responseContentType || 'application/octet-stream');
 
       const contentDisposition = response.headers.get('content-disposition');
       if (contentDisposition) {
         headers.set('Content-Disposition', contentDisposition);
       }
 
-      return new NextResponse(pdfBuffer, {
+      return new NextResponse(buffer, {
         status: response.status,
         headers,
       });
@@ -182,8 +186,12 @@ async function handleRequest(
     const responseText = await response.text();
     console.log(`[Proxy API] Response text length: ${responseText.length}`);
     console.log(`[Proxy API] Response text (first 1000 chars):`, responseText.substring(0, 1000));
-    
-    if (responseContentType.includes('application/json') || responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+
+    if (
+      responseContentType.includes('application/json') ||
+      responseText.trim().startsWith('{') ||
+      responseText.trim().startsWith('[')
+    ) {
       try {
         data = responseText ? JSON.parse(responseText) : {};
         console.log(`[Proxy API] Successfully parsed JSON`);
@@ -191,24 +199,23 @@ async function handleRequest(
         console.error('[Proxy API] JSON parse error:', parseError);
         console.error('[Proxy API] Response text that failed to parse:', responseText);
         return NextResponse.json(
-          { 
+          {
             error: 'Failed to parse JSON response from backend',
             message: parseError instanceof Error ? parseError.message : 'Unknown parse error',
-            rawResponse: responseText.substring(0, 500)
+            rawResponse: responseText.substring(0, 500),
           },
-          { status: 500 }
+          { status: 500 },
         );
       }
     } else {
-      // If not JSON, return as error
       console.log(`[Proxy API] Non-JSON response received`);
       return NextResponse.json(
-        { 
+        {
           error: 'Backend returned non-JSON response',
           contentType: responseContentType,
-          rawResponse: responseText.substring(0, 500)
+          rawResponse: responseText.substring(0, 500),
         },
-        { status: response.status || 500 }
+        { status: response.status || 500 },
       );
     }
 

@@ -4416,20 +4416,20 @@
                       "key": "date_from",
                       "value": ""
                     },
-                {
-                  "key": "date_to",
-                  "value": ""
+                    {
+                      "key": "date_to",
+                      "value": ""
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
                 },
-                {
-                  "key": "per_page",
-                  "value": "15"
-                },
-                {
-                  "key": "page",
-                  "value": "1"
-                }
-              ]
-            },
                 "description": "Get daily sales report. Requires permission: ecommerce.reports.sales.view"
               },
               "response": []
@@ -4455,20 +4455,20 @@
                       "key": "date_from",
                       "value": ""
                     },
-                {
-                  "key": "date_to",
-                  "value": ""
+                    {
+                      "key": "date_to",
+                      "value": ""
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
                 },
-                {
-                  "key": "per_page",
-                  "value": "15"
-                },
-                {
-                  "key": "page",
-                  "value": "1"
-                }
-              ]
-            },
                 "description": "Get sales report grouped by category. Requires permission: ecommerce.reports.sales.view"
               },
               "response": []
@@ -4494,20 +4494,20 @@
                       "key": "date_from",
                       "value": ""
                     },
-                {
-                  "key": "date_to",
-                  "value": ""
+                    {
+                      "key": "date_to",
+                      "value": ""
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
                 },
-                {
-                  "key": "per_page",
-                  "value": "15"
-                },
-                {
-                  "key": "page",
-                  "value": "1"
-                }
-              ]
-            },
                 "description": "Get top selling products report. Requires permission: ecommerce.reports.sales.view"
               },
               "response": []
@@ -4533,21 +4533,181 @@
                       "key": "date_from",
                       "value": ""
                     },
-                {
-                  "key": "date_to",
-                  "value": ""
+                    {
+                      "key": "date_to",
+                      "value": ""
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "15"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
                 },
-                {
-                  "key": "per_page",
-                  "value": "15"
-                },
-                {
-                  "key": "page",
-                  "value": "1"
-                }
-              ]
-            },
                 "description": "Get top customers report. Requires permission: ecommerce.reports.sales.view"
+              },
+              "response": []
+            },
+            {
+              "name": "Export Sales Overview",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/reports/sales/export/overview?date_from={{reports_date_from}}&date_to={{reports_date_to}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "reports",
+                    "sales",
+                    "export",
+                    "overview"
+                  ],
+                  "query": [
+                    {
+                      "key": "date_from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "date_to",
+                      "value": "{{reports_date_to}}"
+                    }
+                  ]
+                },
+                "description": "Export sales overview CSV. Requires permission: ecommerce.reports.sales.export"
+              },
+              "response": []
+            },
+            {
+              "name": "Export Sales Daily",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/reports/sales/export/daily?date_from={{reports_date_from}}&date_to={{reports_date_to}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "reports",
+                    "sales",
+                    "export",
+                    "daily"
+                  ],
+                  "query": [
+                    {
+                      "key": "date_from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "date_to",
+                      "value": "{{reports_date_to}}"
+                    }
+                  ]
+                },
+                "description": "Export daily sales CSV. Requires permission: ecommerce.reports.sales.export"
+              },
+              "response": []
+            },
+            {
+              "name": "Export Sales By Category",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/reports/sales/export/by-category?date_from={{reports_date_from}}&date_to={{reports_date_to}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "reports",
+                    "sales",
+                    "export",
+                    "by-category"
+                  ],
+                  "query": [
+                    {
+                      "key": "date_from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "date_to",
+                      "value": "{{reports_date_to}}"
+                    }
+                  ]
+                },
+                "description": "Export sales by category CSV. Requires permission: ecommerce.reports.sales.export"
+              },
+              "response": []
+            },
+            {
+              "name": "Export Sales By Products",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/reports/sales/export/by-products?date_from={{reports_date_from}}&date_to={{reports_date_to}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "reports",
+                    "sales",
+                    "export",
+                    "by-products"
+                  ],
+                  "query": [
+                    {
+                      "key": "date_from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "date_to",
+                      "value": "{{reports_date_to}}"
+                    }
+                  ]
+                },
+                "description": "Export sales by products CSV. Requires permission: ecommerce.reports.sales.export"
+              },
+              "response": []
+            },
+            {
+              "name": "Export Sales By Customers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/reports/sales/export/by-customers?date_from={{reports_date_from}}&date_to={{reports_date_to}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "reports",
+                    "sales",
+                    "export",
+                    "by-customers"
+                  ],
+                  "query": [
+                    {
+                      "key": "date_from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "date_to",
+                      "value": "{{reports_date_to}}"
+                    }
+                  ]
+                },
+                "description": "Export sales by customers CSV. Requires permission: ecommerce.reports.sales.export"
               },
               "response": []
             }

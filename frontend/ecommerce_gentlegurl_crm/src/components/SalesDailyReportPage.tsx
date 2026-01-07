@@ -84,7 +84,7 @@ const formatAmount = (amount: number) =>
 
 const formatMargin = (value: number) => `${value.toFixed(2)}%`
 
-export default function SalesDailyReportPage() {
+export default function SalesDailyReportPage({ canExport = false }: { canExport?: boolean }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -266,6 +266,14 @@ export default function SalesDailyReportPage() {
   const showingRange = `${formatDisplayDate(resolvedParams.dateFrom)} – ${formatDisplayDate(
     resolvedParams.dateTo,
   )}`
+  const exportUrl = useMemo(() => {
+    if (!canExport) return ''
+    const qs = new URLSearchParams()
+    qs.set('date_from', resolvedParams.dateFrom)
+    qs.set('date_to', resolvedParams.dateTo)
+    qs.set('format', 'csv')
+    return `/api/proxy/ecommerce/reports/sales/export/daily?${qs.toString()}`
+  }, [canExport, resolvedParams.dateFrom, resolvedParams.dateTo])
 
   const hasMissingCosts =
     (meta?.costing?.missing_cost_products_count ?? 0) > 0
@@ -350,6 +358,14 @@ export default function SalesDailyReportPage() {
             >
               Reset
             </button>
+            {canExport ? (
+              <a
+                href={exportUrl}
+                className="flex h-10 items-center rounded border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                Export CSV
+              </a>
+            ) : null}
           </div>
           <div className="text-sm text-slate-600">
             <span className="font-semibold text-slate-700">Showing:</span> {showingRange}
