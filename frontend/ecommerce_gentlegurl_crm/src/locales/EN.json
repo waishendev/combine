@@ -45,7 +45,7 @@
   "header.account": "Account",
   "header.logout": "Logout",
 
-  "dashboard.overviewTitle": "E-commerce Overview",
+  "dashboard.overviewTitle": "Dashboard",
   "dashboard.overviewSubtitle": "Track revenue, orders, and customer behavior across your storefront.",
   "dashboard.manageAdmins": "Manage Admins",
   "dashboard.goToStorefront": "Go to Storefront",

@@ -191,10 +191,15 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4 sm:space-y-6 overflow-y-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-10">
       <div className="flex flex-col gap-2">
-        <div className="text-xs text-gray-500">
-          <span>{t('sidebar.dashboard')}</span>
-          <span className="mx-2">/</span>
-          <span className="text-slate-700">{t('dashboard.overviewTitle')}</span>
+        <div className="text-xs mb-4">
+          <span className="text-gray-500">Home</span>
+          <span className="mx-1">/</span>
+          <Link
+            href="/dashboard"
+            className="text-blue-600 hover:underline"
+          >
+            {t('sidebar.dashboard')}
+          </Link>
         </div>
         <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3">
           <div>
@@ -336,9 +341,9 @@ export default function DashboardPage() {
                           <td className="px-3 sm:px-4 py-3 font-medium text-slate-900">
                             <div className="flex flex-col">
                               <span>{product.product_name}</span>
-                              {product.sku && (
+                              {/* {product.sku && (
                                 <span className="text-xs text-slate-500">{product.sku}</span>
-                              )}
+                              )} */}
                             </div>
                           </td>
                           <td className="px-3 sm:px-4 py-3 text-right text-slate-700">
