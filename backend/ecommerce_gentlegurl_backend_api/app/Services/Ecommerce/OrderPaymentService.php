@@ -50,7 +50,8 @@ class OrderPaymentService
         $baseMultiplier = $setting?->base_multiplier ?? 1;
         $expiryMonths = $setting?->expiry_months ?? 12;
 
-        $points = (float) $order->grand_total * $baseMultiplier * $tierMultiplier;
+        $rawPoints = (float) $order->grand_total * $baseMultiplier * $tierMultiplier;
+        $points = (int) round($rawPoints);
         if ($points <= 0) {
             return;
         }
@@ -68,7 +69,7 @@ class OrderPaymentService
         PointsTransaction::create([
             'customer_id' => $order->customer_id,
             'type' => 'earn',
-            'points_change' => (int) $points,
+            'points_change' => $points,
             'source_type' => Order::class,
             'source_id' => $order->id,
             'meta' => [
