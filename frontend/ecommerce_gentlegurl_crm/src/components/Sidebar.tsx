@@ -53,6 +53,7 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             key: 'admins',
             label: 'Admins',
             href: '/admins',
+            requiredPermission: 'users.view'
           },
           {
             key: 'roles',
@@ -60,18 +61,18 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/roles',
             requiredPermission: 'roles.view',
           },
-          // {
-          //   key: 'permission-groups',
-          //   label: 'Permission Groups',
-          //   href: '/permission-groups',
-          //   requiredPermission: 'permission-groups.view',
-          // },
-          // {
-          //   key: 'permissions',
-          //   label: 'Permissions',
-          //   href: '/permission',
-          //   requiredPermission: 'permissions.view',
-          // },
+          {
+            key: 'permission-groups',
+            label: 'Permission Groups',
+            href: '/permission-groups',
+            requiredPermission: 'permission-groups.view',
+          },
+          {
+            key: 'permissions',
+            label: 'Permissions',
+            href: '/permission',
+            requiredPermission: 'permissions.view',
+          },
         ],
       },
       // ======================

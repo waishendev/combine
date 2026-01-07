@@ -34,11 +34,11 @@ export default async function AdminPage() {
           href="/admin"
           className="text-blue-600 hover:underline"
         >
-          {t('sidebar.admin.list')}
+          {t('sidebar.admins')}
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        {t('sidebar.admin.list')}
+        {t('sidebar.admins')}
       </h2>
       <AdminTable
         permissions={user.permissions}

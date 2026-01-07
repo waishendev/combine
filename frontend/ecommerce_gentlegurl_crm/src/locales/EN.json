@@ -1,7 +1,7 @@
 {
   "sidebar.dashboard": "Dashboard",
   "sidebar.admin.management": "Admin Management",
-  "sidebar.admin.list": "Admin List",
+  "sidebar.admins": "Admins",
   "sidebar.admin.agentLevels": "Agent Levels",
   "sidebar.admin.roles": "Roles",
   "sidebar.admin.permissions": "Permissions",
