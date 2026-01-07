@@ -69,6 +69,13 @@ class PermissionController extends Controller
         return $this->respond($permissions);
     }
 
+    public function delegatable(Request $request)
+    {
+        $user = $request->user();
+
+        return $this->respond($user->delegatablePermissions()->values());
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([

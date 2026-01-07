@@ -9,6 +9,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
 use DateTimeInterface;
+use App\Models\Permission;
 
 class User extends Authenticatable
 {
@@ -67,6 +68,27 @@ class User extends Authenticatable
             ->flatMap(fn (Role $role) => $role->permissions)
             ->pluck('slug')
             ->unique()
+            ->values();
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        $superAdminRole = config('auth.super_admin_role', 'infra_core_x1');
+
+        return $this->roles()->where('name', $superAdminRole)->exists();
+    }
+
+    public function delegatablePermissions(): Collection
+    {
+        if ($this->isSuperAdmin()) {
+            return Permission::all();
+        }
+
+        return $this->roles()
+            ->with('permissions')
+            ->get()
+            ->flatMap(fn (Role $role) => $role->permissions)
+            ->unique('id')
             ->values();
     }
 

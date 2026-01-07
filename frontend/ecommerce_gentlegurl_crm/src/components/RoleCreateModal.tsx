@@ -77,7 +77,7 @@ export const groupPermissionsBySlug = (
     const [groupRaw = 'other', actionRaw = ''] = slug.split('.', 2)
     const groupKey = groupRaw || 'other'
     const groupLabel = formatTitle(groupKey) || 'Other'
-    const id = String(permission.id)
+    const id = permission.slug || String(permission.id)
     const displayName = createPermissionDisplayName(
       permission,
       groupLabel,
@@ -190,7 +190,7 @@ export default function RoleCreateModal({
     [permissions],
   )
   const allPermissionIds = useMemo(
-    () => permissions.map((permission) => String(permission.id)),
+    () => permissions.map((permission) => permission.slug || String(permission.id)),
     [permissions],
   )
   const allSelected =
@@ -247,7 +247,7 @@ export default function RoleCreateModal({
           name: trimmedName,
           description: form.description.trim() || null,
           is_active: true,
-          permission_ids: form.permissionIds.map((id) => Number(id)),
+          permissions: form.permissionIds,
         }),
       })
 
