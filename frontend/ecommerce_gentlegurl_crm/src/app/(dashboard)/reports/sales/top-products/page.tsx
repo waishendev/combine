@@ -29,7 +29,7 @@ export default async function TopProductsPage() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Top Products</h2>
-      <SalesReportPage reportType="top-products" />
+      <SalesReportPage reportType="by-products" />
     </div>
   )
 }

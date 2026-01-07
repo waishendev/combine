@@ -123,7 +123,13 @@ class SalesReportService
         ];
     }
 
-    public function getByCategory(Carbon $start, Carbon $end, int $perPage = 15, int $page = 1): array
+    public function getByCategory(
+        Carbon $start,
+        Carbon $end,
+        int $perPage = 15,
+        int $page = 1,
+        int $top = 5
+    ): array
     {
         $profitSupported = $this->profitSupported();
         $rowsQuery = DB::table('orders as o')
@@ -150,30 +156,43 @@ class SalesReportService
             $rowsQuery = $rowsQuery->addSelect(DB::raw('0 as cogs'));
         }
 
+        $top = max(1, $top);
+        $transformRow = function ($row) use ($profitSupported) {
+            $revenue = (float) $row->revenue;
+            $cogs = (float) $row->cogs;
+
+            return [
+                'category_id' => (int) $row->category_id,
+                'category_name' => $row->category_name,
+                'orders_count' => (int) $row->orders_count,
+                'items_count' => (int) $row->items_count,
+                'revenue' => $revenue,
+                'cogs' => $profitSupported ? $cogs : null,
+                'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+            ];
+        };
+
+        $tops = (clone $rowsQuery)
+            ->limit($top)
+            ->get()
+            ->map($transformRow)
+            ->values();
+
         $paginator = $rowsQuery->paginate($perPage, ['*'], 'page', $page);
         $rows = collect($paginator->items())
-            ->map(function ($row) use ($profitSupported) {
-                $revenue = (float) $row->revenue;
-                $cogs = (float) $row->cogs;
-
-                return [
-                    'category_id' => (int) $row->category_id,
-                    'category_name' => $row->category_name,
-                    'orders_count' => (int) $row->orders_count,
-                    'items_count' => (int) $row->items_count,
-                    'revenue' => $revenue,
-                    'cogs' => $profitSupported ? $cogs : null,
-                    'gross_profit' => $profitSupported ? $revenue - $cogs : null,
-                ];
-            })
+            ->map($transformRow)
             ->values();
+
+        $totalsPage = $this->buildTotalsFromRows($rows, $profitSupported);
 
         return [
             'date_range' => [
                 'from' => $start->toDateString(),
                 'to' => $end->toDateString(),
             ],
-            'summary' => $this->buildSummary($start, $end, $profitSupported),
+            'tops' => $tops,
+            'totals_page' => $totalsPage,
+            'grand_totals' => $this->buildSummary($start, $end, $profitSupported),
             'rows' => $rows,
             'pagination' => [
                 'total' => $paginator->total(),
@@ -184,7 +203,13 @@ class SalesReportService
         ];
     }
 
-    public function getTopProducts(Carbon $start, Carbon $end, int $perPage = 15, int $page = 1): array
+    public function getByProducts(
+        Carbon $start,
+        Carbon $end,
+        int $perPage = 15,
+        int $page = 1,
+        int $top = 5
+    ): array
     {
         $profitSupported = $this->profitSupported();
         $rowsQuery = DB::table('orders as o')
@@ -210,31 +235,44 @@ class SalesReportService
             $rowsQuery = $rowsQuery->addSelect(DB::raw('0 as cogs'));
         }
 
+        $top = max(1, $top);
+        $transformRow = function ($row) use ($profitSupported) {
+            $revenue = (float) $row->revenue;
+            $cogs = (float) $row->cogs;
+
+            return [
+                'product_id' => (int) $row->product_id,
+                'product_name' => $row->product_name,
+                'sku' => $row->sku,
+                'orders_count' => (int) $row->orders_count,
+                'items_count' => (int) $row->items_count,
+                'revenue' => $revenue,
+                'cogs' => $profitSupported ? $cogs : null,
+                'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+            ];
+        };
+
+        $tops = (clone $rowsQuery)
+            ->limit($top)
+            ->get()
+            ->map($transformRow)
+            ->values();
+
         $paginator = $rowsQuery->paginate($perPage, ['*'], 'page', $page);
         $rows = collect($paginator->items())
-            ->map(function ($row) use ($profitSupported) {
-                $revenue = (float) $row->revenue;
-                $cogs = (float) $row->cogs;
-
-                return [
-                    'product_id' => (int) $row->product_id,
-                    'product_name' => $row->product_name,
-                    'sku' => $row->sku,
-                    'orders_count' => (int) $row->orders_count,
-                    'items_count' => (int) $row->items_count,
-                    'revenue' => $revenue,
-                    'cogs' => $profitSupported ? $cogs : null,
-                    'gross_profit' => $profitSupported ? $revenue - $cogs : null,
-                ];
-            })
+            ->map($transformRow)
             ->values();
+
+        $totalsPage = $this->buildTotalsFromRows($rows, $profitSupported);
 
         return [
             'date_range' => [
                 'from' => $start->toDateString(),
                 'to' => $end->toDateString(),
             ],
-            'summary' => $this->buildSummary($start, $end, $profitSupported),
+            'tops' => $tops,
+            'totals_page' => $totalsPage,
+            'grand_totals' => $this->buildSummary($start, $end, $profitSupported),
             'rows' => $rows,
             'pagination' => [
                 'total' => $paginator->total(),
@@ -245,7 +283,13 @@ class SalesReportService
         ];
     }
 
-    public function getTopCustomers(Carbon $start, Carbon $end, int $perPage = 15, int $page = 1): array
+    public function getByCustomers(
+        Carbon $start,
+        Carbon $end,
+        int $perPage = 15,
+        int $page = 1,
+        int $top = 5
+    ): array
     {
         $itemsSubquery = DB::table('order_items')
             ->select('order_id', DB::raw('SUM(quantity) as items_count'))
@@ -279,33 +323,46 @@ class SalesReportService
             $rowsQuery = $rowsQuery->addSelect(DB::raw('0 as cogs'));
         }
 
+        $top = max(1, $top);
+        $transformRow = function ($row) use ($profitSupported) {
+            $ordersCount = (int) $row->orders_count;
+            $revenue = (float) $row->revenue;
+            $cogs = (float) $row->cogs;
+
+            return [
+                'customer_id' => (int) $row->customer_id,
+                'customer_name' => $row->customer_name,
+                'customer_email' => $row->customer_email,
+                'orders_count' => $ordersCount,
+                'items_count' => (int) $row->items_count,
+                'revenue' => $revenue,
+                'average_order_value' => $ordersCount > 0 ? $revenue / $ordersCount : 0.0,
+                'cogs' => $profitSupported ? $cogs : null,
+                'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+            ];
+        };
+
+        $tops = (clone $rowsQuery)
+            ->limit($top)
+            ->get()
+            ->map($transformRow)
+            ->values();
+
         $paginator = $rowsQuery->paginate($perPage, ['*'], 'page', $page);
         $rows = collect($paginator->items())
-            ->map(function ($row) use ($profitSupported) {
-                $ordersCount = (int) $row->orders_count;
-                $revenue = (float) $row->revenue;
-                $cogs = (float) $row->cogs;
-
-                return [
-                    'customer_id' => (int) $row->customer_id,
-                    'customer_name' => $row->customer_name,
-                    'customer_email' => $row->customer_email,
-                    'orders_count' => $ordersCount,
-                    'items_count' => (int) $row->items_count,
-                    'revenue' => $revenue,
-                    'average_order_value' => $ordersCount > 0 ? $revenue / $ordersCount : 0.0,
-                    'cogs' => $profitSupported ? $cogs : null,
-                    'gross_profit' => $profitSupported ? $revenue - $cogs : null,
-                ];
-            })
+            ->map($transformRow)
             ->values();
+
+        $totalsPage = $this->buildTotalsFromRows($rows, $profitSupported);
 
         return [
             'date_range' => [
                 'from' => $start->toDateString(),
                 'to' => $end->toDateString(),
             ],
-            'summary' => $this->buildSummary($start, $end, $profitSupported),
+            'tops' => $tops,
+            'totals_page' => $totalsPage,
+            'grand_totals' => $this->buildSummary($start, $end, $profitSupported),
             'rows' => $rows,
             'pagination' => [
                 'total' => $paginator->total(),

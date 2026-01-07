@@ -679,10 +679,10 @@ $protectedRoutes = function () {
             Route::get('/sales/by-category', [SalesReportController::class, 'byCategory'])
                 ->middleware('permission:ecommerce.reports.sales.view');
 
-            Route::get('/sales/top-products', [SalesReportController::class, 'topProducts'])
+            Route::get('/sales/by-products', [SalesReportController::class, 'byProducts'])
                 ->middleware('permission:ecommerce.reports.sales.view');
 
-            Route::get('/sales/top-customers', [SalesReportController::class, 'topCustomers'])
+            Route::get('/sales/by-customers', [SalesReportController::class, 'byCustomers'])
                 ->middleware('permission:ecommerce.reports.sales.view');
         });
     });

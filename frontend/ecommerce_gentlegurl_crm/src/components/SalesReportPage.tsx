@@ -7,7 +7,7 @@ import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 
-type ReportType = 'by-category' | 'top-products' | 'top-customers'
+type ReportType = 'by-category' | 'by-products' | 'by-customers'
 
 type Pagination = {
   total: number
@@ -65,7 +65,9 @@ type ReportResponse = {
     from?: string
     to?: string
   }
-  summary?: ReportSummary
+  totals_page?: ReportSummary
+  grand_totals?: ReportSummary
+  tops?: CategoryRow[] | ProductRow[] | CustomerRow[]
   rows?: CategoryRow[] | ProductRow[] | CustomerRow[]
   pagination?: Partial<Pagination>
   meta?: ReportMeta
@@ -73,6 +75,7 @@ type ReportResponse = {
 
 const DEFAULT_PAGE_SIZE = 20
 const DEFAULT_PAGE = 1
+const DEFAULT_TOP_COUNT = 5
 const TOP_N_OPTIONS = [5, 10, 20, 50]
 
 const formatDateInput = (date: Date) => {
@@ -124,13 +127,17 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
     const parsedPerPage = Number(searchParams.get('per_page'))
     const hasValidPage = Number.isFinite(parsedPage) && parsedPage > 0
     const hasValidPerPage = Number.isFinite(parsedPerPage) && parsedPerPage > 0
+    const parsedTop = Number(searchParams.get('top'))
+    const hasValidTop = Number.isFinite(parsedTop) && parsedTop > 0
     return {
       dateFrom: searchParams.get('date_from') ?? defaultRange.from,
       dateTo: searchParams.get('date_to') ?? defaultRange.to,
       page: hasValidPage ? parsedPage : DEFAULT_PAGE,
       perPage: hasValidPerPage ? parsedPerPage : DEFAULT_PAGE_SIZE,
+      top: hasValidTop ? parsedTop : DEFAULT_TOP_COUNT,
       hasValidPage,
       hasValidPerPage,
+      hasValidTop,
       hasDateFrom: searchParams.has('date_from'),
       hasDateTo: searchParams.has('date_to'),
     }
@@ -142,7 +149,9 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
   })
   const [rows, setRows] = useState<CategoryRow[] | ProductRow[] | CustomerRow[]>([])
   const [meta, setMeta] = useState<ReportMeta | null>(null)
-  const [summary, setSummary] = useState<ReportSummary | null>(null)
+  const [totalsPage, setTotalsPage] = useState<ReportSummary | null>(null)
+  const [grandTotals, setGrandTotals] = useState<ReportSummary | null>(null)
+  const [tops, setTops] = useState<CategoryRow[] | ProductRow[] | CustomerRow[]>([])
   const [pagination, setPagination] = useState<Pagination>({
     total: 0,
     per_page: resolvedParams.perPage,
@@ -167,7 +176,8 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
       !resolvedParams.hasDateFrom ||
       !resolvedParams.hasDateTo ||
       !resolvedParams.hasValidPage ||
-      !resolvedParams.hasValidPerPage
+      !resolvedParams.hasValidPerPage ||
+      !resolvedParams.hasValidTop
 
     if (!needsDefaults) return
 
@@ -184,6 +194,9 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
     if (!resolvedParams.hasValidPerPage) {
       nextParams.set('per_page', String(DEFAULT_PAGE_SIZE))
     }
+    if (!resolvedParams.hasValidTop) {
+      nextParams.set('top', String(DEFAULT_TOP_COUNT))
+    }
 
     router.replace(`${pathname}?${nextParams.toString()}`)
   }, [
@@ -194,6 +207,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
     resolvedParams.hasDateTo,
     resolvedParams.hasValidPage,
     resolvedParams.hasValidPerPage,
+    resolvedParams.hasValidTop,
     router,
     searchParams,
   ])
@@ -207,6 +221,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
       qs.set('date_to', resolvedParams.dateTo)
       qs.set('page', String(resolvedParams.page))
       qs.set('per_page', String(resolvedParams.perPage))
+      qs.set('top', String(resolvedParams.top))
 
       try {
         const response = await fetch(
@@ -218,13 +233,17 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
         )
         if (!response.ok) {
           setRows([])
-          setSummary(null)
+          setTotalsPage(null)
+          setGrandTotals(null)
+          setTops([])
           setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
           return
         }
         const data: ReportResponse = await response.json()
         setRows(data.rows ?? [])
-        setSummary(data.summary ?? null)
+        setTotalsPage(data.totals_page ?? null)
+        setGrandTotals(data.grand_totals ?? null)
+        setTops(data.tops ?? [])
         if (data.meta) {
           setMeta(data.meta)
           if (process.env.NODE_ENV !== 'production') {
@@ -240,7 +259,9 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
       } catch (error) {
         if (controller.signal.aborted) return
         setRows([])
-        setSummary(null)
+        setTotalsPage(null)
+        setGrandTotals(null)
+        setTops([])
         setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
       } finally {
         if (!controller.signal.aborted) {
@@ -252,7 +273,14 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
     fetchReport()
 
     return () => controller.abort()
-  }, [reportType, resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.page, resolvedParams.perPage])
+  }, [
+    reportType,
+    resolvedParams.dateFrom,
+    resolvedParams.dateTo,
+    resolvedParams.page,
+    resolvedParams.perPage,
+    resolvedParams.top,
+  ])
 
   const updateQuery = (next: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -296,7 +324,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
             { label: 'Items', key: 'items_count', sortable: true },
             { label: 'Revenue', key: 'revenue', sortable: true },
           ]
-        : reportType === 'top-products'
+        : reportType === 'by-products'
         ? [
             { label: 'Product', key: 'product_name' },
             { label: 'SKU', key: 'sku' },
@@ -331,7 +359,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
         row.category_name?.toLowerCase().includes(query),
       )
     }
-    if (reportType === 'top-products') {
+    if (reportType === 'by-products') {
       return (rows as ProductRow[]).filter((row) => {
         const sku = row.sku ?? ''
         return (
@@ -358,9 +386,9 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
     })
   }, [filteredRows, sortConfig])
 
-  const summarySource = useMemo(() => {
-    if (summary) {
-      return { summary, isFallback: false }
+  const totalsPageSource = useMemo(() => {
+    if (totalsPage) {
+      return { summary: totalsPage, isFallback: false }
     }
     const revenue = sortedRows.reduce((total, row) => total + (row.revenue ?? 0), 0)
     const cogsTotal = showProfit
@@ -377,13 +405,20 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
       },
       isFallback: true,
     }
-  }, [showProfit, sortedRows, summary])
+  }, [showProfit, sortedRows, totalsPage])
 
   const summaryCards = [
-    { label: 'Revenue', value: summarySource.summary.revenue, isMoney: true },
-    { label: 'COGS', value: summarySource.summary.cogs, isMoney: true },
-    { label: 'Gross Profit', value: summarySource.summary.gross_profit, isMoney: true },
-    { label: 'Gross Margin %', value: summarySource.summary.gross_margin, isMoney: false },
+    { label: 'Revenue', value: totalsPageSource.summary.revenue, isMoney: true },
+    { label: 'COGS', value: totalsPageSource.summary.cogs, isMoney: true },
+    { label: 'Gross Profit', value: totalsPageSource.summary.gross_profit, isMoney: true },
+    { label: 'Gross Margin %', value: totalsPageSource.summary.gross_margin, isMoney: false },
+  ]
+
+  const grandTotalCards = [
+    { label: 'Revenue', value: grandTotals?.revenue, isMoney: true },
+    { label: 'COGS', value: grandTotals?.cogs, isMoney: true },
+    { label: 'Gross Profit', value: grandTotals?.gross_profit, isMoney: true },
+    { label: 'Gross Margin %', value: grandTotals?.gross_margin, isMoney: false },
   ]
 
   const renderProfitCells = (row: CategoryRow | ProductRow | CustomerRow) => {
@@ -397,6 +432,11 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
       </>
     )
   }
+
+  const topLabel =
+    reportType === 'by-category' ? 'Category' : reportType === 'by-products' ? 'Product' : 'Customer'
+  const topTitle =
+    reportType === 'by-category' ? 'Categories' : reportType === 'by-products' ? 'Products' : 'Customers'
 
   return (
     <div className="space-y-6">
@@ -443,6 +483,24 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
               <label className="text-xs font-semibold text-slate-500">Top N</label>
               <select
                 className="h-10 rounded border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm"
+                value={resolvedParams.top}
+                onChange={(event) => {
+                  updateQuery({
+                    top: event.target.value,
+                  })
+                }}
+              >
+                {TOP_N_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Show</label>
+              <select
+                className="h-10 rounded border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm"
                 value={resolvedParams.perPage}
                 onChange={(event) => {
                   updateQuery({
@@ -472,8 +530,8 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between text-xs text-slate-400">
-          <span className="font-semibold uppercase tracking-wide text-slate-500">Summary</span>
-          {summarySource.isFallback ? <span>Based on current page</span> : null}
+          <span className="font-semibold uppercase tracking-wide text-slate-500">Totals (Page)</span>
+          {totalsPageSource.isFallback ? <span>Based on current page</span> : null}
         </div>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((card) => {
@@ -494,12 +552,74 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
         </div>
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between text-xs text-slate-400">
+          <span className="font-semibold uppercase tracking-wide text-slate-500">Grand Totals</span>
+          <span>All pages within the selected date range</span>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {grandTotalCards.map((card) => {
+            const value =
+              card.value === null || card.value === undefined
+                ? '—'
+                : card.isMoney
+                ? `RM ${formatAmount(card.value)}`
+                : formatMargin(card.value)
+
+            return (
+              <div key={card.label} className="rounded-lg border border-slate-200 px-4 py-3">
+                <div className="text-xs font-semibold uppercase text-slate-400">{card.label}</div>
+                <div className="mt-1 text-lg font-semibold text-slate-700">{value}</div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 p-4 text-sm font-semibold text-slate-700">
+          Top {resolvedParams.top} {topTitle}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-4 py-3 border border-slate-200 font-semibold">{topLabel}</th>
+                <th className="px-4 py-3 border border-slate-200 font-semibold">Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <TableLoadingRow colSpan={2} />
+              ) : tops.length === 0 ? (
+                <TableEmptyState colSpan={2} />
+              ) : (
+                tops.map((row) => (
+                  <tr key={'category_id' in row ? row.category_id : 'product_id' in row ? row.product_id : row.customer_id}>
+                    <td className="px-4 py-2 border border-gray-200 font-medium">
+                      {'category_name' in row
+                        ? row.category_name
+                        : 'product_name' in row
+                        ? row.product_name
+                        : row.customer_name}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      RM {formatAmount(row.revenue)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="text-sm font-semibold text-slate-700">
             {reportType === 'by-category'
               ? 'Sales by Category'
-              : reportType === 'top-products'
+              : reportType === 'by-products'
               ? 'Top Products (by Revenue)'
               : 'Top Customers (by Revenue)'}
           </div>
@@ -512,7 +632,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
               placeholder={
                 reportType === 'by-category'
                   ? 'Search category name'
-                  : reportType === 'top-products'
+                  : reportType === 'by-products'
                   ? 'Search product name or SKU'
                   : 'Search customer name or email'
               }
@@ -572,7 +692,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
                     {renderProfitCells(row)}
                   </tr>
                 ))
-              ) : reportType === 'top-products' ? (
+              ) : reportType === 'by-products' ? (
                 (sortedRows as ProductRow[]).map((row) => (
                   <tr key={row.product_id}>
                     <td className="px-4 py-2 border border-gray-200 font-medium">

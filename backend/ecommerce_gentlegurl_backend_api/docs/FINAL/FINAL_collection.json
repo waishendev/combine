@@ -4440,7 +4440,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{base_url}}/ecommerce/reports/sales/by-category?date_from=&date_to=&per_page=15&page=1",
+                  "raw": "{{base_url}}/ecommerce/reports/sales/by-category?date_from=&date_to=&per_page=15&page=1&top=5",
                   "host": [
                     "{{base_url}}"
                   ],
@@ -4479,7 +4479,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{base_url}}/ecommerce/reports/sales/top-products?date_from=&date_to=&per_page=15&page=1",
+                  "raw": "{{base_url}}/ecommerce/reports/sales/by-products?date_from=&date_to=&per_page=15&page=1&top=5",
                   "host": [
                     "{{base_url}}"
                   ],
@@ -4487,7 +4487,7 @@
                     "ecommerce",
                     "reports",
                     "sales",
-                    "top-products"
+                    "by-products"
                   ],
                   "query": [
                     {
@@ -4518,7 +4518,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{base_url}}/ecommerce/reports/sales/top-customers?date_from=&date_to=&per_page=15&page=1",
+                  "raw": "{{base_url}}/ecommerce/reports/sales/by-customers?date_from=&date_to=&per_page=15&page=1&top=5",
                   "host": [
                     "{{base_url}}"
                   ],
@@ -4526,7 +4526,7 @@
                     "ecommerce",
                     "reports",
                     "sales",
-                    "top-customers"
+                    "by-customers"
                   ],
                   "query": [
                     {
