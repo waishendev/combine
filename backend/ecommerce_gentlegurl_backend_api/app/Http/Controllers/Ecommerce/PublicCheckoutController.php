@@ -45,7 +45,7 @@ class PublicCheckoutController extends Controller
 
     public function preview(Request $request)
     {
-        $validated = $this->validateOrderRequest($request);
+        $validated = $this->validateOrderRequest($request, false, false);
         $customer = $this->currentCustomer();
         $shippingMethod = $this->normalizeShippingMethod($validated['shipping_method'] ?? 'pickup');
         $itemsInput = $validated['items'] ?? [];
@@ -537,7 +537,7 @@ class PublicCheckoutController extends Controller
         ], __('Payment slip uploaded.'));
     }
 
-    protected function validateOrderRequest(Request $request, bool $requirePaymentMethod = false): array
+    protected function validateOrderRequest(Request $request, bool $requirePaymentMethod = false, bool $requireBillingFields = true): array
     {
         return $request->validate([
             'items' => ['nullable', 'array'],
@@ -573,38 +573,38 @@ class PublicCheckoutController extends Controller
             'shipping_country' => ['nullable', 'string'],
             'billing_same_as_shipping' => ['nullable', 'boolean'],
             'billing_name' => [
-                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                Rule::requiredIf(fn() => $requireBillingFields && $request->boolean('billing_same_as_shipping') === false),
                 'nullable',
                 'string',
             ],
             'billing_phone' => [
-                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                Rule::requiredIf(fn() => $requireBillingFields && $request->boolean('billing_same_as_shipping') === false),
                 'nullable',
                 'string',
             ],
             'billing_address_line1' => [
-                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                Rule::requiredIf(fn() => $requireBillingFields && $request->boolean('billing_same_as_shipping') === false),
                 'nullable',
                 'string',
             ],
             'billing_address_line2' => ['nullable', 'string'],
             'billing_city' => [
-                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                Rule::requiredIf(fn() => $requireBillingFields && $request->boolean('billing_same_as_shipping') === false),
                 'nullable',
                 'string',
             ],
             'billing_state' => [
-                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                Rule::requiredIf(fn() => $requireBillingFields && $request->boolean('billing_same_as_shipping') === false),
                 'nullable',
                 'string',
             ],
             'billing_postcode' => [
-                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                Rule::requiredIf(fn() => $requireBillingFields && $request->boolean('billing_same_as_shipping') === false),
                 'nullable',
                 'string',
             ],
             'billing_country' => [
-                Rule::requiredIf(fn() => $request->boolean('billing_same_as_shipping') === false),
+                Rule::requiredIf(fn() => $requireBillingFields && $request->boolean('billing_same_as_shipping') === false),
                 'nullable',
                 'string',
             ],
