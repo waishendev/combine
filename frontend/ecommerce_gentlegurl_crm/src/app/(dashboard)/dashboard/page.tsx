@@ -1,82 +1,192 @@
+'use client'
+
 import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 
 import DashboardSectionCard from '@/components/DashboardSectionCard'
 import DashboardStatCard from '@/components/DashboardStatCard'
-import { getTranslator } from '@/lib/i18n-server'
-import type { LangCode } from '@/lib/i18n'
+import { useI18n } from '@/lib/i18n'
 
-const salesByMonth = [
-  { label: 'Jan', value: 18000 },
-  { label: 'Feb', value: 22000 },
-  { label: 'Mar', value: 20500 },
-  { label: 'Apr', value: 24500 },
-  { label: 'May', value: 28000 },
-  { label: 'Jun', value: 32000 },
+type MonthlySalesPoint = {
+  month: string
+  revenue: number
+  orders_count: number
+}
+
+type KpiComparison = {
+  current: number
+  previous: number
+  delta: number
+  delta_percent: number
+  trend: 'up' | 'down' | 'flat'
+}
+
+type TopProduct = {
+  product_id: number
+  product_name: string
+  sku: string | null
+  qty: number
+  revenue: number
+  refund_amount: number
+  refund_percent: number
+}
+
+type DashboardOverviewResponse = {
+  date_range: {
+    from: string
+    to: string
+  }
+  kpis: {
+    revenue: KpiComparison
+    orders_count: KpiComparison
+    new_customers: KpiComparison
+    refund_amount: KpiComparison
+  }
+  charts: {
+    monthly_sales: MonthlySalesPoint[]
+  }
+  top_products: TopProduct[]
+}
+
+const numberFormatter = new Intl.NumberFormat('en-MY', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+})
+
+const currencyFormatter = new Intl.NumberFormat('en-MY', {
+  style: 'currency',
+  currency: 'MYR',
+})
+
+const formatCurrency = (value: number) => currencyFormatter.format(value)
+
+const formatNumber = (value: number) => numberFormatter.format(value)
+
+const formatPercent = (value: number) => `${value.toFixed(2)}%`
+
+const buildBadgeText = (comparison: KpiComparison) => {
+  if (comparison.previous === 0 && comparison.current > 0) {
+    return '↑ new'
+  }
+
+  if (comparison.trend === 'flat') {
+    return `— ${formatPercent(0)}`
+  }
+
+  const sign = comparison.trend === 'down' ? '-' : '+'
+  return `${comparison.trend === 'down' ? '↓' : '↑'} ${sign}${formatPercent(Math.abs(comparison.delta_percent))}`
+}
+
+const buildTooltipLines = (
+  comparison: KpiComparison,
+  formatter: (value: number) => string,
+) => [
+  `This month: ${formatter(comparison.current)}`,
+  `Last month: ${formatter(comparison.previous)}`,
+  `Delta: ${formatter(comparison.delta)}`,
 ]
 
-const topProducts = [
-  { name: 'Comfort Hoodie', category: 'Apparel', sales: 142, revenue: '$5,680' },
-  { name: 'Wireless Earbuds', category: 'Electronics', sales: 97, revenue: '$9,505' },
-  { name: 'Travel Backpack', category: 'Accessories', sales: 88, revenue: '$7,920' },
-  { name: 'Desk Lamp', category: 'Home', sales: 74, revenue: '$3,480' },
-]
+export default function DashboardPage() {
+  const { t } = useI18n()
+  const [data, setData] = useState<DashboardOverviewResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
-const recentOrders = [
-  { id: '#1045', customer: 'Evelyn Chen', total: '$240.00', status: 'Shipped' },
-  { id: '#1044', customer: 'Lucas Silva', total: '$128.50', status: 'Processing' },
-  { id: '#1043', customer: 'Priya Das', total: '$86.00', status: 'Delivered' },
-  { id: '#1042', customer: 'Oliver Smith', total: '$420.00', status: 'Pending' },
-]
+  useEffect(() => {
+    const controller = new AbortController()
 
-const trafficSources = [
-  { label: 'Direct', value: 38 },
-  { label: 'Search', value: 32 },
-  { label: 'Social', value: 18 },
-  { label: 'Referral', value: 12 },
-]
+    const fetchOverview = async () => {
+      setLoading(true)
+      setError(null)
 
-const fulfillment = [
-  { label: 'Shipped', count: 164 },
-  { label: 'Processing', count: 92 },
-  { label: 'Pending', count: 37 },
-  { label: 'Canceled', count: 11 },
-]
+      try {
+        const res = await fetch('/api/proxy/ecommerce/dashboard/overview', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
 
-export default async function DashboardPage() {
-  // Default to EN for now, can be extended later for multi-language support
-  const lang: LangCode = 'EN'
-  const t = await getTranslator(lang)
+        if (!res.ok) {
+          const message = await res.text()
+          setError(message || 'Failed to load dashboard overview.')
+          setData(null)
+          return
+        }
 
-  const stats = [
-    {
-      title: t('dashboard.revenue'),
-      value: '$128,450',
-      changeLabel: '12%',
-      helperText: t('dashboard.vsLastWeek'),
-      trend: 'up' as const,
-    },
-    {
-      title: t('dashboard.orders'),
-      value: '2,431',
-      changeLabel: '6%',
-      helperText: t('dashboard.vsLastWeek'),
-      trend: 'up' as const,
-    },
-    {
-      title: t('dashboard.conversion'),
-      value: '3.8%',
-      changeLabel: '0.3%',
-      helperText: t('dashboard.vsLastWeek'),
-      trend: 'up' as const,
-    },
-    {
-      title: t('dashboard.newCustomers'),
-      value: '482',
-      changeLabel: '4%',
-      helperText: t('dashboard.vsLastWeek'),
-      trend: 'down' as const,
-    },
-  ]
+        const response: DashboardOverviewResponse & { success?: boolean; message?: string } = await res.json()
+          .catch(() => ({} as DashboardOverviewResponse))
+
+        if (response?.success === false && response?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+
+        setData(response)
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setError(err instanceof Error ? err.message : 'Failed to load dashboard overview.')
+          setData(null)
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    fetchOverview()
+
+    return () => controller.abort()
+  }, [])
+
+  const monthlySales = data?.charts.monthly_sales ?? []
+  const maxRevenue = useMemo(() => {
+    return monthlySales.reduce((max, item) => Math.max(max, item.revenue), 0)
+  }, [monthlySales])
+  const chartTicks = useMemo(() => {
+    if (maxRevenue <= 0) {
+      return [0, 0, 0, 0]
+    }
+
+    const step = maxRevenue / 3
+    return [maxRevenue, maxRevenue - step, maxRevenue - step * 2, 0]
+  }, [maxRevenue])
+
+  const stats = useMemo(() => {
+    if (!data) {
+      return []
+    }
+
+    return [
+      {
+        title: t('dashboard.revenue'),
+        value: formatCurrency(data.kpis.revenue.current),
+        badgeText: buildBadgeText(data.kpis.revenue),
+        tooltipLines: buildTooltipLines(data.kpis.revenue, formatCurrency),
+        trend: data.kpis.revenue.trend,
+      },
+      {
+        title: t('dashboard.orders'),
+        value: formatNumber(data.kpis.orders_count.current),
+        badgeText: buildBadgeText(data.kpis.orders_count),
+        tooltipLines: buildTooltipLines(data.kpis.orders_count, formatNumber),
+        trend: data.kpis.orders_count.trend,
+      },
+      {
+        title: t('dashboard.newCustomers'),
+        value: formatNumber(data.kpis.new_customers.current),
+        badgeText: buildBadgeText(data.kpis.new_customers),
+        tooltipLines: buildTooltipLines(data.kpis.new_customers, formatNumber),
+        trend: data.kpis.new_customers.trend,
+      },
+      {
+        title: 'Refund Amount',
+        value: formatCurrency(data.kpis.refund_amount.current),
+        badgeText: buildBadgeText(data.kpis.refund_amount),
+        tooltipLines: buildTooltipLines(data.kpis.refund_amount, formatCurrency),
+        trend: data.kpis.refund_amount.trend,
+      },
+    ]
+  }, [data, t])
 
   return (
     <div className="space-y-4 sm:space-y-6 overflow-y-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-10">
@@ -103,7 +213,7 @@ export default async function DashboardPage() {
               {t('dashboard.manageAdmins')}
             </Link>
             <Link
-              href="/login"
+              href="/product"
               className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 text-center"
             >
               {t('dashboard.goToStorefront')}
@@ -112,43 +222,83 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
       <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <DashboardStatCard key={stat.title} {...stat} />
-        ))}
+        {loading
+          ? Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={`kpi-skeleton-${index}`}
+                className="animate-pulse rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
+              >
+                <div className="h-4 w-24 rounded bg-slate-200" />
+                <div className="mt-4 h-7 w-32 rounded bg-slate-200" />
+                <div className="mt-3 h-3 w-20 rounded bg-slate-100" />
+              </div>
+            ))
+          : stats.map((stat) => <DashboardStatCard key={stat.title} {...stat} />)}
       </div>
 
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         <DashboardSectionCard
-          title={t('dashboard.salesPerformance')}
-          description={t('dashboard.salesPerformanceDescription')}
+          title="Monthly Sales"
+          description="Last 5 months"
         >
-          <div className="space-y-3">
-            {salesByMonth.map((month) => {
-              const percentage = Math.min(100, Math.round((month.value / 32000) * 100))
-              return (
-                <div key={month.label} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm text-slate-600">
-                    <span>{month.label}</span>
-                    <span className="font-medium text-slate-800">
-                      ${month.value.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-indigo-500"
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
+          {loading ? (
+            <div className="flex items-end gap-3 h-48 animate-pulse">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={`sales-skeleton-${index}`} className="flex-1">
+                  <div className="h-32 rounded-md bg-slate-200" />
+                  <div className="mt-2 h-3 rounded bg-slate-100" />
                 </div>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="h-56">
+              <div className="relative flex h-full">
+                <div className="absolute inset-y-0 left-0 flex w-16 flex-col justify-between text-[11px] text-slate-400">
+                  {chartTicks.map((tick, index) => (
+                    <span key={`tick-${index}`}>{currencyFormatter.format(tick)}</span>
+                  ))}
+                </div>
+                <div className="ml-16 flex h-full w-full items-end gap-4">
+                  {monthlySales.map((month) => {
+                    const heightPercent = maxRevenue > 0 ? (month.revenue / maxRevenue) * 100 : 0
+                    const aov = month.orders_count > 0 ? month.revenue / month.orders_count : 0
+
+                    return (
+                      <div key={month.month} className="group relative flex h-full flex-1 flex-col items-center justify-end">
+                        <div className="flex h-full w-full items-end">
+                          <div
+                            className="w-full rounded-md bg-indigo-500 transition group-hover:bg-indigo-600"
+                            style={{ height: `${Math.max(heightPercent, 6)}%` }}
+                          />
+                        </div>
+                        <span className="mt-2 text-xs text-slate-500">{month.month}</span>
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-48 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600 shadow-lg opacity-0 transition group-hover:opacity-100">
+                          <p className="text-xs text-slate-500">Month: {month.month}</p>
+                          <p className="text-sm font-semibold text-slate-900">
+                            Revenue: {formatCurrency(month.revenue)}
+                          </p>
+                          <p>Orders: {formatNumber(month.orders_count)}</p>
+                          {month.orders_count > 0 && <p>AOV: {formatCurrency(aov)}</p>}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </DashboardSectionCard>
 
         <DashboardSectionCard
           title={t('dashboard.topProducts')}
-          description={t('dashboard.topProductsDescription')}
+          description="This Month"
         >
           <div className="overflow-x-auto -mx-4 sm:mx-0">
             <div className="inline-block min-w-full align-middle px-4 sm:px-0">
@@ -156,102 +306,63 @@ export default async function DashboardPage() {
                 <table className="min-w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-600">
                     <tr>
-                      <th className="px-3 sm:px-4 py-3">{t('dashboard.product')}</th>
-                      <th className="px-3 sm:px-4 py-3 hidden sm:table-cell">{t('dashboard.category')}</th>
-                      <th className="px-3 sm:px-4 py-3 text-right">{t('dashboard.sales')}</th>
-                      <th className="px-3 sm:px-4 py-3 text-right">{t('dashboard.revenue')}</th>
+                      <th className="px-3 sm:px-4 py-3">Product</th>
+                      <th className="px-3 sm:px-4 py-3 text-right">Qty</th>
+                      <th className="px-3 sm:px-4 py-3 text-right">Revenue</th>
+                      <th className="px-3 sm:px-4 py-3 text-right">Refund %</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white text-sm">
-                    {topProducts.map((product) => (
-                      <tr key={product.name}>
-                        <td className="px-3 sm:px-4 py-3 font-medium text-slate-900">
-                          <div className="flex flex-col">
-                            <span>{product.name}</span>
-                            <span className="text-xs text-slate-500 sm:hidden">{product.category}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 sm:px-4 py-3 text-slate-600 hidden sm:table-cell">{product.category}</td>
-                        <td className="px-3 sm:px-4 py-3 text-right text-slate-700">{product.sales}</td>
-                        <td className="px-3 sm:px-4 py-3 text-right font-medium text-slate-900">
-                          {product.revenue}
+                    {loading ? (
+                      Array.from({ length: 5 }).map((_, index) => (
+                        <tr key={`product-skeleton-${index}`}>
+                          <td className="px-3 sm:px-4 py-3">
+                            <div className="h-4 w-28 rounded bg-slate-200" />
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-right">
+                            <div className="ml-auto h-4 w-8 rounded bg-slate-200" />
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-right">
+                            <div className="ml-auto h-4 w-16 rounded bg-slate-200" />
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-right">
+                            <div className="ml-auto h-4 w-10 rounded bg-slate-200" />
+                          </td>
+                        </tr>
+                      ))
+                    ) : data?.top_products.length ? (
+                      data.top_products.map((product) => (
+                        <tr key={product.product_id}>
+                          <td className="px-3 sm:px-4 py-3 font-medium text-slate-900">
+                            <div className="flex flex-col">
+                              <span>{product.product_name}</span>
+                              {product.sku && (
+                                <span className="text-xs text-slate-500">{product.sku}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-right text-slate-700">
+                            {formatNumber(product.qty)}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-right font-medium text-slate-900">
+                            {formatCurrency(product.revenue)}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-right text-slate-700">
+                            {formatPercent(product.refund_percent || 0)}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="px-3 sm:px-4 py-6 text-center text-sm text-slate-500">
+                          {t('table.no_data')}
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
-          </div>
-        </DashboardSectionCard>
-
-        <DashboardSectionCard
-          title={t('dashboard.recentOrders')}
-          description={t('dashboard.recentOrdersDescription')}
-        >
-          <div className="divide-y divide-slate-100">
-            {recentOrders.map((order) => (
-              <div key={order.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 gap-2 sm:gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 truncate">{order.id}</p>
-                  <p className="text-xs sm:text-sm text-slate-600 truncate">{order.customer}</p>
-                </div>
-                <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 text-sm">
-                  <span className="font-medium text-slate-900">{order.total}</span>
-                  <span
-                    className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap flex-shrink-0 ${
-                      order.status === 'Shipped'
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : order.status === 'Delivered'
-                          ? 'bg-blue-50 text-blue-700'
-                          : order.status === 'Processing'
-                            ? 'bg-amber-50 text-amber-700'
-                            : 'bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    {order.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </DashboardSectionCard>
-      </div>
-
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        <DashboardSectionCard
-          title={t('dashboard.trafficSources')}
-          description={t('dashboard.trafficSourcesDescription')}
-        >
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-            {trafficSources.map((source) => (
-              <div
-                key={source.label}
-                className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"
-              >
-                <span className="text-sm font-medium text-slate-800">{source.label}</span>
-                <span className="text-sm font-semibold text-slate-900">{source.value}%</span>
-              </div>
-            ))}
-          </div>
-        </DashboardSectionCard>
-
-        <DashboardSectionCard
-          title={t('dashboard.fulfillment')}
-          description={t('dashboard.fulfillmentDescription')}
-        >
-          <div className="space-y-3">
-            {fulfillment.map((item) => (
-              <div key={item.label} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-2 w-2 rounded-full bg-indigo-500" />
-                  <span className="text-sm font-medium text-slate-800">
-                    {item.label}
-                  </span>
-                </div>
-                <span className="text-sm font-semibold text-slate-900">{item.count}</span>
-              </div>
-            ))}
           </div>
         </DashboardSectionCard>
       </div>

@@ -14,6 +14,7 @@ use App\Http\Controllers\Ecommerce\CartMergeController;
 use App\Http\Controllers\Ecommerce\MarqueeController;
 use App\Http\Controllers\Ecommerce\HomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicAnnouncementController;
+use App\Http\Controllers\Ecommerce\DashboardController;
 use App\Http\Controllers\Ecommerce\PublicBankAccountController;
 use App\Http\Controllers\Ecommerce\PublicCartController;
 use App\Http\Controllers\Ecommerce\PublicCheckoutController;
@@ -664,6 +665,9 @@ $protectedRoutes = function () {
 
         Route::delete('/notification-templates/{notificationTemplate}', [NotificationTemplateController::class, 'destroy'])
             ->middleware('permission:ecommerce.notifications.templates.delete');
+
+        Route::get('/dashboard/overview', [DashboardController::class, 'overview'])
+            ->middleware('permission:ecommerce.dashboard.view');
 
         Route::prefix('reports')->group(function () {
             Route::get('/sales/overview', [SalesReportController::class, 'overview'])

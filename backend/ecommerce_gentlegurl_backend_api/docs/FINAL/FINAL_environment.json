@@ -181,6 +181,12 @@
       "value": "",
       "type": "default",
       "enabled": true
+    },
+    {
+      "key": "dashboard_overview_path",
+      "value": "ecommerce/dashboard/overview",
+      "type": "default",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment",
