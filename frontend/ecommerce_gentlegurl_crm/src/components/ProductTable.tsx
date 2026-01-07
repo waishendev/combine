@@ -56,8 +56,8 @@ export default function ProductTable({
   const [rows, setRows] = useState<ProductRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof ProductRowData | null>('name')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('asc')
+  const [sortColumn, setSortColumn] = useState<keyof ProductRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
     last_page: 1,

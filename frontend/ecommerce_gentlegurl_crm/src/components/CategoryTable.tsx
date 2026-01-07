@@ -58,12 +58,8 @@ export default function CategoryTable({
   const [rows, setRows] = useState<CategoryRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof CategoryRowData | null>(
-    'name',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof CategoryRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CategoryRowData | null>(null)
 
@@ -543,4 +539,3 @@ export default function CategoryTable({
     </div>
   )
 }
-

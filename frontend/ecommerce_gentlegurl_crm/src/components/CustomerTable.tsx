@@ -59,12 +59,8 @@ export default function CustomerTable({
   const [rows, setRows] = useState<CustomerRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof CustomerRowData | null>(
-    'name',
-  )
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(
-    'asc',
-  )
+  const [sortColumn, setSortColumn] = useState<keyof CustomerRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CustomerRowData | null>(null)
   const [viewingCustomerId, setViewingCustomerId] = useState<number | null>(null)
@@ -564,4 +560,3 @@ export default function CustomerTable({
     </div>
   )
 }
-
