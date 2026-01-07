@@ -73,10 +73,11 @@ type ReportResponse = {
   meta?: ReportMeta
 }
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 15
 const DEFAULT_PAGE = 1
 const DEFAULT_TOP_COUNT = 5
 const TOP_N_OPTIONS = [5, 10, 20, 50]
+const PAGE_SIZE_OPTIONS = [15, 50, 100, 150, 200]
 
 const formatDateInput = (date: Date) => {
   const year = date.getFullYear()
@@ -160,6 +161,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
   })
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(
     null,
   )
@@ -295,6 +297,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
       page: String(DEFAULT_PAGE),
       per_page: String(resolvedParams.perPage),
     })
+    setIsFilterOpen(false)
   }
 
   const handleReset = () => {
@@ -308,6 +311,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
       page: String(DEFAULT_PAGE),
       per_page: String(resolvedParams.perPage),
     })
+    setIsFilterOpen(false)
   }
 
   const showProfit = meta?.profit_supported === true
@@ -440,65 +444,105 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-slate-500">Date From</label>
-              <input
-                type="date"
-                value={inputs.date_from}
-                onChange={(event) =>
-                  setInputs((prev) => ({ ...prev, date_from: event.target.value }))
-                }
-                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-slate-500">Date To</label>
-              <input
-                type="date"
-                value={inputs.date_to}
-                onChange={(event) =>
-                  setInputs((prev) => ({ ...prev, date_to: event.target.value }))
-                }
-                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={handleApply}
-              className="h-10 rounded bg-blue-600 px-4 text-sm font-semibold text-white shadow hover:bg-blue-700"
-            >
-              Apply
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="h-10 rounded border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-            >
-              Reset
-            </button>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-slate-500">Top N</label>
-              <select
-                className="h-10 rounded border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm"
-                value={resolvedParams.top}
-                onChange={(event) => {
-                  updateQuery({
-                    top: event.target.value,
-                  })
-                }}
+      {isFilterOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setIsFilterOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-400">Filters</p>
+                <h3 className="text-lg font-semibold text-slate-700">Refine report data</h3>
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                onClick={() => setIsFilterOpen(false)}
               >
-                {TOP_N_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+                Close
+              </button>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-slate-500">Show</label>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Date From</label>
+                <input
+                  type="date"
+                  value={inputs.date_from}
+                  onChange={(event) =>
+                    setInputs((prev) => ({ ...prev, date_from: event.target.value }))
+                  }
+                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Date To</label>
+                <input
+                  type="date"
+                  value={inputs.date_to}
+                  onChange={(event) =>
+                    setInputs((prev) => ({ ...prev, date_to: event.target.value }))
+                  }
+                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Top N</label>
+                <select
+                  className="h-10 rounded border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm"
+                  value={resolvedParams.top}
+                  onChange={(event) => {
+                    updateQuery({
+                      top: event.target.value,
+                    })
+                  }}
+                >
+                  {TOP_N_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-8 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="h-10 rounded border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={handleApply}
+                className="h-10 rounded bg-blue-600 px-4 text-sm font-semibold text-white shadow hover:bg-blue-700"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(true)}
+              className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+            >
+              <span className="text-xs">🔍</span>
+              Filter
+            </button>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-semibold text-slate-500">Show</label>
               <select
                 className="h-10 rounded border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm"
                 value={resolvedParams.perPage}
@@ -509,7 +553,7 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
                   })
                 }}
               >
-                {TOP_N_OPTIONS.map((option) => (
+                {PAGE_SIZE_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>
@@ -529,88 +573,42 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span className="font-semibold uppercase tracking-wide text-slate-500">Totals (Page)</span>
-          {totalsPageSource.isFallback ? <span>Based on current page</span> : null}
+        <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
+          <span>
+            Top {resolvedParams.top} {topTitle}
+          </span>
+          <span className="text-xs font-semibold uppercase text-slate-400">KPI Cards</span>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((card) => {
-            const value =
-              card.value === null || card.value === undefined
-                ? '—'
-                : card.isMoney
-                ? `RM ${formatAmount(card.value)}`
-                : formatMargin(card.value)
-
-            return (
-              <div key={card.label} className="rounded-lg border border-slate-200 px-4 py-3">
-                <div className="text-xs font-semibold uppercase text-slate-400">{card.label}</div>
-                <div className="mt-1 text-lg font-semibold text-slate-700">{value}</div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span className="font-semibold uppercase tracking-wide text-slate-500">Grand Totals</span>
-          <span>All pages within the selected date range</span>
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {grandTotalCards.map((card) => {
-            const value =
-              card.value === null || card.value === undefined
-                ? '—'
-                : card.isMoney
-                ? `RM ${formatAmount(card.value)}`
-                : formatMargin(card.value)
-
-            return (
-              <div key={card.label} className="rounded-lg border border-slate-200 px-4 py-3">
-                <div className="text-xs font-semibold uppercase text-slate-400">{card.label}</div>
-                <div className="mt-1 text-lg font-semibold text-slate-700">{value}</div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 p-4 text-sm font-semibold text-slate-700">
-          Top {resolvedParams.top} {topTitle}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">{topLabel}</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Revenue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <TableLoadingRow colSpan={2} />
-              ) : tops.length === 0 ? (
-                <TableEmptyState colSpan={2} />
-              ) : (
-                tops.map((row) => (
-                  <tr key={'category_id' in row ? row.category_id : 'product_id' in row ? row.product_id : row.customer_id}>
-                    <td className="px-4 py-2 border border-gray-200 font-medium">
-                      {'category_name' in row
-                        ? row.category_name
-                        : 'product_name' in row
-                        ? row.product_name
-                        : row.customer_name}
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      RM {formatAmount(row.revenue)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {loading ? (
+            <div className="col-span-full text-sm text-slate-400">Loading top performers...</div>
+          ) : tops.length === 0 ? (
+            <div className="col-span-full text-sm text-slate-400">No top results found.</div>
+          ) : (
+            tops.map((row) => {
+              const name =
+                'category_name' in row
+                  ? row.category_name
+                  : 'product_name' in row
+                  ? row.product_name
+                  : row.customer_name
+              return (
+                <div
+                  key={
+                    'category_id' in row ? row.category_id : 'product_id' in row ? row.product_id : row.customer_id
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
+                >
+                  <p className="text-xs font-semibold uppercase text-slate-400">{topLabel}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-700">{name}</p>
+                  <p className="mt-3 text-lg font-semibold text-slate-700">
+                    RM {formatAmount(row.revenue)}
+                  </p>
+                  <p className="text-xs text-slate-400">Revenue</p>
+                </div>
+              )
+            })
+          )}
         </div>
       </div>
 
@@ -724,6 +722,72 @@ export default function SalesReportPage({ reportType }: { reportType: ReportType
                 ))
               )}
             </tbody>
+            <tfoot className="bg-slate-50">
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-4">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span className="font-semibold uppercase tracking-wide text-slate-500">
+                      Totals (Page)
+                    </span>
+                    {totalsPageSource.isFallback ? <span>Based on current page</span> : null}
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {summaryCards.map((card) => {
+                      const value =
+                        card.value === null || card.value === undefined
+                          ? '—'
+                          : card.isMoney
+                          ? `RM ${formatAmount(card.value)}`
+                          : formatMargin(card.value)
+
+                      return (
+                        <div
+                          key={card.label}
+                          className="rounded-lg border border-slate-200 bg-white px-4 py-3"
+                        >
+                          <div className="text-xs font-semibold uppercase text-slate-400">
+                            {card.label}
+                          </div>
+                          <div className="mt-1 text-lg font-semibold text-slate-700">{value}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td colSpan={columns.length} className="px-4 pb-4">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span className="font-semibold uppercase tracking-wide text-slate-500">
+                      Grand Totals
+                    </span>
+                    <span>All pages within the selected date range</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {grandTotalCards.map((card) => {
+                      const value =
+                        card.value === null || card.value === undefined
+                          ? '—'
+                          : card.isMoney
+                          ? `RM ${formatAmount(card.value)}`
+                          : formatMargin(card.value)
+
+                      return (
+                        <div
+                          key={card.label}
+                          className="rounded-lg border border-slate-200 bg-white px-4 py-3"
+                        >
+                          <div className="text-xs font-semibold uppercase text-slate-400">
+                            {card.label}
+                          </div>
+                          <div className="mt-1 text-lg font-semibold text-slate-700">{value}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
         <div className="px-4 pb-4">
