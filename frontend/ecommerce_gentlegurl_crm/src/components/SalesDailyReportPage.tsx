@@ -45,6 +45,7 @@ type DailyReportResponse = {
 
 const DEFAULT_PAGE_SIZE = 15
 const DEFAULT_PAGE = 1
+const PAGE_SIZE_OPTIONS = [15, 50, 100, 150, 200]
 
 const formatDateInput = (date: Date) => {
   const year = date.getFullYear()
@@ -122,6 +123,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
   })
   const [hasServerPagination, setHasServerPagination] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
 
   useEffect(() => {
     setInputs({
@@ -248,6 +250,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
       page: String(DEFAULT_PAGE),
       per_page: String(resolvedParams.perPage),
     })
+    setIsFilterOpen(false)
   }
 
   const handleReset = () => {
@@ -261,6 +264,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
       page: String(DEFAULT_PAGE),
       per_page: String(resolvedParams.perPage),
     })
+    setIsFilterOpen(false)
   }
 
   const showingRange = `${formatDisplayDate(resolvedParams.dateFrom)} – ${formatDisplayDate(
@@ -277,6 +281,19 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
 
   const hasMissingCosts =
     (meta?.costing?.missing_cost_products_count ?? 0) > 0
+
+  const activeFilters = useMemo(() => {
+    if (!resolvedParams.hasDateFrom || !resolvedParams.hasDateTo) {
+      return []
+    }
+    return [
+      {
+        key: 'date_range',
+        label: 'Date Range',
+        value: showingRange,
+      },
+    ]
+  }, [resolvedParams.hasDateFrom, resolvedParams.hasDateTo, showingRange])
 
   const summaryCards = useMemo(() => {
     const revenue = summary?.revenue ?? 0
@@ -313,69 +330,154 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
 
   return (
     <div className="space-y-6">
+      {isFilterOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setIsFilterOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-400">Filters</p>
+                <h3 className="text-lg font-semibold text-slate-700">Refine report data</h3>
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                onClick={() => setIsFilterOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Date From</label>
+                <input
+                  type="date"
+                  value={inputs.date_from}
+                  onChange={(event) =>
+                    setInputs((prev) => ({ ...prev, date_from: event.target.value }))
+                  }
+                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Date To</label>
+                <input
+                  type="date"
+                  value={inputs.date_to}
+                  onChange={(event) =>
+                    setInputs((prev) => ({ ...prev, date_to: event.target.value }))
+                  }
+                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-8 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="h-10 rounded border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={handleApply}
+                className="h-10 rounded bg-blue-600 px-4 text-sm font-semibold text-white shadow hover:bg-blue-700"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {hasMissingCosts ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
           Some products are missing cost price. Profit may be inaccurate.
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-slate-500">Date From</label>
-              <input
-                type="date"
-                value={inputs.date_from}
-                onChange={(event) =>
-                  setInputs((prev) => ({ ...prev, date_from: event.target.value }))
-                }
-                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-slate-500">Date To</label>
-              <input
-                type="date"
-                value={inputs.date_to}
-                onChange={(event) =>
-                  setInputs((prev) => ({ ...prev, date_to: event.target.value }))
-                }
-                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={handleApply}
-              className="h-10 rounded bg-blue-600 px-4 text-sm font-semibold text-white shadow hover:bg-blue-700"
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsFilterOpen(true)}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+            disabled={loading}
+          >
+            <i className="fa-solid fa-filter" />
+            Filter
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label htmlFor="pageSize" className="text-sm text-gray-700">
+            Show
+          </label>
+          <select
+            id="pageSize"
+            value={resolvedParams.perPage}
+            onChange={(event) => {
+              updateQuery({
+                per_page: event.target.value,
+                page: String(DEFAULT_PAGE),
+              })
+            }}
+            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          {canExport ? (
+            <a
+              href={exportUrl}
+              className="flex items-center gap-2 rounded border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:border-emerald-700 hover:bg-emerald-700"
             >
-              Apply
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="h-10 rounded border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-            >
-              Reset
-            </button>
-            {canExport ? (
-              <a
-                href={exportUrl}
-                className="flex h-10 items-center rounded border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-              >
-                Export CSV
-              </a>
-            ) : null}
-          </div>
-          <div className="text-sm text-slate-600">
-            <span className="font-semibold text-slate-700">Showing:</span> {showingRange}
-          </div>
+              <i className="fa-solid fa-download" />
+              Export CSV
+            </a>
+          ) : null}
         </div>
       </div>
 
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {activeFilters.map((filter) => (
+            <span
+              key={filter.key}
+              className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs"
+            >
+              <span className="font-medium">{filter.label}</span>
+              <span>{filter.value}</span>
+              <button
+                type="button"
+                className="text-blue-600 hover:text-blue-800"
+                onClick={() => {
+                  handleReset()
+                }}
+                aria-label={`Remove ${filter.label} filter`}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between text-xs text-slate-400">
-          <span className="font-semibold uppercase tracking-wide text-slate-500">Summary</span>
+          <span className="font-semibold uppercase tracking-wide text-slate-500">Summary (Grand Total)</span>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((card) => {
@@ -396,69 +498,72 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 p-4 text-sm font-semibold text-slate-700">
-          Sales Summary (Daily)
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Date</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Orders</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Items</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Revenue</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">COGS</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Gross Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <TableLoadingRow colSpan={6} />
-              ) : visibleRows.length === 0 ? (
-                <TableEmptyState colSpan={6} />
-              ) : (
-                visibleRows.map((row) => (
-                  <tr key={row.date}>
-                    <td className="px-4 py-2 border border-gray-200 font-medium">
-                      <Link
-                        href={buildOrdersLink(row.date)}
-                        className="text-blue-600 hover:underline"
-                      >
-                        {formatDisplayDate(row.date)}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
-                    <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      RM {formatAmount(row.revenue)}
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      {row.cogs === null || row.cogs === undefined
-                        ? '—'
-                        : `RM ${formatAmount(row.cogs)}`}
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      {row.gross_profit === null || row.gross_profit === undefined
-                        ? '—'
-                        : `RM ${formatAmount(row.gross_profit)}`}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-4 pb-4">
-          <PaginationControls
-            currentPage={pagination.current_page}
-            totalPages={pagination.last_page}
-            pageSize={pagination.per_page}
-            onPageChange={(page) => updateQuery({ page: String(page) })}
-            disabled={loading}
-          />
-        </div>
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
+            <tr>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Date
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Orders
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Items
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Revenue
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                COGS
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Gross Profit
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <TableLoadingRow colSpan={6} />
+            ) : visibleRows.length === 0 ? (
+              <TableEmptyState colSpan={6} />
+            ) : (
+              visibleRows.map((row) => (
+                <tr key={row.date}>
+                  <td className="px-4 py-2 border border-gray-200 font-medium">
+                    <Link href={buildOrdersLink(row.date)} className="text-blue-600 hover:underline">
+                      {formatDisplayDate(row.date)}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
+                  <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    RM {formatAmount(row.revenue)}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    {row.cogs === null || row.cogs === undefined
+                      ? '—'
+                      : `RM ${formatAmount(row.cogs)}`}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    {row.gross_profit === null || row.gross_profit === undefined
+                      ? '—'
+                      : `RM ${formatAmount(row.gross_profit)}`}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
+
+      <PaginationControls
+        currentPage={pagination.current_page}
+        totalPages={pagination.last_page}
+        pageSize={pagination.per_page}
+        onPageChange={(page) => updateQuery({ page: String(page) })}
+        disabled={loading}
+      />
     </div>
   )
 }
