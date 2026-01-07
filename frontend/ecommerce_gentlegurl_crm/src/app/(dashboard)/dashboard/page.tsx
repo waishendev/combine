@@ -213,7 +213,7 @@ export default function DashboardPage() {
               {t('dashboard.manageAdmins')}
             </Link>
             <Link
-              href="/login"
+              href="/product"
               className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 text-center"
             >
               {t('dashboard.goToStorefront')}
@@ -243,7 +243,7 @@ export default function DashboardPage() {
           : stats.map((stat) => <DashboardStatCard key={stat.title} {...stat} />)}
       </div>
 
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         <DashboardSectionCard
           title="Monthly Sales"
           description="Last 5 months"
