@@ -63,8 +63,8 @@ class SalesReportService
         $profitSupported = $this->profitSupported();
 
         $dateExpression = $groupBy === 'month'
-            ? DB::raw("to_char(COALESCE(placed_at, created_at), 'YYYY-MM')")
-            : DB::raw("to_char(COALESCE(placed_at, created_at), 'YYYY-MM-DD')");
+            ? "to_char(COALESCE(placed_at, created_at), 'YYYY-MM')"
+            : "to_char(COALESCE(placed_at, created_at), 'YYYY-MM-DD')";
 
         $itemsSubquery = DB::table('order_items')
             ->select('order_id', DB::raw('SUM(quantity) as items_count'))
