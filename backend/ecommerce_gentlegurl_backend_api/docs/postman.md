@@ -320,6 +320,11 @@
 - `GET /ecommerce/reports/sales/by-category` — 权限：`permission:ecommerce.reports.sales.view`。按分类汇总销售。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1），`top?`（默认 5）。
 - `GET /ecommerce/reports/sales/by-products` — 权限：`permission:ecommerce.reports.sales.view`。热销产品榜。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1），`top?`（默认 5）。
 - `GET /ecommerce/reports/sales/by-customers` — 权限：`permission:ecommerce.reports.sales.view`。顾客消费榜。Query：`date_from?`, `date_to?`（默认最近 30 天），`per_page?`（默认 15），`page?`（默认 1），`top?`（默认 5）。
+- `GET /ecommerce/reports/sales/export/overview` — 权限：`permission:ecommerce.reports.sales.export`。CSV 导出概况报表。Query：`date_from?`, `date_to?`（默认今天），`timezone?`, `format=csv`。
+- `GET /ecommerce/reports/sales/export/daily` — 权限：`permission:ecommerce.reports.sales.export`。CSV 导出每日/每月报表。Query：`date_from?`, `date_to?`（默认最近 30 天），`timezone?`, `format=csv`。
+- `GET /ecommerce/reports/sales/export/by-category` — 权限：`permission:ecommerce.reports.sales.export`。CSV 导出分类汇总报表。Query：`date_from?`, `date_to?`（默认最近 30 天），`timezone?`, `format=csv`。
+- `GET /ecommerce/reports/sales/export/by-products` — 权限：`permission:ecommerce.reports.sales.export`。CSV 导出产品汇总报表。Query：`date_from?`, `date_to?`（默认最近 30 天），`timezone?`, `format=csv`。
+- `GET /ecommerce/reports/sales/export/by-customers` — 权限：`permission:ecommerce.reports.sales.export`。CSV 导出顾客汇总报表。Query：`date_from?`, `date_to?`（默认最近 30 天），`timezone?`, `format=csv`。
   
   Response 示例详见任务需求：均返回 `date_range`（from/to），以及对应报表的 `rows`/`totals` 字段。
 

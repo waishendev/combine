@@ -77,7 +77,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.notifications' => ['templates'],
             'ecommerce.notifications.templates' => ['view', 'create', 'update', 'delete'],
             'ecommerce.vouchers' => ['view', 'create', 'update', 'delete'],
-            'ecommerce.reports.sales' => ['view'],
+            'ecommerce.reports.sales' => ['view', 'export'],
             'ecommerce.dashboard' => ['view'],
             'ecommerce.settings' => ['view', 'update'],
         ];

@@ -37,6 +37,7 @@ use App\Http\Controllers\Ecommerce\ReturnRequestController;
 use App\Http\Controllers\Ecommerce\PublicAccountController;
 use App\Http\Controllers\Ecommerce\VoucherController;
 use App\Http\Controllers\Ecommerce\SalesReportController;
+use App\Http\Controllers\Ecommerce\Reports\SalesReportExportController;
 use App\Http\Controllers\Ecommerce\LoyaltyAdminController;
 use App\Http\Controllers\Ecommerce\LoyaltyRewardController;
 use App\Http\Controllers\Ecommerce\LoyaltyRedemptionAdminController;
@@ -684,6 +685,23 @@ $protectedRoutes = function () {
 
             Route::get('/sales/by-customers', [SalesReportController::class, 'byCustomers'])
                 ->middleware('permission:ecommerce.reports.sales.view');
+
+            Route::prefix('sales')->group(function () {
+                Route::get('/export/overview', [SalesReportExportController::class, 'overview'])
+                    ->middleware('permission:ecommerce.reports.sales.export');
+
+                Route::get('/export/daily', [SalesReportExportController::class, 'daily'])
+                    ->middleware('permission:ecommerce.reports.sales.export');
+
+                Route::get('/export/by-category', [SalesReportExportController::class, 'byCategory'])
+                    ->middleware('permission:ecommerce.reports.sales.export');
+
+                Route::get('/export/by-products', [SalesReportExportController::class, 'byProducts'])
+                    ->middleware('permission:ecommerce.reports.sales.export');
+
+                Route::get('/export/by-customers', [SalesReportExportController::class, 'byCustomers'])
+                    ->middleware('permission:ecommerce.reports.sales.export');
+            });
         });
     });
 };
