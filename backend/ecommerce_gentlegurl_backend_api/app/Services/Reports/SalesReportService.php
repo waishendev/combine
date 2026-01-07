@@ -123,7 +123,7 @@ class SalesReportService
         ];
     }
 
-    public function getByCategory(Carbon $start, Carbon $end, int $limit = 50): array
+    public function getByCategory(Carbon $start, Carbon $end, int $perPage = 15, int $page = 1): array
     {
         $profitSupported = $this->profitSupported();
         $rowsQuery = DB::table('orders as o')
@@ -142,8 +142,7 @@ class SalesReportService
                 DB::raw('SUM(oi.quantity) as items_count'),
                 DB::raw('SUM(oi.line_total) as revenue')
             )
-            ->orderByDesc('revenue')
-            ->limit($limit);
+            ->orderByDesc('revenue');
 
         if ($profitSupported) {
             $rowsQuery = $rowsQuery->addSelect(DB::raw('SUM(oi.quantity * p.cost_price) as cogs'));
@@ -151,8 +150,8 @@ class SalesReportService
             $rowsQuery = $rowsQuery->addSelect(DB::raw('0 as cogs'));
         }
 
-        $rows = $rowsQuery
-            ->get()
+        $paginator = $rowsQuery->paginate($perPage, ['*'], 'page', $page);
+        $rows = collect($paginator->items())
             ->map(function ($row) use ($profitSupported) {
                 $revenue = (float) $row->revenue;
                 $cogs = (float) $row->cogs;
@@ -175,10 +174,16 @@ class SalesReportService
                 'to' => $end->toDateString(),
             ],
             'rows' => $rows,
+            'pagination' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+            ],
         ];
     }
 
-    public function getTopProducts(Carbon $start, Carbon $end, int $limit = 20): array
+    public function getTopProducts(Carbon $start, Carbon $end, int $perPage = 15, int $page = 1): array
     {
         $profitSupported = $this->profitSupported();
         $rowsQuery = DB::table('orders as o')
@@ -196,8 +201,7 @@ class SalesReportService
                 DB::raw('SUM(oi.quantity) as items_count'),
                 DB::raw('SUM(oi.line_total) as revenue')
             )
-            ->orderByDesc('revenue')
-            ->limit($limit);
+            ->orderByDesc('revenue');
 
         if ($profitSupported) {
             $rowsQuery = $rowsQuery->addSelect(DB::raw('SUM(oi.quantity * p.cost_price) as cogs'));
@@ -205,8 +209,8 @@ class SalesReportService
             $rowsQuery = $rowsQuery->addSelect(DB::raw('0 as cogs'));
         }
 
-        $rows = $rowsQuery
-            ->get()
+        $paginator = $rowsQuery->paginate($perPage, ['*'], 'page', $page);
+        $rows = collect($paginator->items())
             ->map(function ($row) use ($profitSupported) {
                 $revenue = (float) $row->revenue;
                 $cogs = (float) $row->cogs;
@@ -230,10 +234,16 @@ class SalesReportService
                 'to' => $end->toDateString(),
             ],
             'rows' => $rows,
+            'pagination' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+            ],
         ];
     }
 
-    public function getTopCustomers(Carbon $start, Carbon $end, int $limit = 20): array
+    public function getTopCustomers(Carbon $start, Carbon $end, int $perPage = 15, int $page = 1): array
     {
         $itemsSubquery = DB::table('order_items')
             ->select('order_id', DB::raw('SUM(quantity) as items_count'))
@@ -252,8 +262,7 @@ class SalesReportService
                 DB::raw('COALESCE(SUM(order_item_sums.items_count), 0) as items_count'),
                 DB::raw('SUM(orders.grand_total) as revenue')
             )
-            ->orderByDesc('revenue')
-            ->limit($limit);
+            ->orderByDesc('revenue');
 
         if ($profitSupported) {
             $cogsSubquery = DB::table('order_items as oi')
@@ -268,8 +277,8 @@ class SalesReportService
             $rowsQuery = $rowsQuery->addSelect(DB::raw('0 as cogs'));
         }
 
-        $rows = $rowsQuery
-            ->get()
+        $paginator = $rowsQuery->paginate($perPage, ['*'], 'page', $page);
+        $rows = collect($paginator->items())
             ->map(function ($row) use ($profitSupported) {
                 $ordersCount = (int) $row->orders_count;
                 $revenue = (float) $row->revenue;
@@ -295,6 +304,12 @@ class SalesReportService
                 'to' => $end->toDateString(),
             ],
             'rows' => $rows,
+            'pagination' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+            ],
         ];
     }
 

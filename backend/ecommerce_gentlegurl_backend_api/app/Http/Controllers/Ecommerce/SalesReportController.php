@@ -39,11 +39,13 @@ class SalesReportController extends Controller
     public function byCategory(Request $request)
     {
         [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
-        $limit = (int) $request->query('limit', 50);
-        $data = $this->service->getByCategory($start, $end, $limit);
+        $perPage = (int) $request->query('per_page', $request->query('limit', 15));
+        $page = (int) $request->query('page', 1);
+        $data = $this->service->getByCategory($start, $end, $perPage, $page);
 
         $this->attachMeta($request, $data, $defaultRangeApplied, [
-            'limit' => $limit,
+            'per_page' => $perPage,
+            'page' => $page,
         ]);
 
         return response()->json($data);
@@ -52,11 +54,13 @@ class SalesReportController extends Controller
     public function topProducts(Request $request)
     {
         [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
-        $limit = (int) $request->query('limit', 20);
-        $data = $this->service->getTopProducts($start, $end, $limit);
+        $perPage = (int) $request->query('per_page', $request->query('limit', 15));
+        $page = (int) $request->query('page', 1);
+        $data = $this->service->getTopProducts($start, $end, $perPage, $page);
 
         $this->attachMeta($request, $data, $defaultRangeApplied, [
-            'limit' => $limit,
+            'per_page' => $perPage,
+            'page' => $page,
         ]);
 
         return response()->json($data);
@@ -65,11 +69,13 @@ class SalesReportController extends Controller
     public function topCustomers(Request $request)
     {
         [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
-        $limit = (int) $request->query('limit', 20);
-        $data = $this->service->getTopCustomers($start, $end, $limit);
+        $perPage = (int) $request->query('per_page', $request->query('limit', 15));
+        $page = (int) $request->query('page', 1);
+        $data = $this->service->getTopCustomers($start, $end, $perPage, $page);
 
         $this->attachMeta($request, $data, $defaultRangeApplied, [
-            'limit' => $limit,
+            'per_page' => $perPage,
+            'page' => $page,
         ]);
 
         return response()->json($data);
