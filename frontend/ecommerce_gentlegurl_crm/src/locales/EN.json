@@ -56,7 +56,7 @@
   "dashboard.vsLastWeek": "vs last week",
   "dashboard.salesPerformance": "Sales Performance",
   "dashboard.salesPerformanceDescription": "Monthly sales velocity compared to your best month.",
-  "dashboard.topProducts": "Top Products",
+  "dashboard.productSales": "Product Sales",
   "dashboard.topProductsDescription": "Best-selling items over the last 30 days.",
   "dashboard.recentOrders": "Recent Orders",
   "dashboard.recentOrdersDescription": "Latest customer purchases and their fulfillment states.",

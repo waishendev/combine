@@ -4168,7 +4168,7 @@
           "response": []
         },
         {
-          "name": "Top Products",
+          "name": "Product Sales",
           "request": {
             "method": "GET",
             "header": [],
@@ -4207,7 +4207,7 @@
           "response": []
         },
         {
-          "name": "Top Customers",
+          "name": "Customer Sales",
           "request": {
             "method": "GET",
             "header": [],
@@ -4241,7 +4241,7 @@
                 }
               ]
             },
-            "description": "Get top customers report. Requires permission: ecommerce.reports.sales.view"
+            "description": "Get Customer Sales report. Requires permission: ecommerce.reports.sales.view"
           },
           "response": []
         }

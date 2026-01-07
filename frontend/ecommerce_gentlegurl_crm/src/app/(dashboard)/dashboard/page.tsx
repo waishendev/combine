@@ -302,7 +302,7 @@ export default function DashboardPage() {
         </DashboardSectionCard>
 
         <DashboardSectionCard
-          title={t('dashboard.topProducts')}
+          title={t('dashboard.productSales')}
           description="This Month"
         >
           <div className="overflow-x-auto -mx-4 sm:mx-0">

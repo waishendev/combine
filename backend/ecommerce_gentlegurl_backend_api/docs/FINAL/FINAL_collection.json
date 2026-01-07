@@ -4333,7 +4333,7 @@
                     }
                   ]
                 },
-                "description": "Dashboard overview KPI summary with comparisons, monthly sales, and top products."
+                "description": "Dashboard overview KPI summary with comparisons, monthly sales, and Product Sales."
               },
               "response": [
                 {
@@ -4474,7 +4474,7 @@
               "response": []
             },
             {
-              "name": "Top Products",
+              "name": "Product Sales",
               "request": {
                 "method": "GET",
                 "header": [],

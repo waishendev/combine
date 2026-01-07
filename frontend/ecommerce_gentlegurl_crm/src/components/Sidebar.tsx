@@ -237,37 +237,32 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         icon: 'fa-solid fa-chart-line',
         children: [
           {
-            key: 'sales-summary-daily',
-            label: 'Sales Summary',
+            key: 'sales-daily',
+            label: 'Daily Sales',
             href: '/reports/sales/daily',
             requiredPermission: 'ecommerce.reports.sales.view',
-          },   {
+          },
+          {
             key: 'sales-by-category',
-            label: 'Sales by Category',
+            label: 'Category Sales',
             href: '/reports/sales/by-category',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
           {
-            key: 'sales-top-products',
-            label: 'Top Products',
-            href: '/reports/sales/top-products',
+            key: 'sales-by-product',
+            label: 'Product Sales',
+            href: '/reports/sales/by-product',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
           {
-            key: 'sales-top-customers',
-            label: 'Top Customers',
-            href: '/reports/sales/top-customers',
+            key: 'sales-by-customer',
+            label: 'Customer Sales',
+            href: '/reports/sales/by-customer',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
-          // 以后可加：
-          // sales-by-category
-          // sales-top-products
-          // sales-top-customers
-          // orders-report
-          // customers-report
-          // loyalty-report
         ],
       },
+      
   
       // ======================
       // Shop Settings

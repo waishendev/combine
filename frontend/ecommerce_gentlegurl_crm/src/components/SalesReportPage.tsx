@@ -641,8 +641,8 @@ export default function SalesReportPage({
             {reportType === 'by-category'
               ? 'Sales by Category'
               : reportType === 'by-products'
-              ? 'Top Products (by Revenue)'
-              : 'Top Customers (by Revenue)'}
+              ? 'Product Sales (by Revenue)'
+              : 'Customer Sales (by Revenue)'}
           </div>
           <div className="w-full lg:w-80">
             <label className="text-xs font-semibold text-slate-500">Search</label>

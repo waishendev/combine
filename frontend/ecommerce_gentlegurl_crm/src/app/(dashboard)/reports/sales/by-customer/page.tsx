@@ -27,11 +27,11 @@ export default async function TopCustomersPage() {
       <div className="text-xs mb-4">
         <span className="text-gray-500">Reports</span>
         <span className="mx-1">/</span>
-        <Link href="/reports/sales/top-customers" className="text-blue-600 hover:underline">
-          Top Customers
+        <Link href="/reports/sales/by-customer" className="text-blue-600 hover:underline">
+          Customer Sales
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-6">Top Customers</h2>
+      <h2 className="text-3xl font-semibold mb-6">Customer Sales</h2>
       <SalesReportPage reportType="by-customers" canExport={canExport} />
     </div>
   )
