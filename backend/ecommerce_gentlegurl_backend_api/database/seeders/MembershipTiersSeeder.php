@@ -5,7 +5,7 @@ namespace Database\Seeders;
 use App\Models\Ecommerce\LoyaltySetting;
 use Illuminate\Database\Seeder;
 
-class LoyaltySettingSeeder extends Seeder
+class MembershipTiersSeeder extends Seeder
 {
 
     public function run(): void

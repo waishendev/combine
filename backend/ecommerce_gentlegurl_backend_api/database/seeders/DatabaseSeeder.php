@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             InvoiceProfileSeeder::class,
             BankAccountSeeder::class,
             LoyaltySettingSeeder::class,
+            MembershipTiersSeeder::class,
             // LoyaltyRewardSeederReal::class,
             // StoreLocationsSeederReal::class,
             // FooterWidgetSeederReal::class,

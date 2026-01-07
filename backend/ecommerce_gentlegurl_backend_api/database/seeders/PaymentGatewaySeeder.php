@@ -9,15 +9,6 @@ class PaymentGatewaySeeder extends Seeder
 {
     public function run(): void
     {
-        PaymentGateway::updateOrCreate(
-            ['key' => 'billplz_fpx'],
-            [
-                'name' => 'Online Banking (Billplz FPX)',
-                'is_active' => true,
-                'is_default' => true,
-                'sort_order' => 1,
-            ]
-        );
 
         PaymentGateway::updateOrCreate(
             ['key' => 'manual_transfer'],
@@ -25,6 +16,16 @@ class PaymentGatewaySeeder extends Seeder
                 'name' => 'Manual Bank Transfer',
                 'is_active' => true,
                 'is_default' => true,
+                'sort_order' => 1,
+            ]
+        );
+
+        PaymentGateway::updateOrCreate(
+            ['key' => 'billplz_fpx'],
+            [
+                'name' => 'Online Banking (Billplz FPX)',
+                'is_active' => true,
+                'is_default' => false,
                 'sort_order' => 2,
             ]
         );
