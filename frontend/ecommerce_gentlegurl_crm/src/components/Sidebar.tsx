@@ -263,6 +263,28 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         ],
       },
       
+            // ======================
+      // Payment Gateway
+      // ======================
+      {
+        key: 'payment-gateway',
+        label: 'Payment Gateway',
+        icon: 'fa-solid fa-credit-card',
+        children: [
+          {
+            key: 'payment-gateways',
+            label: 'Payment Gateway',
+            href: '/payment-gateways',
+            requiredPermission: 'ecommerce.payment-gateways.view',
+          },
+          {
+            key: 'bank-accounts',
+            label: 'Bank (Manual Transfer)',
+            href: '/bank-accounts',
+            requiredPermission: 'ecommerce.bank-accounts.view',
+          },
+        ],
+      },
   
       // ======================
       // Shop Settings
@@ -284,14 +306,10 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/seo-settings',
             requiredPermission: 'ecommerce.seo.view',
           },
-          {
-            key: 'bank-accounts',
-            label: 'Bank (Manual Transfer)',
-            href: '/bank-accounts',
-            requiredPermission: 'ecommerce.bank-accounts.view',
-          },
+
         ],
       },
+
       // {
       //   key: 'shop-settings',
       //   icon: 'fa-solid fa-gear',
