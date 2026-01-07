@@ -55,6 +55,7 @@ class RbacSeeder extends Seeder
             'ecommerce.loyalty.redemptions' => 'Ecommerce Loyalty Redemptions',
             'ecommerce.reports.sales' => 'Ecommerce Sales Reports',
             'ecommerce.notifications.templates' => 'Ecommerce Notification Templates',
+            'ecommerce.dashboard' => 'Ecommerce Dashboard',
             'ecommerce.settings' => 'Ecommerce Settings',
         ];
 
@@ -91,6 +92,7 @@ class RbacSeeder extends Seeder
             'ecommerce.notifications.templates' => ['view', 'create', 'update', 'delete'],
             'ecommerce.vouchers' => ['view', 'create', 'update', 'delete'],
             'ecommerce.reports.sales' => ['view'],
+            'ecommerce.dashboard' => ['view'],
             'ecommerce.settings' => ['view', 'update'],
         ];
 
