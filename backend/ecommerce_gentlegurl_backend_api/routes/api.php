@@ -408,6 +408,12 @@ $protectedRoutes = function () {
         Route::post('/payment-gateways/{paymentGateway}', [PaymentGatewayController::class, 'update'])
             ->middleware('permission:ecommerce.payment-gateways.update');
 
+        Route::post('/payment-gateways/{paymentGateway}/move-up', [PaymentGatewayController::class, 'moveUp'])
+            ->middleware('permission:ecommerce.payment-gateways.update');
+
+        Route::post('/payment-gateways/{paymentGateway}/move-down', [PaymentGatewayController::class, 'moveDown'])
+            ->middleware('permission:ecommerce.payment-gateways.update');
+
         Route::delete('/payment-gateways/{paymentGateway}', [PaymentGatewayController::class, 'destroy'])
             ->middleware('permission:ecommerce.payment-gateways.delete');
 

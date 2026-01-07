@@ -14,6 +14,7 @@ class PaymentGateway extends Model
         'name',
         'is_active',
         'is_default',
+        'sort_order',
         'config',
     ];
 
