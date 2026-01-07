@@ -498,69 +498,72 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 p-4 text-sm font-semibold text-slate-700">
-          Sales Summary (Daily)
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Date</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Orders</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Items</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Revenue</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">COGS</th>
-                <th className="px-4 py-3 border border-slate-200 font-semibold">Gross Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <TableLoadingRow colSpan={6} />
-              ) : visibleRows.length === 0 ? (
-                <TableEmptyState colSpan={6} />
-              ) : (
-                visibleRows.map((row) => (
-                  <tr key={row.date}>
-                    <td className="px-4 py-2 border border-gray-200 font-medium">
-                      <Link
-                        href={buildOrdersLink(row.date)}
-                        className="text-blue-600 hover:underline"
-                      >
-                        {formatDisplayDate(row.date)}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
-                    <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      RM {formatAmount(row.revenue)}
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      {row.cogs === null || row.cogs === undefined
-                        ? '—'
-                        : `RM ${formatAmount(row.cogs)}`}
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      {row.gross_profit === null || row.gross_profit === undefined
-                        ? '—'
-                        : `RM ${formatAmount(row.gross_profit)}`}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-4 pb-4">
-          <PaginationControls
-            currentPage={pagination.current_page}
-            totalPages={pagination.last_page}
-            pageSize={pagination.per_page}
-            onPageChange={(page) => updateQuery({ page: String(page) })}
-            disabled={loading}
-          />
-        </div>
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
+            <tr>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Date
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Orders
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Items
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Revenue
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                COGS
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Gross Profit
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <TableLoadingRow colSpan={6} />
+            ) : visibleRows.length === 0 ? (
+              <TableEmptyState colSpan={6} />
+            ) : (
+              visibleRows.map((row) => (
+                <tr key={row.date}>
+                  <td className="px-4 py-2 border border-gray-200 font-medium">
+                    <Link href={buildOrdersLink(row.date)} className="text-blue-600 hover:underline">
+                      {formatDisplayDate(row.date)}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
+                  <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    RM {formatAmount(row.revenue)}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    {row.cogs === null || row.cogs === undefined
+                      ? '—'
+                      : `RM ${formatAmount(row.cogs)}`}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    {row.gross_profit === null || row.gross_profit === undefined
+                      ? '—'
+                      : `RM ${formatAmount(row.gross_profit)}`}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
+
+      <PaginationControls
+        currentPage={pagination.current_page}
+        totalPages={pagination.last_page}
+        pageSize={pagination.per_page}
+        onPageChange={(page) => updateQuery({ page: String(page) })}
+        disabled={loading}
+      />
     </div>
   )
 }
