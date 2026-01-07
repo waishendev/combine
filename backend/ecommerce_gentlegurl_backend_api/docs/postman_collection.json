@@ -4113,6 +4113,14 @@
                 {
                   "key": "date_to",
                   "value": ""
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
                 }
               ]
             },
@@ -4126,7 +4134,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/ecommerce/reports/sales/by-category?date_from=&date_to=",
+              "raw": "{{base_url}}/ecommerce/reports/sales/by-category?date_from=&date_to=&per_page=15&page=1",
               "host": [
                 "{{base_url}}"
               ],
@@ -4144,6 +4152,14 @@
                 {
                   "key": "date_to",
                   "value": ""
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
                 }
               ]
             },
@@ -4157,7 +4173,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/ecommerce/reports/sales/top-products?date_from=&date_to=&limit=10",
+              "raw": "{{base_url}}/ecommerce/reports/sales/top-products?date_from=&date_to=&per_page=15&page=1",
               "host": [
                 "{{base_url}}"
               ],
@@ -4177,8 +4193,12 @@
                   "value": ""
                 },
                 {
-                  "key": "limit",
-                  "value": "10"
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
                 }
               ]
             },
@@ -4192,7 +4212,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/ecommerce/reports/sales/top-customers?date_from=&date_to=&limit=10",
+              "raw": "{{base_url}}/ecommerce/reports/sales/top-customers?date_from=&date_to=&per_page=15&page=1",
               "host": [
                 "{{base_url}}"
               ],
@@ -4212,8 +4232,12 @@
                   "value": ""
                 },
                 {
-                  "key": "limit",
-                  "value": "10"
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
                 }
               ]
             },
