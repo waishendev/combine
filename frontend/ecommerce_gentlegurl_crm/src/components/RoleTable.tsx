@@ -50,26 +50,13 @@ type RoleApiResponse = {
 }
 
 type PermissionApiResponse = {
-  data?: {
-    groups?: Array<{
-      id?: number | string | null
-      name?: string | null
-      permissions?: Array<{
-        id?: number | string | null
-        name?: string | null
-        slug?: string | null
-        group_id?: number | string | null
-        description?: string | null
-      }>
-    }>
-    ungrouped?: Array<{
-      id?: number | string | null
-      name?: string | null
-      slug?: string | null
-      group_id?: number | string | null
-      description?: string | null
-    }>
-  }
+  data?: Array<{
+    id?: number | string | null
+    name?: string | null
+    slug?: string | null
+    group_id?: number | string | null
+    description?: string | null
+  }>
   success?: boolean
   message?: string
 }
@@ -143,7 +130,7 @@ export default function RoleTable({
   const fetchPermissions = async (controller: AbortController) => {
     setPermissionsLoading(true)
     try {
-      const res = await fetch('/api/proxy/permissions?per_page=50&grouped=true', {
+      const res = await fetch('/api/proxy/permissions/delegatable', {
         cache: 'no-store',
         signal: controller.signal,
       })
@@ -158,35 +145,13 @@ export default function RoleTable({
         return
       }
 
-      const allPermissions: PermissionOption[] = []
-      
-      if (response?.data?.groups) {
-        response.data.groups.forEach((group) => {
-          if (Array.isArray(group.permissions)) {
-            group.permissions.forEach((perm) => {
-              if (perm?.id != null) {
-                allPermissions.push({
-                  id: perm.id,
-                  name: perm.name ?? '',
-                  slug: perm.slug ?? '',
-                })
-              }
-            })
-          }
-        })
-      }
-
-      if (response?.data?.ungrouped) {
-        response.data.ungrouped.forEach((perm) => {
-          if (perm?.id != null) {
-            allPermissions.push({
-              id: perm.id,
-              name: perm.name ?? '',
-              slug: perm.slug ?? '',
-            })
-          }
-        })
-      }
+      const allPermissions: PermissionOption[] = Array.isArray(response?.data)
+        ? response.data.map((perm) => ({
+            id: perm?.slug ?? perm?.id ?? '',
+            name: perm?.name ?? '',
+            slug: perm?.slug ?? '',
+          }))
+        : []
 
       setPermissionOptions(allPermissions)
     } catch (error) {

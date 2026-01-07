@@ -225,6 +225,9 @@ $protectedRoutes = function () {
     Route::get('/roles/{role}', [RoleController::class, 'show'])
         ->middleware('permission:roles.view');
 
+    Route::get('/roles/{role}/edit', [RoleController::class, 'edit'])
+        ->middleware('permission:roles.update');
+
     Route::put('/roles/{role}', [RoleController::class, 'update'])
         ->middleware('permission:roles.update');
 
@@ -232,6 +235,9 @@ $protectedRoutes = function () {
         ->middleware('permission:roles.delete');
 
     // Permissions
+    Route::get('/permissions/delegatable', [PermissionController::class, 'delegatable'])
+        ->middleware('permission:roles.view');
+
     Route::get('/permissions', [PermissionController::class, 'index'])
         ->middleware('permission:permissions.view');
 

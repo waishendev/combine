@@ -95,13 +95,18 @@ export default function RoleEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [availablePermissions, setAvailablePermissions] = useState(permissions)
   const allPermissionIds = useMemo(
-    () => permissions.map((permission) => String(permission.id)),
-    [permissions],
+    () => availablePermissions.map((permission) => permission.slug || String(permission.id)),
+    [availablePermissions],
   )
   const allSelected =
     allPermissionIds.length > 0 &&
     allPermissionIds.every((id) => form.permissionIds.includes(id))
+
+  useEffect(() => {
+    setAvailablePermissions(permissions)
+  }, [permissions])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -109,7 +114,7 @@ export default function RoleEditModal({
       setLoading(true)
       setLoadError(null)
       try {
-        const res = await fetch(`/api/proxy/roles/${roleId}`, {
+        const res = await fetch(`/api/proxy/roles/${roleId}/edit`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -136,21 +141,40 @@ export default function RoleEditModal({
           return
         }
 
-        const roleData = (data as { data?: unknown }).data as
+        const responseData = (data as { data?: unknown }).data as
           | {
-              name?: string | null
-              description?: string | null
-              is_active?: boolean | number | string | null
-              permissions?: Array<{
+              role?: {
+                name?: string | null
+                description?: string | null
+                is_active?: boolean | number | string | null
+                permissions?: Array<{
+                  id?: number | string | null
+                  slug?: string | null
+                }>
+              } | null
+              delegatable_permissions?: Array<{
                 id?: number | string | null
+                name?: string | null
+                slug?: string | null
               }>
             }
           | null
           | undefined
 
+        const roleData = responseData?.role ?? null
+        if (Array.isArray(responseData?.delegatable_permissions)) {
+          setAvailablePermissions(
+            responseData.delegatable_permissions.map((permission) => ({
+              id: permission?.slug ?? permission?.id ?? '',
+              name: permission?.name ?? '',
+              slug: permission?.slug ?? '',
+            })),
+          )
+        }
+
         const permissionIds = Array.isArray(roleData?.permissions)
           ? roleData?.permissions
-              .map((permission) => permission?.id)
+              .map((permission) => permission?.slug ?? permission?.id)
               .filter((id): id is number | string => id != null)
               .map((id) => String(id))
           : []
@@ -186,8 +210,8 @@ export default function RoleEditModal({
   }, [roleId])
 
   const groupedPermissions: GroupedPermissionOption[] = useMemo(
-    () => groupPermissionsBySlug(permissions),
-    [permissions],
+    () => groupPermissionsBySlug(availablePermissions),
+    [availablePermissions],
   )
 
   const handleInputChange = (
@@ -246,7 +270,7 @@ export default function RoleEditModal({
           name: trimmedName,
           description: form.description.trim() || null,
           is_active: form.isActive,
-          permission_ids: form.permissionIds.map((id) => Number(id)),
+          permissions: form.permissionIds,
         }),
       })
 
@@ -399,7 +423,7 @@ export default function RoleEditModal({
                       type="checkbox"
                       checked={allSelected}
                       onChange={handleSelectAllToggle}
-                      disabled={disableForm || permissionsLoading || permissions.length === 0}
+                      disabled={disableForm || permissionsLoading || availablePermissions.length === 0}
                       className="rounded border-gray-300"
                     />
                     <span>Select All</span>
@@ -410,7 +434,7 @@ export default function RoleEditModal({
               <div className="max-h-[60vh] space-y-3 overflow-y-auto rounded border border-gray-200 p-3">
                 {permissionsLoading ? (
                   <p className="text-sm text-gray-500">Loading permissions...</p>
-                ) : permissions.length > 0 ? (
+                ) : availablePermissions.length > 0 ? (
                   groupedPermissions.map((group) => (
                     <div key={group.groupKey} className="space-y-2">
                       <p className="text-xs font-semibold uppercase text-gray-500">
