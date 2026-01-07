@@ -27,10 +27,14 @@ class SalesReportController extends Controller
     {
         [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $groupBy = $request->query('group_by', 'day');
-        $data = $this->service->getDaily($start, $end, $groupBy);
+        $perPage = (int) $request->query('per_page', $request->query('limit', 15));
+        $page = (int) $request->query('page', 1);
+        $data = $this->service->getDailyDataTable($start, $end, $groupBy, $perPage, $page);
 
         $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'group_by' => $groupBy,
+            'per_page' => $perPage,
+            'page' => $page,
         ]);
 
         return response()->json($data);
