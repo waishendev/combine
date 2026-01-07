@@ -22,9 +22,13 @@ type ReportMeta = {
 }
 
 type DailyTotals = {
+  orders_count?: number
+  items_count?: number
   revenue?: number
+  average_order_value?: number | null
   cogs?: number | null
   gross_profit?: number | null
+  gross_margin?: number | null
 }
 
 type DailyRow = {
@@ -37,6 +41,8 @@ type DailyRow = {
 }
 
 type DailyReportResponse = {
+  totals_page?: DailyTotals
+  grand_totals?: DailyTotals
   totals?: DailyTotals
   rows?: DailyRow[]
   pagination?: Partial<Pagination>
@@ -113,7 +119,8 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
     date_to: resolvedParams.dateTo,
   })
   const [rows, setRows] = useState<DailyRow[]>([])
-  const [summary, setSummary] = useState<DailyTotals | null>(null)
+  const [totalsPage, setTotalsPage] = useState<DailyTotals | null>(null)
+  const [grandTotals, setGrandTotals] = useState<DailyTotals | null>(null)
   const [meta, setMeta] = useState<ReportMeta | null>(null)
   const [pagination, setPagination] = useState<Pagination>({
     total: 0,
@@ -188,7 +195,8 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         )
         if (!response.ok) {
           setRows([])
-          setSummary(null)
+          setTotalsPage(null)
+          setGrandTotals(null)
           setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
           setHasServerPagination(false)
           return
@@ -196,7 +204,8 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         const data: DailyReportResponse = await response.json()
         const responseRows = data.rows ?? []
         setRows(responseRows)
-        setSummary(data.totals ?? null)
+        setTotalsPage(data.totals_page ?? null)
+        setGrandTotals(data.grand_totals ?? data.totals ?? null)
         setMeta(data.meta ?? null)
         const hasPagination = Boolean(data.pagination)
         setHasServerPagination(hasPagination)
@@ -221,7 +230,8 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
       } catch (error) {
         if (controller.signal.aborted) return
         setRows([])
-        setSummary(null)
+        setTotalsPage(null)
+        setGrandTotals(null)
         setMeta(null)
         setHasServerPagination(false)
         setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
@@ -296,11 +306,10 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
   }, [resolvedParams.hasDateFrom, resolvedParams.hasDateTo, showingRange])
 
   const summaryCards = useMemo(() => {
-    const revenue = summary?.revenue ?? 0
-    const cogs = summary?.cogs ?? null
-    const grossProfit = summary?.gross_profit ?? null
-    const margin =
-      grossProfit !== null ? (revenue > 0 ? (grossProfit / revenue) * 100 : 0) : null
+    const revenue = grandTotals?.revenue ?? null
+    const cogs = grandTotals?.cogs ?? null
+    const grossProfit = grandTotals?.gross_profit ?? null
+    const margin = grandTotals?.gross_margin ?? null
 
     return [
       { label: 'Revenue', value: revenue, isMoney: true },
@@ -308,7 +317,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
       { label: 'Gross Profit', value: grossProfit, isMoney: true },
       { label: 'Gross Margin %', value: margin, isMoney: false },
     ]
-  }, [summary])
+  }, [grandTotals])
 
   const visibleRows = useMemo(() => {
     if (hasServerPagination) return rows
@@ -317,6 +326,31 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
     const end = start + resolvedParams.perPage
     return rows.slice(start, end)
   }, [hasServerPagination, pagination.current_page, resolvedParams.page, resolvedParams.perPage, rows])
+
+  const pageTotals = useMemo(() => {
+    if (totalsPage) return totalsPage
+    if (visibleRows.length === 0) {
+      return null
+    }
+    const totals = visibleRows.reduce(
+      (acc, row) => {
+        acc.orders_count += row.orders_count
+        acc.items_count += row.items_count
+        acc.revenue += row.revenue
+        acc.cogs += row.cogs ?? 0
+        acc.gross_profit += row.gross_profit ?? 0
+        return acc
+      },
+      {
+        orders_count: 0,
+        items_count: 0,
+        revenue: 0,
+        cogs: 0,
+        gross_profit: 0,
+      },
+    )
+    return totals
+  }, [totalsPage, visibleRows])
 
   const buildOrdersLink = (date: string) => {
     const params = new URLSearchParams({
@@ -554,6 +588,32 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
               ))
             )}
           </tbody>
+          <tfoot>
+            <tr className="bg-gray-100 font-semibold">
+              <td className="border border-gray-300 px-4 py-2 text-left">Page Totals</td>
+              <td className="border border-gray-300 px-4 py-2 text-left text-sm">
+                {pageTotals?.orders_count ?? '—'}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-left text-sm">
+                {pageTotals?.items_count ?? '—'}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-left text-sm">
+                {pageTotals?.revenue === undefined || pageTotals?.revenue === null
+                  ? '—'
+                  : `RM ${formatAmount(pageTotals.revenue)}`}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-left text-sm">
+                {pageTotals?.cogs === undefined || pageTotals?.cogs === null
+                  ? '—'
+                  : `RM ${formatAmount(pageTotals.cogs)}`}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-left text-sm">
+                {pageTotals?.gross_profit === undefined || pageTotals?.gross_profit === null
+                  ? '—'
+                  : `RM ${formatAmount(pageTotals.gross_profit)}`}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
