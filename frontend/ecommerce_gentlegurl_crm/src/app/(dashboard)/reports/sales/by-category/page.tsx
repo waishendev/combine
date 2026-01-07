@@ -28,10 +28,10 @@ export default async function SalesByCategoryPage() {
         <span className="text-gray-500">Reports</span>
         <span className="mx-1">/</span>
         <Link href="/reports/sales/by-category" className="text-blue-600 hover:underline">
-          Sales by Category
+          Category Sales
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-6">Sales by Category</h2>
+      <h2 className="text-3xl font-semibold mb-6">Category Sales</h2>
       <SalesReportPage reportType="by-category" canExport={canExport} />
     </div>
   )

@@ -639,7 +639,7 @@ export default function SalesReportPage({
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="text-sm font-semibold text-slate-700">
             {reportType === 'by-category'
-              ? 'Sales by Category'
+              ? 'Category Sales'
               : reportType === 'by-products'
               ? 'Product Sales (by Revenue)'
               : 'Customer Sales (by Revenue)'}

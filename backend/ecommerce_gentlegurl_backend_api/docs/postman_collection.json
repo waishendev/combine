@@ -4129,7 +4129,7 @@
           "response": []
         },
         {
-          "name": "Sales By Category",
+          "name": "Category Sales",
           "request": {
             "method": "GET",
             "header": [],

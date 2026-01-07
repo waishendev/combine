@@ -4435,7 +4435,7 @@
               "response": []
             },
             {
-              "name": "Sales By Category",
+              "name": "Category Sales",
               "request": {
                 "method": "GET",
                 "header": [],
@@ -4616,7 +4616,7 @@
               "response": []
             },
             {
-              "name": "Export Sales By Category",
+              "name": "Export Category Sales",
               "request": {
                 "method": "GET",
                 "header": [],
@@ -4643,7 +4643,7 @@
                     }
                   ]
                 },
-                "description": "Export sales by category CSV. Requires permission: ecommerce.reports.sales.export"
+                "description": "Export Category Sales CSV. Requires permission: ecommerce.reports.sales.export"
               },
               "response": []
             },
