@@ -15,10 +15,10 @@ class SalesReportController extends Controller
 
     public function overview(Request $request)
     {
-        [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request, 0);
+        [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $data = $this->service->getOverview($start, $end);
 
-        $this->attachMeta($request, $data, $defaultRangeApplied);
+        $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end);
 
         return response()->json($data);
     }
@@ -29,7 +29,7 @@ class SalesReportController extends Controller
         $groupBy = $request->query('group_by', 'day');
         $data = $this->service->getDaily($start, $end, $groupBy);
 
-        $this->attachMeta($request, $data, $defaultRangeApplied, [
+        $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'group_by' => $groupBy,
         ]);
 
@@ -43,7 +43,7 @@ class SalesReportController extends Controller
         $page = (int) $request->query('page', 1);
         $data = $this->service->getByCategory($start, $end, $perPage, $page);
 
-        $this->attachMeta($request, $data, $defaultRangeApplied, [
+        $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'per_page' => $perPage,
             'page' => $page,
         ]);
@@ -58,7 +58,7 @@ class SalesReportController extends Controller
         $page = (int) $request->query('page', 1);
         $data = $this->service->getTopProducts($start, $end, $perPage, $page);
 
-        $this->attachMeta($request, $data, $defaultRangeApplied, [
+        $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'per_page' => $perPage,
             'page' => $page,
         ]);
@@ -73,7 +73,7 @@ class SalesReportController extends Controller
         $page = (int) $request->query('page', 1);
         $data = $this->service->getTopCustomers($start, $end, $perPage, $page);
 
-        $this->attachMeta($request, $data, $defaultRangeApplied, [
+        $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'per_page' => $perPage,
             'page' => $page,
         ]);
@@ -81,32 +81,44 @@ class SalesReportController extends Controller
         return response()->json($data);
     }
 
-    private function resolveDateRange(Request $request, int $defaultDays = 30): array
+    private function resolveDateRange(Request $request): array
     {
         $hasDateFrom = $request->filled('date_from');
         $hasDateTo = $request->filled('date_to');
+        $defaultRangeApplied = !($hasDateFrom && $hasDateTo);
 
-        $endDate = $hasDateTo ? Carbon::parse($request->query('date_to')) : Carbon::today();
-        $end = $endDate->copy()->endOfDay();
-
-        if ($hasDateFrom) {
-            $start = Carbon::parse($request->query('date_from'))->startOfDay();
-        } elseif ($defaultDays === 0) {
-            $start = Carbon::today()->startOfDay();
+        if ($defaultRangeApplied) {
+            $today = Carbon::today();
+            $start = $today->copy()->startOfMonth();
+            $end = $today->copy()->endOfMonth()->endOfDay();
         } else {
-            $start = $endDate->copy()->subDays($defaultDays - 1)->startOfDay();
+            $start = Carbon::parse($request->query('date_from'))->startOfDay();
+            $end = Carbon::parse($request->query('date_to'))->endOfDay();
         }
 
-        return [$start, $end, !($hasDateFrom && $hasDateTo)];
+        return [$start, $end, $defaultRangeApplied];
     }
 
-    private function attachMeta(Request $request, array &$data, bool $defaultRangeApplied, array $context = []): void
+    private function attachMeta(
+        Request $request,
+        array &$data,
+        bool $defaultRangeApplied,
+        Carbon $start,
+        Carbon $end,
+        array $context = []
+    ): void
     {
+        $profitSupported = $this->service->profitSupported();
         $meta = [
             'default_range_applied' => $defaultRangeApplied,
             'valid_statuses' => SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT,
             'timestamp_field' => 'placed_at_or_created_at',
-            'profit_supported' => $this->service->profitSupported(),
+            'profit_supported' => $profitSupported,
+            'costing' => [
+                'missing_cost_products_count' => $profitSupported
+                    ? $this->service->missingCostProductsCount($start, $end)
+                    : null,
+            ],
         ];
 
         if ($request->boolean('debug')) {

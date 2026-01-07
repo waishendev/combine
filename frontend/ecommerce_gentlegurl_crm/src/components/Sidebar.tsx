@@ -237,10 +237,22 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
         icon: 'fa-solid fa-chart-line',
         children: [
           {
-            key: 'sales-report',
-            label: 'Sales Report',
-            href: '/reports/sales',
-            requiredPermission: 'ecommerce.reports.view',
+            key: 'sales-by-category',
+            label: 'Sales by Category',
+            href: '/reports/sales/by-category',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'sales-top-products',
+            label: 'Top Products',
+            href: '/reports/sales/top-products',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'sales-top-customers',
+            label: 'Top Customers',
+            href: '/reports/sales/top-customers',
+            requiredPermission: 'ecommerce.reports.sales.view',
           },
           // 以后可加：
           // orders-report
