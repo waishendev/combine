@@ -301,7 +301,7 @@ class SalesReportService
     private function baseOrdersQuery(Carbon $start, Carbon $end): Builder
     {
         return Order::query()
-            ->whereBetween(DB::raw('COALESCE(placed_at, created_at)'), [$start, $end])
+            ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
             ->where('payment_status', 'paid')
             ->whereIn('status', self::VALID_ORDER_STATUSES_FOR_REPORT);
     }
