@@ -14,6 +14,9 @@ export default async function SalesDailyReport() {
   const hasPermission = user.permissions.some(
     (perm) => perm === 'ecommerce.reports.sales.view',
   )
+  const canExport = user.permissions.some(
+    (perm) => perm === 'ecommerce.reports.sales.export',
+  )
 
   if (!hasPermission) {
     redirect('/dashboard')
@@ -29,7 +32,7 @@ export default async function SalesDailyReport() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Sales Summary (Daily)</h2>
-      <SalesDailyReportPage />
+      <SalesDailyReportPage canExport={canExport} />
     </div>
   )
 }

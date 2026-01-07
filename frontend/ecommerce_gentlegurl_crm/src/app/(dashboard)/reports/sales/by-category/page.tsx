@@ -14,6 +14,9 @@ export default async function SalesByCategoryPage() {
   const hasPermission = user.permissions.some(
     (perm) => perm === 'ecommerce.reports.sales.view',
   )
+  const canExport = user.permissions.some(
+    (perm) => perm === 'ecommerce.reports.sales.export',
+  )
 
   if (!hasPermission) {
     redirect('/dashboard')
@@ -29,7 +32,7 @@ export default async function SalesByCategoryPage() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Sales by Category</h2>
-      <SalesReportPage reportType="by-category" />
+      <SalesReportPage reportType="by-category" canExport={canExport} />
     </div>
   )
 }
