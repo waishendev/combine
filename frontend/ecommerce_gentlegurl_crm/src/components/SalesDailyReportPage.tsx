@@ -477,7 +477,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between text-xs text-slate-400">
-          <span className="font-semibold uppercase tracking-wide text-slate-500">Summary</span>
+          <span className="font-semibold uppercase tracking-wide text-slate-500">Summary (Grand Total)</span>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((card) => {
