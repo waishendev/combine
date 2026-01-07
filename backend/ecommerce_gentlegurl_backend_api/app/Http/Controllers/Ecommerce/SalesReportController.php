@@ -15,44 +15,62 @@ class SalesReportController extends Controller
 
     public function overview(Request $request)
     {
-        [$start, $end] = $this->resolveDateRange($request, 0);
+        [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request, 0);
         $data = $this->service->getOverview($start, $end);
+
+        $this->attachMeta($request, $data, $defaultRangeApplied);
 
         return response()->json($data);
     }
 
     public function daily(Request $request)
     {
-        [$start, $end] = $this->resolveDateRange($request);
+        [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $groupBy = $request->query('group_by', 'day');
         $data = $this->service->getDaily($start, $end, $groupBy);
+
+        $this->attachMeta($request, $data, $defaultRangeApplied, [
+            'group_by' => $groupBy,
+        ]);
 
         return response()->json($data);
     }
 
     public function byCategory(Request $request)
     {
-        [$start, $end] = $this->resolveDateRange($request);
+        [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $limit = (int) $request->query('limit', 50);
         $data = $this->service->getByCategory($start, $end, $limit);
+
+        $this->attachMeta($request, $data, $defaultRangeApplied, [
+            'limit' => $limit,
+        ]);
 
         return response()->json($data);
     }
 
     public function topProducts(Request $request)
     {
-        [$start, $end] = $this->resolveDateRange($request);
+        [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $limit = (int) $request->query('limit', 20);
         $data = $this->service->getTopProducts($start, $end, $limit);
+
+        $this->attachMeta($request, $data, $defaultRangeApplied, [
+            'limit' => $limit,
+        ]);
 
         return response()->json($data);
     }
 
     public function topCustomers(Request $request)
     {
-        [$start, $end] = $this->resolveDateRange($request);
+        [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
         $limit = (int) $request->query('limit', 20);
         $data = $this->service->getTopCustomers($start, $end, $limit);
+
+        $this->attachMeta($request, $data, $defaultRangeApplied, [
+            'limit' => $limit,
+        ]);
 
         return response()->json($data);
     }
@@ -73,6 +91,29 @@ class SalesReportController extends Controller
             $start = $endDate->copy()->subDays($defaultDays - 1)->startOfDay();
         }
 
-        return [$start, $end];
+        return [$start, $end, !($hasDateFrom && $hasDateTo)];
+    }
+
+    private function attachMeta(Request $request, array &$data, bool $defaultRangeApplied, array $context = []): void
+    {
+        $meta = [
+            'default_range_applied' => $defaultRangeApplied,
+            'valid_statuses' => SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT,
+            'timestamp_field' => 'placed_at_or_created_at',
+            'profit_supported' => $this->service->profitSupported(),
+        ];
+
+        if ($request->boolean('debug')) {
+            $meta['debug'] = [
+                'filters' => [
+                    'payment_status' => 'paid',
+                    'statuses' => SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT,
+                    'timestamp_field' => 'placed_at_or_created_at',
+                ],
+                'context' => $context,
+            ];
+        }
+
+        $data['meta'] = $meta;
     }
 }
