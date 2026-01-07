@@ -105,6 +105,11 @@ type ShopSettingsResponse = {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+type FeedbackState = {
+  type: 'success' | 'error'
+  message: string
+}
+
 const defaultContactSettings = {
   enabled: false,
   phone: '',
@@ -244,6 +249,14 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
   const [pageReviewsSaveState, setPageReviewsSaveState] = useState<SaveState>('idle')
   const [productReviewsSaveState, setProductReviewsSaveState] = useState<SaveState>('idle')
   const [returnSaveState, setReturnSaveState] = useState<SaveState>('idle')
+  const [contactFeedback, setContactFeedback] = useState<FeedbackState | null>(null)
+  const [homepageFeedback, setHomepageFeedback] = useState<FeedbackState | null>(null)
+  const [shippingFeedback, setShippingFeedback] = useState<FeedbackState | null>(null)
+  const [footerFeedback, setFooterFeedback] = useState<FeedbackState | null>(null)
+  const [invoiceProfileFeedback, setInvoiceProfileFeedback] = useState<FeedbackState | null>(null)
+  const [pageReviewsFeedback, setPageReviewsFeedback] = useState<FeedbackState | null>(null)
+  const [productReviewsFeedback, setProductReviewsFeedback] = useState<FeedbackState | null>(null)
+  const [returnFeedback, setReturnFeedback] = useState<FeedbackState | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   useEffect(() => {
@@ -423,6 +436,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     if (!canEdit) return
     setContactSaveState('saving')
     setError(null)
+    setContactFeedback(null)
 
     try {
       const response = await fetch('/api/ecommerce/shop-settings/shop_contact_widget', {
@@ -444,10 +458,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       }
 
       setContactSaveState('saved')
+      setContactFeedback({
+        type: 'success',
+        message: 'WhatsApp contact widget settings saved.',
+      })
     } catch (err) {
       console.error(err)
       setContactSaveState('error')
       setError('Unable to save WhatsApp contact widget settings.')
+      setContactFeedback({
+        type: 'error',
+        message: 'Unable to save WhatsApp contact widget settings.',
+      })
     } finally {
       setTimeout(() => setContactSaveState('idle'), 2000)
     }
@@ -458,6 +480,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     if (!canEdit) return
     setHomepageSaveState('saving')
     setError(null)
+    setHomepageFeedback(null)
 
     try {
       const response = await fetch('/api/ecommerce/shop-settings/homepage_products', {
@@ -476,10 +499,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       }
 
       setHomepageSaveState('saved')
+      setHomepageFeedback({
+        type: 'success',
+        message: 'Homepage product settings saved.',
+      })
     } catch (err) {
       console.error(err)
       setHomepageSaveState('error')
       setError('Unable to save homepage product settings.')
+      setHomepageFeedback({
+        type: 'error',
+        message: 'Unable to save homepage product settings.',
+      })
     } finally {
       setTimeout(() => setHomepageSaveState('idle'), 2000)
     }
@@ -490,6 +521,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     if (!canEdit) return
     setShippingSaveState('saving')
     setError(null)
+    setShippingFeedback(null)
 
     try {
       const response = await fetch('/api/ecommerce/shop-settings/shipping', {
@@ -554,10 +586,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       }
 
       setShippingSaveState('saved')
+      setShippingFeedback({
+        type: 'success',
+        message: 'Shipping settings saved.',
+      })
     } catch (err) {
       console.error(err)
       setShippingSaveState('error')
       setError('Unable to save shipping settings.')
+      setShippingFeedback({
+        type: 'error',
+        message: 'Unable to save shipping settings.',
+      })
     } finally {
       setTimeout(() => setShippingSaveState('idle'), 2000)
     }
@@ -568,6 +608,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     if (!canEdit) return
     setFooterSaveState('saving')
     setError(null)
+    setFooterFeedback(null)
 
     try {
       const response = await fetch('/api/ecommerce/shop-settings/footer', {
@@ -602,10 +643,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       }
 
       setFooterSaveState('saved')
+      setFooterFeedback({
+        type: 'success',
+        message: 'Footer settings saved.',
+      })
     } catch (err) {
       console.error(err)
       setFooterSaveState('error')
       setError('Unable to save footer settings.')
+      setFooterFeedback({
+        type: 'error',
+        message: 'Unable to save footer settings.',
+      })
     } finally {
       setTimeout(() => setFooterSaveState('idle'), 2000)
     }
@@ -616,6 +665,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     if (!canEdit) return
     setInvoiceProfileSaveState('saving')
     setError(null)
+    setInvoiceProfileFeedback(null)
 
     try {
       const response = await fetch('/api/ecommerce/shop-settings/invoice_profile', {
@@ -641,10 +691,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       }
 
       setInvoiceProfileSaveState('saved')
+      setInvoiceProfileFeedback({
+        type: 'success',
+        message: 'Invoice settings saved.',
+      })
     } catch (err) {
       console.error(err)
       setInvoiceProfileSaveState('error')
       setError('Unable to save invoice profile settings.')
+      setInvoiceProfileFeedback({
+        type: 'error',
+        message: 'Unable to save invoice settings.',
+      })
     } finally {
       setTimeout(() => setInvoiceProfileSaveState('idle'), 2000)
     }
@@ -655,6 +713,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     if (!canEdit) return
     setPageReviewsSaveState('saving')
     setError(null)
+    setPageReviewsFeedback(null)
 
     try {
       const response = await fetch('/api/ecommerce/shop-settings/page_reviews', {
@@ -672,10 +731,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       }
 
       setPageReviewsSaveState('saved')
+      setPageReviewsFeedback({
+        type: 'success',
+        message: 'Page reviews settings saved.',
+      })
     } catch (err) {
       console.error(err)
       setPageReviewsSaveState('error')
       setError('Unable to save page reviews settings.')
+      setPageReviewsFeedback({
+        type: 'error',
+        message: 'Unable to save page reviews settings.',
+      })
     } finally {
       setTimeout(() => setPageReviewsSaveState('idle'), 2000)
     }
@@ -686,6 +753,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     if (!canEdit) return
     setProductReviewsSaveState('saving')
     setError(null)
+    setProductReviewsFeedback(null)
 
     try {
       const response = await fetch('/api/ecommerce/shop-settings/product_reviews', {
@@ -704,10 +772,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       }
 
       setProductReviewsSaveState('saved')
+      setProductReviewsFeedback({
+        type: 'success',
+        message: 'Product reviews settings saved.',
+      })
     } catch (err) {
       console.error(err)
       setProductReviewsSaveState('error')
       setError('Unable to save product reviews settings.')
+      setProductReviewsFeedback({
+        type: 'error',
+        message: 'Unable to save product reviews settings.',
+      })
     } finally {
       setTimeout(() => setProductReviewsSaveState('idle'), 2000)
     }
@@ -718,6 +794,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     if (!canEdit) return
     setReturnSaveState('saving')
     setError(null)
+    setReturnFeedback(null)
 
     try {
       const windowResponse = await fetch('/api/ecommerce/shop-settings/ecommerce.return_window_days', {
@@ -756,10 +833,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
       setReturnSaveState('saved')
       setToastMessage('Return settings saved successfully.')
       setTimeout(() => setToastMessage(null), 2000)
+      setReturnFeedback({
+        type: 'success',
+        message: 'Return settings saved.',
+      })
     } catch (err) {
       console.error(err)
       setReturnSaveState('error')
       setError('Unable to save return settings.')
+      setReturnFeedback({
+        type: 'error',
+        message: 'Unable to save return settings.',
+      })
     } finally {
       setTimeout(() => setReturnSaveState('idle'), 2000)
     }
@@ -810,6 +895,24 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handleContactSubmit}>
+          {contactFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                contactFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    contactFeedback.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{contactFeedback.message}</p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
             <div>
               <p className="text-sm font-medium text-slate-900">Enable WhatsApp Button</p>
@@ -885,6 +988,24 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-6" onSubmit={handleFooterSubmit}>
+          {footerFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                footerFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    footerFeedback.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{footerFeedback.message}</p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
             <div>
               <p className="text-sm font-medium text-slate-900">Enable Footer</p>
@@ -1122,6 +1243,26 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handleInvoiceProfileSubmit}>
+          {invoiceProfileFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                invoiceProfileFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    invoiceProfileFeedback.type === 'success'
+                      ? 'fa-circle-check'
+                      : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{invoiceProfileFeedback.message}</p>
+              </div>
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 md:col-span-2">
               <span className="block text-sm font-medium text-slate-800">Company Logo URL</span>
@@ -1294,6 +1435,26 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handlePageReviewsSubmit}>
+          {pageReviewsFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                pageReviewsFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    pageReviewsFeedback.type === 'success'
+                      ? 'fa-circle-check'
+                      : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{pageReviewsFeedback.message}</p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
             <div>
               <p className="text-sm font-medium text-slate-900">Enable Page Reviews</p>
@@ -1339,6 +1500,26 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handleProductReviewsSubmit}>
+          {productReviewsFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                productReviewsFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    productReviewsFeedback.type === 'success'
+                      ? 'fa-circle-check'
+                      : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{productReviewsFeedback.message}</p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
             <div>
               <p className="text-sm font-medium text-slate-900">Enable Product Reviews</p>
@@ -1403,6 +1584,24 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handleReturnSettingsSubmit}>
+          {returnFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                returnFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    returnFeedback.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{returnFeedback.message}</p>
+              </div>
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Return Window Days</span>
@@ -1464,6 +1663,24 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handleHomepageSubmit}>
+          {homepageFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                homepageFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    homepageFeedback.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{homepageFeedback.message}</p>
+              </div>
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">New Products Days</span>
@@ -1517,6 +1734,24 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </div>
 
         <form className="mt-6 space-y-5" onSubmit={handleShippingSubmit}>
+          {shippingFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                shippingFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    shippingFeedback.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{shippingFeedback.message}</p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-4">
             <div>
               <p className="text-sm font-medium text-slate-900">Enable Shipping</p>
