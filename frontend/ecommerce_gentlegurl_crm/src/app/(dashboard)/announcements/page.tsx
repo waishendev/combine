@@ -29,7 +29,7 @@ export default async function AnnouncementsPage() {
   return (
     <div className="overflow-y-auto py-6 px-10">
       <div className="text-xs mb-4">
-        <span className="text-gray-500">Announcements Management</span>
+        <span className="text-gray-500">Marketing</span>
         <span className="mx-1">/</span>
         <Link
           href="/announcements"

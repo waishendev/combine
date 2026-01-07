@@ -31,17 +31,17 @@ export default async function StorePage() {
   return (
     <div className="overflow-y-auto py-6 px-10">
       <div className="text-xs mb-4">
-        <span className="text-gray-500">Store Management</span>
+        <span className="text-gray-500">Catalog</span>
         <span className="mx-1">/</span>
         <Link
           href="/store"
           className="text-blue-600 hover:underline"
         >
-          Store List
+          Stores
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        Store List
+        Stores
       </h2>
       <StoreTable
         permissions={user.permissions}

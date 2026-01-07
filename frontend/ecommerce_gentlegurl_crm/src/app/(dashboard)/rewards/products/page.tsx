@@ -29,7 +29,7 @@ export default async function RewardProductsPage() {
   return (
     <div className="overflow-y-auto py-6 px-10">
       <div className="text-xs mb-4">
-        <span className="text-gray-500">{t('sidebar.admin.management')}</span>
+        <span className="text-gray-500">Marketing</span>
         <span className="mx-1">/</span>
         <span className="text-gray-500">Rewards</span>
         <span className="mx-1">/</span>

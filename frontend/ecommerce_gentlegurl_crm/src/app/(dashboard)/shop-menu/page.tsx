@@ -31,17 +31,17 @@ export default async function ShopMenuPage() {
   return (
     <div className="overflow-y-auto py-6 px-10">
       <div className="text-xs mb-4">
-        <span className="text-gray-500">Shop Menu Management</span>
+        <span className="text-gray-500">Catalog</span>
         <span className="mx-1">/</span>
         <Link
           href="/shop-menu"
           className="text-blue-600 hover:underline"
         >
-          Shop Menu List
+          Shop Menu
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        Shop Menu List
+        Shop Menu
       </h2>
       <ShopMenuTable
         permissions={user.permissions}

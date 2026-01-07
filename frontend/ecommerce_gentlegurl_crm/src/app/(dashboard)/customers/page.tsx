@@ -31,17 +31,17 @@ export default async function CustomersPage() {
   return (
     <div className="overflow-y-auto py-6 px-10">
       <div className="text-xs mb-4">
-        <span className="text-gray-500">Customer Management</span>
+        <span className="text-gray-500">Customers & Loyalty</span>
         <span className="mx-1">/</span>
         <Link
           href="/customers"
           className="text-blue-600 hover:underline"
         >
-          Customer List
+          Customers
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        Customer List
+        Customers
       </h2>
       <CustomerTable
         permissions={user.permissions}

@@ -31,17 +31,17 @@ export default async function VoucherPage() {
   return (
     <div className="overflow-y-auto py-6 px-10">
       <div className="text-xs mb-4">
-        <span className="text-gray-500">Voucher Management</span>
+        <span className="text-gray-500">Marketing</span>
         <span className="mx-1">/</span>
         <Link
           href="/voucher"
           className="text-blue-600 hover:underline"
         >
-          Voucher List
+          Vouchers
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        Voucher List
+        Vouchers
       </h2>
       <VoucherTable
         permissions={user.permissions}

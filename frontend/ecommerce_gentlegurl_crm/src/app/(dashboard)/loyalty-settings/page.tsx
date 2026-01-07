@@ -5,9 +5,6 @@ import { redirect } from 'next/navigation'
 
 import LoyaltySettingsForm from '@/components/LoyaltySettingsForm'
 import { getCurrentUser } from '@/lib/auth'
-import type { LangCode } from '@/lib/i18n'
-import { getTranslator } from '@/lib/i18n-server'
-
 export default async function LoyaltySettingsPage() {
   const user = await getCurrentUser()
 
@@ -27,13 +24,10 @@ export default async function LoyaltySettingsPage() {
 
   const canUpdate = user.permissions.includes('ecommerce.loyalty.settings.update')
 
-  const lang: LangCode = 'EN'
-  const t = await getTranslator(lang)
-
   return (
     <div className="overflow-y-auto py-6 px-10">
       <div className="text-xs mb-4 flex items-center text-gray-500">
-        <span>{t('Dashboard')}</span>
+        <span>Customers & Loyalty</span>
         <span className="mx-1">/</span>
         <Link
           href="/settings"

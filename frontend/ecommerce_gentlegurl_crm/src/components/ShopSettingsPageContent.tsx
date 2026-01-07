@@ -1814,7 +1814,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
 
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-900">Free Shipping</p>
+                  <p className="text-sm font-medium text-slate-900 mt-3">Free Shipping</p>
                   <p className="text-xs text-slate-500">Offer free shipping for this zone.</p>
                 </div>
                 <label className="relative inline-flex cursor-pointer items-center isolate">
@@ -1918,7 +1918,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
 
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-900">Free Shipping</p>
+                  <p className="text-sm font-medium text-slate-900 mt-3">Free Shipping</p>
                   <p className="text-xs text-slate-500">Offer free shipping for this zone.</p>
                 </div>
                 <label className="relative inline-flex cursor-pointer items-center isolate">
@@ -2022,7 +2022,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
 
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-900">Free Shipping</p>
+                  <p className="text-sm font-medium text-slate-900 mt-3">Free Shipping</p>
                   <p className="text-xs text-slate-500">Offer free shipping for this zone.</p>
                 </div>
                 <label className="relative inline-flex cursor-pointer items-center isolate">
