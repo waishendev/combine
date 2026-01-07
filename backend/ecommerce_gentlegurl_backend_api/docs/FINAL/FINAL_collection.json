@@ -4305,6 +4305,73 @@
           ]
         },
         {
+          "name": "Dashboard",
+          "item": [
+            {
+              "name": "Overview",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ecommerce/dashboard/overview?date_from=&date_to=",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ecommerce",
+                    "dashboard",
+                    "overview"
+                  ],
+                  "query": [
+                    {
+                      "key": "date_from",
+                      "value": ""
+                    },
+                    {
+                      "key": "date_to",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Dashboard overview KPI summary with comparisons, monthly sales, and top products."
+              },
+              "response": [
+                {
+                  "name": "Example Response",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/ecommerce/dashboard/overview?date_from=&date_to=",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "ecommerce",
+                        "dashboard",
+                        "overview"
+                      ],
+                      "query": [
+                        {
+                          "key": "date_from",
+                          "value": ""
+                        },
+                        {
+                          "key": "date_to",
+                          "value": ""
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "body": "{\n  \"date_range\": {\n    \"from\": \"2026-01-01\",\n    \"to\": \"2026-01-31\"\n  },\n  \"kpis\": {\n    \"revenue\": {\n      \"current\": 29585,\n      \"previous\": 25000,\n      \"delta\": 4585,\n      \"delta_percent\": 18.34,\n      \"trend\": \"up\"\n    },\n    \"orders_count\": {\n      \"current\": 3,\n      \"previous\": 5,\n      \"delta\": -2,\n      \"delta_percent\": -40,\n      \"trend\": \"down\"\n    },\n    \"new_customers\": {\n      \"current\": 12,\n      \"previous\": 8,\n      \"delta\": 4,\n      \"delta_percent\": 50,\n      \"trend\": \"up\"\n    },\n    \"refund_amount\": {\n      \"current\": 500,\n      \"previous\": 200,\n      \"delta\": 300,\n      \"delta_percent\": 150,\n      \"trend\": \"up\"\n    }\n  },\n  \"charts\": {\n    \"monthly_sales\": [\n      {\n        \"month\": \"2025-09\",\n        \"revenue\": 12000,\n        \"orders_count\": 20\n      },\n      {\n        \"month\": \"2025-10\",\n        \"revenue\": 18000,\n        \"orders_count\": 28\n      },\n      {\n        \"month\": \"2025-11\",\n        \"revenue\": 22000,\n        \"orders_count\": 35\n      },\n      {\n        \"month\": \"2025-12\",\n        \"revenue\": 16000,\n        \"orders_count\": 26\n      },\n      {\n        \"month\": \"2026-01\",\n        \"revenue\": 29585,\n        \"orders_count\": 3\n      }\n    ]\n  },\n  \"top_products\": [\n    {\n      \"product_id\": 1,\n      \"product_name\": \"iPhone 15 Pro Max\",\n      \"sku\": \"IP15PM-256-BLK\",\n      \"qty\": 3,\n      \"revenue\": 14997,\n      \"refund_amount\": 0,\n      \"refund_percent\": 0\n    }\n  ]\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "name": "Reports",
           "item": [
             {

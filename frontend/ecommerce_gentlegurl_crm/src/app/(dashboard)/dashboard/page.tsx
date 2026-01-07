@@ -48,26 +48,43 @@ type DashboardOverviewResponse = {
   top_products: TopProduct[]
 }
 
-const numberFormatter = new Intl.NumberFormat('en-US', {
+const numberFormatter = new Intl.NumberFormat('en-MY', {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 })
 
-const formatCurrency = (value: number) => `$${numberFormatter.format(value)}`
+const currencyFormatter = new Intl.NumberFormat('en-MY', {
+  style: 'currency',
+  currency: 'MYR',
+})
+
+const formatCurrency = (value: number) => currencyFormatter.format(value)
 
 const formatNumber = (value: number) => numberFormatter.format(value)
 
 const formatPercent = (value: number) => `${value.toFixed(2)}%`
 
-const formatSigned = (value: number, formatter: (value: number) => string) => {
-  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
-  return `${sign}${formatter(Math.abs(value))}`
+const buildBadgeText = (comparison: KpiComparison) => {
+  if (comparison.previous === 0 && comparison.current > 0) {
+    return '↑ new'
+  }
+
+  if (comparison.trend === 'flat') {
+    return `— ${formatPercent(0)}`
+  }
+
+  const sign = comparison.trend === 'down' ? '-' : '+'
+  return `${comparison.trend === 'down' ? '↓' : '↑'} ${sign}${formatPercent(Math.abs(comparison.delta_percent))}`
 }
 
-const buildComparisonText = (label: string, comparison: KpiComparison, formatter: (value: number) => string) => {
-  const deltaText = formatSigned(comparison.delta, formatter)
-  return `${label} ${deltaText} (${formatPercent(comparison.delta_percent)})`
-}
+const buildTooltipLines = (
+  comparison: KpiComparison,
+  formatter: (value: number) => string,
+) => [
+  `This month: ${formatter(comparison.current)}`,
+  `Last month: ${formatter(comparison.previous)}`,
+  `Delta: ${formatter(comparison.delta)}`,
+]
 
 export default function DashboardPage() {
   const { t } = useI18n()
@@ -125,6 +142,14 @@ export default function DashboardPage() {
   const maxRevenue = useMemo(() => {
     return monthlySales.reduce((max, item) => Math.max(max, item.revenue), 0)
   }, [monthlySales])
+  const chartTicks = useMemo(() => {
+    if (maxRevenue <= 0) {
+      return [0, 0, 0, 0]
+    }
+
+    const step = maxRevenue / 3
+    return [maxRevenue, maxRevenue - step, maxRevenue - step * 2, 0]
+  }, [maxRevenue])
 
   const stats = useMemo(() => {
     if (!data) {
@@ -135,25 +160,29 @@ export default function DashboardPage() {
       {
         title: t('dashboard.revenue'),
         value: formatCurrency(data.kpis.revenue.current),
-        comparisonText: buildComparisonText('vs last month', data.kpis.revenue, formatCurrency),
+        badgeText: buildBadgeText(data.kpis.revenue),
+        tooltipLines: buildTooltipLines(data.kpis.revenue, formatCurrency),
         trend: data.kpis.revenue.trend,
       },
       {
         title: t('dashboard.orders'),
         value: formatNumber(data.kpis.orders_count.current),
-        comparisonText: buildComparisonText('vs last month', data.kpis.orders_count, formatNumber),
+        badgeText: buildBadgeText(data.kpis.orders_count),
+        tooltipLines: buildTooltipLines(data.kpis.orders_count, formatNumber),
         trend: data.kpis.orders_count.trend,
       },
       {
         title: t('dashboard.newCustomers'),
         value: formatNumber(data.kpis.new_customers.current),
-        comparisonText: buildComparisonText('vs last month', data.kpis.new_customers, formatNumber),
+        badgeText: buildBadgeText(data.kpis.new_customers),
+        tooltipLines: buildTooltipLines(data.kpis.new_customers, formatNumber),
         trend: data.kpis.new_customers.trend,
       },
       {
         title: 'Refund Amount',
         value: formatCurrency(data.kpis.refund_amount.current),
-        comparisonText: buildComparisonText('vs last month', data.kpis.refund_amount, formatCurrency),
+        badgeText: buildBadgeText(data.kpis.refund_amount),
+        tooltipLines: buildTooltipLines(data.kpis.refund_amount, formatCurrency),
         trend: data.kpis.refund_amount.trend,
       },
     ]
@@ -229,32 +258,39 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="flex items-end gap-4 h-44">
-                {monthlySales.map((month) => {
-                  const heightPercent = maxRevenue > 0 ? Math.max(10, (month.revenue / maxRevenue) * 100) : 10
-                  return (
-                    <div key={month.month} className="flex flex-1 flex-col items-center gap-2">
-                      <div className="flex h-32 w-full items-end">
-                        <div
-                          className="w-full rounded-md bg-indigo-500"
-                          style={{ height: `${heightPercent}%` }}
-                        />
+            <div className="h-56">
+              <div className="relative flex h-full">
+                <div className="absolute inset-y-0 left-0 flex w-16 flex-col justify-between text-[11px] text-slate-400">
+                  {chartTicks.map((tick, index) => (
+                    <span key={`tick-${index}`}>{currencyFormatter.format(tick)}</span>
+                  ))}
+                </div>
+                <div className="ml-16 flex h-full w-full items-end gap-4">
+                  {monthlySales.map((month) => {
+                    const heightPercent = maxRevenue > 0 ? (month.revenue / maxRevenue) * 100 : 0
+                    const aov = month.orders_count > 0 ? month.revenue / month.orders_count : 0
+
+                    return (
+                      <div key={month.month} className="group relative flex h-full flex-1 flex-col items-center justify-end">
+                        <div className="flex h-full w-full items-end">
+                          <div
+                            className="w-full rounded-md bg-indigo-500 transition group-hover:bg-indigo-600"
+                            style={{ height: `${Math.max(heightPercent, 6)}%` }}
+                          />
+                        </div>
+                        <span className="mt-2 text-xs text-slate-500">{month.month}</span>
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-48 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600 shadow-lg opacity-0 transition group-hover:opacity-100">
+                          <p className="text-xs text-slate-500">Month: {month.month}</p>
+                          <p className="text-sm font-semibold text-slate-900">
+                            Revenue: {formatCurrency(month.revenue)}
+                          </p>
+                          <p>Orders: {formatNumber(month.orders_count)}</p>
+                          {month.orders_count > 0 && <p>AOV: {formatCurrency(aov)}</p>}
+                        </div>
                       </div>
-                      <span className="text-xs text-slate-500">{month.month}</span>
-                    </div>
-                  )
-                })}
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-xs text-slate-500">
-                {monthlySales.map((month) => (
-                  <div key={`sales-detail-${month.month}`} className="flex items-center justify-between">
-                    <span>{month.month}</span>
-                    <span className="font-medium text-slate-700">
-                      {formatCurrency(month.revenue)} · {formatNumber(month.orders_count)} orders
-                    </span>
-                  </div>
-                ))}
+                    )
+                  })}
+                </div>
               </div>
             </div>
           )}
