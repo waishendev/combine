@@ -14,7 +14,13 @@ class PublicOrderTrackingController extends Controller
             'order_no' => ['required', 'string'],
         ]);
 
-        $order = Order::with(['items.product.images', 'customer'])
+        $order = Order::with([
+            'items.product.images',
+            'customer',
+            'returns' => function ($query) {
+                $query->withCount('items')->withSum('items as items_quantity', 'quantity');
+            },
+        ])
             ->where('order_number', $validated['order_no'])
             ->first();
 
@@ -37,6 +43,24 @@ class PublicOrderTrackingController extends Controller
             ];
         });
 
+        $returns = $order->returns->map(function ($request) {
+            return [
+                'id' => $request->id,
+                'request_type' => $request->request_type,
+                'status' => $request->status,
+                'reason' => $request->reason,
+                'created_at' => $request->created_at?->toDateTimeString(),
+                'items_count' => $request->items_count,
+                'items_quantity' => $request->items_quantity,
+                'return_courier_name' => $request->return_courier_name,
+                'return_tracking_no' => $request->return_tracking_no,
+                'return_shipped_at' => $request->return_shipped_at?->toDateTimeString(),
+                'refund_amount' => $request->refund_amount,
+                'refund_method' => $request->refund_method,
+                'refunded_at' => $request->refunded_at?->toDateTimeString(),
+            ];
+        });
+
         $data = [
             'order_no' => $order->order_number,
             'status' => $order->status,
@@ -51,6 +75,7 @@ class PublicOrderTrackingController extends Controller
                 'grand_total' => $order->grand_total,
             ],
             'items' => $items,
+            'returns' => $returns,
         ];
 
         return $this->respond($data);
