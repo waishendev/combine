@@ -60,7 +60,19 @@ export default function NailCoursesPage() {
       pricing={pricing}
       faqs={faqs}
       notes={notes}
-      heroImage="/images/placeholder.png"
+      heroImage="/images/CUSTOMERGIVE/DETAILS-08.jpg"
+      galleryImages={[
+        {
+          src: "/images/CUSTOMERGIVE/DETAILS-09.jpg",
+          alt: "Nail course details (detail 09)",
+          caption: "课程内容与工具包展示。",
+        },
+        {
+          src: "/images/CUSTOMERGIVE/DETAILS-10.jpg",
+          alt: "Nail course details (detail 10)",
+          caption: "课程安排与上课环境。",
+        },
+      ]}
     />
   );
 }
