@@ -260,6 +260,26 @@ class PublicReturnController extends Controller
             ? Storage::disk('public')->url($returnRequest->refund_proof_path)
             : null;
 
+        $items = $returnRequest->items->map(function (ReturnRequestItem $item) {
+            $thumbnail = $item->orderItem?->product?->cover_image_url;
+            $unitPrice = $item->orderItem?->price_snapshot;
+
+            if ($unitPrice !== null) {
+                $unitPrice = number_format((float) $unitPrice, 2, '.', '');
+            }
+
+            return [
+                'order_item_id' => $item->order_item_id,
+                'product_name' => $item->orderItem?->product_name_snapshot,
+                'sku' => $item->orderItem?->sku_snapshot,
+                'order_quantity' => $item->orderItem?->quantity,
+                'requested_quantity' => $item->quantity,
+                'product_image' => $thumbnail,
+                'cover_image_url' => $thumbnail,
+                'unit_price' => $unitPrice,
+            ];
+        });
+
         return $this->respond([
             'id' => $returnRequest->id,
             'order_id' => $returnRequest->order_id,
@@ -278,19 +298,7 @@ class PublicReturnController extends Controller
             'refund_method' => $returnRequest->refund_method,
             'refund_proof_url' => $refundProofUrl,
             'refunded_at' => $returnRequest->refunded_at,
-            'items' => $returnRequest->items->map(function (ReturnRequestItem $item) {
-                $thumbnail = $item->orderItem?->product?->cover_image_url;
-
-                return [
-                    'order_item_id' => $item->order_item_id,
-                    'product_name' => $item->orderItem?->product_name_snapshot,
-                    'sku' => $item->orderItem?->sku_snapshot,
-                    'order_quantity' => $item->orderItem?->quantity,
-                    'requested_quantity' => $item->quantity,
-                    'product_image' => $thumbnail,
-                    'cover_image_url' => $thumbnail,
-                ];
-            }),
+            'items' => $items,
             'timestamps' => [
                 'created_at' => $returnRequest->created_at,
                 'reviewed_at' => $returnRequest->reviewed_at,

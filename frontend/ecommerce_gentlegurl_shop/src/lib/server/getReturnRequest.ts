@@ -8,6 +8,7 @@ export type ReturnRequestItem = {
   requested_quantity?: number | null;
   product_image?: string | null;
   cover_image_url?: string | null;
+  unit_price?: string | number | null;
 };
 
 export type ReturnRequestDetail = {

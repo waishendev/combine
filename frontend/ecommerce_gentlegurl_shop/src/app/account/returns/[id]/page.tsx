@@ -194,6 +194,11 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
                 </div>
                 <div className="text-sm text-[var(--foreground)]/70">
                   Refund Qty: {item.requested_quantity ?? 0}
+                  {item.unit_price !== null && item.unit_price !== undefined && (
+                    <p className="text-xs text-[var(--foreground)]/60">
+                      Unit: RM {formatAmount(item.unit_price)}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
