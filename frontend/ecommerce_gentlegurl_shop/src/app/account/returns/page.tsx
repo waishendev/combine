@@ -65,22 +65,6 @@ export default async function AccountReturnsPage() {
                   <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
                     {formatReturnStatusLabel(returnRequest.status)}
                   </span>
-                  <Link
-                    href={`/account/returns/${returnRequest.id}`}
-                    className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/60"
-                  >
-                    View Details
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth="1.5"
-                      stroke="currentColor"
-                      className="h-4 w-4"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
-                    </svg>
-                  </Link>
                 </div>
               </div>
 
@@ -108,12 +92,31 @@ export default async function AccountReturnsPage() {
                   </p>
                 </div>
 
+                <div className="sm:col-span-4">
+                  <Link
+                    href={`/account/returns/${returnRequest.id}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/60"
+                  >
+                    View Details
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
+                      className="h-4 w-4"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
+                    </svg>
+                  </Link>
+                </div>
+
                 {Array.isArray(returnRequest.items) && returnRequest.items.length > 0 && (
                   <div className="sm:col-span-4">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">
                       Items
                     </p>
-                    <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                    <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
                       {returnRequest.items.map((item, index) => (
                         <div
                           key={item.order_item_id ?? `${returnRequest.id}-${index}`}

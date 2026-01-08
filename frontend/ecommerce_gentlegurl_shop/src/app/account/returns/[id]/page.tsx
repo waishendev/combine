@@ -89,12 +89,17 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-[var(--foreground)]/70">
-            Order #{returnRequest.order_number ?? returnRequest.order_id}
-          </p>
-          <h2 className="text-2xl font-semibold text-[var(--foreground)]">Return #{returnRequest.id}</h2>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
+          <Link href="/account/returns" className="text-sm font-semibold text-[var(--accent)]">
+            ← Back to returns
+          </Link>
+          <div>
+            <p className="text-2xl font-semibold text-[var(--foreground)]">Return</p>
+            <p className="text-sm text-[var(--foreground)]/70">
+              Order No: {returnRequest.order_number ?? returnRequest.order_id}
+            </p>
+          </div>
         </div>
         <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
           {formatReturnStatusLabel(returnRequest.status)}
@@ -174,7 +179,7 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Items</h3>
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 space-y-3 max-h-40 overflow-y-auto pr-1">
             {returnRequest.items?.map((item) => (
               <div
                 key={item.order_item_id}
@@ -275,11 +280,6 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
         </div>
       </div>
 
-      <div>
-        <Link href="/account/returns" className="text-sm font-semibold text-[var(--accent)]">
-          ← Back to returns
-        </Link>
-      </div>
     </div>
   );
 }
