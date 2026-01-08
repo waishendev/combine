@@ -95,9 +95,9 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
             ← Back to returns
           </Link>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--foreground)]/60">Return</p>
+            <p className="text-2xl font-semibold text-[var(--foreground)]">Return</p>
             <p className="text-sm text-[var(--foreground)]/70">
-              Order #{returnRequest.order_number ?? returnRequest.order_id}
+              Order No: {returnRequest.order_number ?? returnRequest.order_id}
             </p>
           </div>
         </div>
@@ -179,7 +179,7 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Items</h3>
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 space-y-3 max-h-40 overflow-y-auto pr-1">
             {returnRequest.items?.map((item) => (
               <div
                 key={item.order_item_id}

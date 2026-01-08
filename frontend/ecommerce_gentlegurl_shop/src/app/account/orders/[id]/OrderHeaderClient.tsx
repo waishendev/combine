@@ -97,8 +97,8 @@ export function OrderHeaderClient({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
           <Link href="/account/orders" className="text-sm font-semibold text-[var(--accent)]">
             ← Back to Orders
           </Link>

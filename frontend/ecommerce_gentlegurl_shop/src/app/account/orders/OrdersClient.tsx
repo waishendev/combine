@@ -447,7 +447,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
               {Array.isArray(order.items) && order.items.length > 0 && (
                 <div className="sm:col-span-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Items</p>
-                  <div className="space-y-2">
+                  <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
                     {order.items.map((item) => {
                       const isReviewed = reviewedItemIds[item.id] === true;
                       const disabled = isReviewed || !item.product_slug;

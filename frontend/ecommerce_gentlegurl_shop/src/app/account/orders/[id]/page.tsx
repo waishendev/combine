@@ -60,7 +60,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
       />
 
       {(isCompleted || hasReturnRequest) && (
-        <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="flex flex-wrap items-center justify-start gap-3">
           {isCompleted && (
             <a
               href={invoiceUrl}

@@ -116,7 +116,7 @@ export default async function AccountReturnsPage() {
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">
                       Items
                     </p>
-                    <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                    <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
                       {returnRequest.items.map((item, index) => (
                         <div
                           key={item.order_item_id ?? `${returnRequest.id}-${index}`}
