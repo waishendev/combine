@@ -1,23 +1,50 @@
 import { ServicesPageLayout } from "@/components/services/ServicesPageLayout";
 
 const services = [
-  { title: "Brow Shaping", description: "Tidy, define, and balance your brows for a clean frame." },
-  { title: "Upper Lip / Chin", description: "Quick, precise removal to soften facial hair visibility." },
-  { title: "Underarm Wax", description: "Comfort-focused wax for a smooth, longer-lasting finish." },
-  { title: "Half Arm / Full Arm", description: "Even, polished texture from shoulder to wrist." },
-  { title: "Half Leg / Full Leg", description: "Soft, polished legs with an even glide." },
-  { title: "Bikini Line", description: "Neat, comfortable shaping with hygiene-first care." },
+  { title: "Waxing (Upper Body)", description: "Arms, underarm, back, chest, and stomach options with smooth results." },
+  { title: "Waxing (Lower Body)", description: "Lower leg to full leg services for a polished, even finish." },
+  { title: "Waxing (Bikini)", description: "Bikini line, clipping, and Brazilian options available." },
+  { title: "Waxing (Face)", description: "Eyebrow, lip, chin, jawline, and full-face services." },
+  { title: "810 Laser Ice Hair Removal", description: "Armpit, full arm, and full leg packages with session options." },
+  { title: "Keratin Lash Lift", description: "Lifted, curled lashes with a clean, natural finish." },
 ];
 
 const pricing = [
-  { label: "Brow Shaping", price: "RM 25" },
-  { label: "Upper Lip", price: "RM 15" },
-  { label: "Underarm", price: "RM 25" },
-  { label: "Half Arm", price: "RM 35" },
-  { label: "Full Arm", price: "RM 55" },
-  { label: "Half Leg", price: "RM 45" },
-  { label: "Full Leg", price: "RM 75" },
-  { label: "Bikini Line", price: "RM 45" },
+  { label: "Waxing - Upper Body: Under Arm (Armpit)", price: "RM 48" },
+  { label: "Waxing - Upper Body: Lower Arm", price: "RM 68" },
+  { label: "Waxing - Upper Body: Upper Arm or 3/4 Arm", price: "RM 88" },
+  { label: "Waxing - Upper Body: Full Arm", price: "RM 108" },
+  { label: "Waxing - Upper Body: Under Arm (Armpit) + Full Arm", price: "RM 168" },
+  { label: "Waxing - Upper Body: Full Back and Shoulder", price: "RM 78" },
+  { label: "Waxing - Upper Body: Chest and Stomach", price: "RM 78" },
+  { label: "Waxing - Upper Body: Stomach", price: "RM 48" },
+  { label: "Waxing - Lower Body: Lower Leg", price: "RM 68" },
+  { label: "Waxing - Lower Body: Upper Leg or 3/4 Leg", price: "RM 118" },
+  { label: "Waxing - Lower Body: Full Leg", price: "RM 148" },
+  { label: "Waxing - Bikini: Bikini Line", price: "RM 78" },
+  { label: "Waxing - Bikini: Bikini Line and Clipping", price: "RM 88" },
+  { label: "Waxing - Bikini: Brazilian XXX (All Off)", price: "RM 198" },
+  { label: "Waxing - Bikini: Brazilian Triangle or Line", price: "RM 178" },
+  { label: "Waxing - Face: Eyebrow", price: "RM 38" },
+  { label: "Waxing - Face: Forehead", price: "RM 38" },
+  { label: "Waxing - Face: Cheeks", price: "RM 48" },
+  { label: "Waxing - Face: Sideburn", price: "RM 38" },
+  { label: "Waxing - Face: Lip", price: "RM 38" },
+  { label: "Waxing - Face: Chin", price: "RM 48" },
+  { label: "Waxing - Face: Lip and Chin", price: "RM 78" },
+  { label: "Waxing - Face: Jaw Lines", price: "RM 38" },
+  { label: "Waxing - Face: Neck", price: "RM 48" },
+  { label: "Waxing - Face: Full Face", price: "RM 198" },
+  { label: "810 Laser Ice Hair Removal (Armpit) - Single Session", price: "RM 68" },
+  { label: "810 Laser Ice Hair Removal (Armpit) - Monthly Package", price: "RM 138" },
+  { label: "810 Laser Ice Hair Removal (Armpit) - Yearly Package", price: "RM 488" },
+  { label: "810 Laser Ice Hair Removal (Full Arm) - Single Session", price: "RM 88" },
+  { label: "810 Laser Ice Hair Removal (Full Arm) - Monthly Package", price: "RM 168" },
+  { label: "810 Laser Ice Hair Removal (Full Arm) - Yearly Package", price: "RM 888" },
+  { label: "810 Laser Ice Hair Removal (Full Leg) - Single Session", price: "RM 118" },
+  { label: "810 Laser Ice Hair Removal (Full Leg) - Monthly Package", price: "RM 248" },
+  { label: "810 Laser Ice Hair Removal (Full Leg) - Yearly Package", price: "RM 1188" },
+  { label: "Keratin Lash Lift", price: "RM 108" },
 ];
 
 const faqs = [
@@ -33,6 +60,7 @@ const notes = [
   "Avoid sauna/sun exposure 24 hours after.",
   "We use hygiene-first single-use practices where applicable.",
   "If you’re using retinoids, please inform us before booking.",
+  "Subject to technician availability.",
 ];
 
 export default function WaxingHairRemovalPage() {
