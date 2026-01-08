@@ -74,6 +74,20 @@ const badgeStyle = (status: string) => {
   }
 }
 
+const normalizeStatus = (status?: string | null) => {
+  if (!status) return ''
+  return status.toLowerCase().replace(/\s+/g, '_')
+}
+
+const formatStatusLabel = (status?: string | null) => {
+  if (!status) return '—'
+  return normalizeStatus(status)
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 const formatDate = (value?: string | null) => {
   if (!value) return '—'
   const date = new Date(value)
@@ -241,6 +255,23 @@ export default function ReturnViewPanel({
     }
   })()
 
+  const actionButtonStyle = (action: string) => {
+    switch (action) {
+      case 'approve':
+        return 'border-sky-200 bg-sky-100 text-sky-700 hover:bg-sky-200'
+      case 'reject':
+        return 'border-rose-200 bg-rose-100 text-rose-700 hover:bg-rose-200'
+      case 'mark_in_transit':
+        return 'border-violet-200 bg-violet-100 text-violet-700 hover:bg-violet-200'
+      case 'mark_received':
+        return 'border-teal-200 bg-teal-100 text-teal-700 hover:bg-teal-200'
+      case 'mark_refunded':
+        return 'border-green-200 bg-green-100 text-green-700 hover:bg-green-200'
+      default:
+        return 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+    }
+  }
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex bg-black/40">
@@ -313,125 +344,153 @@ export default function ReturnViewPanel({
           </div>
           <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
             <div className="space-y-5 text-sm">
-              <div className="rounded border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Basic Information</p>
-                </div>
-                <div className="px-4 py-3 space-y-3">
-                  <div>
-                    <p className="text-xs text-slate-500">Status</p>
-                    <div className="mt-1">
-                      <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badgeStyle(detail.status ?? '')}`}>
-                        {detail.status ?? '—'}
-                      </span>
+              <div className="flex flex-wrap gap-5">
+                <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Basic Information</p>
+                  </div>
+                  <div className="px-4 py-3 space-y-3">
+                    <div>
+                      <p className="text-xs text-slate-500">Status</p>
+                      <div className="mt-1">
+                        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badgeStyle(normalizeStatus(detail.status))}`}>
+                          {formatStatusLabel(detail.status)}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Request Type</p>
+                      <p className="font-medium text-slate-900">{detail.request_type ?? '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Reason</p>
+                      <p className="font-medium text-slate-900">{detail.reason ?? '—'}</p>
+                      {detail.description && (
+                        <p className="mt-1 text-xs text-slate-500">{detail.description}</p>
+                      )}
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Request Type</p>
-                    <p className="font-medium text-slate-900">{detail.request_type ?? '—'}</p>
+                </div>
+
+                <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Customer Information</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Reason</p>
-                    <p className="font-medium text-slate-900">{detail.reason ?? '—'}</p>
-                    {detail.description && (
-                      <p className="mt-1 text-xs text-slate-500">{detail.description}</p>
+                  <div className="px-4 py-3 space-y-3">
+                    <div>
+                      <p className="text-xs text-slate-500">Name</p>
+                      <p className="font-medium text-slate-900">{detail.customer?.name ?? '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Email</p>
+                      <p className="font-medium text-slate-900">{detail.customer?.email ?? '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Phone</p>
+                      <p className="font-medium text-slate-900">{detail.customer?.phone ?? '—'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Timeline</p>
+                  </div>
+                  <div className="px-4 py-3 space-y-3">
+                    <div>
+                      <p className="text-xs text-slate-500">Requested</p>
+                      <p className="font-medium text-slate-900">{formatDate(detail.timeline?.created_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Reviewed</p>
+                      <p className="font-medium text-slate-900">{formatDate(detail.timeline?.reviewed_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Received</p>
+                      <p className="font-medium text-slate-900">{formatDate(detail.timeline?.received_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Refunded</p>
+                      <p className="font-medium text-slate-900">{formatDate(detail.timeline?.completed_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-5">
+                <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Return Items</p>
+                  </div>
+                  <div className="px-4 py-3 space-y-2">
+                    {(detail.items ?? []).length === 0 ? (
+                      <p className="text-xs text-slate-500">No items</p>
+                    ) : (
+                      (detail.items ?? []).map((item) => (
+                        <div key={item.order_item_id} className="rounded-md border border-slate-200 px-3 py-2">
+                          <p className="font-medium text-slate-800">{item.product_name_snapshot ?? 'Item'}</p>
+                          <p className="text-xs text-slate-500">SKU: {item.sku_snapshot ?? '—'}</p>
+                          <p className="text-xs text-slate-500">
+                            Qty: {item.requested_quantity ?? item.quantity ?? 0}
+                          </p>
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Customer Information</p>
-                </div>
-                <div className="px-4 py-3 space-y-3">
-                  <div>
-                    <p className="text-xs text-slate-500">Name</p>
-                    <p className="font-medium text-slate-900">{detail.customer?.name ?? '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Email</p>
-                    <p className="font-medium text-slate-900">{detail.customer?.email ?? '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Phone</p>
-                    <p className="font-medium text-slate-900">{detail.customer?.phone ?? '—'}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Return Items</p>
-                </div>
-                <div className="px-4 py-3 space-y-2">
-                  {(detail.items ?? []).length === 0 ? (
-                    <p className="text-xs text-slate-500">No items</p>
-                  ) : (
-                    (detail.items ?? []).map((item) => (
-                      <div key={item.order_item_id} className="rounded-md border border-slate-200 px-3 py-2">
-                        <p className="font-medium text-slate-800">{item.product_name_snapshot ?? 'Item'}</p>
-                        <p className="text-xs text-slate-500">SKU: {item.sku_snapshot ?? '—'}</p>
-                        <p className="text-xs text-slate-500">
-                          Qty: {item.requested_quantity ?? item.quantity ?? 0}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {detail.initial_image_urls && detail.initial_image_urls.length > 0 && (
-                <div className="rounded border border-slate-200 bg-white">
-                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Submitted Media</p>
-                  </div>
-                  <div className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      {detail.initial_image_urls.map((rawUrl) => {
-                        const resolvedUrl = getFileUrl(rawUrl)
-                        if (!resolvedUrl) return null
-                        if (isEmbeddedVideoUrl(resolvedUrl)) {
-                          return (
-                            <div
-                              key={resolvedUrl}
-                              className="h-16 w-16 overflow-hidden rounded-md border border-slate-200"
-                            >
-                              <iframe
+                {detail.initial_image_urls && detail.initial_image_urls.length > 0 && (
+                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-900">Submitted Media</p>
+                    </div>
+                    <div className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {detail.initial_image_urls.map((rawUrl) => {
+                          const resolvedUrl = getFileUrl(rawUrl)
+                          if (!resolvedUrl) return null
+                          if (isEmbeddedVideoUrl(resolvedUrl)) {
+                            return (
+                              <div
+                                key={resolvedUrl}
+                                className="h-16 w-16 overflow-hidden rounded-md border border-slate-200"
+                              >
+                                <iframe
+                                  src={resolvedUrl}
+                                  title="Return video"
+                                  className="h-full w-full"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                />
+                              </div>
+                            )
+                          }
+                          if (isVideoUrl(resolvedUrl)) {
+                            return (
+                              <video
+                                key={resolvedUrl}
                                 src={resolvedUrl}
-                                title="Return video"
-                                className="h-full w-full"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
+                                controls
+                                className="h-16 w-16 rounded-md border border-slate-200 object-cover"
                               />
-                            </div>
-                          )
-                        }
-                        if (isVideoUrl(resolvedUrl)) {
+                            )
+                          }
                           return (
-                            <video
-                              key={resolvedUrl}
-                              src={resolvedUrl}
-                              controls
-                              className="h-16 w-16 rounded-md border border-slate-200 object-cover"
-                            />
+                            <a key={resolvedUrl} href={resolvedUrl} target="_blank" rel="noreferrer">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={resolvedUrl}
+                                alt="Return"
+                                className="h-16 w-16 rounded-md border border-slate-200 object-cover"
+                              />
+                            </a>
                           )
-                        }
-                        return (
-                          <a key={resolvedUrl} href={resolvedUrl} target="_blank" rel="noreferrer">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={resolvedUrl}
-                              alt="Return"
-                              className="h-16 w-16 rounded-md border border-slate-200 object-cover"
-                            />
-                          </a>
-                        )
-                      })}
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               <div className="rounded border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -449,30 +508,6 @@ export default function ReturnViewPanel({
                   <div>
                     <p className="text-xs text-slate-500">Shipped At</p>
                     <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Timeline</p>
-                </div>
-                <div className="px-4 py-3 space-y-3">
-                  <div>
-                    <p className="text-xs text-slate-500">Requested</p>
-                    <p className="font-medium text-slate-900">{formatDate(detail.timeline?.created_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Reviewed</p>
-                    <p className="font-medium text-slate-900">{formatDate(detail.timeline?.reviewed_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Received</p>
-                    <p className="font-medium text-slate-900">{formatDate(detail.timeline?.received_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Refunded</p>
-                    <p className="font-medium text-slate-900">{formatDate(detail.timeline?.completed_at)}</p>
                   </div>
                 </div>
               </div>
@@ -559,7 +594,7 @@ export default function ReturnViewPanel({
                             applyAction(action.action)
                           }}
                           disabled={actionLoading}
-                          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                          className={`rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-wide transition disabled:opacity-60 ${actionButtonStyle(action.action)}`}
                         >
                           {action.label}
                         </button>
