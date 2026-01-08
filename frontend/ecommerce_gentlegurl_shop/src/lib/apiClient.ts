@@ -685,6 +685,21 @@ export type OrderTrackingResponse = {
       unit_price: number | string;
       line_total: number | string;
     }[];
+    returns?: {
+      id: number;
+      request_type: string | null;
+      status: string;
+      reason: string | null;
+      created_at: string | null;
+      items_count: number | null;
+      items_quantity: number | null;
+      return_courier_name: string | null;
+      return_tracking_no: string | null;
+      return_shipped_at: string | null;
+      refund_amount: number | string | null;
+      refund_method: string | null;
+      refunded_at: string | null;
+    }[];
   } | null;
   success: boolean;
   message?: string | null;

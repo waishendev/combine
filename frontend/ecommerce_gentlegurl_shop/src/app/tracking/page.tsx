@@ -3,8 +3,6 @@
 import { useState } from "react";
 
 import Image from "next/image";
-import Link from "next/link";
-
 import type { OrderTrackingResponse } from "@/lib/apiClient";
 import { trackGuestOrder } from "@/lib/apiClient";
 import { getPrimaryProductImage } from "@/lib/productMedia";
@@ -174,6 +172,69 @@ export default function TrackingPage() {
               })}
             </div>
           </div>
+
+          {result.returns && result.returns.length > 0 && (
+            <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background-soft)]/40 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+                Return Requests
+              </h3>
+              <div className="mt-3 space-y-3">
+                {result.returns.map((returnRequest) => (
+                  <div
+                    key={returnRequest.id}
+                    className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-[var(--foreground)]/60">
+                          Return #{returnRequest.id}
+                        </p>
+                        <p className="text-base font-semibold text-[var(--foreground)]">
+                          {returnRequest.request_type ?? "Return"}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-semibold text-[var(--foreground)]">
+                        {returnRequest.status.replaceAll("_", " ")}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-sm text-[var(--foreground)]/80 sm:grid-cols-2">
+                      <div>
+                        <span className="font-semibold text-[var(--foreground)]">Requested:</span>{" "}
+                        {formatDateTime(returnRequest.created_at)}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-[var(--foreground)]">Reason:</span>{" "}
+                        {returnRequest.reason ?? "Not specified"}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-[var(--foreground)]">Items:</span>{" "}
+                        {returnRequest.items_quantity ?? returnRequest.items_count ?? 0}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-[var(--foreground)]">Refund:</span>{" "}
+                        {returnRequest.refund_amount
+                          ? `RM ${Number(returnRequest.refund_amount).toFixed(2)}`
+                          : "Pending"}
+                      </div>
+                      <div className="sm:col-span-2">
+                        <span className="font-semibold text-[var(--foreground)]">Return Tracking:</span>{" "}
+                        {returnRequest.return_tracking_no ?? "Not provided"}
+                        {returnRequest.return_courier_name && (
+                          <span className="ml-2 rounded-full bg-[var(--muted)] px-2 py-1 text-xs text-[var(--foreground)]">
+                            {returnRequest.return_courier_name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="sm:col-span-2">
+                        <span className="font-semibold text-[var(--foreground)]">Return Shipped At:</span>{" "}
+                        {formatDateTime(returnRequest.return_shipped_at)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* <p className="text-xs text-[var(--foreground)]/60">
             Need help? Contact us via <Link href="/contact" className="text-[var(--accent-strong)] underline">support</Link>.
