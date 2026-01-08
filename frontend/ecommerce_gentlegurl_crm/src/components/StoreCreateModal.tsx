@@ -413,7 +413,7 @@ export default function StoreCreateModal({
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span className="inline-flex items-center gap-1">
                   <i className="fa-solid fa-info-circle" />
-                  {t('product.imageHelper')}
+                  Click image to preview. Drag to reorder.
                 </span>
                 <span>
                   {imagePreviews.length} / {MAX_IMAGES}
