@@ -56,7 +56,7 @@ export function TrackingFormClient({ returnId }: TrackingFormClientProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div className="space-y-2">
-        <label className="text-sm font-medium text-[var(--foreground)]">Courier Name</label>
+        <label className="text-sm font-medium text-[var(--foreground)]">Courier Name <span className="text-red-500">*</span></label>
         <input
           value={courier}
           onChange={(event) => setCourier(event.target.value)}
@@ -66,7 +66,7 @@ export function TrackingFormClient({ returnId }: TrackingFormClientProps) {
         />
       </div>
       <div className="space-y-2">
-        <label className="text-sm font-medium text-[var(--foreground)]">Tracking Number</label>
+        <label className="text-sm font-medium text-[var(--foreground)]">Tracking Number <span className="text-red-500">*</span></label>
         <input
           value={trackingNo}
           onChange={(event) => setTrackingNo(event.target.value)}
