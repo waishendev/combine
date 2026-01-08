@@ -125,7 +125,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           </div>
         </div>
 
-        <div className="w-full max-w-full rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm lg:w-[320px]">
+        <div className="flex-1 rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Totals</h3>
           <div className="mt-3 space-y-2 text-sm text-[var(--foreground)]/80">
             <div className="flex items-center justify-between">
@@ -199,7 +199,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           )}
         </div>
 
-        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
+        <div className="flex-1 rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Billing Address</h3>
           <div className="mt-2 text-sm text-[var(--foreground)]/80">
             <p className="font-semibold text-[var(--foreground)]">
@@ -222,7 +222,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
       </div>
 
       <div className="flex flex-col gap-4 lg:flex-row">
-        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
+        <div className="flex-1 rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Payment</h3>
           <div className="mt-2 text-sm text-[var(--foreground)]/80">
             <p>Method: {order.payment_method ?? "N/A"}</p>
@@ -241,7 +241,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
         </div>
 
         {receiptSlip?.file_url && (
-          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
+          <div className="flex-1 rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-[var(--foreground)]">Receipt</h3>
             <div className="mt-3 space-y-2 text-sm text-[var(--foreground)]/80">
               <a
