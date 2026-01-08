@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { OrderDetail } from "@/lib/server/getOrderDetail";
 
@@ -33,6 +33,11 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const imageReplaceInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const videoReplaceInputRef = useRef<HTMLInputElement>(null);
+  const [replacingImageIndex, setReplacingImageIndex] = useState<number | null>(null);
 
   const selectedItems = useMemo(() => {
     return order.items
@@ -53,13 +58,14 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
       return;
     }
     const selected = Array.from(files);
-    if (selected.length > 5) {
+    const merged = [...images, ...selected];
+    if (merged.length > 5) {
       setError("Please upload up to 5 photos.");
-      setImages(selected.slice(0, 5));
+      setImages(merged.slice(0, 5));
       return;
     }
     setError(null);
-    setImages(selected);
+    setImages(merged);
   };
 
   const handleVideoChange = (files: FileList | null) => {
@@ -67,14 +73,45 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
       setVideo(null);
       return;
     }
-    if (files.length > 1) {
-      setError("Please upload only 1 video.");
-      setVideo(files[0]);
-      return;
-    }
     setError(null);
     setVideo(files[0]);
   };
+
+  const handleReplaceImageChange = (files: FileList | null) => {
+    if (replacingImageIndex === null) return;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setImages((prev) => {
+      const next = [...prev];
+      next[replacingImageIndex] = file;
+      return next;
+    });
+    setReplacingImageIndex(null);
+  };
+
+  const handleReplaceVideoChange = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setVideo(files[0]);
+  };
+
+  const imagePreviews = useMemo(
+    () => images.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    [images],
+  );
+
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    };
+  }, [imagePreviews]);
+
+  const videoPreview = useMemo(() => (video ? URL.createObjectURL(video) : null), [video]);
+
+  useEffect(() => {
+    return () => {
+      if (videoPreview) URL.revokeObjectURL(videoPreview);
+    };
+  }, [videoPreview]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -206,30 +243,131 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
             Photos (required, up to 5)
           </label>
           <input
-            className="w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
+            ref={imageInputRef}
+            className="hidden"
             type="file"
             accept="image/*"
             multiple
-            required
             onChange={(event) => handleImagesChange(event.target.files)}
           />
-          {images.length > 0 && (
-            <p className="text-xs text-[var(--foreground)]/70">{images.length} photo(s) selected.</p>
-          )}
+          <input
+            ref={imageReplaceInputRef}
+            className="hidden"
+            type="file"
+            accept="image/*"
+            onChange={(event) => handleReplaceImageChange(event.target.files)}
+          />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 5 }).map((_, index) => {
+              const preview = imagePreviews[index];
+              return (
+                <div
+                  key={`image-slot-${index}`}
+                  className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--card-border)] bg-[var(--background-soft)]/60 p-3 text-xs text-[var(--foreground)]/70"
+                >
+                  {preview ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={preview.url}
+                        alt={`Return photo ${index + 1}`}
+                        className="h-24 w-full rounded-md object-cover"
+                      />
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          className="rounded-md border border-[var(--card-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)]"
+                          onClick={() => {
+                            setReplacingImageIndex(index);
+                            imageReplaceInputRef.current?.click();
+                          }}
+                        >
+                          Replace
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md border border-[var(--status-error)]/50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--status-error)]"
+                          onClick={() =>
+                            setImages((prev) => prev.filter((_, imgIndex) => imgIndex !== index))
+                          }
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p>Empty</p>
+                      <button
+                        type="button"
+                        className="rounded-md border border-[var(--card-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)]"
+                        onClick={() => imageInputRef.current?.click()}
+                      >
+                        Upload
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
         <div className="mt-4 space-y-2">
           <label className="text-sm font-medium text-[var(--foreground)]">
             Video (optional, max 1)
           </label>
           <input
-            className="w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
+            ref={videoInputRef}
+            className="hidden"
             type="file"
             accept="video/*"
             onChange={(event) => handleVideoChange(event.target.files)}
           />
-          {video && (
-            <p className="text-xs text-[var(--foreground)]/70">{video.name}</p>
-          )}
+          <input
+            ref={videoReplaceInputRef}
+            className="hidden"
+            type="file"
+            accept="video/*"
+            onChange={(event) => handleReplaceVideoChange(event.target.files)}
+          />
+          <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--card-border)] bg-[var(--background-soft)]/60 p-3 text-xs text-[var(--foreground)]/70 sm:max-w-xs">
+            {videoPreview ? (
+              <>
+                <video
+                  src={videoPreview}
+                  className="h-32 w-full rounded-md object-cover"
+                  controls
+                />
+                <div className="flex w-full items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    className="rounded-md border border-[var(--card-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)]"
+                    onClick={() => videoReplaceInputRef.current?.click()}
+                  >
+                    Replace
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-[var(--status-error)]/50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--status-error)]"
+                    onClick={() => setVideo(null)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p>Empty</p>
+                <button
+                  type="button"
+                  className="rounded-md border border-[var(--card-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)]"
+                  onClick={() => videoInputRef.current?.click()}
+                >
+                  Upload
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
