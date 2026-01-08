@@ -76,7 +76,7 @@ class DashboardService
     {
         return Order::query()
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
-            ->where('payment_status', 'paid')
+            ->whereIn('payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT);
     }
 
@@ -113,7 +113,7 @@ class DashboardService
 
         $rows = Order::query()
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
-            ->where('payment_status', 'paid')
+            ->whereIn('payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
             ->selectRaw("to_char(COALESCE(placed_at, created_at), 'YYYY-MM') as month")
             ->selectRaw('SUM(grand_total) as revenue')
@@ -146,7 +146,7 @@ class DashboardService
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
-            ->where('o.payment_status', 'paid')
+            ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
             ->groupBy('p.id', 'p.name', 'p.sku')
             ->select(

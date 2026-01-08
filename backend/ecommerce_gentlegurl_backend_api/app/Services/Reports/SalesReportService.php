@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 class SalesReportService
 {
     public const VALID_ORDER_STATUSES_FOR_REPORT = ['paid', 'packed', 'shipped', 'completed'];
+    public const VALID_PAYMENT_STATUSES_FOR_REPORT = ['paid', 'refunded'];
 
     public function getOverview(Carbon $start, Carbon $end): array
     {
@@ -21,7 +22,7 @@ class SalesReportService
         $itemsCount = (int) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
-            ->where('orders.payment_status', 'paid')
+            ->whereIn('orders.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('orders.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
             ->sum('order_items.quantity');
         $cogs = $profitSupported ? $this->cogsForOrderItems($start, $end) : null;
@@ -337,7 +338,7 @@ class SalesReportService
     {
         return Order::query()
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
-            ->where('payment_status', 'paid')
+            ->whereIn('payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('status', self::VALID_ORDER_STATUSES_FOR_REPORT);
     }
 
@@ -352,7 +353,7 @@ class SalesReportService
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
-            ->where('o.payment_status', 'paid')
+            ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
             ->sum(DB::raw('oi.quantity * COALESCE(p.cost_price, 0)'));
     }
@@ -367,7 +368,7 @@ class SalesReportService
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
-            ->where('o.payment_status', 'paid')
+            ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
             ->whereNull('p.cost_price')
             ->distinct('oi.product_id')
@@ -408,7 +409,7 @@ class SalesReportService
         $itemsCount = (int) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
-            ->where('orders.payment_status', 'paid')
+            ->whereIn('orders.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('orders.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
             ->sum('order_items.quantity');
         $cogs = $profitSupported ? $this->cogsForOrderItems($start, $end) : null;
@@ -453,7 +454,7 @@ class SalesReportService
             ->join('product_categories as pc', 'pc.product_id', '=', 'p.id')
             ->join('categories as c', 'c.id', '=', 'pc.category_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
-            ->where('o.payment_status', 'paid')
+            ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
             ->groupBy('c.id', 'c.name')
             ->select(
@@ -515,7 +516,7 @@ class SalesReportService
                 ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
-                ->where('o.payment_status', 'paid')
+                ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
                 ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
                 ->groupBy('oi.order_id')
                 ->select('oi.order_id', DB::raw('SUM(oi.quantity * COALESCE(p.cost_price, 0)) as cogs'));
@@ -538,7 +539,7 @@ class SalesReportService
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
-            ->where('o.payment_status', 'paid')
+            ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
             ->groupBy('p.id', 'p.name', 'p.sku')
             ->select(
