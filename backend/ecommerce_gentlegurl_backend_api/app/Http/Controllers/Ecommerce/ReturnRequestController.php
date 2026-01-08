@@ -230,7 +230,7 @@ class ReturnRequestController extends Controller
                     $returnRequest->save();
 
                     $lockedOrder->refund_total = (float) $lockedOrder->refund_total + $refundAmount;
-                    $lockedOrder->payment_status = 'refunded';
+                    // $lockedOrder->payment_status = 'refunded';
                     if ($uploadedProofPath) {
                         $lockedOrder->refund_proof_path = $uploadedProofPath;
                     }
