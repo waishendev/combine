@@ -2,6 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getReturns } from "@/lib/server/getReturns";
 
+const formatAmount = (value?: string | number | null) => {
+  if (value === null || value === undefined || value === "") return "0.00";
+  const num = typeof value === "string" ? Number.parseFloat(value) : Number(value);
+  if (Number.isNaN(num)) return "0.00";
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
 export default async function AccountReturnsPage() {
   const returnsResult = await getReturns();
 
@@ -46,9 +56,6 @@ export default async function AccountReturnsPage() {
                   <p className="text-sm text-[var(--foreground)]/70">
                     Order #{returnRequest.order_number ?? returnRequest.order_id}
                   </p>
-                  <p className="text-lg font-semibold text-[var(--foreground)]">
-                    Return #{returnRequest.id}
-                  </p>
                 </div>
                 <span className="rounded-full border border-[var(--card-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
                   {returnRequest.status}
@@ -57,6 +64,7 @@ export default async function AccountReturnsPage() {
               <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-[var(--foreground)]/70">
                 <span>Items: {returnRequest.total_items ?? 0}</span>
                 <span>Qty: {returnRequest.total_quantity ?? 0}</span>
+                <span>Refund: RM {formatAmount(returnRequest.refund_amount)}</span>
                 {returnRequest.created_at && <span>Requested: {new Date(returnRequest.created_at).toLocaleString()}</span>}
               </div>
             </Link>
