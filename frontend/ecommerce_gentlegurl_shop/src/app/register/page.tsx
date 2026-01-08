@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSafeRedirect } from "@/lib/auth/redirect";
-import { getAuthFlag } from "@/lib/auth/session";
 import LoadingOverlay from "@/components/LoadingOverlay";
 
 export default function RegisterPage() {
@@ -18,7 +17,9 @@ export default function RegisterPage() {
 
   const redirectTarget = useMemo(() => {
     const target = getSafeRedirect(searchParams.get("redirect"));
-    if (target === "/login" || target === "/register") return null;
+    if (!target) return null;
+    const pathOnly = target.split("?")[0]?.split("#")[0];
+    if (pathOnly === "/login" || pathOnly === "/register") return null;
     return target;
   }, [searchParams]);
 
