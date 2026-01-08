@@ -103,14 +103,14 @@ export default function OrderShipModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-md mx-auto bg-white rounded-lg shadow-lg">
+      <div className="relative w-full max-w-md mx-auto max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-lg shadow-lg">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
           <h2 className="text-lg font-semibold">Mark as Shipped</h2>
           <button
