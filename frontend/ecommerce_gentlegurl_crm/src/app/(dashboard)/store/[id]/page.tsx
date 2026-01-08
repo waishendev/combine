@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 
+import StoreDetailActions from '@/components/StoreDetailActions'
 import { mapStoreApiItemToRow, type StoreApiItem } from '@/components/storeUtils'
 import { getCurrentUser } from '@/lib/auth'
 import { getTranslator } from '@/lib/i18n-server'
@@ -64,6 +65,7 @@ export default async function StoreDetailPage({
   if (!canView) {
     redirect('/store')
   }
+  const canUpdate = user.permissions.includes('ecommerce.stores.update')
 
   const resolvedParams = await params
   const store = await getStore(resolvedParams.id)
@@ -87,20 +89,23 @@ export default async function StoreDetailPage({
       </div>
 
       <div className="mb-6">
-        <div className="flex items-center gap-4 mb-2">
-          <Link
-            href="/store"
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <i className="fa-solid fa-arrow-left" />
-            Back
-          </Link>
-          <h2 className="text-3xl font-semibold text-gray-900">{store.name}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-2">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/store"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <i className="fa-solid fa-arrow-left" />
+              Back
+            </Link>
+            <h2 className="text-3xl font-semibold text-gray-900">{store.name}</h2>
+          </div>
+          <StoreDetailActions storeId={store.id} canUpdate={canUpdate} />
         </div>
         <p className="text-sm text-gray-600">Code: {store.code}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">Photos</h3>
