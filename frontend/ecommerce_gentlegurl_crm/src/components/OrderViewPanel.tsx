@@ -10,6 +10,7 @@ import OrderCancelModal from './OrderCancelModal'
 import OrderShipModal from './OrderShipModal'
 import OrderRefundModal from './OrderRefundModal'
 import OrderCompleteModal from './OrderCompleteModal'
+import ReturnViewPanel from './ReturnViewPanel'
 
 interface OrderViewPanelProps {
   orderId: number
@@ -116,6 +117,7 @@ export default function OrderViewPanel({
   const [showRefund, setShowRefund] = useState(false)
   const [showComplete, setShowComplete] = useState(false)
   const [completeSuccess, setCompleteSuccess] = useState<string | null>(null)
+  const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -738,36 +740,36 @@ export default function OrderViewPanel({
                         (order.payment_status === 'refunded' ? 'refunded' : 'not_refunded')
                       const refundLabel =
                         refundStatus === 'refunded' ? 'Refunded' : 'Not Refunded'
+                      const refundAmount = returnRequest.refund?.amount ?? 0
 
                       return (
                         <div
                           key={returnRequest.id}
                           className="rounded-lg border border-slate-200 bg-slate-50 p-4"
                         >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-semibold text-slate-900">
-                                  Return #{returnRequest.id}
-                                </p>
-                                <StatusBadge
-                                  status={returnRequest.status?.toLowerCase() || ''}
-                                  label={formatReturnStatus(returnRequest.status)}
-                                />
-                              </div>
-                              <p className="text-xs text-slate-500">
-                                Requested: {formatDate(returnRequest.requested_at)}
-                              </p>
-                            </div>
-                            <a
-                              href={`/returns?return_id=${returnRequest.id}`}
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="text-xs text-slate-500">
+                              Requested: {formatDate(returnRequest.requested_at)}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setViewingReturnId(returnRequest.id)}
                               className="inline-flex items-center rounded border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
                             >
                               View Return
-                            </a>
+                            </button>
                           </div>
 
                           <div className="mt-3 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-semibold text-slate-900">
+                                Return #{returnRequest.id}
+                              </p>
+                              <StatusBadge
+                                status={returnRequest.status?.toLowerCase() || ''}
+                                label={formatReturnStatus(returnRequest.status)}
+                              />
+                            </div>
                             <div>
                               <p className="text-xs text-slate-500">Reason</p>
                               <p className="font-medium text-slate-900">
@@ -795,15 +797,12 @@ export default function OrderViewPanel({
                               <p className="text-xs text-slate-500">Refund Status</p>
                               <StatusBadge status={refundStatus} label={refundLabel} />
                             </div>
-                            {returnRequest.refund?.amount &&
-                              toNumber(returnRequest.refund.amount) > 0 && (
-                                <div>
-                                  <p className="text-xs text-slate-500">Refund Amount</p>
-                                  <p className="font-medium text-slate-900">
-                                    RM {formatAmount(returnRequest.refund.amount)}
-                                  </p>
-                                </div>
-                              )}
+                            <div>
+                              <p className="text-xs text-slate-500">Refund Amount</p>
+                              <p className="font-medium text-slate-900">
+                                RM {formatAmount(refundAmount)}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       )
@@ -964,6 +963,14 @@ export default function OrderViewPanel({
             await handleOrderUpdated()
             setCompleteSuccess('Order marked as completed.')
           }}
+        />
+      )}
+
+      {viewingReturnId !== null && (
+        <ReturnViewPanel
+          returnId={viewingReturnId}
+          onClose={() => setViewingReturnId(null)}
+          onReturnUpdated={handleOrderUpdated}
         />
       )}
     </>
