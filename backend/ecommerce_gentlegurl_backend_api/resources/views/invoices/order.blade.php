@@ -4,7 +4,24 @@
   <meta charset="UTF-8" />
   <title>Invoice {{ $order->order_number }}</title>
 
+  @php
+    $cjkFontCandidates = [
+      public_path('fonts/NotoSansSC-Regular.otf'),
+      storage_path('fonts/NotoSansSC-Regular.otf'),
+    ];
+    $cjkFontFile = collect($cjkFontCandidates)->first(fn ($path) => file_exists($path));
+  @endphp
+
   <style>
+    @if($cjkFontFile)
+    @font-face {
+      font-family: "Noto Sans SC";
+      font-style: normal;
+      font-weight: 400;
+      src: url("{{ 'file://' . $cjkFontFile }}") format("opentype");
+    }
+    @endif
+
     @page { margin: 24px; }
 
     body{
