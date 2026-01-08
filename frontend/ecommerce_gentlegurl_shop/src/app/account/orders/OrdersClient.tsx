@@ -344,8 +344,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm uppercase tracking-[0.08em] text-[var(--foreground)]/60">Order No</p>
-                <p className="text-lg font-semibold text-[var(--foreground)]">{order.order_no}</p>
+                <p className=" text-lg font-semibold text-[var(--foreground)]"> Order No:</p>
+                <p className="text-sm tracking-[0.08em] text-[var(--foreground)]/60">{order.order_no}</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>

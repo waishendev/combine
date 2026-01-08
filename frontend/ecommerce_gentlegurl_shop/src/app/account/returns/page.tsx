@@ -54,12 +54,13 @@ export default async function AccountReturnsPage() {
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm text-[var(--foreground)]/70">
-                    Order #{returnRequest.order_number ?? returnRequest.order_id}
-                  </p>
                   <p className="text-lg font-semibold text-[var(--foreground)]">
-                    Return #{returnRequest.id}
+                    Return Order No:
                   </p>
+                  <p className="text-sm text-[var(--foreground)]/70">
+                    {returnRequest.order_number ?? returnRequest.order_id}
+                  </p>
+
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
