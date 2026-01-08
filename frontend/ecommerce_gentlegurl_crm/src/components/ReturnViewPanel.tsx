@@ -497,28 +497,28 @@ export default function ReturnViewPanel({
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-5">
-                <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
-                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Tracking Information</p>
+              {availableActions.length > 0 ? (
+                <div className="flex flex-wrap gap-5">
+                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-900">Tracking Information</p>
+                    </div>
+                    <div className="px-4 py-3 space-y-3">
+                      <div>
+                        <p className="text-xs text-slate-500">Courier</p>
+                        <p className="font-medium text-slate-900">{detail.return_courier_name ?? '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Tracking Number</p>
+                        <p className="font-medium text-slate-900">{detail.return_tracking_no ?? '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Shipped At</p>
+                        <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="px-4 py-3 space-y-3">
-                    <div>
-                      <p className="text-xs text-slate-500">Courier</p>
-                      <p className="font-medium text-slate-900">{detail.return_courier_name ?? '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">Tracking Number</p>
-                      <p className="font-medium text-slate-900">{detail.return_tracking_no ?? '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">Shipped At</p>
-                      <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
-                    </div>
-                  </div>
-                </div>
 
-                {availableActions.length > 0 && (
                   <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                       <p className="text-sm font-semibold text-slate-900">Actions</p>
@@ -560,56 +560,135 @@ export default function ReturnViewPanel({
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
-
-              {detail.admin_note && (
-                <div className="rounded border border-slate-200 bg-white">
-                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Admin Note</p>
-                  </div>
-                  <div className="px-4 py-3">
-                    <p className="text-sm text-slate-900">{detail.admin_note}</p>
-                  </div>
                 </div>
-              )}
+              ) : null}
 
-              {(detail.refund_amount ||
-                detail.refund_method ||
-                detail.refund_proof_path ||
-                detail.refund_proof_url ||
-                detail.refunded_at) && (
-                <div className="rounded border border-slate-200 bg-white">
-                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Refund Information</p>
+              {availableActions.length > 0 &&
+                (detail.refund_amount ||
+                  detail.refund_method ||
+                  detail.refund_proof_path ||
+                  detail.refund_proof_url ||
+                  detail.refunded_at ||
+                  detail.admin_note) && (
+                  <div className="rounded border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-900">Refund Information</p>
+                    </div>
+                    <div className="px-4 py-3 space-y-3">
+                      {detail.admin_note && (
+                        <div>
+                          <p className="text-xs text-slate-500">Admin Note</p>
+                          <p className="text-sm text-slate-900">{detail.admin_note}</p>
+                        </div>
+                      )}
+                      {detail.refund_amount && (
+                        <div>
+                          <p className="text-xs text-slate-500">Amount</p>
+                          <p className="font-medium text-slate-900">RM {formatAmount(detail.refund_amount)}</p>
+                        </div>
+                      )}
+                      {detail.refund_method && (
+                        <div>
+                          <p className="text-xs text-slate-500">Method</p>
+                          <p className="font-medium text-slate-900">{detail.refund_method}</p>
+                        </div>
+                      )}
+                      {detail.refunded_at && (
+                        <div>
+                          <p className="text-xs text-slate-500">Refunded At</p>
+                          <p className="font-medium text-slate-900">{formatDate(detail.refunded_at)}</p>
+                        </div>
+                      )}
+                      {refundProofUrl && (
+                        <div>
+                          <p className="text-xs text-slate-500">Proof</p>
+                          <a
+                            href={refundProofUrl ?? '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 hover:underline text-sm"
+                          >
+                            View refund proof
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="px-4 py-3 space-y-3">
-                    <div>
-                      <p className="text-xs text-slate-500">Amount</p>
-                      <p className="font-medium text-slate-900">RM {formatAmount(detail.refund_amount)}</p>
+                )}
+
+              {availableActions.length === 0 && (
+                <div className="flex flex-wrap gap-5">
+                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-900">Tracking Information</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-slate-500">Method</p>
-                      <p className="font-medium text-slate-900">{detail.refund_method ?? '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">Refunded At</p>
-                      <p className="font-medium text-slate-900">{formatDate(detail.refunded_at)}</p>
-                    </div>
-                    {refundProofUrl && (
+                    <div className="px-4 py-3 space-y-3">
                       <div>
-                        <p className="text-xs text-slate-500">Proof</p>
-                        <a
-                          href={refundProofUrl ?? '#'}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-600 hover:underline text-sm"
-                        >
-                          View refund proof
-                        </a>
+                        <p className="text-xs text-slate-500">Courier</p>
+                        <p className="font-medium text-slate-900">{detail.return_courier_name ?? '—'}</p>
                       </div>
-                    )}
+                      <div>
+                        <p className="text-xs text-slate-500">Tracking Number</p>
+                        <p className="font-medium text-slate-900">{detail.return_tracking_no ?? '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Shipped At</p>
+                        <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
+                      </div>
+                    </div>
                   </div>
+
+                  {(detail.refund_amount ||
+                    detail.refund_method ||
+                    detail.refund_proof_path ||
+                    detail.refund_proof_url ||
+                    detail.refunded_at ||
+                    detail.admin_note) && (
+                    <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-slate-900">Refund Information</p>
+                      </div>
+                      <div className="px-4 py-3 space-y-3">
+                        {detail.admin_note && (
+                          <div>
+                            <p className="text-xs text-slate-500">Admin Note</p>
+                            <p className="text-sm text-slate-900">{detail.admin_note}</p>
+                          </div>
+                        )}
+                        {detail.refund_amount && (
+                          <div>
+                            <p className="text-xs text-slate-500">Amount</p>
+                            <p className="font-medium text-slate-900">RM {formatAmount(detail.refund_amount)}</p>
+                          </div>
+                        )}
+                        {detail.refund_method && (
+                          <div>
+                            <p className="text-xs text-slate-500">Method</p>
+                            <p className="font-medium text-slate-900">{detail.refund_method}</p>
+                          </div>
+                        )}
+                        {detail.refunded_at && (
+                          <div>
+                            <p className="text-xs text-slate-500">Refunded At</p>
+                            <p className="font-medium text-slate-900">{formatDate(detail.refunded_at)}</p>
+                          </div>
+                        )}
+                        {refundProofUrl && (
+                          <div>
+                            <p className="text-xs text-slate-500">Proof</p>
+                            <a
+                              href={refundProofUrl ?? '#'}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline text-sm"
+                            >
+                              View refund proof
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
