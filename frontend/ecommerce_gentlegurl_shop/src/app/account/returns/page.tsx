@@ -52,8 +52,8 @@ export default async function AccountReturnsPage() {
               href={`/account/returns/${returnRequest.id}`}
               className="block rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm transition hover:border-[var(--accent)]/60"
             >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
                   <p className="text-sm text-[var(--foreground)]/70">
                     Order #{returnRequest.order_number ?? returnRequest.order_id}
                   </p>
@@ -61,15 +61,30 @@ export default async function AccountReturnsPage() {
                     Return #{returnRequest.id}
                   </p>
                 </div>
-                <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
-                  {formatReturnStatusLabel(returnRequest.status)}
-                </span>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
+                    {formatReturnStatusLabel(returnRequest.status)}
+                  </span>
+                  {returnRequest.created_at && (
+                    <span className="text-xs text-[var(--foreground)]/60">
+                      Requested {new Date(returnRequest.created_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-[var(--foreground)]/70">
-                <span>Items: {returnRequest.total_items ?? 0}</span>
-                <span>Qty: {returnRequest.total_quantity ?? 0}</span>
-                <span>Refund: RM {formatAmount(returnRequest.refund_amount)}</span>
-                {returnRequest.created_at && <span>Requested: {new Date(returnRequest.created_at).toLocaleString()}</span>}
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--foreground)]/60">Items</span>
+                  <span className="font-medium text-[var(--foreground)]">{returnRequest.total_items ?? 0}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--foreground)]/60">Qty</span>
+                  <span className="font-medium text-[var(--foreground)]">{returnRequest.total_quantity ?? 0}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--foreground)]/60">Refund</span>
+                  <span className="font-medium text-[var(--foreground)]">RM {formatAmount(returnRequest.refund_amount)}</span>
+                </div>
               </div>
             </Link>
           ))}
