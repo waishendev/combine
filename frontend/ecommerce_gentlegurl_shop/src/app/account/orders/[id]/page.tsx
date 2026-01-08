@@ -95,37 +95,37 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
         </div>
       )}
 
-      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">Items</h2>
-        <div className="mt-3 space-y-3">
-          {order.items.map((item) => (
-            <div
-              key={item.id}
-              className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="flex items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={getPrimaryProductImage(item)}
-                  alt={item.name ?? "Product image"}
-                  className="h-14 w-14 rounded-lg object-cover"
-                />
-                <div>
-                  <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
-                  <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="flex-1 rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">Items</h2>
+          <div className="mt-3 space-y-3">
+            {order.items.map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={getPrimaryProductImage(item)}
+                    alt={item.name ?? "Product image"}
+                    className="h-14 w-14 rounded-lg object-cover"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
+                    <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
+                  </div>
+                </div>
+                <div className="w-full text-left text-sm text-[var(--foreground)] sm:w-auto sm:text-right">
+                  <p>Unit: {item.unit_price}</p>
+                  <p className="font-semibold text-[var(--accent-strong)]">Total: {item.line_total}</p>
                 </div>
               </div>
-              <div className="w-full text-left text-sm text-[var(--foreground)] sm:w-auto sm:text-right">
-                <p>Unit: {item.unit_price}</p>
-                <p className="font-semibold text-[var(--accent-strong)]">Total: {item.line_total}</p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
+        <div className="w-full max-w-full rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm lg:w-[320px]">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Totals</h3>
           <div className="mt-3 space-y-2 text-sm text-[var(--foreground)]/80">
             <div className="flex items-center justify-between">
@@ -146,12 +146,14 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="flex-1 rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">
             {order.pickup_or_shipping === "self_pickup" ? "Pickup" : "Shipping Information"}
           </h3>
-           {order.pickup_or_shipping === "self_pickup" && order.pickup_store ? (
+          {order.pickup_or_shipping === "self_pickup" && order.pickup_store ? (
             <div className="mt-2 text-sm text-[var(--foreground)]/80">
               <p className="font-semibold text-[var(--foreground)]">{order.pickup_store.name}</p>
               <p>{order.pickup_store.address_line1}</p>
@@ -163,49 +165,40 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               {order.pickup_store.phone && <p>Phone: {order.pickup_store.phone}</p>}
             </div>
           ) : (
-                <div className="mt-2 text-sm text-[var(--foreground)]/80">
-                  {/* Address */}
-                  <p className="font-semibold text-[var(--foreground)]">
-                    {order.shipping_address?.name}
-                  </p>
-                  <p>{order.shipping_address?.line1}</p>
-                  {order.shipping_address?.line2 && <p>{order.shipping_address.line2}</p>}
-                  <p>
-                    {order.shipping_address?.postcode} {order.shipping_address?.city},{" "}
-                    {order.shipping_address?.state}
-                  </p>
-                  <p>{order.shipping_address?.country}</p>
-                  {order.shipping_address?.phone && (
-                    <p>Phone: {order.shipping_address.phone}</p>
-                  )}
+            <div className="mt-2 text-sm text-[var(--foreground)]/80">
+              {/* Address */}
+              <p className="font-semibold text-[var(--foreground)]">
+                {order.shipping_address?.name}
+              </p>
+              <p>{order.shipping_address?.line1}</p>
+              {order.shipping_address?.line2 && <p>{order.shipping_address.line2}</p>}
+              <p>
+                {order.shipping_address?.postcode} {order.shipping_address?.city},{" "}
+                {order.shipping_address?.state}
+              </p>
+              <p>{order.shipping_address?.country}</p>
+              {order.shipping_address?.phone && <p>Phone: {order.shipping_address.phone}</p>}
 
-                  {/* Divider */}
-                  {(order.shipping_courier || order.shipping_tracking_no || order.shipped_at) && (
-                    <div className="my-3 border-t border-[var(--card-border)]" />
-                  )}
+              {/* Divider */}
+              {(order.shipping_courier || order.shipping_tracking_no || order.shipped_at) && (
+                <div className="my-3 border-t border-[var(--card-border)]" />
+              )}
 
-                  {/* Logistics */}
-                  {(order.shipping_courier || order.shipping_tracking_no || order.shipped_at) && (
-                    <div className="space-y-1 text-xs text-[var(--foreground)]/70">
-                      <p className="font-semibold uppercase tracking-wide text-[var(--foreground)]/80">
-                        Logistics
-                      </p>
-                      {order.shipping_courier && <p>Courier: {order.shipping_courier}</p>}
-                      {order.shipping_tracking_no && (
-                        <p>Tracking: {order.shipping_tracking_no}</p>
-                      )}
-                      {order.shipped_at && (
-                        <p>Shipped At: {formatDateTime(order.shipped_at)}</p>
-                      )}
-                    </div>
-                  )}
+              {/* Logistics */}
+              {(order.shipping_courier || order.shipping_tracking_no || order.shipped_at) && (
+                <div className="space-y-1 text-xs text-[var(--foreground)]/70">
+                  <p className="font-semibold uppercase tracking-wide text-[var(--foreground)]/80">
+                    Logistics
+                  </p>
+                  {order.shipping_courier && <p>Courier: {order.shipping_courier}</p>}
+                  {order.shipping_tracking_no && <p>Tracking: {order.shipping_tracking_no}</p>}
+                  {order.shipped_at && <p>Shipped At: {formatDateTime(order.shipped_at)}</p>}
                 </div>
-
+              )}
+            </div>
           )}
         </div>
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Billing Address</h3>
           <div className="mt-2 text-sm text-[var(--foreground)]/80">
@@ -214,16 +207,21 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
             </p>
             {order.billing_address?.line1 && <p>{order.billing_address.line1}</p>}
             {order.billing_address?.line2 && <p>{order.billing_address.line2}</p>}
-            {(order.billing_address?.postcode || order.billing_address?.city || order.billing_address?.state) && (
+            {(order.billing_address?.postcode ||
+              order.billing_address?.city ||
+              order.billing_address?.state) && (
               <p>
-                {order.billing_address?.postcode} {order.billing_address?.city}, {order.billing_address?.state}
+                {order.billing_address?.postcode} {order.billing_address?.city},{" "}
+                {order.billing_address?.state}
               </p>
             )}
             {order.billing_address?.country && <p>{order.billing_address.country}</p>}
             {order.billing_address?.phone && <p>Phone: {order.billing_address.phone}</p>}
           </div>
         </div>
+      </div>
 
+      <div className="flex flex-col gap-4 lg:flex-row">
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Payment</h3>
           <div className="mt-2 text-sm text-[var(--foreground)]/80">
@@ -246,31 +244,21 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-[var(--foreground)]">Receipt</h3>
             <div className="mt-3 space-y-2 text-sm text-[var(--foreground)]/80">
-              <a href={receiptSlip.file_url} target="_blank" rel="noreferrer">
+              <a
+                href={receiptSlip.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block overflow-hidden rounded-xl"
+              >
                 <Image
                   src={receiptSlip.file_url}
                   alt={`Payment slip for order ${order.order_no}`}
                   width={640}
                   height={800}
-                  className="h-auto w-full rounded-xl border border-[var(--card-border)] object-contain"
+                  className="h-44 w-auto rounded-xl border border-[var(--card-border)] object-contain transition-transform duration-200 hover:scale-105"
                   unoptimized
                 />
               </a>
-            </div>
-          </div>
-        )}
-
-        {order.returns && order.returns.length > 0 && (
-          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-[var(--foreground)]">Returns</h3>
-            <div className="mt-2 space-y-2 text-sm text-[var(--foreground)]/80">
-              {order.returns.map((returnReq) => (
-                <div key={returnReq.id} className="rounded-lg border border-[var(--card-border)] px-3 py-2">
-                  <p className="font-semibold">Return #{returnReq.id}</p>
-                  <p>Status: {returnReq.status}</p>
-                  {returnReq.tracking_no && <p>Tracking: {returnReq.tracking_no}</p>}
-                </div>
-              ))}
             </div>
           </div>
         )}
