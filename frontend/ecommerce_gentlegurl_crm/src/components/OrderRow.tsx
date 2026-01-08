@@ -12,6 +12,7 @@ export interface OrderRowData {
   paymentStatus: string
   orderStatus: string
   grandTotal: number
+  netTotal: number
   createdAt: string
   updatedAt: string
   refundTotal?: number
@@ -98,7 +99,7 @@ export default function OrderRow({
           ) : null}
         </div>
       </td>
-      <td className="px-4 py-2 border border-gray-200">RM {formatAmount(order.grandTotal)}</td>
+      <td className="px-4 py-2 border border-gray-200">RM {formatAmount(order.netTotal)}</td>
       <td className="px-4 py-2 border border-gray-200">{formatDate(order.createdAt)}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">

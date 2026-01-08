@@ -364,6 +364,7 @@ export default function OrdersTable({
     payment_status?: string
     grand_total?: string | number
     refund_total?: string | number
+    net_total?: string | number
     shipping_method?: string
     created_at?: string
     updated_at?: string
@@ -499,7 +500,7 @@ export default function OrdersTable({
                   { key: 'orderNo', label: 'Order Number' },
                   { key: 'customerName', label: 'Customer' },
                   { key: 'status', label: 'Status' },
-                  { key: 'grandTotal', label: 'Total' },
+                  { key: 'netTotal', label: 'Total' },
                   { key: 'createdAt', label: t('common.createdAt') },
                 ] as const
               ).map(({ key, label }) => (
