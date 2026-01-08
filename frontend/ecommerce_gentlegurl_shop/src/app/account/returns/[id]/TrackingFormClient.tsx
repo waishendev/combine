@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type TrackingFormClientProps = {
@@ -7,6 +8,7 @@ type TrackingFormClientProps = {
 };
 
 export function TrackingFormClient({ returnId }: TrackingFormClientProps) {
+  const router = useRouter();
   const [courier, setCourier] = useState("");
   const [trackingNo, setTrackingNo] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -38,9 +40,12 @@ export function TrackingFormClient({ returnId }: TrackingFormClientProps) {
         return;
       }
 
-      setSuccess("Tracking submitted. We'll notify you once we receive the parcel.");
+      setSuccess(
+        "Tracking submitted. We'll notify you once we receive the parcel and complete our checks before confirming the refund.",
+      );
       setCourier("");
       setTrackingNo("");
+      router.refresh();
     } catch (err) {
       setError((err as Error).message ?? "Unable to submit tracking details.");
     } finally {

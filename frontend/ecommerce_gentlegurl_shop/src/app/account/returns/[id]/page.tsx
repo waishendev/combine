@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getReturnRequest } from "@/lib/server/getReturnRequest";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import { TrackingFormClient } from "./TrackingFormClient";
+import { formatReturnStatusLabel, getReturnStatusBadgeClasses } from "@/lib/returns/returnStatus";
 
 type ReturnDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -60,6 +61,27 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
 
   const canSubmitTracking = returnRequest.status === "approved";
   const isCancelled = returnRequest.status === "cancelled";
+  const status = returnRequest.status?.toLowerCase();
+  const nextStepMessage = (() => {
+    switch (status) {
+      case "requested":
+        return "We’re reviewing your return request.";
+      case "approved":
+        return "Please submit your tracking details to proceed with the return.";
+      case "in_transit":
+        return "Tracking submitted. We’ll notify you once we receive the parcel and complete our checks before confirming the refund.";
+      case "received":
+        return "We’ve received your parcel. Our team is checking the items before confirming your refund.";
+      case "refunded":
+        return "Your refund has been released. Please allow time for your bank to process it.";
+      case "rejected":
+        return "Your return request was rejected. Please contact support if you need help.";
+      case "cancelled":
+        return "Cancelled (No tracking submitted).";
+      default:
+        return "Tracking can be submitted once your return has been approved.";
+    }
+  })();
 
   return (
     <div className="space-y-6">
@@ -70,8 +92,8 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
           </p>
           <h2 className="text-2xl font-semibold text-[var(--foreground)]">Return #{returnRequest.id}</h2>
         </div>
-        <span className="rounded-full border border-[var(--card-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-          {returnRequest.status}
+        <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
+          {formatReturnStatusLabel(returnRequest.status)}
         </span>
       </div>
 
@@ -205,11 +227,7 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
           {canSubmitTracking ? (
             <TrackingFormClient returnId={returnRequest.id} />
           ) : (
-            <p className="mt-2 text-sm text-[var(--foreground)]/70">
-              {isCancelled
-                ? "Cancelled (No tracking submitted)."
-                : "Tracking can be submitted once your return has been approved."}
-            </p>
+            <p className="mt-2 text-sm text-[var(--foreground)]/70">{isCancelled ? "Cancelled (No tracking submitted)." : nextStepMessage}</p>
           )}
         </div>
       </div>
