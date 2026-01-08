@@ -27,6 +27,7 @@ class DashboardService
             ],
             'kpis' => [
                 'revenue' => $this->withComparison($currentKpis['revenue'], $previousKpis['revenue']),
+                'net_revenue' => $this->withComparison($currentKpis['net_revenue'], $previousKpis['net_revenue']),
                 'orders_count' => $this->withComparison($currentKpis['orders_count'], $previousKpis['orders_count']),
                 'new_customers' => $this->withComparison($currentKpis['new_customers'], $previousKpis['new_customers']),
                 'refund_amount' => $this->withComparison($currentKpis['refund_amount'], $previousKpis['refund_amount']),
@@ -83,9 +84,12 @@ class DashboardService
     private function refundAmountForRange(Carbon $start, Carbon $end): float
     {
         return (float) ReturnRequest::query()
-            ->whereNotNull('refunded_at')
-            ->whereBetween('refunded_at', [$start, $end])
-            ->sum('refund_amount');
+            ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
+            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
+            ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
+            ->whereNotNull('return_requests.refunded_at')
+            ->sum('return_requests.refund_amount');
     }
 
     private function calculateKpis(Carbon $start, Carbon $end): array
@@ -97,9 +101,11 @@ class DashboardService
             ->whereBetween('created_at', [$start, $end])
             ->count();
         $refundAmount = $this->refundAmountForRange($start, $end);
+        $netRevenue = $revenue - $refundAmount;
 
         return [
             'revenue' => $revenue,
+            'net_revenue' => $netRevenue,
             'orders_count' => $ordersCount,
             'new_customers' => $newCustomers,
             'refund_amount' => $refundAmount,
@@ -111,12 +117,24 @@ class DashboardService
         $end = Carbon::today()->endOfMonth()->endOfDay();
         $start = Carbon::today()->startOfMonth()->subMonths(4);
 
+        $refundsSubquery = ReturnRequest::query()
+            ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
+            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
+            ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
+            ->whereNotNull('return_requests.refunded_at')
+            ->groupBy('return_requests.order_id')
+            ->select('return_requests.order_id', DB::raw('SUM(return_requests.refund_amount) as refund_amount'));
+
         $rows = Order::query()
+            ->leftJoinSub($refundsSubquery, 'order_refunds', 'orders.id', '=', 'order_refunds.order_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
             ->whereIn('payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
             ->selectRaw("to_char(COALESCE(placed_at, created_at), 'YYYY-MM') as month")
             ->selectRaw('SUM(grand_total) as revenue')
+            ->selectRaw('COALESCE(SUM(order_refunds.refund_amount), 0) as return_amount')
+            ->selectRaw('SUM(grand_total - COALESCE(order_refunds.refund_amount, 0)) as net_revenue')
             ->selectRaw('COUNT(*) as orders_count')
             ->groupBy('month')
             ->orderBy('month')
@@ -132,6 +150,8 @@ class DashboardService
             $months[] = [
                 'month' => $monthKey,
                 'revenue' => $row ? (float) $row->revenue : 0.0,
+                'return_amount' => $row ? (float) $row->return_amount : 0.0,
+                'net_revenue' => $row ? (float) $row->net_revenue : 0.0,
                 'orders_count' => $row ? (int) $row->orders_count : 0,
             ];
             $cursor->addMonth();
@@ -142,9 +162,19 @@ class DashboardService
 
     private function topProducts(Carbon $start, Carbon $end): array
     {
+        $refundsSubquery = ReturnRequest::query()
+            ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
+            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
+            ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
+            ->whereNotNull('return_requests.refunded_at')
+            ->groupBy('return_requests.order_id')
+            ->select('return_requests.order_id', DB::raw('SUM(return_requests.refund_amount) as refund_amount'));
+
         $rows = DB::table('orders as o')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
+            ->leftJoinSub($refundsSubquery, 'order_refunds', 'o.id', '=', 'order_refunds.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
@@ -154,7 +184,10 @@ class DashboardService
                 'p.name as product_name',
                 'p.sku',
                 DB::raw('SUM(oi.quantity) as qty'),
-                DB::raw('SUM(oi.line_total) as revenue')
+                DB::raw('SUM(oi.line_total) as revenue'),
+                DB::raw(
+                    'SUM(oi.line_total - (CASE WHEN o.grand_total > 0 THEN (oi.line_total / o.grand_total) * COALESCE(order_refunds.refund_amount, 0) ELSE 0 END)) as net_revenue'
+                )
             )
             ->orderByDesc('revenue')
             ->limit(5)
@@ -163,9 +196,8 @@ class DashboardService
         return $rows
             ->map(function ($row) {
                 $revenue = (float) $row->revenue;
-                $refundAmount = 0.0;
-
-                // TODO: Calculate refund amounts per product using return request items once available.
+                $netRevenue = (float) $row->net_revenue;
+                $refundAmount = max($revenue - $netRevenue, 0);
 
                 return [
                     'product_id' => (int) $row->product_id,
@@ -173,6 +205,7 @@ class DashboardService
                     'sku' => $row->sku,
                     'qty' => (int) $row->qty,
                     'revenue' => $revenue,
+                    'net_revenue' => $netRevenue,
                     'refund_amount' => $refundAmount,
                     'refund_percent' => $revenue > 0 ? ($refundAmount / $revenue) * 100 : 0.0,
                 ];
