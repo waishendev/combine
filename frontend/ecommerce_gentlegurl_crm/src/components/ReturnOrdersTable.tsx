@@ -83,6 +83,20 @@ const badgeStyle = (status: string) => {
   }
 }
 
+const normalizeStatus = (status?: string | null) => {
+  if (!status) return ''
+  return status.toLowerCase().replace(/\s+/g, '_')
+}
+
+const formatStatusLabel = (status?: string | null) => {
+  if (!status) return '—'
+  return normalizeStatus(status)
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 const formatDate = (value?: string | null) => {
   if (!value) return '—'
   const date = new Date(value)
@@ -289,8 +303,8 @@ export default function ReturnOrdersTable() {
                   <td className="px-4 py-2 border border-gray-200">{row.orderNumber}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.customer}</td>
                   <td className="px-4 py-2 border border-gray-200">
-                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badgeStyle(row.status)}`}>
-                      {row.status}
+                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badgeStyle(normalizeStatus(row.status))}`}>
+                      {formatStatusLabel(row.status)}
                     </span>
                   </td>
                   <td className="px-4 py-2 border border-gray-200">{row.reason}</td>
@@ -365,7 +379,7 @@ export default function ReturnOrdersTable() {
                   <option value="">All status</option>
                   {statusOptions.map((status) => (
                     <option key={status} value={status}>
-                      {status}
+                      {formatStatusLabel(status)}
                     </option>
                   ))}
                 </select>
