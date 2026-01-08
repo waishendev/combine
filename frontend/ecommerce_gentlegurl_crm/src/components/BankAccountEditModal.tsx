@@ -17,8 +17,6 @@ interface FormState {
   bank_name: string
   account_name: string
   account_number: string
-  branch: string
-  swift_code: string
   instructions: string
   isActive: 'active' | 'inactive'
   isDefault: 'yes' | 'no'
@@ -29,8 +27,6 @@ const initialFormState: FormState = {
   bank_name: '',
   account_name: '',
   account_number: '',
-  branch: '',
-  swift_code: '',
   instructions: '',
   isActive: 'active',
   isDefault: 'no',
@@ -120,8 +116,6 @@ export default function BankAccountEditModal({
           bank_name: typeof bankAccount.bank_name === 'string' ? bankAccount.bank_name : '',
           account_name: typeof bankAccount.account_name === 'string' ? bankAccount.account_name : '',
           account_number: typeof bankAccount.account_number === 'string' ? bankAccount.account_number : '',
-          branch: typeof bankAccount.branch === 'string' ? bankAccount.branch : '',
-          swift_code: typeof bankAccount.swift_code === 'string' ? bankAccount.swift_code : '',
           instructions: typeof bankAccount.instructions === 'string' ? bankAccount.instructions : '',
           isActive:
             bankAccount.is_active === true || bankAccount.is_active === 'true' || bankAccount.is_active === 1
@@ -215,8 +209,6 @@ export default function BankAccountEditModal({
     const trimmedBankName = form.bank_name.trim()
     const trimmedAccountName = form.account_name.trim()
     const trimmedAccountNumber = form.account_number.trim()
-    const trimmedBranch = form.branch.trim()
-    const trimmedSwiftCode = form.swift_code.trim()
     const trimmedInstructions = form.instructions.trim()
 
     setSubmitting(true)
@@ -229,8 +221,12 @@ export default function BankAccountEditModal({
       formData.append('bank_name', trimmedBankName)
       formData.append('account_name', trimmedAccountName)
       formData.append('account_number', trimmedAccountNumber)
-      formData.append('branch', trimmedBranch)
-      formData.append('swift_code', trimmedSwiftCode)
+      if (loadedBankAccount?.branch) {
+        formData.append('branch', loadedBankAccount.branch)
+      }
+      if (loadedBankAccount?.swift_code) {
+        formData.append('swift_code', loadedBankAccount.swift_code)
+      }
       formData.append('instructions', trimmedInstructions)
       formData.append('is_active', form.isActive === 'active' ? '1' : '0')
       formData.append('is_default', form.isDefault === 'yes' ? '1' : '0')
@@ -302,8 +298,8 @@ export default function BankAccountEditModal({
             bank_name: trimmedBankName,
             account_name: trimmedAccountName,
             account_number: trimmedAccountNumber,
-            branch: trimmedBranch || null,
-            swift_code: trimmedSwiftCode || null,
+            branch: loadedBankAccount?.branch ?? null,
+            swift_code: loadedBankAccount?.swift_code ?? null,
             logo_url: logoPreview || loadedBankAccount?.logo_url || '',
             qr_image_url: qrImagePreview || loadedBankAccount?.qr_image_url || null,
             isActive: form.isActive === 'active',
@@ -335,7 +331,7 @@ export default function BankAccountEditModal({
         }}
       />
       <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">Edit Bank Account</h2>
           <button
             onClick={() => {
@@ -354,9 +350,9 @@ export default function BankAccountEditModal({
             <div className="py-8 text-center text-sm text-gray-500">Loading bank account details...</div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-6">
+              <div className="flex flex-col gap-6 lg:flex-row">
                 {/* Left Side - Image Upload */}
-                <div className="space-y-4">
+                <div className="space-y-4 w-full lg:w-1/2">
                   {/* Logo field hidden for now */}
                   <div className="hidden">
                     <h3 className="text-sm font-medium text-gray-700 mb-1">Logo</h3>
@@ -482,7 +478,7 @@ export default function BankAccountEditModal({
                 </div>
 
                 {/* Right Side - Form Fields */}
-                <div className="space-y-4">
+                <div className="space-y-4 w-full lg:w-1/2">
                   <div>
                     <label
                       htmlFor="edit-label"
@@ -559,44 +555,6 @@ export default function BankAccountEditModal({
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                       placeholder="e.g., 1234567890"
                       required
-                      disabled={disableForm}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="edit-branch"
-                      className="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                      Branch
-                    </label>
-                    <input
-                      id="edit-branch"
-                      name="branch"
-                      type="text"
-                      value={form.branch}
-                      onChange={handleChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., Main Branch"
-                      disabled={disableForm}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="edit-swift_code"
-                      className="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                      Swift Code
-                    </label>
-                    <input
-                      id="edit-swift_code"
-                      name="swift_code"
-                      type="text"
-                      value={form.swift_code}
-                      onChange={handleChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., MBBEMYKL"
                       disabled={disableForm}
                     />
                   </div>
@@ -694,4 +652,3 @@ export default function BankAccountEditModal({
     </div>
   )
 }
-
