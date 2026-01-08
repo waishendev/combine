@@ -56,6 +56,9 @@ export default async function AccountReturnsPage() {
                   <p className="text-sm text-[var(--foreground)]/70">
                     Order #{returnRequest.order_number ?? returnRequest.order_id}
                   </p>
+                  <p className="text-lg font-semibold text-[var(--foreground)]">
+                    Return #{returnRequest.id}
+                  </p>
                 </div>
                 <span className="rounded-full border border-[var(--card-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
                   {returnRequest.status}
