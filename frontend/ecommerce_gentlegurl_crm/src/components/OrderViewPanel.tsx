@@ -27,6 +27,7 @@ type OrderDetailData = {
   discount_total: string
   shipping_fee: string
   grand_total: string
+  net_total?: string | number
   shipping_method: string
   shipping_courier?: string | null
   shipping_tracking_no?: string | null
@@ -373,6 +374,8 @@ export default function OrderViewPanel({
   }
 
   const displayStatus = calculateOrderStatus(order.status, order.payment_status)
+  const netTotal =
+    toNumber(order.net_total) || toNumber(order.grand_total) - toNumber(order.refund_total)
   const canConfirmPayment = displayStatus === 'Waiting for Verification'
   const canRejectPayment = displayStatus === 'Waiting for Verification'
   const canCancel = displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification' || displayStatus === 'Ready for Pickup'
@@ -473,25 +476,21 @@ export default function OrderViewPanel({
                     <span className="text-slate-500">Shipping Fee</span>
                     <span className="font-medium text-slate-900">RM {formatAmount(order.shipping_fee)}</span>
                   </div>
-                  {toNumber(order.refund_total) > 0 && (
+                  <div className="border-t border-slate-200 pt-2 space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-slate-900">Paid Total</span>
+                      <span className="font-medium text-slate-900">RM {formatAmount(order.grand_total)}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Refunded</span>
                       <span className="font-medium text-slate-900">
-                        RM {formatAmount(order.refund_total ?? 0)}
+                        - RM {formatAmount(order.refund_total ?? 0)}
                       </span>
                     </div>
-                  )}
-                  {toNumber(order.refund_total) > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Net</span>
-                      <span className="font-medium text-slate-900">
-                        RM {formatAmount(toNumber(order.grand_total) - toNumber(order.refund_total))}
-                      </span>
-                    </div>
-                  )}
+                  </div>
                   <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold">
-                    <span className="text-slate-900">Grand Total</span>
-                    <span className="text-slate-900">RM {formatAmount(order.grand_total)}</span>
+                    <span className="text-slate-900">Net Total</span>
+                    <span className="text-slate-900">RM {formatAmount(netTotal)}</span>
                   </div>
                 </div>
               </section>
