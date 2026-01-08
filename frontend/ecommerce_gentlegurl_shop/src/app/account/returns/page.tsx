@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getReturns } from "@/lib/server/getReturns";
+import { formatReturnStatusLabel, getReturnStatusBadgeClasses } from "@/lib/returns/returnStatus";
 
 const formatAmount = (value?: string | number | null) => {
   if (value === null || value === undefined || value === "") return "0.00";
@@ -60,8 +61,8 @@ export default async function AccountReturnsPage() {
                     Return #{returnRequest.id}
                   </p>
                 </div>
-                <span className="rounded-full border border-[var(--card-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                  {returnRequest.status}
+                <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
+                  {formatReturnStatusLabel(returnRequest.status)}
                 </span>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-[var(--foreground)]/70">
