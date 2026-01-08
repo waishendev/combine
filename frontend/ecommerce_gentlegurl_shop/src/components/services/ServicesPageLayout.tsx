@@ -26,9 +26,19 @@ type ServicesPageLayoutProps = {
   faqs: FAQItem[];
   notes: string[];
   heroImage?: string;
+  galleryImages?: { src: string; alt: string; caption?: string }[];
 };
 
-export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, notes, heroImage }: ServicesPageLayoutProps) {
+export function ServicesPageLayout({
+  title,
+  subtitle,
+  services,
+  pricing,
+  faqs,
+  notes,
+  heroImage,
+  galleryImages,
+}: ServicesPageLayoutProps) {
   const pricingRef = useRef<HTMLDivElement | null>(null);
 
   const handleBook = () => {
@@ -77,6 +87,31 @@ export function ServicesPageLayout({ title, subtitle, services, pricing, faqs, n
             </div>
           </div>
         </section>
+
+        {galleryImages && galleryImages.length > 0 && (
+          <section className="space-y-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Price List</p>
+                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Photo menu</h2>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/80 to-transparent sm:ml-6" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {galleryImages.map((image) => (
+                <div
+                  key={image.alt}
+                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)]"
+                >
+                  <div className="relative h-80 w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
+                    <Image src={image.src} alt={image.alt} fill className="object-cover" sizes="(min-width: 1024px) 320px, 100vw" />
+                  </div>
+                  {image.caption && <p className="mt-3 text-sm text-[var(--foreground)]/70">{image.caption}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Services */}
         <section className="space-y-6">
