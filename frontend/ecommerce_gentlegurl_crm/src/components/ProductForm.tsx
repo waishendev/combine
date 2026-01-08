@@ -1738,7 +1738,7 @@ export default function ProductForm({
                     {t('product.mediaTypeVideo')}
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="h-20 w-28 overflow-hidden rounded-md bg-gray-100">
+                    <div className="h-30 w-38 overflow-hidden rounded-md bg-gray-100">
                       {existingVideo ? (
                         <video
                           src={existingVideo.url}

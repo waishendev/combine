@@ -37,6 +37,7 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
   const imageReplaceInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const videoReplaceInputRef = useRef<HTMLInputElement>(null);
+  const videoPlayerRef = useRef<HTMLVideoElement>(null);
   const [replacingImageIndex, setReplacingImageIndex] = useState<number | null>(null);
 
   const selectedItems = useMemo(() => {
@@ -212,7 +213,7 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
 
       <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
         <h3 className="text-lg font-semibold text-[var(--foreground)]">Reason</h3>
-        <div className="mt-3 grid gap-4 md:grid-cols-2">
+        <div className="mt-3 space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium text-[var(--foreground)]">Reason</label>
             <select
@@ -257,13 +258,19 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
             accept="image/*"
             onChange={(event) => handleReplaceImageChange(event.target.files)}
           />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {/* Photo slots (5) */}
             {Array.from({ length: 5 }).map((_, index) => {
               const preview = imagePreviews[index];
               return (
                 <div
                   key={`image-slot-${index}`}
-                  className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--card-border)] bg-[var(--background-soft)]/60 p-3 text-xs text-[var(--foreground)]/70"
+                  className="relative aspect-square rounded-lg border border-dashed border-[var(--card-border)] bg-[var(--background-soft)]/60 overflow-hidden cursor-pointer group"
+                  onClick={() => {
+                    if (!preview) {
+                      imageInputRef.current?.click();
+                    }
+                  }}
                 >
                   {preview ? (
                     <>
@@ -271,41 +278,42 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
                       <img
                         src={preview.url}
                         alt={`Return photo ${index + 1}`}
-                        className="h-24 w-full rounded-md object-cover"
+                        className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-200"
                       />
-                      <div className="flex w-full items-center justify-between gap-2">
+                      {/* Replace & Delete Buttons - Only show on hover */}
+                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <button
                           type="button"
-                          className="rounded-md border border-[var(--card-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)]"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setReplacingImageIndex(index);
                             imageReplaceInputRef.current?.click();
                           }}
+                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Replace image"
                         >
-                          Replace
+                          <i className="fa-solid fa-image text-xs" />
                         </button>
                         <button
                           type="button"
-                          className="rounded-md border border-[var(--status-error)]/50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--status-error)]"
-                          onClick={() =>
-                            setImages((prev) => prev.filter((_, imgIndex) => imgIndex !== index))
-                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setImages((prev) => prev.filter((_, imgIndex) => imgIndex !== index));
+                          }}
+                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Delete image"
                         >
-                          Delete
+                          <i className="fa-solid fa-trash-can text-xs" />
                         </button>
                       </div>
                     </>
                   ) : (
-                    <>
-                      <p>Empty</p>
-                      <button
-                        type="button"
-                        className="rounded-md border border-[var(--card-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)]"
-                        onClick={() => imageInputRef.current?.click()}
-                      >
-                        Upload
-                      </button>
-                    </>
+                    <div className="w-full h-full flex flex-col items-center justify-center p-2 group-hover:bg-blue-50/50 transition-colors duration-200">
+                      <div className="w-10 h-10 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-2 transition-all duration-200 group-hover:scale-110">
+                        <i className="fa-solid fa-cloud-arrow-up text-gray-400 group-hover:text-blue-500 text-lg transition-colors duration-200" />
+                      </div>
+                      <span className="text-[10px] text-gray-500 group-hover:text-blue-600 text-center font-medium transition-colors duration-200">Click to upload</span>
+                    </div>
                   )}
                 </div>
               );
@@ -330,43 +338,76 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
             accept="video/*"
             onChange={(event) => handleReplaceVideoChange(event.target.files)}
           />
-          <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--card-border)] bg-[var(--background-soft)]/60 p-3 text-xs text-[var(--foreground)]/70 sm:max-w-xs">
-            {videoPreview ? (
-              <>
-                <video
-                  src={videoPreview}
-                  className="h-32 w-full rounded-md object-cover"
-                  controls
-                />
-                <div className="flex w-full items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    className="rounded-md border border-[var(--card-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)]"
-                    onClick={() => videoReplaceInputRef.current?.click()}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-md">
+            {/* Video slot (1) */}
+            <div
+              className="relative aspect-square rounded-lg border border-dashed border-[var(--card-border)] bg-[var(--background-soft)]/60 overflow-hidden cursor-pointer group"
+              onClick={(e) => {
+                if (!videoPreview) {
+                  videoInputRef.current?.click();
+                } else {
+                  // Toggle video play/pause when clicking on video
+                  if (videoPlayerRef.current) {
+                    if (videoPlayerRef.current.paused) {
+                      videoPlayerRef.current.play();
+                    } else {
+                      videoPlayerRef.current.pause();
+                    }
+                  }
+                }
+              }}
+            >
+              {videoPreview ? (
+                <>
+                  <video
+                    ref={videoPlayerRef}
+                    src={videoPreview}
+                    className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-200"
+                    controls={false}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  {/* Replace & Delete Buttons - Only show on hover */}
+                  <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        videoReplaceInputRef.current?.click();
+                      }}
+                      className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                      aria-label="Replace video"
+                    >
+                      <i className="fa-solid fa-image text-xs" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVideo(null);
+                      }}
+                      className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                      aria-label="Delete video"
+                    >
+                      <i className="fa-solid fa-trash-can text-xs" />
+                    </button>
+                  </div>
+                  {/* Video play icon overlay - only show when paused */}
+                  <div 
+                    className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors duration-200 pointer-events-none"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    Replace
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-[var(--status-error)]/50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--status-error)]"
-                    onClick={() => setVideo(null)}
-                  >
-                    Delete
-                  </button>
+                    <i className="fa-solid fa-play text-white text-2xl opacity-80" />
+                  </div>
+                </>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center p-2 group-hover:bg-blue-50/50 transition-colors duration-200">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-2 transition-all duration-200 group-hover:scale-110">
+                    <i className="fa-solid fa-cloud-arrow-up text-gray-400 group-hover:text-blue-500 text-lg transition-colors duration-200" />
+                  </div>
+                  <span className="text-[10px] text-gray-500 group-hover:text-blue-600 text-center font-medium transition-colors duration-200">Click to upload</span>
                 </div>
-              </>
-            ) : (
-              <>
-                <p>Empty</p>
-                <button
-                  type="button"
-                  className="rounded-md border border-[var(--card-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)]"
-                  onClick={() => videoInputRef.current?.click()}
-                >
-                  Upload
-                </button>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
