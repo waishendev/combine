@@ -368,20 +368,27 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                       >
                         My Account
                       </Link>
-                      <Link
-                        href="/account/orders"
-                        className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                        onClick={() => setMobileUserMenuOpen(false)}
-                      >
-                        My Orders
-                      </Link>
-                      {/* <Link
-                        href="/account/points/history"
-                        className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                        onClick={() => setMobileUserMenuOpen(false)}
-                      >
-                        Points History
-                      </Link> */}
+                  <Link
+                    href="/account/orders"
+                    className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                    onClick={() => setMobileUserMenuOpen(false)}
+                  >
+                    My Orders
+                  </Link>
+                  <Link
+                    href="/account/returns"
+                    className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                    onClick={() => setMobileUserMenuOpen(false)}
+                  >
+                    My Returns
+                  </Link>
+                  {/* <Link
+                    href="/account/points/history"
+                    className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                    onClick={() => setMobileUserMenuOpen(false)}
+                  >
+                    Points History
+                  </Link> */}
                       <div className="my-1 border-t border-[var(--muted)]/50" />
                       <button
                         onClick={() => {
@@ -533,6 +540,13 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                     onClick={() => setUserMenuOpen(false)}
                   >
                     My Orders
+                  </Link>
+                  <Link
+                    href="/account/returns"
+                    className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                    onClick={() => setUserMenuOpen(false)}
+                  >
+                    My Returns
                   </Link>
                   {/* <Link
                     href="/account/points/history"
