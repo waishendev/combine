@@ -26,17 +26,25 @@ export default function OrderShipModal({
     setSubmitting(true)
     setError(null)
 
+    if (!shippingCourier.trim()) {
+      setError('Shipping courier is required')
+      setSubmitting(false)
+      return
+    }
+
+    if (!shippingTrackingNo.trim()) {
+      setError('Tracking number is required')
+      setSubmitting(false)
+      return
+    }
+
     try {
       const payload: Record<string, unknown> = {
         status: 'shipped',
       }
 
-      if (shippingCourier.trim()) {
-        payload.shipping_courier = shippingCourier.trim()
-      }
-      if (shippingTrackingNo.trim()) {
-        payload.shipping_tracking_no = shippingTrackingNo.trim()
-      }
+      payload.shipping_courier = shippingCourier.trim()
+      payload.shipping_tracking_no = shippingTrackingNo.trim()
       if (shippedAt.trim()) {
         payload.shipped_at = shippedAt.trim()
       }
@@ -120,13 +128,14 @@ export default function OrderShipModal({
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <div>
             <label htmlFor="shippingCourier" className="block text-sm font-medium text-gray-700 mb-1">
-              Shipping Courier
+              Shipping Courier <span className="text-red-500">*</span>
             </label>
             <input
               id="shippingCourier"
               type="text"
               value={shippingCourier}
               onChange={(e) => setShippingCourier(e.target.value)}
+              required
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
               placeholder="e.g., DHL, FedEx, etc."
             />
@@ -134,13 +143,14 @@ export default function OrderShipModal({
 
           <div>
             <label htmlFor="shippingTrackingNo" className="block text-sm font-medium text-gray-700 mb-1">
-              Tracking Number
+              Tracking Number <span className="text-red-500">*</span>
             </label>
             <input
               id="shippingTrackingNo"
               type="text"
               value={shippingTrackingNo}
               onChange={(e) => setShippingTrackingNo(e.target.value)}
+              required
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter tracking number"
             />
@@ -189,4 +199,3 @@ export default function OrderShipModal({
     </div>
   )
 }
-
