@@ -42,6 +42,26 @@ type StoreImagePreview = {
   preview: string
 }
 
+type OpeningHourEntry = {
+  label: string
+  time: string
+}
+
+const buildOpeningHourValue = (entry: OpeningHourEntry) => {
+  const label = entry.label.trim()
+  const time = entry.time.trim()
+  if (!label && !time) {
+    return ''
+  }
+  if (!label) {
+    return time
+  }
+  if (!time) {
+    return `${label}:`
+  }
+  return `${label}: ${time}`
+}
+
 export default function StoreCreateModal({
   onClose,
   onSuccess,
@@ -50,7 +70,9 @@ export default function StoreCreateModal({
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [openingHours, setOpeningHours] = useState<string[]>([''])
+  const [openingHours, setOpeningHours] = useState<OpeningHourEntry[]>([
+    { label: '', time: '' },
+  ])
   const [imagePreviews, setImagePreviews] = useState<StoreImagePreview[]>([])
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
   const [replaceIndex, setReplaceIndex] = useState<number | null>(null)
@@ -132,12 +154,18 @@ export default function StoreCreateModal({
     })
   }
 
-  const handleOpeningHourChange = (index: number, value: string) => {
-    setOpeningHours((prev) => prev.map((item, idx) => (idx === index ? value : item)))
+  const handleOpeningHourChange = (
+    index: number,
+    field: keyof OpeningHourEntry,
+    value: string,
+  ) => {
+    setOpeningHours((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item)),
+    )
   }
 
   const handleAddOpeningHour = () => {
-    setOpeningHours((prev) => [...prev, ''])
+    setOpeningHours((prev) => [...prev, { label: '', time: '' }])
   }
 
   const handleRemoveOpeningHour = (index: number) => {
@@ -187,6 +215,7 @@ export default function StoreCreateModal({
       formData.append('is_active', '1')
 
       openingHours
+        .map(buildOpeningHourValue)
         .map((value) => value.trim())
         .filter(Boolean)
         .forEach((value) => {
@@ -242,6 +271,7 @@ export default function StoreCreateModal({
             imageUrl: null,
             images: [],
             openingHours: openingHours
+              .map(buildOpeningHourValue)
               .map((value) => value.trim())
               .filter(Boolean),
             address_line1: trimmedAddressLine1,
@@ -256,7 +286,7 @@ export default function StoreCreateModal({
 
       setForm({ ...initialFormState })
       setImagePreviews([])
-      setOpeningHours([''])
+      setOpeningHours([{ label: '', time: '' }])
       onSuccess(storeRow)
     } catch (err) {
       console.error(err)
@@ -611,12 +641,23 @@ export default function StoreCreateModal({
                     <div key={`opening-${index}`} className="flex items-center gap-2">
                       <input
                         type="text"
-                        value={value}
+                        value={value.label}
                         onChange={(event) =>
-                          handleOpeningHourChange(index, event.target.value)
+                          handleOpeningHourChange(index, 'label', event.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="e.g. Mon-Fri 10:00 - 19:00"
+                        className="w-40 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Label"
+                        disabled={submitting}
+                      />
+                      <span className="text-gray-500 text-sm">:</span>
+                      <input
+                        type="text"
+                        value={value.time}
+                        onChange={(event) =>
+                          handleOpeningHourChange(index, 'time', event.target.value)
+                        }
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Time"
                         disabled={submitting}
                       />
                       {openingHours.length > 1 && (
