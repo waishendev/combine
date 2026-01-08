@@ -24,24 +24,28 @@ export async function generateMetadata(): Promise<Metadata> {
     meta_title: "Gentlegurls",
   });
 
-  const title = typeof baseMetadata.title === "string" ? baseMetadata.title : "Gentlegurls";
+  const resolvedTitle =
+    typeof baseMetadata.title === "string" && baseMetadata.title.trim().length > 0
+      ? baseMetadata.title
+      : "Gentlegurls";
   const description = baseMetadata.description;
 
   return {
     ...baseMetadata,
+    title: resolvedTitle,
     alternates: {
       canonical: siteUrl,
     },
     openGraph: {
       ...(baseMetadata.openGraph ?? {}),
-      title,
+      title: resolvedTitle,
       description,
       url: siteUrl,
       type: "website",
     },
     twitter: {
       ...(baseMetadata.twitter ?? {}),
-      title,
+      title: resolvedTitle,
       description,
     },
   };
