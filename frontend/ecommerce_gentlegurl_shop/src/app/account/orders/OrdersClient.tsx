@@ -296,7 +296,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         
         // New status display logic based on the requirements
         let displayStatus: string;
-        if (statusKey === "cancelled") {
+        if (statusKey === "cancelled" || isPendingUnpaidExpired) {
           displayStatus = "Cancelled";
         } else if (paymentStatusKey === "failed") {
           displayStatus = "Payment Failed";
@@ -322,7 +322,12 @@ export function OrdersClient({ orders }: OrdersClientProps) {
 
         // Badge style based on status
         let badgeStyle: string;
-        if (statusKey === "cancelled" || paymentStatusKey === "failed" || (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid")) {
+        if (
+          statusKey === "cancelled" ||
+          isPendingUnpaidExpired ||
+          paymentStatusKey === "failed" ||
+          (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid")
+        ) {
           badgeStyle = "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]";
         } else if ((statusKey === "pending" && paymentStatusKey === "unpaid") || (statusKey === "processing" && paymentStatusKey === "unpaid")) {
           badgeStyle = "bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)] border-[var(--status-warning-border)]";
@@ -349,7 +354,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 text-sm text-[var(--foreground)]/80 sm:grid-cols-4">
+            <div className="mt-4 grid gap-3 text-sm text-[var(--foreground)]/80 sm:grid-cols-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Date</p>
                 <p className="text-base font-medium text-[var(--foreground)]">
@@ -364,8 +369,38 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Total Amount</p>
                 <p className="text-base font-semibold text-[var(--accent-strong)]">{order.grand_total}</p>
               </div>
-              <div className="flex items-end justify-start sm:justify-end">
+
+              <div className="sm:col-span-3">
                 <div className="flex flex-wrap items-center gap-2">
+                  {canPay && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handlePayNow(order.id, order.payment_method)}
+                        disabled={payingOrderId === order.id}
+                        className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {payingOrderId === order.id ? "Redirecting..." : "Pay Now"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCancel(order.id)}
+                        disabled={cancellingOrderId === order.id}
+                        className="inline-flex items-center gap-2 rounded-full border border-[var(--status-error-border)] px-4 py-2 text-xs font-semibold uppercase text-[color:var(--status-error)] transition hover:border-[var(--status-error)] hover:bg-[var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {cancellingOrderId === order.id ? "Cancelling..." : "Cancel"}
+                      </button>
+                    </>
+                  )}
+                  {!canPay && isProcessing && canUploadSlip && (
+                    <button
+                      type="button"
+                      onClick={() => setSlipModal({ orderId: order.id })}
+                      className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                    >
+                      Reupload Slip
+                    </button>
+                  )}
                   <Link
                     href={`/account/orders/${order.id}`}
                     className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/60"
@@ -409,46 +444,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 </div>
               </div>
 
-              {(canPay || isProcessing) && (
-                <div className="sm:col-span-4">
-                  {canPay ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handlePayNow(order.id, order.payment_method)}
-                        disabled={payingOrderId === order.id}
-                        className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {payingOrderId === order.id ? "Redirecting..." : "Pay Now"}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleCancel(order.id)}
-                        disabled={cancellingOrderId === order.id}
-                        className="inline-flex items-center gap-2 rounded-full border border-[var(--status-error-border)] px-4 py-2 text-xs font-semibold uppercase text-[color:var(--status-error)] transition hover:border-[var(--status-error)] hover:bg-[var(--status-error-bg)] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {cancellingOrderId === order.id ? "Cancelling..." : "Cancel"}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {canUploadSlip && (
-                        <button
-                          type="button"
-                          onClick={() => setSlipModal({ orderId: order.id })}
-                          className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
-                        >
-                          Reupload Slip
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {Array.isArray(order.items) && order.items.length > 0 && (
-                <div className="sm:col-span-4">
+                <div className="sm:col-span-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Items</p>
                   <div className="space-y-2">
                     {order.items.map((item) => {
