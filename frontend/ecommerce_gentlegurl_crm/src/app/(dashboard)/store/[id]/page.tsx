@@ -102,7 +102,6 @@ export default async function StoreDetailPage({
           </div>
           <StoreDetailActions storeId={store.id} canUpdate={canUpdate} />
         </div>
-        <p className="text-sm text-gray-600">Code: {store.code}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -136,36 +135,44 @@ export default async function StoreDetailPage({
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
+              <p className="text-xs text-gray-500">Name</p>
+              <p className="text-sm text-gray-900 mt-1">{store.name}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Code</p>
+              <p className="text-sm text-gray-900 mt-1">{store.code}</p>
+            </div>
+            <div>
               <p className="text-xs text-gray-500">Address Line 1</p>
-              <p className="text-sm text-gray-900">{store.address_line1}</p>
+              <p className="text-sm text-gray-900 mt-1">{store.address_line1}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Address Line 2</p>
-              <p className="text-sm text-gray-900">{store.address_line2 || '-'}</p>
+              <p className="text-sm text-gray-900 mt-1">{store.address_line2 || '-'}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">City</p>
-              <p className="text-sm text-gray-900">{store.city}</p>
+              <p className="text-sm text-gray-900 mt-1">{store.city}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">State</p>
-              <p className="text-sm text-gray-900">{store.state}</p>
+              <p className="text-sm text-gray-900 mt-1">{store.state}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Postcode</p>
-              <p className="text-sm text-gray-900">{store.postcode}</p>
+              <p className="text-sm text-gray-900 mt-1">{store.postcode}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Country</p>
-              <p className="text-sm text-gray-900">{store.country}</p>
+              <p className="text-sm text-gray-900 mt-1">{store.country}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Phone</p>
-              <p className="text-sm text-gray-900">{store.phone}</p>
+              <p className="text-sm text-gray-900 mt-1">{store.phone}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Status</p>
-              <p className="text-sm text-gray-900">
+              <p className="text-sm text-gray-900 mt-1">
                 {store.isActive ? t('common.active') : t('common.inactive')}
               </p>
             </div>
