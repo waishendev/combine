@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { normalizeInternalLink } from "@/lib/links";
 
 type SliderItem = {
   id: number | string;
@@ -196,7 +197,7 @@ export default function Slider({ items }: SliderProps) {
                     
                     {hasCta && (
                       <Link
-                        href={item.button_link as string}
+                        href={normalizeInternalLink(item.button_link as string)}
                         onClick={(e) => {
                           if (hasSwiped) {
                             e.preventDefault();
