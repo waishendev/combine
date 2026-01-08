@@ -26,7 +26,9 @@ class DashboardService
                 'to' => $end->toDateString(),
             ],
             'kpis' => [
-                'revenue' => $this->withComparison($currentKpis['revenue'], $previousKpis['revenue']),
+                'revenue' => $this->withComparison($currentKpis['revenue_gross'], $previousKpis['revenue_gross']),
+                'revenue_gross' => $this->withComparison($currentKpis['revenue_gross'], $previousKpis['revenue_gross']),
+                'revenue_net' => $this->withComparison($currentKpis['revenue_net'], $previousKpis['revenue_net']),
                 'orders_count' => $this->withComparison($currentKpis['orders_count'], $previousKpis['orders_count']),
                 'new_customers' => $this->withComparison($currentKpis['new_customers'], $previousKpis['new_customers']),
                 'refund_amount' => $this->withComparison($currentKpis['refund_amount'], $previousKpis['refund_amount']),
@@ -85,21 +87,24 @@ class DashboardService
         return (float) ReturnRequest::query()
             ->whereNotNull('refunded_at')
             ->whereBetween('refunded_at', [$start, $end])
+            ->where('status', 'refunded')
             ->sum('refund_amount');
     }
 
     private function calculateKpis(Carbon $start, Carbon $end): array
     {
         $baseQuery = $this->baseOrdersQuery($start, $end);
-        $revenue = (float) (clone $baseQuery)->sum('grand_total');
+        $revenueGross = (float) (clone $baseQuery)->sum('grand_total');
         $ordersCount = (int) (clone $baseQuery)->count();
         $newCustomers = (int) Customer::query()
             ->whereBetween('created_at', [$start, $end])
             ->count();
         $refundAmount = $this->refundAmountForRange($start, $end);
+        $revenueNet = $revenueGross - $refundAmount;
 
         return [
-            'revenue' => $revenue,
+            'revenue_gross' => $revenueGross,
+            'revenue_net' => $revenueNet,
             'orders_count' => $ordersCount,
             'new_customers' => $newCustomers,
             'refund_amount' => $refundAmount,
