@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getReturns } from "@/lib/server/getReturns";
 import { formatReturnStatusLabel, getReturnStatusBadgeClasses } from "@/lib/returns/returnStatus";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 
 const formatAmount = (value?: string | number | null) => {
   if (value === null || value === undefined || value === "") return "0.00";
@@ -112,15 +113,28 @@ export default async function AccountReturnsPage() {
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">
                       Items
                     </p>
-                    <div className="space-y-2">
+                    <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
                       {returnRequest.items.map((item, index) => (
                         <div
                           key={item.order_item_id ?? `${returnRequest.id}-${index}`}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--card-border)] px-3 py-2"
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--card-border)] px-3 py-2"
                         >
-                          <p className="text-sm font-semibold text-[var(--foreground)]">
-                            {item.product_name ?? "Item"}
-                          </p>
+                          <div className="flex items-center gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={getPrimaryProductImage(item)}
+                              alt={item.product_name ?? "Product image"}
+                              className="h-12 w-12 rounded-lg object-cover"
+                            />
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--foreground)]">
+                                {item.product_name ?? "Item"}
+                              </p>
+                              {item.sku && (
+                                <p className="text-xs text-[var(--foreground)]/60">SKU: {item.sku}</p>
+                              )}
+                            </div>
+                          </div>
                           <p className="text-xs text-[var(--foreground)]/70">
                             Qty: {item.requested_quantity ?? item.quantity ?? 0}
                           </p>
