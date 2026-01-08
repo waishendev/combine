@@ -89,12 +89,17 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-[var(--foreground)]/70">
-            Order #{returnRequest.order_number ?? returnRequest.order_id}
-          </p>
-          <h2 className="text-2xl font-semibold text-[var(--foreground)]">Return #{returnRequest.id}</h2>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
+          <Link href="/account/returns" className="text-sm font-semibold text-[var(--accent)]">
+            ← Back to returns
+          </Link>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--foreground)]/60">Return</p>
+            <p className="text-sm text-[var(--foreground)]/70">
+              Order #{returnRequest.order_number ?? returnRequest.order_id}
+            </p>
+          </div>
         </div>
         <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
           {formatReturnStatusLabel(returnRequest.status)}
@@ -275,11 +280,6 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
         </div>
       </div>
 
-      <div>
-        <Link href="/account/returns" className="text-sm font-semibold text-[var(--accent)]">
-          ← Back to returns
-        </Link>
-      </div>
     </div>
   );
 }
