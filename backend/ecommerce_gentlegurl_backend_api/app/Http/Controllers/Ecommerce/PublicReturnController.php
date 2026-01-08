@@ -205,7 +205,7 @@ class PublicReturnController extends Controller
             'per_page' => ['nullable', 'integer'],
         ]);
 
-        $query = ReturnRequest::with(['order'])
+        $query = ReturnRequest::with(['order', 'items.orderItem'])
             ->where('customer_id', $customer->id);
 
         if (!empty($validated['status'])) {
@@ -241,6 +241,15 @@ class PublicReturnController extends Controller
                 'refund_method' => $request->refund_method,
                 'refund_proof_url' => $refundProofUrl,
                 'refunded_at' => $request->refunded_at,
+                'items' => $request->items->map(function (ReturnRequestItem $item) {
+                    return [
+                        'order_item_id' => $item->order_item_id,
+                        'product_name' => $item->orderItem?->product_name_snapshot,
+                        'requested_quantity' => $item->quantity,
+                        'quantity' => $item->orderItem?->quantity,
+                        'sku' => $item->orderItem?->sku_snapshot,
+                    ];
+                })->values(),
             ];
         });
 
