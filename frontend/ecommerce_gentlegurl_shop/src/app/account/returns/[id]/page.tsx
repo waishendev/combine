@@ -62,6 +62,10 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
   const canSubmitTracking = returnRequest.status === "approved";
   const isCancelled = returnRequest.status === "cancelled";
   const status = returnRequest.status?.toLowerCase();
+  const refundProofUrl = resolveReturnMediaUrl(returnRequest.refund_proof_url);
+  const refundProofIsPdf = refundProofUrl
+    ? refundProofUrl.toLowerCase().split("?")[0].endsWith(".pdf")
+    : false;
   const nextStepMessage = (() => {
     switch (status) {
       case "requested":
@@ -73,7 +77,7 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
       case "received":
         return "We’ve received your parcel. Our team is checking the items before confirming your refund.";
       case "refunded":
-        return "Your refund has been released. Please allow time for your bank to process it.";
+        return "Your refund has been completed. If you need help, please reach out to support.";
       case "rejected":
         return "Your return request was rejected. Please contact support if you need help.";
       case "cancelled":
@@ -97,48 +101,78 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
         </span>
       </div>
 
-      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-        <h3 className="text-lg font-semibold text-[var(--foreground)]">Request Details</h3>
-        <div className="mt-3 grid gap-4 text-sm text-[var(--foreground)]/80 md:grid-cols-2">
-          <div>
-            <p className="font-semibold text-[var(--foreground)]">Reason</p>
-            <p>{returnRequest.reason ?? "—"}</p>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Request Details</h3>
+          <div className="mt-3 space-y-4 text-sm text-[var(--foreground)]/80">
+            <div>
+              <p className="font-semibold text-[var(--foreground)]">Reason</p>
+              <p>{returnRequest.reason ?? "—"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-[var(--foreground)]">Description</p>
+              <p>{returnRequest.description ?? "—"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-[var(--foreground)]">Admin Note</p>
+              <p>{returnRequest.admin_note ?? "—"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-[var(--foreground)]">Timeline</p>
+              <p>Requested: {formatDateTime(returnRequest.timestamps?.created_at)}</p>
+              <p>Reviewed: {formatDateTime(returnRequest.timestamps?.reviewed_at)}</p>
+              <p>Received: {formatDateTime(returnRequest.timestamps?.received_at)}</p>
+              <p>Refunded: {formatDateTime(returnRequest.timestamps?.completed_at)}</p>
+            </div>
           </div>
-          <div>
-            <p className="font-semibold text-[var(--foreground)]">Description</p>
-            <p>{returnRequest.description ?? "—"}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-[var(--foreground)]">Admin Note</p>
-            <p>{returnRequest.admin_note ?? "—"}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-[var(--foreground)]">Timeline</p>
-            <p>Requested: {formatDateTime(returnRequest.timestamps?.created_at)}</p>
-            <p>Reviewed: {formatDateTime(returnRequest.timestamps?.reviewed_at)}</p>
-            <p>Received: {formatDateTime(returnRequest.timestamps?.received_at)}</p>
-            <p>Refunded: {formatDateTime(returnRequest.timestamps?.completed_at)}</p>
-          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Refund Details</h3>
           {(returnRequest.refund_amount ||
             returnRequest.refund_method ||
-            returnRequest.refund_proof_url ||
-            returnRequest.refunded_at) && (
-            <div>
-              <p className="font-semibold text-[var(--foreground)]">Refund</p>
-              <p>Amount: RM {formatAmount(returnRequest.refund_amount)}</p>
-              <p>Method: {returnRequest.refund_method ?? "—"}</p>
-              <p>Refunded At: {formatDateTime(returnRequest.refunded_at)}</p>
-              {returnRequest.refund_proof_url && (
-                <a
-                  href={returnRequest.refund_proof_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[var(--accent)] hover:underline"
-                >
-                  View refund proof
-                </a>
+            returnRequest.refunded_at ||
+            returnRequest.refund_proof_url) ? (
+            <div className="mt-3 space-y-3 text-sm text-[var(--foreground)]/80">
+              <div>
+                <p className="font-semibold text-[var(--foreground)]">Amount</p>
+                <p>RM {formatAmount(returnRequest.refund_amount)}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-[var(--foreground)]">Method</p>
+                <p>{returnRequest.refund_method ?? "—"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-[var(--foreground)]">Refunded At</p>
+                <p>{formatDateTime(returnRequest.refunded_at)}</p>
+              </div>
+              {refundProofUrl && (
+                <div>
+                  <p className="font-semibold text-[var(--foreground)]">Refund Proof</p>
+                  {refundProofIsPdf ? (
+                    <a
+                      href={refundProofUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[var(--accent)] hover:underline"
+                    >
+                      View refund proof
+                    </a>
+                  ) : (
+                    <a href={refundProofUrl} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={refundProofUrl}
+                        alt="Refund proof"
+                        className="mt-2 h-24 w-24 rounded-lg border border-[var(--card-border)] object-cover"
+                      />
+                    </a>
+                  )}
+                </div>
               )}
             </div>
+          ) : (
+            <p className="mt-3 text-sm text-[var(--foreground)]/70">No refund details yet.</p>
           )}
         </div>
       </div>

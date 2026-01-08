@@ -8,19 +8,19 @@ export const getReturnStatusBadgeClasses = (status?: string | null) => {
   const base = "rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide";
   switch (status?.toLowerCase()) {
     case "requested":
-      return `${base} border-yellow-200 bg-yellow-100 text-yellow-700`;
+      return `${base} border-amber-200 bg-amber-100 text-amber-800`;
     case "approved":
-      return `${base} border-blue-200 bg-blue-100 text-blue-700`;
+      return `${base} border-sky-200 bg-sky-100 text-sky-800`;
     case "in_transit":
-      return `${base} border-purple-200 bg-purple-100 text-purple-700`;
+      return `${base} border-violet-200 bg-violet-100 text-violet-800`;
     case "received":
-      return `${base} border-emerald-200 bg-emerald-100 text-emerald-700`;
+      return `${base} border-teal-200 bg-teal-100 text-teal-800`;
     case "refunded":
-      return `${base} border-green-200 bg-green-100 text-green-700`;
+      return `${base} border-green-200 bg-green-100 text-green-800`;
     case "rejected":
-      return `${base} border-red-200 bg-red-100 text-red-700`;
+      return `${base} border-rose-200 bg-rose-100 text-rose-800`;
     case "cancelled":
-      return `${base} border-gray-200 bg-gray-100 text-gray-600`;
+      return `${base} border-gray-300 bg-gray-100 text-gray-700`;
     default:
       return `${base} border-[var(--card-border)] bg-[var(--muted)]/40 text-[var(--foreground)]/70`;
   }
