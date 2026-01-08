@@ -3,11 +3,18 @@
 import { useEffect, useRef, useState, FormEvent } from 'react'
 
 type ReturnItem = {
-  order_item_id: number
+  product_id?: number
+  product_name?: string | null
+  quantity?: number | null
+  unit_price?: string | number | null
+  line_total?: string | number | null
+  product_image?: string | null
+  cover_image_url?: string | null
+  // Legacy fields for backward compatibility
+  order_item_id?: number
   product_name_snapshot?: string | null
   sku_snapshot?: string | null
   requested_quantity?: number | null
-  quantity?: number | null
 }
 
 type ReturnDetail = {
@@ -127,6 +134,50 @@ const isEmbeddedVideoUrl = (value?: string | null) => {
   if (!value) return false
   const lower = value.toLowerCase()
   return lower.includes('youtube.com') || lower.includes('youtu.be') || lower.includes('vimeo.com')
+}
+
+const getImageUrl = (imagePath: string | null | undefined) => {
+  if (!imagePath) return null
+  // If it's already a full URL, return as is
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath
+  }
+  // Get base URL from environment (NEXT_PUBLIC_ vars are available in client components)
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000'
+  
+  // If it starts with /, it's already a path
+  if (imagePath.startsWith('/')) {
+    return `${baseUrl}${imagePath}`
+  }
+  // Otherwise, assume it's a storage path
+  return `${baseUrl}/storage/${imagePath}`
+}
+
+const ProductImage = ({
+  imagePath,
+  alt,
+}: {
+  imagePath?: string | null
+  alt: string
+}) => {
+  const [hasError, setHasError] = useState(false)
+  const resolvedUrl = getImageUrl(imagePath)
+  const showImage = Boolean(resolvedUrl) && !hasError
+
+  return (
+    <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-400">
+      {showImage ? (
+        <img
+          src={resolvedUrl || ''}
+          alt={alt}
+          className="h-full w-full rounded object-cover"
+          onError={() => setHasError(true)}
+        />
+      ) : (
+        <i className="fa-solid fa-image text-xl" />
+      )}
+    </div>
+  )
 }
 
 export default function ReturnViewPanel({
@@ -335,8 +386,8 @@ export default function ReturnViewPanel({
         >
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">Return #{detail.id}</h3>
-              <p className="text-xs text-slate-500">Order {detail.order?.order_number ?? '—'}</p>
+              <h3 className="text-sm font-semibold text-slate-900">Return Details</h3>
+              <p className="text-xs text-slate-500">Order No: {detail.order?.order_number ?? '—'}</p>
             </div>
             <button
               type="button"
@@ -423,29 +474,62 @@ export default function ReturnViewPanel({
               </div>
 
               <div className="flex flex-wrap gap-5">
-                <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                <div className="w-full rounded border border-slate-200 bg-white lg:w-[calc(50%-10px)]">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                     <p className="text-sm font-semibold text-slate-900">Return Items</p>
                   </div>
-                  <div className="max-h-64 overflow-y-auto px-4 py-3 space-y-2">
+                  <div className="px-4 py-3">
                     {(detail.items ?? []).length === 0 ? (
                       <p className="text-xs text-slate-500">No items</p>
                     ) : (
-                      (detail.items ?? []).map((item) => (
-                        <div key={item.order_item_id} className="rounded-md border border-slate-200 px-3 py-2">
-                          <p className="font-medium text-slate-800">{item.product_name_snapshot ?? 'Item'}</p>
-                          <p className="text-xs text-slate-500">SKU: {item.sku_snapshot ?? '—'}</p>
-                          <p className="text-xs text-slate-500">
-                            Qty: {item.requested_quantity ?? item.quantity ?? 0}
-                          </p>
-                        </div>
-                      ))
+                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                        {(detail.items ?? []).map((item, idx) => {
+                          const productName = item.product_name ?? item.product_name_snapshot ?? 'Item'
+                          const quantity = item.quantity ?? item.requested_quantity ?? 0
+                          const productImage = item.product_image ?? item.cover_image_url ?? null
+                          const sku = item.sku_snapshot ?? '—'
+                          const imageUrl = getImageUrl(productImage)
+                          
+                          return (
+                            <div
+                              key={item.product_id ?? item.order_item_id ?? idx}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2"
+                            >
+                              <div className="flex items-center gap-3">
+                                {imageUrl ? (
+                                  <img
+                                    src={imageUrl}
+                                    alt={productName}
+                                    className="h-12 w-12 rounded-lg object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-400">
+                                    <i className="fa-solid fa-image text-lg" />
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">{productName}</p>
+                                  <p className="text-xs text-slate-500">SKU: {sku}</p>
+                                </div>
+                              </div>
+                              <div className="text-sm text-slate-600">
+                                <p>Refund Qty: {quantity}</p>
+                                {item.unit_price !== null && item.unit_price !== undefined && (
+                                  <p className="text-xs text-slate-500">
+                                    Unit: RM {formatAmount(item.unit_price)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
                     )}
                   </div>
                 </div>
 
                 {detail.initial_image_urls && detail.initial_image_urls.length > 0 && (
-                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                  <div className="w-full rounded border border-slate-200 bg-white lg:w-[calc(50%-10px)]">
                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                       <p className="text-sm font-semibold text-slate-900">Submitted Media</p>
                     </div>

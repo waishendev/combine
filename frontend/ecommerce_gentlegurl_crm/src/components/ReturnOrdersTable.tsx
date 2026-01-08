@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import PaginationControls from './PaginationControls'
 import ReturnViewPanel from './ReturnViewPanel'
+import { useI18n } from '@/lib/i18n'
 
 type ReturnItem = {
   order_item_id: number
@@ -58,6 +60,13 @@ type ReturnRow = {
   reason: string
   refundAmount: string | number | null
   createdAt: string
+}
+
+type Meta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
 }
 
 const statusOptions = ['requested', 'approved', 'rejected', 'in_transit', 'received', 'refunded', 'cancelled'] as const
@@ -127,6 +136,7 @@ const getFileUrl = (path?: string | null) => {
 }
 
 export default function ReturnOrdersTable() {
+  const { t } = useI18n()
   const [rows, setRows] = useState<ReturnRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -135,9 +145,21 @@ export default function ReturnOrdersTable() {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [filterDraft, setFilterDraft] = useState({ search: '', status: '' })
   const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
+  const [pageSize, setPageSize] = useState(15)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortColumn, setSortColumn] = useState<keyof ReturnRow | null>('createdAt')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('desc')
+  const [meta, setMeta] = useState<Meta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 15,
+    total: 0,
+  })
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
+    params.set('page', String(currentPage))
+    params.set('per_page', String(pageSize))
     if (statusFilter) params.set('status', statusFilter)
     if (search) {
       params.set('order_no', search)
@@ -145,7 +167,7 @@ export default function ReturnOrdersTable() {
       params.set('customer_email', search)
     }
     return params.toString()
-  }, [statusFilter, search])
+  }, [statusFilter, search, currentPage, pageSize])
 
   const fetchReturns = useCallback(async () => {
     setLoading(true)
@@ -177,6 +199,28 @@ export default function ReturnOrdersTable() {
       }))
 
       setRows(mapped)
+      
+      // Update pagination meta if available
+      if (payload && typeof payload === 'object' && 'current_page' in payload) {
+        setMeta({
+          current_page: Number(payload.current_page ?? currentPage) || 1,
+          last_page: Number(payload.last_page ?? 1) || 1,
+          per_page: Number(payload.per_page ?? pageSize) || pageSize,
+          total: Number(payload.total ?? mapped.length) || mapped.length,
+        })
+      } else if (json?.meta) {
+        setMeta({
+          current_page: Number(json.meta.current_page ?? currentPage) || 1,
+          last_page: Number(json.meta.last_page ?? 1) || 1,
+          per_page: Number(json.meta.per_page ?? pageSize) || pageSize,
+          total: Number(json.meta.total ?? mapped.length) || mapped.length,
+        })
+      } else {
+        setMeta((prev) => ({
+          ...prev,
+          total: mapped.length,
+        }))
+      }
       setViewingReturnId((current) => {
         if (current && !mapped.find((row) => row.id === current)) {
           return null
@@ -194,6 +238,91 @@ export default function ReturnOrdersTable() {
   useEffect(() => {
     fetchReturns()
   }, [fetchReturns])
+
+  const handleSort = (column: keyof ReturnRow) => {
+    if (sortColumn === column) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else if (sortDirection === 'desc') {
+        setSortColumn(null)
+        setSortDirection(null)
+      } else {
+        setSortDirection('asc')
+      }
+      return
+    }
+
+    setSortColumn(column)
+    setSortDirection('asc')
+  }
+
+  const sortedRows = useMemo(() => {
+    if (!sortColumn || !sortDirection) return rows
+
+    const compare = (a: ReturnRow, b: ReturnRow) => {
+      const valueA = a[sortColumn]
+      const valueB = b[sortColumn]
+
+      const normalize = (value: unknown) => {
+        if (value == null) return ''
+        if (typeof value === 'string') return value.toLowerCase()
+        if (typeof value === 'number') return value
+        if (typeof value === 'boolean') return value ? 1 : 0
+        return value
+      }
+
+      const normalizedA = normalize(valueA)
+      const normalizedB = normalize(valueB)
+
+      if (typeof normalizedA === 'number' && typeof normalizedB === 'number') {
+        return normalizedA - normalizedB
+      }
+
+      return String(normalizedA).localeCompare(String(normalizedB))
+    }
+
+    const sorted = [...rows].sort(compare)
+    return sortDirection === 'asc' ? sorted : sorted.reverse()
+  }, [rows, sortColumn, sortDirection])
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > (meta.last_page || 1)) return
+    setCurrentPage(page)
+  }
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
+  }
+
+  function DualSortIcons({
+    active,
+    dir,
+    className = 'ml-1',
+  }: {
+    active: boolean
+    dir: 'asc' | 'desc' | null
+    className?: string
+  }) {
+    const activeColor = '#122350ff'
+    const inactiveColor = '#afb2b8ff'
+    const up = active && dir === 'asc' ? activeColor : inactiveColor
+    const down = active && dir === 'desc' ? activeColor : inactiveColor
+
+    return (
+      <svg
+        className={`${className} inline-block align-middle`}
+        width="15"
+        height="15"
+        viewBox="0 0 10 12"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M5 1 L9 5 H1 Z" fill={up} />
+        <path d="M5 11 L1 7 H9 Z" fill={down} />
+      </svg>
+    )
+  }
 
   const activeFilters = useMemo(() => {
     const filters: Array<{ key: 'search' | 'status'; label: string; value: string }> = []
@@ -220,20 +349,41 @@ export default function ReturnOrdersTable() {
                 setFilterDraft({ search, status: statusFilter })
                 setIsFilterOpen(true)
               }}
-              className="flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600"
+              className="flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-50"
+              disabled={loading}
             >
               <i className="fa-solid fa-filter" />
-              Filter
+              {t('common.filter')}
             </button>
             <button
               type="button"
               onClick={fetchReturns}
-              className="flex items-center gap-2 rounded-md bg-green-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-600"
+              className="flex items-center gap-2 rounded-md bg-green-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-600 disabled:opacity-50"
+              disabled={loading}
             >
               <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-rotate-right'}`} />
               Refresh
             </button>
           </div>
+
+        <div className="flex items-center gap-3">
+          <label htmlFor="pageSize" className="text-sm text-gray-700">
+            {t('common.show')}
+          </label>
+          <select
+            id="pageSize"
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            {[15, 50, 100, 150, 200].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </div>
         </div>
           {activeFilters.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -253,6 +403,7 @@ export default function ReturnOrdersTable() {
                       } else {
                         setStatusFilter('')
                       }
+                      setCurrentPage(1)
                     }}
                     aria-label={`Remove ${filter.label} filter`}
                   >
@@ -267,24 +418,33 @@ export default function ReturnOrdersTable() {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                Order
-              </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                Customer
-              </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                Reason
-              </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                Refund Amount
-              </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                Requested
-              </th>
+              {(
+                [
+                  { key: 'orderNumber', label: 'Order' },
+                  { key: 'customer', label: 'Customer' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'reason', label: 'Reason' },
+                  { key: 'refundAmount', label: 'Refund Amount' },
+                  { key: 'createdAt', label: 'Requested' },
+                ] as const
+              ).map(({ key, label }) => (
+                <th
+                  key={key}
+                  className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
+                >
+                  <button
+                    type="button"
+                    className="flex items-center gap-1"
+                    onClick={() => handleSort(key)}
+                  >
+                    <span>{label}</span>
+                    <DualSortIcons
+                      active={sortColumn === key && sortDirection !== null}
+                      dir={sortColumn === key ? sortDirection : null}
+                    />
+                  </button>
+                </th>
+              ))}
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Actions
               </th>
@@ -295,10 +455,10 @@ export default function ReturnOrdersTable() {
               <TableLoadingRow colSpan={7} />
             ) : error ? (
               <TableEmptyState colSpan={7} message={error} />
-            ) : rows.length === 0 ? (
+            ) : sortedRows.length === 0 ? (
               <TableEmptyState colSpan={7} message="No return orders found." />
             ) : (
-              rows.map((row) => (
+              sortedRows.map((row) => (
                 <tr key={row.id} className="text-sm">
                   <td className="px-4 py-2 border border-gray-200">{row.orderNumber}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.customer}</td>
@@ -337,6 +497,14 @@ export default function ReturnOrdersTable() {
           onReturnUpdated={handleReturnUpdated}
         />
       )}
+
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={meta.last_page || 1}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        disabled={loading}
+      />
       {isFilterOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div
@@ -392,6 +560,7 @@ export default function ReturnOrdersTable() {
                   setSearch('')
                   setStatusFilter('')
                   setFilterDraft({ search: '', status: '' })
+                  setCurrentPage(1)
                   setIsFilterOpen(false)
                 }}
                 className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
@@ -403,6 +572,7 @@ export default function ReturnOrdersTable() {
                 onClick={() => {
                   setSearch(filterDraft.search.trim())
                   setStatusFilter(filterDraft.status)
+                  setCurrentPage(1)
                   setIsFilterOpen(false)
                 }}
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"

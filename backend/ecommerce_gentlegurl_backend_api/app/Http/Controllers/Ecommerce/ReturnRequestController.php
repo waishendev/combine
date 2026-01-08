@@ -65,7 +65,11 @@ class ReturnRequestController extends Controller
 
     public function show(ReturnRequest $returnRequest)
     {
-        $returnRequest->load(['order', 'customer', 'items.orderItem']);
+        $returnRequest->load([
+            'order',
+            'customer',
+            'items.orderItem.product.images',
+        ]);
 
         return $this->respond([
             'id' => $returnRequest->id,
@@ -96,12 +100,17 @@ class ReturnRequestController extends Controller
             'refund_proof_path' => $returnRequest->refund_proof_path,
             'refunded_at' => $returnRequest->refunded_at,
             'items' => $returnRequest->items->map(function ($item) {
+                $orderItem = $item->orderItem;
+                $thumbnail = $orderItem?->product?->cover_image_url;
+
                 return [
-                    'order_item_id' => $item->order_item_id,
-                    'product_name_snapshot' => $item->orderItem?->product_name_snapshot,
-                    'sku_snapshot' => $item->orderItem?->sku_snapshot,
-                    'quantity' => $item->orderItem?->quantity,
-                    'requested_quantity' => $item->quantity,
+                    'product_id' => $orderItem?->product_id,
+                    'product_name' => $orderItem?->product_name_snapshot ?? $orderItem?->product?->name,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $orderItem?->price_snapshot,
+                    'line_total' => $orderItem?->line_total,
+                    'product_image' => $thumbnail,
+                    'cover_image_url' => $thumbnail,
                 ];
             }),
             'timeline' => [

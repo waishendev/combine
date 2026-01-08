@@ -35,7 +35,7 @@ export default async function NewOrdersPage() {
   // - Ready for Pickup (status: 'ready_for_pickup', payment_status: 'paid')
   // - Shipped (status: 'shipped', any payment_status)
   const initialStatusFilters = {
-    status: ['pending', 'processing', 'reject_payment_proof', 'ready_for_pickup', 'shipped'],
+    status: ['pending', 'processing', 'reject_payment_proof', 'ready_for_pickup', 'shipped', 'confirmed'],
     payment_status: ['unpaid', 'paid'],
   }
 
@@ -44,6 +44,7 @@ export default async function NewOrdersPage() {
   const allowedStatusOptions = [
     'Awaiting Payment',
     'Waiting for Verification',
+    'Payment Confirmed',
     'Payment Proof Rejected',
     'Preparing',
     'Ready for Pickup',
