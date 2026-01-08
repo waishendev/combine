@@ -1,9 +1,10 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import ReturnViewPanel from './ReturnViewPanel'
 
 type ReturnItem = {
   order_item_id: number
@@ -116,13 +117,9 @@ export default function ReturnOrdersTable() {
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [detail, setDetail] = useState<ReturnDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [actionNote, setActionNote] = useState('')
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [showRefundModal, setShowRefundModal] = useState(false)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [filterDraft, setFilterDraft] = useState({ search: '', status: '' })
+  const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
@@ -164,9 +161,8 @@ export default function ReturnOrdersTable() {
       }))
 
       setRows(mapped)
-      if (selectedId && !mapped.find((row) => row.id === selectedId)) {
-        setSelectedId(null)
-        setDetail(null)
+      if (viewingReturnId && !mapped.find((row) => row.id === viewingReturnId)) {
+        setViewingReturnId(null)
       }
     } catch (err) {
       setRows([])
@@ -174,320 +170,229 @@ export default function ReturnOrdersTable() {
     } finally {
       setLoading(false)
     }
-  }, [queryString, selectedId])
-
-  const fetchDetail = useCallback(async (id: number) => {
-    setDetailLoading(true)
-    setDetail(null)
-    setActionNote('')
-    setActionError(null)
-    setShowRefundModal(false)
-
-    try {
-      const res = await fetch(`/api/proxy/ecommerce/returns/${id}`, {
-        cache: 'no-store',
-      })
-      if (!res.ok) {
-        setDetail(null)
-        return
-      }
-      const json = await res.json().catch(() => null)
-      setDetail(json?.data ?? null)
-    } finally {
-      setDetailLoading(false)
-    }
-  }, [])
+  }, [queryString, viewingReturnId])
 
   useEffect(() => {
     fetchReturns()
   }, [fetchReturns])
 
-  useEffect(() => {
-    if (selectedId) {
-      fetchDetail(selectedId)
+  const activeFilters = useMemo(() => {
+    const filters: Array<{ key: 'search' | 'status'; label: string; value: string }> = []
+    if (search) {
+      filters.push({ key: 'search', label: 'Search', value: search })
     }
-  }, [selectedId, fetchDetail])
-
-  const applyAction = async (action: string) => {
-    if (!selectedId) return
-    setActionError(null)
-
-    if ((action === 'reject' || action === 'mark_refunded') && !actionNote.trim()) {
-      setActionError('Admin note is required for this action.')
-      return
+    if (statusFilter) {
+      filters.push({ key: 'status', label: 'Status', value: statusFilter })
     }
+    return filters
+  }, [search, statusFilter])
 
-    setActionLoading(true)
-    try {
-      const res = await fetch(`/api/proxy/ecommerce/returns/${selectedId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, admin_note: actionNote }),
-      })
-
-      const json = await res.json().catch(() => null)
-      if (!res.ok) {
-        setActionError(json?.message ?? 'Unable to update status.')
-        return
-      }
-
-      await fetchReturns()
-      await fetchDetail(selectedId)
-      setActionNote('')
-    } finally {
-      setActionLoading(false)
-    }
+  const handleReturnUpdated = () => {
+    fetchReturns()
   }
 
-  const availableActions = useMemo(() => {
-    switch (detail?.status) {
-      case 'requested':
-        return [
-          { label: 'Approve', action: 'approve' },
-          { label: 'Reject', action: 'reject' },
-        ]
-      case 'approved':
-        return [
-          { label: 'Mark In Transit', action: 'mark_in_transit' },
-          { label: 'Mark Received', action: 'mark_received' },
-        ]
-      case 'in_transit':
-        return [{ label: 'Mark Received', action: 'mark_received' }]
-      case 'received':
-        return [{ label: 'Mark Refunded', action: 'mark_refunded' }]
-      default:
-        return []
-    }
-  }, [detail?.status])
-
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-gray-200 px-5 py-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800">Return Orders</h3>
-            <p className="text-sm text-gray-500">Manage return requests and track progress.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search order/customer"
-              className="rounded-md border border-gray-200 px-3 py-2 text-sm"
-            />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-md border border-gray-200 px-3 py-2 text-sm"
+    <div>
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setFilterDraft({ search, status: statusFilter })
+                setIsFilterOpen(true)
+              }}
+              className="flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600"
             >
-              <option value="">All status</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
+              <i className="fa-solid fa-filter" />
+              Filter
+            </button>
             <button
               type="button"
               onClick={fetchReturns}
-              className="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className="flex items-center gap-2 rounded-md bg-green-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-600"
             >
+              <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-rotate-right'}`} />
               Refresh
             </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
-              <tr>
-                <th className="px-4 py-3">Return ID</th>
-                <th className="px-4 py-3">Order</th>
-                <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Reason</th>
-                <th className="px-4 py-3">Requested</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading ? (
-                <TableLoadingRow colSpan={6} />
-              ) : error ? (
-                <TableEmptyState colSpan={6} message={error} />
-              ) : rows.length === 0 ? (
-                <TableEmptyState colSpan={6} message="No return orders found." />
-              ) : (
-                rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={`cursor-pointer text-gray-700 transition hover:bg-gray-50 ${
-                      selectedId === row.id ? 'bg-gray-50' : ''
-                    }`}
-                    onClick={() => setSelectedId(row.id)}
+          {activeFilters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              {activeFilters.map((filter) => (
+                <span
+                  key={filter.key}
+                  className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs"
+                >
+                  <span className="font-semibold">{filter.label}</span>
+                  <span>{filter.value}</span>
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:text-blue-800"
+                    onClick={() => {
+                      if (filter.key === 'search') {
+                        setSearch('')
+                      } else {
+                        setStatusFilter('')
+                      }
+                    }}
+                    aria-label={`Remove ${filter.label} filter`}
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">{row.id}</td>
-                    <td className="px-4 py-3">{row.orderNumber}</td>
-                    <td className="px-4 py-3">{row.customer}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badgeStyle(row.status)}`}>
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{row.reason}</td>
-                    <td className="px-4 py-3">{formatDate(row.createdAt)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
+            <tr>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Return ID
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Order
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Customer
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Reason
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Requested
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <TableLoadingRow colSpan={7} />
+            ) : error ? (
+              <TableEmptyState colSpan={7} message={error} />
+            ) : rows.length === 0 ? (
+              <TableEmptyState colSpan={7} message="No return orders found." />
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id} className="text-sm">
+                  <td className="px-4 py-2 border border-gray-200 font-medium">{row.id}</td>
+                  <td className="px-4 py-2 border border-gray-200">{row.orderNumber}</td>
+                  <td className="px-4 py-2 border border-gray-200">{row.customer}</td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badgeStyle(row.status)}`}>
+                      {row.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">{row.reason}</td>
+                  <td className="px-4 py-2 border border-gray-200">{formatDate(row.createdAt)}</td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
+                        onClick={() => setViewingReturnId(row.id)}
+                        aria-label="View Return"
+                        title="View Return"
+                      >
+                        <i className="fa-solid fa-eye" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        {!selectedId ? (
-          <div className="text-sm text-gray-500">Select a return to view details.</div>
-        ) : detailLoading ? (
-          <div className="text-sm text-gray-500">Loading details...</div>
-        ) : !detail ? (
-          <div className="text-sm text-gray-500">Unable to load return details.</div>
-        ) : (
-          <div className="space-y-4 text-sm">
-            <div>
-              <h4 className="text-base font-semibold text-gray-800">Return #{detail.id}</h4>
-              <p className="text-gray-500">Order {detail.order?.order_number ?? '—'}</p>
-              <span className={`mt-2 inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badgeStyle(detail.status ?? '')}`}>
-                {detail.status ?? '—'}
-              </span>
-            </div>
-
-            <div className="space-y-1">
-              <p className="font-medium text-gray-700">Customer</p>
-              <p>{detail.customer?.name ?? '—'}</p>
-              <p className="text-gray-500">{detail.customer?.email ?? '—'}</p>
-              <p className="text-gray-500">{detail.customer?.phone ?? '—'}</p>
-            </div>
-
-            <div className="space-y-1">
-              <p className="font-medium text-gray-700">Reason</p>
-              <p>{detail.reason ?? '—'}</p>
-              <p className="text-gray-500">{detail.description ?? '—'}</p>
-            </div>
-
-            <div className="space-y-1">
-              <p className="font-medium text-gray-700">Items</p>
-              <div className="space-y-2">
-                {(detail.items ?? []).map((item) => (
-                  <div key={item.order_item_id} className="rounded-md border border-gray-200 px-3 py-2">
-                    <p className="font-medium text-gray-800">{item.product_name_snapshot ?? 'Item'}</p>
-                    <p className="text-xs text-gray-500">SKU: {item.sku_snapshot ?? '—'}</p>
-                    <p className="text-xs text-gray-500">
-                      Qty: {item.requested_quantity ?? item.quantity ?? 0}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {detail.initial_image_urls && detail.initial_image_urls.length > 0 && (
-              <div className="space-y-2">
-                <p className="font-medium text-gray-700">Images</p>
-                <div className="flex flex-wrap gap-2">
-                  {detail.initial_image_urls.map((url) => (
-                    <a key={url} href={url} target="_blank" rel="noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="Return" className="h-16 w-16 rounded-md border border-gray-200 object-cover" />
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-1">
-              <p className="font-medium text-gray-700">Tracking</p>
-              <p>Courier: {detail.return_courier_name ?? '—'}</p>
-              <p>Tracking: {detail.return_tracking_no ?? '—'}</p>
-              <p>Shipped: {formatDate(detail.return_shipped_at)}</p>
-            </div>
-
-            <div className="space-y-1">
-              <p className="font-medium text-gray-700">Admin Note</p>
-              <p>{detail.admin_note ?? '—'}</p>
-            </div>
-
-            <div className="space-y-1">
-              <p className="font-medium text-gray-700">Timeline</p>
-              <p>Requested: {formatDate(detail.timeline?.created_at)}</p>
-              <p>Reviewed: {formatDate(detail.timeline?.reviewed_at)}</p>
-              <p>Received: {formatDate(detail.timeline?.received_at)}</p>
-              <p>Refunded: {formatDate(detail.timeline?.completed_at)}</p>
-            </div>
-
-            {(detail.refund_amount ||
-              detail.refund_method ||
-              detail.refund_proof_path ||
-              detail.refunded_at) && (
-              <div className="space-y-1">
-                <p className="font-medium text-gray-700">Refund</p>
-                <p>Amount: RM {formatAmount(detail.refund_amount)}</p>
-                <p>Method: {detail.refund_method ?? '—'}</p>
-                <p>Refunded At: {formatDate(detail.refunded_at)}</p>
-                {detail.refund_proof_path && (
-                  <a
-                    href={getFileUrl(detail.refund_proof_path) ?? '#'}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    View refund proof
-                  </a>
-                )}
-              </div>
-            )}
-
-            {availableActions.length > 0 && (
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-gray-400">Update Status</label>
-                <textarea
-                  value={actionNote}
-                  onChange={(event) => setActionNote(event.target.value)}
-                  placeholder="Add admin note (required for rejection/refund)"
-                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-                  rows={3}
-                />
-                {actionError && <p className="text-sm text-rose-600">{actionError}</p>}
-                <div className="flex flex-wrap gap-2">
-                  {availableActions.map((action) => (
-                    <button
-                      key={action.action}
-                      type="button"
-                      onClick={() => {
-                        if (action.action === 'mark_refunded') {
-                          setShowRefundModal(true)
-                          return
-                        }
-                        applyAction(action.action)
-                      }}
-                      disabled={actionLoading}
-                      className="rounded-md border border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
-                    >
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      {showRefundModal && selectedId && (
-        <ReturnRefundModal
-          returnId={selectedId}
-          onClose={() => setShowRefundModal(false)}
-          onSuccess={async () => {
-            await fetchReturns()
-            await fetchDetail(selectedId)
-            setShowRefundModal(false)
-          }}
+      {viewingReturnId !== null && (
+        <ReturnViewPanel
+          returnId={viewingReturnId}
+          onClose={() => setViewingReturnId(null)}
+          onReturnUpdated={handleReturnUpdated}
         />
+      )}
+      {isFilterOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setIsFilterOpen(false)}
+          />
+          <div className="relative w-full max-w-md rounded-lg bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-800">Filter Returns</h2>
+              <button
+                type="button"
+                onClick={() => setIsFilterOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
+                aria-label="Close filter"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="space-y-4 px-5 py-4 text-sm">
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Search
+                </label>
+                <input
+                  value={filterDraft.search}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, search: event.target.value }))}
+                  placeholder="Order number, customer name/email"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Status
+                </label>
+                <select
+                  value={filterDraft.status}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, status: event.target.value }))}
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                >
+                  <option value="">All status</option>
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('')
+                  setStatusFilter('')
+                  setFilterDraft({ search: '', status: '' })
+                  setIsFilterOpen(false)
+                }}
+                className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch(filterDraft.search.trim())
+                  setStatusFilter(filterDraft.status)
+                  setIsFilterOpen(false)
+                }}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
