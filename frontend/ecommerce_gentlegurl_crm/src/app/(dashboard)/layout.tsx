@@ -28,11 +28,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<string[]>([])
 
   useEffect(() => {
-    const authCookieNames = [
-      'connect.sid',
-      'laravel-session',
-      'gentlegurl-api-session',
-    ]
+    const authCookieNames = ['gentlegurl-crm-session']
 
     const clearAuthCookies = () => {
       authCookieNames.forEach((name) => {

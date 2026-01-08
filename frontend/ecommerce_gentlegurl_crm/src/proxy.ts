@@ -7,6 +7,7 @@ export function proxy(req: NextRequest) {
     pathname.startsWith('/dashboard');
   const isLoginPage = pathname.startsWith('/login');
   const hasSessionCookie = 
+    req.cookies.get('gentlegurl-crm-session') ||
     req.cookies.get('connect.sid') || 
     req.cookies.get('laravel-session') || 
     req.cookies.get('gentlegurl-api-session');

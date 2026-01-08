@@ -8,20 +8,14 @@ export class ApiError extends Error {
   }
 }
 
-const AUTH_COOKIE_NAMES = [
-  'connect.sid',
-  'laravel-session',
-  'gentlegurl-api-session',
-];
+const CRM_SESSION_COOKIE = 'gentlegurl-crm-session';
 
 function clearAuthCookies() {
   if (typeof document === 'undefined') {
     return;
   }
 
-  AUTH_COOKIE_NAMES.forEach((name) => {
-    document.cookie = `${name}=; Max-Age=0; path=/`;
-  });
+  document.cookie = `${CRM_SESSION_COOKIE}=; Max-Age=0; path=/`;
 }
 
 function isUnauthenticatedResponse(data: unknown, status: number) {
