@@ -422,7 +422,7 @@ export default function ReturnViewPanel({
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                     <p className="text-sm font-semibold text-slate-900">Return Items</p>
                   </div>
-                  <div className="px-4 py-3 space-y-2">
+                  <div className="max-h-64 overflow-y-auto px-4 py-3 space-y-2">
                     {(detail.items ?? []).length === 0 ? (
                       <p className="text-xs text-slate-500">No items</p>
                     ) : (
@@ -444,7 +444,7 @@ export default function ReturnViewPanel({
                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                       <p className="text-sm font-semibold text-slate-900">Submitted Media</p>
                     </div>
-                    <div className="px-4 py-3">
+                    <div className="max-h-64 overflow-y-auto px-4 py-3">
                       <div className="flex flex-wrap gap-2">
                         {detail.initial_image_urls.map((rawUrl) => {
                           const resolvedUrl = getFileUrl(rawUrl)
@@ -492,24 +492,68 @@ export default function ReturnViewPanel({
                 )}
               </div>
 
-              <div className="rounded border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Tracking Information</p>
+              <div className="flex flex-wrap gap-5">
+                <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Tracking Information</p>
+                  </div>
+                  <div className="px-4 py-3 space-y-3">
+                    <div>
+                      <p className="text-xs text-slate-500">Courier</p>
+                      <p className="font-medium text-slate-900">{detail.return_courier_name ?? '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Tracking Number</p>
+                      <p className="font-medium text-slate-900">{detail.return_tracking_no ?? '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Shipped At</p>
+                      <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="px-4 py-3 space-y-3">
-                  <div>
-                    <p className="text-xs text-slate-500">Courier</p>
-                    <p className="font-medium text-slate-900">{detail.return_courier_name ?? '—'}</p>
+
+                {availableActions.length > 0 && (
+                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-900">Actions</p>
+                    </div>
+                    <div className="px-4 py-3 space-y-3">
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold text-slate-700">
+                          Admin Note {availableActions.some((a) => a.action === 'reject' || a.action === 'mark_refunded') && <span className="text-red-500">*</span>}
+                        </label>
+                        <textarea
+                          value={actionNote}
+                          onChange={(event) => setActionNote(event.target.value)}
+                          placeholder="Add admin note (required for rejection/refund)"
+                          className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                          rows={3}
+                        />
+                        {actionError && <p className="mt-1 text-xs text-red-600">{actionError}</p>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {availableActions.map((action) => (
+                          <button
+                            key={action.action}
+                            type="button"
+                            onClick={() => {
+                              if (action.action === 'mark_refunded') {
+                                setShowRefundModal(true)
+                                return
+                              }
+                              applyAction(action.action)
+                            }}
+                            disabled={actionLoading}
+                            className={`rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-wide transition disabled:opacity-60 ${actionButtonStyle(action.action)}`}
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Tracking Number</p>
-                    <p className="font-medium text-slate-900">{detail.return_tracking_no ?? '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Shipped At</p>
-                    <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
-                  </div>
-                </div>
+                )}
               </div>
 
               {detail.admin_note && (
@@ -562,47 +606,6 @@ export default function ReturnViewPanel({
                 </div>
               )}
 
-              {availableActions.length > 0 && (
-                <div className="rounded border border-slate-200 bg-white">
-                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Actions</p>
-                  </div>
-                  <div className="px-4 py-3 space-y-3">
-                    <div>
-                      <label className="mb-2 block text-xs font-semibold text-slate-700">
-                        Admin Note {availableActions.some((a) => a.action === 'reject' || a.action === 'mark_refunded') && <span className="text-red-500">*</span>}
-                      </label>
-                      <textarea
-                        value={actionNote}
-                        onChange={(event) => setActionNote(event.target.value)}
-                        placeholder="Add admin note (required for rejection/refund)"
-                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-                        rows={3}
-                      />
-                      {actionError && <p className="mt-1 text-xs text-red-600">{actionError}</p>}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {availableActions.map((action) => (
-                        <button
-                          key={action.action}
-                          type="button"
-                          onClick={() => {
-                            if (action.action === 'mark_refunded') {
-                              setShowRefundModal(true)
-                              return
-                            }
-                            applyAction(action.action)
-                          }}
-                          disabled={actionLoading}
-                          className={`rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-wide transition disabled:opacity-60 ${actionButtonStyle(action.action)}`}
-                        >
-                          {action.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </aside>
