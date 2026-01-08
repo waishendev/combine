@@ -128,6 +128,99 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
         </div>
 
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Submitted Media</h3>
+          {returnRequest.initial_image_urls && returnRequest.initial_image_urls.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-3">
+              {returnRequest.initial_image_urls.map((rawUrl) => {
+                const resolvedUrl = resolveReturnMediaUrl(rawUrl);
+                if (!resolvedUrl) return null;
+                if (isEmbeddedVideoUrl(resolvedUrl)) {
+                  return (
+                    <div key={resolvedUrl} className="h-24 w-24 rounded-lg border border-[var(--card-border)] overflow-hidden">
+                      <iframe
+                        src={resolvedUrl}
+                        title="Return video"
+                        className="h-full w-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  );
+                }
+                if (isVideoUrl(resolvedUrl)) {
+                  return (
+                    <video
+                      key={resolvedUrl}
+                      src={resolvedUrl}
+                      controls
+                      className="h-24 w-24 rounded-lg border border-[var(--card-border)] object-cover"
+                    />
+                  );
+                }
+                return (
+                  <a key={resolvedUrl} href={resolvedUrl} target="_blank" rel="noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={resolvedUrl} alt="Return" className="h-24 w-24 rounded-lg border border-[var(--card-border)] object-cover" />
+                  </a>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-[var(--foreground)]/70">No media submitted yet.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Items</h3>
+          <div className="mt-3 space-y-3">
+            {returnRequest.items?.map((item) => (
+              <div
+                key={item.order_item_id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--card-border)] px-3 py-2"
+              >
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={getPrimaryProductImage(item)}
+                    alt={item.product_name ?? "Item"}
+                    className="h-12 w-12 rounded-lg object-cover"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">{item.product_name ?? "Item"}</p>
+                    <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku ?? "—"}</p>
+                  </div>
+                </div>
+                <div className="text-sm text-[var(--foreground)]/70">
+                  Refund Qty: {item.requested_quantity ?? 0}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Next Step</h3>
+          {canSubmitTracking ? (
+            <TrackingFormClient returnId={returnRequest.id} />
+          ) : (
+            <p className="mt-2 text-sm text-[var(--foreground)]/70">{isCancelled ? "Cancelled (No tracking submitted)." : nextStepMessage}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Return Shipping</h3>
+          <div className="mt-3 space-y-1 text-sm text-[var(--foreground)]/70">
+            <p>Courier: {returnRequest.return_courier_name ?? "—"}</p>
+            <p>Tracking: {returnRequest.return_tracking_no ?? "—"}</p>
+            <p>Shipped At: {formatDateTime(returnRequest.return_shipped_at)}</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-[var(--foreground)]">Refund Details</h3>
           {(returnRequest.refund_amount ||
             returnRequest.refund_method ||
@@ -173,95 +266,6 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
             </div>
           ) : (
             <p className="mt-3 text-sm text-[var(--foreground)]/70">No refund details yet.</p>
-          )}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-        <h3 className="text-lg font-semibold text-[var(--foreground)]">Items</h3>
-        <div className="mt-3 space-y-3">
-          {returnRequest.items?.map((item) => (
-            <div
-              key={item.order_item_id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--card-border)] px-3 py-2"
-            >
-              <div className="flex items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={getPrimaryProductImage(item)}
-                  alt={item.product_name ?? "Item"}
-                  className="h-12 w-12 rounded-lg object-cover"
-                />
-                <div>
-                  <p className="text-sm font-semibold text-[var(--foreground)]">{item.product_name ?? "Item"}</p>
-                  <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku ?? "—"}</p>
-                </div>
-              </div>
-              <div className="text-sm text-[var(--foreground)]/70">
-                Qty: {item.requested_quantity ?? 0} / {item.order_quantity ?? 0}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {returnRequest.initial_image_urls && returnRequest.initial_image_urls.length > 0 && (
-        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-          <h3 className="text-lg font-semibold text-[var(--foreground)]">Submitted Media</h3>
-          <div className="mt-3 flex flex-wrap gap-3">
-            {returnRequest.initial_image_urls.map((rawUrl) => {
-              const resolvedUrl = resolveReturnMediaUrl(rawUrl);
-              if (!resolvedUrl) return null;
-              if (isEmbeddedVideoUrl(resolvedUrl)) {
-                return (
-                  <div key={resolvedUrl} className="h-24 w-24 rounded-lg border border-[var(--card-border)] overflow-hidden">
-                    <iframe
-                      src={resolvedUrl}
-                      title="Return video"
-                      className="h-full w-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                );
-              }
-              if (isVideoUrl(resolvedUrl)) {
-                return (
-                  <video
-                    key={resolvedUrl}
-                    src={resolvedUrl}
-                    controls
-                    className="h-24 w-24 rounded-lg border border-[var(--card-border)] object-cover"
-                  />
-                );
-              }
-              return (
-                <a key={resolvedUrl} href={resolvedUrl} target="_blank" rel="noreferrer">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={resolvedUrl} alt="Return" className="h-24 w-24 rounded-lg border border-[var(--card-border)] object-cover" />
-                </a>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-          <h3 className="text-lg font-semibold text-[var(--foreground)]">Return Shipping</h3>
-          <div className="mt-3 space-y-1 text-sm text-[var(--foreground)]/70">
-            <p>Courier: {returnRequest.return_courier_name ?? "—"}</p>
-            <p>Tracking: {returnRequest.return_tracking_no ?? "—"}</p>
-            <p>Shipped At: {formatDateTime(returnRequest.return_shipped_at)}</p>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-          <h3 className="text-lg font-semibold text-[var(--foreground)]">Next Step</h3>
-          {canSubmitTracking ? (
-            <TrackingFormClient returnId={returnRequest.id} />
-          ) : (
-            <p className="mt-2 text-sm text-[var(--foreground)]/70">{isCancelled ? "Cancelled (No tracking submitted)." : nextStepMessage}</p>
           )}
         </div>
       </div>
