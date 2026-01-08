@@ -66,12 +66,6 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
   const refundProofIsPdf = refundProofUrl
     ? refundProofUrl.toLowerCase().split("?")[0].endsWith(".pdf")
     : false;
-  const hasRefundAmount =
-    returnRequest.refund_amount !== null && returnRequest.refund_amount !== undefined;
-  const displayRefundAmount = hasRefundAmount
-    ? returnRequest.refund_amount
-    : returnRequest.requested_refund_amount;
-  const refundAmountLabel = hasRefundAmount ? "Amount" : "Estimated Amount";
   const nextStepMessage = (() => {
     switch (status) {
       case "requested":
@@ -202,8 +196,7 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
                   Refund Qty: {item.requested_quantity ?? 0}
                   {item.unit_price !== null && item.unit_price !== undefined && (
                     <p className="text-xs text-[var(--foreground)]/60">
-                      Unit: RM {formatAmount(item.unit_price)} · Line total: RM{" "}
-                      {formatAmount(item.requested_line_total)}
+                      Unit: RM {formatAmount(item.unit_price)}
                     </p>
                   )}
                 </div>
@@ -237,15 +230,12 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
           {(returnRequest.refund_amount ||
             returnRequest.refund_method ||
             returnRequest.refunded_at ||
-            returnRequest.refund_proof_url ||
-            returnRequest.requested_refund_amount) ? (
+            returnRequest.refund_proof_url) ? (
             <div className="mt-3 space-y-3 text-sm text-[var(--foreground)]/80">
-              {displayRefundAmount !== null && displayRefundAmount !== undefined && (
-                <div>
-                  <p className="font-semibold text-[var(--foreground)]">{refundAmountLabel}</p>
-                  <p>RM {formatAmount(displayRefundAmount)}</p>
-                </div>
-              )}
+              <div>
+                <p className="font-semibold text-[var(--foreground)]">Amount</p>
+                <p>RM {formatAmount(returnRequest.refund_amount)}</p>
+              </div>
               <div>
                 <p className="font-semibold text-[var(--foreground)]">Method</p>
                 <p>{returnRequest.refund_method ?? "—"}</p>

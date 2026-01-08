@@ -9,7 +9,6 @@ export type ReturnRequestItem = {
   product_image?: string | null;
   cover_image_url?: string | null;
   unit_price?: string | number | null;
-  requested_line_total?: string | number | null;
 };
 
 export type ReturnRequestDetail = {
@@ -26,7 +25,6 @@ export type ReturnRequestDetail = {
   return_tracking_no?: string | null;
   return_shipped_at?: string | null;
   refund_amount?: string | number | null;
-  requested_refund_amount?: string | number | null;
   refund_method?: string | null;
   refund_proof_url?: string | null;
   refunded_at?: string | null;

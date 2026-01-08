@@ -260,17 +260,12 @@ class PublicReturnController extends Controller
             ? Storage::disk('public')->url($returnRequest->refund_proof_path)
             : null;
 
-        $requestedRefundTotal = 0.0;
-        $items = $returnRequest->items->map(function (ReturnRequestItem $item) use (&$requestedRefundTotal) {
+        $items = $returnRequest->items->map(function (ReturnRequestItem $item) {
             $thumbnail = $item->orderItem?->product?->cover_image_url;
             $unitPrice = $item->orderItem?->price_snapshot;
-            $lineTotal = null;
 
             if ($unitPrice !== null) {
-                $lineTotalValue = (float) $unitPrice * $item->quantity;
-                $requestedRefundTotal += $lineTotalValue;
                 $unitPrice = number_format((float) $unitPrice, 2, '.', '');
-                $lineTotal = number_format($lineTotalValue, 2, '.', '');
             }
 
             return [
@@ -282,7 +277,6 @@ class PublicReturnController extends Controller
                 'product_image' => $thumbnail,
                 'cover_image_url' => $thumbnail,
                 'unit_price' => $unitPrice,
-                'requested_line_total' => $lineTotal,
             ];
         });
 
@@ -304,9 +298,6 @@ class PublicReturnController extends Controller
             'refund_method' => $returnRequest->refund_method,
             'refund_proof_url' => $refundProofUrl,
             'refunded_at' => $returnRequest->refunded_at,
-            'requested_refund_amount' => $requestedRefundTotal > 0
-                ? number_format($requestedRefundTotal, 2, '.', '')
-                : null,
             'items' => $items,
             'timestamps' => [
                 'created_at' => $returnRequest->created_at,
