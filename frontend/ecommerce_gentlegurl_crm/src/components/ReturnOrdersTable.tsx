@@ -116,6 +116,8 @@ export default function ReturnOrdersTable() {
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [filterDraft, setFilterDraft] = useState({ search: '', status: '' })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detail, setDetail] = useState<ReturnDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -260,6 +262,17 @@ export default function ReturnOrdersTable() {
     }
   }, [detail?.status])
 
+  const activeFilters = useMemo(() => {
+    const filters: Array<{ key: 'search' | 'status'; label: string; value: string }> = []
+    if (search) {
+      filters.push({ key: 'search', label: 'Search', value: search })
+    }
+    if (statusFilter) {
+      filters.push({ key: 'status', label: 'Status', value: statusFilter })
+    }
+    return filters
+  }, [search, statusFilter])
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -269,32 +282,64 @@ export default function ReturnOrdersTable() {
             <p className="text-sm text-gray-500">Manage return requests and track progress.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search order/customer"
-              className="rounded-md border border-gray-200 px-3 py-2 text-sm"
-            />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-md border border-gray-200 px-3 py-2 text-sm"
+            <button
+              type="button"
+              onClick={() => {
+                setFilterDraft({ search, status: statusFilter })
+                setIsFilterOpen(true)
+              }}
+              className="flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600"
             >
-              <option value="">All status</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
+              <i className="fa-solid fa-filter" />
+              Filter
+            </button>
             <button
               type="button"
               onClick={fetchReturns}
-              className="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className="flex items-center gap-2 rounded-md bg-green-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-600"
             >
+              <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-rotate-right'}`} />
               Refresh
             </button>
           </div>
+        </div>
+        <div className="border-b border-gray-100 px-5 py-3">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+            <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              Total Requests
+              <span className="rounded-full bg-white px-2 py-0.5 text-xs text-slate-700 shadow-sm">
+                {rows.length}
+              </span>
+            </span>
+            {activeFilters.length === 0 && <span>No active filters</span>}
+          </div>
+          {activeFilters.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {activeFilters.map((filter) => (
+                <span
+                  key={filter.key}
+                  className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700"
+                >
+                  <span className="font-semibold">{filter.label}</span>
+                  <span>{filter.value}</span>
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:text-blue-800"
+                    onClick={() => {
+                      if (filter.key === 'search') {
+                        setSearch('')
+                      } else {
+                        setStatusFilter('')
+                      }
+                    }}
+                    aria-label={`Remove ${filter.label} filter`}
+                  >
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -444,8 +489,8 @@ export default function ReturnOrdersTable() {
             )}
 
             {availableActions.length > 0 && (
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-gray-400">Update Status</label>
+              <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <label className="text-xs font-semibold uppercase text-gray-500">Actions</label>
                 <textarea
                   value={actionNote}
                   onChange={(event) => setActionNote(event.target.value)}
@@ -488,6 +533,82 @@ export default function ReturnOrdersTable() {
             setShowRefundModal(false)
           }}
         />
+      )}
+      {isFilterOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setIsFilterOpen(false)}
+          />
+          <div className="relative w-full max-w-md rounded-lg bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-800">Filter Returns</h2>
+              <button
+                type="button"
+                onClick={() => setIsFilterOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
+                aria-label="Close filter"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="space-y-4 px-5 py-4 text-sm">
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Search
+                </label>
+                <input
+                  value={filterDraft.search}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, search: event.target.value }))}
+                  placeholder="Order number, customer name/email"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Status
+                </label>
+                <select
+                  value={filterDraft.status}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, status: event.target.value }))}
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                >
+                  <option value="">All status</option>
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('')
+                  setStatusFilter('')
+                  setFilterDraft({ search: '', status: '' })
+                  setIsFilterOpen(false)
+                }}
+                className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch(filterDraft.search.trim())
+                  setStatusFilter(filterDraft.status)
+                  setIsFilterOpen(false)
+                }}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
