@@ -65,22 +65,6 @@ export default async function AccountReturnsPage() {
                   <span className={getReturnStatusBadgeClasses(returnRequest.status)}>
                     {formatReturnStatusLabel(returnRequest.status)}
                   </span>
-                  <Link
-                    href={`/account/returns/${returnRequest.id}`}
-                    className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/60"
-                  >
-                    View Details
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth="1.5"
-                      stroke="currentColor"
-                      className="h-4 w-4"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
-                    </svg>
-                  </Link>
                 </div>
               </div>
 
@@ -106,6 +90,25 @@ export default async function AccountReturnsPage() {
                   <p className="text-base font-semibold text-[var(--foreground)]">
                     RM {formatAmount(returnRequest.refund_amount)}
                   </p>
+                </div>
+
+                <div className="sm:col-span-4">
+                  <Link
+                    href={`/account/returns/${returnRequest.id}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/60"
+                  >
+                    View Details
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
+                      className="h-4 w-4"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
+                    </svg>
+                  </Link>
                 </div>
 
                 {Array.isArray(returnRequest.items) && returnRequest.items.length > 0 && (
