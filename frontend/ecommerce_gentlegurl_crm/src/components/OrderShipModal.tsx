@@ -47,6 +47,8 @@ export default function OrderShipModal({
       payload.shipping_tracking_no = shippingTrackingNo.trim()
       if (shippedAt.trim()) {
         payload.shipped_at = shippedAt.trim()
+      } else {
+        payload.shipped_at = new Date().toISOString()
       }
 
       const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
