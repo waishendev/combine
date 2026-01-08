@@ -291,7 +291,7 @@ export default function DashboardPage() {
                         <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-48 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600 shadow-lg opacity-0 transition group-hover:opacity-100">
                           <p className="text-xs text-slate-500">Month: {month.month}</p>
                           <p className="text-sm font-semibold text-slate-900">
-                            NET REVENUE: {formatCurrency(month.net_revenue)}
+                            Net Revenue: {formatCurrency(month.net_revenue)}
                           </p>
                           <p>Orders: {formatNumber(month.orders_count)}</p>
                           {month.orders_count > 0 && <p>AOV: {formatCurrency(aov)}</p>}
@@ -317,7 +317,7 @@ export default function DashboardPage() {
                     <tr>
                       <th className="px-3 sm:px-4 py-3">Product</th>
                       <th className="px-3 sm:px-4 py-3 text-right">Qty</th>
-                      <th className="px-3 sm:px-4 py-3 text-right">NET REVENUE</th>
+                      <th className="px-3 sm:px-4 py-3 text-right">Net Revenue</th>
                       <th className="px-3 sm:px-4 py-3 text-right">Refund %</th>
                     </tr>
                   </thead>

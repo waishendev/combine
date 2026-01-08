@@ -320,7 +320,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
     const margin = grandTotals?.gross_margin ?? null
 
     return [
-      { label: 'NET REVENUE', value: revenue, isMoney: true },
+      { label: 'Net Revenue', value: revenue, isMoney: true },
       { label: 'COGS', value: cogs, isMoney: true },
       { label: 'Gross Profit', value: grossProfit, isMoney: true },
       { label: 'Gross Margin %', value: margin, isMoney: false },
@@ -558,7 +558,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                 Items
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
-                NET REVENUE
+                Net Revenue
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 COGS

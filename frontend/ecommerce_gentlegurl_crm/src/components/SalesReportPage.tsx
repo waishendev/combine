@@ -371,7 +371,7 @@ export default function SalesReportPage({
             { label: 'Category', key: 'category_name' },
             { label: 'Orders', key: 'orders_count', sortable: true },
             { label: 'Items', key: 'items_count', sortable: true },
-            { label: 'NET REVENUE', key: 'net_revenue', sortable: true },
+            { label: 'Net Revenue', key: 'net_revenue', sortable: true },
           ]
         : reportType === 'by-products'
         ? [
@@ -379,14 +379,14 @@ export default function SalesReportPage({
             { label: 'SKU', key: 'sku' },
             { label: 'Orders', key: 'orders_count', sortable: true },
             { label: 'Items', key: 'items_count', sortable: true },
-            { label: 'NET REVENUE', key: 'net_revenue', sortable: true },
+            { label: 'Net Revenue', key: 'net_revenue', sortable: true },
           ]
         : [
             { label: 'Customer', key: 'customer_name' },
             { label: 'Email', key: 'customer_email' },
             { label: 'Orders', key: 'orders_count', sortable: true },
             { label: 'Items', key: 'items_count', sortable: true },
-            { label: 'NET REVENUE', key: 'net_revenue', sortable: true },
+            { label: 'Net Revenue', key: 'net_revenue', sortable: true },
           ]
 
     if (!showProfit) {
@@ -446,24 +446,11 @@ export default function SalesReportPage({
     }
   }, [showProfit, sortedRows, totalsPage])
 
-  const summaryCards = [
-    { label: 'NET REVENUE', value: totalsPageSource.summary.net_revenue, isMoney: true },
-    { label: 'COGS', value: totalsPageSource.summary.cogs, isMoney: true },
-    { label: 'Gross Profit', value: totalsPageSource.summary.gross_profit, isMoney: true },
-    { label: 'Gross Margin %', value: totalsPageSource.summary.gross_margin, isMoney: false },
-  ]
-
-  const grandTotalCards = [
-    { label: 'NET REVENUE', value: grandTotals?.net_revenue ?? grandTotals?.revenue, isMoney: true },
-    { label: 'COGS', value: grandTotals?.cogs, isMoney: true },
-    { label: 'Gross Profit', value: grandTotals?.gross_profit, isMoney: true },
-    { label: 'Gross Margin %', value: grandTotals?.gross_margin, isMoney: false },
-  ]
 
   // Get amount columns for tfoot
   const amountColumns = useMemo(() => {
     const cols: Array<{ key: string; label: string }> = [
-      { key: 'net_revenue', label: 'NET REVENUE' },
+      { key: 'net_revenue', label: 'Net Revenue' },
     ]
     if (showProfit) {
       cols.push({ key: 'cogs', label: 'COGS' })
@@ -682,7 +669,7 @@ export default function SalesReportPage({
                 >
                   <p className="text-xs font-semibold uppercase text-slate-400">{topLabel}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-700">{name}</p>
-                  <p className="text-xs font-semibold uppercase text-slate-400 mt-2">NET REVENUE</p>
+                  <p className="text-xs font-semibold uppercase text-slate-400 mt-2">Net Revenue</p>
                   <p className="text-lg font-semibold text-slate-700">
                     RM {formatAmount(row.net_revenue ?? row.revenue)}
                   </p>
