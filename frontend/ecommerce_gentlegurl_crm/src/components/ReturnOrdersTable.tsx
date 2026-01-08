@@ -56,6 +56,7 @@ type ReturnRow = {
   customer: string
   status: string
   reason: string
+  refundAmount: string | number | null
   createdAt: string
 }
 
@@ -157,20 +158,24 @@ export default function ReturnOrdersTable() {
         customer: item.customer?.name ?? '—',
         status: item.status ?? '—',
         reason: item.reason ?? '—',
+        refundAmount: item.refund_amount ?? null,
         createdAt: item.created_at ?? item.timeline?.created_at ?? item.timeline?.reviewed_at ?? '—',
       }))
 
       setRows(mapped)
-      if (viewingReturnId && !mapped.find((row) => row.id === viewingReturnId)) {
-        setViewingReturnId(null)
-      }
+      setViewingReturnId((current) => {
+        if (current && !mapped.find((row) => row.id === current)) {
+          return null
+        }
+        return current
+      })
     } catch (err) {
       setRows([])
       setError('Unable to load return requests.')
     } finally {
       setLoading(false)
     }
-  }, [queryString, viewingReturnId])
+  }, [queryString])
 
   useEffect(() => {
     fetchReturns()
@@ -249,9 +254,6 @@ export default function ReturnOrdersTable() {
           <thead className="bg-slate-300/70">
             <tr>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                Return ID
-              </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
                 Order
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
@@ -262,6 +264,9 @@ export default function ReturnOrdersTable() {
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
                 Reason
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Refund Amount
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
                 Requested
@@ -281,7 +286,6 @@ export default function ReturnOrdersTable() {
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="text-sm">
-                  <td className="px-4 py-2 border border-gray-200 font-medium">{row.id}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.orderNumber}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.customer}</td>
                   <td className="px-4 py-2 border border-gray-200">
@@ -290,6 +294,7 @@ export default function ReturnOrdersTable() {
                     </span>
                   </td>
                   <td className="px-4 py-2 border border-gray-200">{row.reason}</td>
+                  <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.refundAmount)}</td>
                   <td className="px-4 py-2 border border-gray-200">{formatDate(row.createdAt)}</td>
                   <td className="px-4 py-2 border border-gray-200">
                     <div className="flex items-center gap-2">
