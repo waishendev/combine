@@ -25,6 +25,30 @@ const formatAmount = (value?: string | number | null) => {
   });
 };
 
+const resolveReturnMediaUrl = (value?: string | null) => {
+  if (!value) return null;
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+  if (value.startsWith("/")) {
+    return `${baseUrl}${value}`;
+  }
+  return `${baseUrl}/storage/${value}`;
+};
+
+const isVideoUrl = (value?: string | null) => {
+  if (!value) return false;
+  const lower = value.toLowerCase().split("?")[0];
+  return [".mp4", ".mov", ".webm", ".m4v", ".ogv"].some((ext) => lower.endsWith(ext));
+};
+
+const isEmbeddedVideoUrl = (value?: string | null) => {
+  if (!value) return false;
+  const lower = value.toLowerCase();
+  return lower.includes("youtube.com") || lower.includes("youtu.be") || lower.includes("vimeo.com");
+};
+
 export default async function ReturnDetailPage({ params }: ReturnDetailPageProps) {
   const { id } = await params;
   const returnId = Number(id);
@@ -127,14 +151,41 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
 
       {returnRequest.initial_image_urls && returnRequest.initial_image_urls.length > 0 && (
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-          <h3 className="text-lg font-semibold text-[var(--foreground)]">Submitted Photos</h3>
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Submitted Media</h3>
           <div className="mt-3 flex flex-wrap gap-3">
-            {returnRequest.initial_image_urls.map((url) => (
-              <a key={url} href={url} target="_blank" rel="noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="Return" className="h-24 w-24 rounded-lg border border-[var(--card-border)] object-cover" />
-              </a>
-            ))}
+            {returnRequest.initial_image_urls.map((rawUrl) => {
+              const resolvedUrl = resolveReturnMediaUrl(rawUrl);
+              if (!resolvedUrl) return null;
+              if (isEmbeddedVideoUrl(resolvedUrl)) {
+                return (
+                  <div key={resolvedUrl} className="h-24 w-24 rounded-lg border border-[var(--card-border)] overflow-hidden">
+                    <iframe
+                      src={resolvedUrl}
+                      title="Return video"
+                      className="h-full w-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                );
+              }
+              if (isVideoUrl(resolvedUrl)) {
+                return (
+                  <video
+                    key={resolvedUrl}
+                    src={resolvedUrl}
+                    controls
+                    className="h-24 w-24 rounded-lg border border-[var(--card-border)] object-cover"
+                  />
+                );
+              }
+              return (
+                <a key={resolvedUrl} href={resolvedUrl} target="_blank" rel="noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={resolvedUrl} alt="Return" className="h-24 w-24 rounded-lg border border-[var(--card-border)] object-cover" />
+                </a>
+              );
+            })}
           </div>
         </div>
       )}

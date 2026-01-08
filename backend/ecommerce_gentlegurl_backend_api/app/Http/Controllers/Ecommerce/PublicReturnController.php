@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use App\Services\SettingService;
 
 class PublicReturnController extends Controller
@@ -38,6 +39,18 @@ class PublicReturnController extends Controller
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'initial_image_urls' => ['nullable', 'array'],
             'initial_image_urls.*' => ['url'],
+            'initial_images' => ['nullable', 'array', 'max:5'],
+            'initial_images.*' => [
+                'file',
+                'mimes:' . implode(',', config('ecommerce.return_media.image_extensions')),
+                'max:' . ((int) config('ecommerce.return_media.image_max_mb') * 1024),
+            ],
+            'initial_video' => [
+                'nullable',
+                'file',
+                'mimes:' . implode(',', config('ecommerce.return_media.video_extensions')),
+                'max:' . ((int) config('ecommerce.return_media.video_max_mb') * 1024),
+            ],
         ]);
 
         $customer = $this->requireCustomer();
@@ -92,7 +105,13 @@ class PublicReturnController extends Controller
             }
         }
 
-        $returnRequest = DB::transaction(function () use ($validated, $orderItems, $order, $customer) {
+        if ($request->hasFile('initial_video') && ! config('ecommerce.return_media.video_enabled')) {
+            return $this->respond(null, __('Video upload is disabled.'), false, 422);
+        }
+
+        $uploadedMediaUrls = [];
+
+        $returnRequest = DB::transaction(function () use ($validated, $orderItems, $order, $customer, $request, &$uploadedMediaUrls) {
             $requestModel = ReturnRequest::create([
                 'order_id' => $order->id,
                 'customer_id' => $customer->id,
@@ -102,6 +121,45 @@ class PublicReturnController extends Controller
                 'description' => $validated['description'] ?? null,
                 'initial_image_urls' => $validated['initial_image_urls'] ?? [],
             ]);
+
+            $imageFiles = $request->file('initial_images', []);
+            if (!is_array($imageFiles)) {
+                $imageFiles = [$imageFiles];
+            }
+
+            foreach ($imageFiles as $file) {
+                if (!$file) {
+                    continue;
+                }
+                $filename = sprintf(
+                    'returns/%s/images/%s.%s',
+                    $requestModel->id,
+                    Str::uuid(),
+                    $file->getClientOriginalExtension()
+                );
+                $path = $file->storeAs('', $filename, 'public');
+                $uploadedMediaUrls[] = Storage::disk('public')->url($path);
+            }
+
+            $videoFile = $request->file('initial_video');
+            if ($videoFile) {
+                $filename = sprintf(
+                    'returns/%s/videos/%s.%s',
+                    $requestModel->id,
+                    Str::uuid(),
+                    $videoFile->getClientOriginalExtension()
+                );
+                $path = $videoFile->storeAs('', $filename, 'public');
+                $uploadedMediaUrls[] = Storage::disk('public')->url($path);
+            }
+
+            if (!empty($uploadedMediaUrls)) {
+                $requestModel->initial_image_urls = array_values(array_merge(
+                    $requestModel->initial_image_urls ?? [],
+                    $uploadedMediaUrls
+                ));
+                $requestModel->save();
+            }
 
             foreach ($validated['items'] as $item) {
                 ReturnRequestItem::create([

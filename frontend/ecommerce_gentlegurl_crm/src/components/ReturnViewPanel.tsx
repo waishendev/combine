@@ -102,6 +102,18 @@ const getFileUrl = (path?: string | null) => {
   return `${baseUrl}/storage/${path}`
 }
 
+const isVideoUrl = (value?: string | null) => {
+  if (!value) return false
+  const lower = value.toLowerCase().split('?')[0]
+  return ['.mp4', '.mov', '.webm', '.m4v', '.ogv'].some((ext) => lower.endsWith(ext))
+}
+
+const isEmbeddedVideoUrl = (value?: string | null) => {
+  if (!value) return false
+  const lower = value.toLowerCase()
+  return lower.includes('youtube.com') || lower.includes('youtu.be') || lower.includes('vimeo.com')
+}
+
 export default function ReturnViewPanel({
   returnId,
   onClose,
@@ -368,16 +380,50 @@ export default function ReturnViewPanel({
               {detail.initial_image_urls && detail.initial_image_urls.length > 0 && (
                 <div className="rounded border border-slate-200 bg-white">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Images</p>
+                    <p className="text-sm font-semibold text-slate-900">Submitted Media</p>
                   </div>
                   <div className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
-                      {detail.initial_image_urls.map((url) => (
-                        <a key={url} href={url} target="_blank" rel="noreferrer">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="Return" className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
-                        </a>
-                      ))}
+                      {detail.initial_image_urls.map((rawUrl) => {
+                        const resolvedUrl = getFileUrl(rawUrl)
+                        if (!resolvedUrl) return null
+                        if (isEmbeddedVideoUrl(resolvedUrl)) {
+                          return (
+                            <div
+                              key={resolvedUrl}
+                              className="h-16 w-16 overflow-hidden rounded-md border border-slate-200"
+                            >
+                              <iframe
+                                src={resolvedUrl}
+                                title="Return video"
+                                className="h-full w-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                          )
+                        }
+                        if (isVideoUrl(resolvedUrl)) {
+                          return (
+                            <video
+                              key={resolvedUrl}
+                              src={resolvedUrl}
+                              controls
+                              className="h-16 w-16 rounded-md border border-slate-200 object-cover"
+                            />
+                          )
+                        }
+                        return (
+                          <a key={resolvedUrl} href={resolvedUrl} target="_blank" rel="noreferrer">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={resolvedUrl}
+                              alt="Return"
+                              className="h-16 w-16 rounded-md border border-slate-200 object-cover"
+                            />
+                          </a>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -717,4 +763,3 @@ function ReturnRefundModal({
     </div>
   )
 }
-
