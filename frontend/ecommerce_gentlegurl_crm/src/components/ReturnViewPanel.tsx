@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, FormEvent } from 'react'
+import { useEffect, useRef, useState, FormEvent } from 'react'
 
 type ReturnItem = {
   order_item_id: number
@@ -36,6 +36,7 @@ type ReturnDetail = {
   refund_amount?: string | number | null
   refund_method?: string | null
   refund_proof_path?: string | null
+  refund_proof_url?: string | null
   refunded_at?: string | null
   items?: ReturnItem[]
   timeline?: {
@@ -55,21 +56,21 @@ interface ReturnViewPanelProps {
 const badgeStyle = (status: string) => {
   switch (status) {
     case 'requested':
-      return 'bg-amber-50 text-amber-700'
+      return 'bg-amber-100 text-amber-800'
     case 'approved':
-      return 'bg-blue-50 text-blue-700'
+      return 'bg-sky-100 text-sky-800'
     case 'in_transit':
-      return 'bg-purple-50 text-purple-700'
+      return 'bg-violet-100 text-violet-800'
     case 'received':
-      return 'bg-emerald-50 text-emerald-700'
+      return 'bg-teal-100 text-teal-800'
     case 'refunded':
-      return 'bg-green-50 text-green-700'
+      return 'bg-green-100 text-green-800'
     case 'rejected':
-      return 'bg-rose-50 text-rose-700'
+      return 'bg-rose-100 text-rose-800'
     case 'cancelled':
       return 'bg-gray-200 text-gray-700'
     default:
-      return 'bg-gray-100 text-gray-700'
+      return 'bg-slate-100 text-slate-700'
   }
 }
 
@@ -126,6 +127,9 @@ export default function ReturnViewPanel({
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [showRefundModal, setShowRefundModal] = useState(false)
+  const refundProofUrl = detail
+    ? getFileUrl(detail.refund_proof_url ?? detail.refund_proof_path)
+    : null
 
   useEffect(() => {
     const controller = new AbortController()
@@ -487,6 +491,7 @@ export default function ReturnViewPanel({
               {(detail.refund_amount ||
                 detail.refund_method ||
                 detail.refund_proof_path ||
+                detail.refund_proof_url ||
                 detail.refunded_at) && (
                 <div className="rounded border border-slate-200 bg-white">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -505,11 +510,11 @@ export default function ReturnViewPanel({
                       <p className="text-xs text-slate-500">Refunded At</p>
                       <p className="font-medium text-slate-900">{formatDate(detail.refunded_at)}</p>
                     </div>
-                    {detail.refund_proof_path && (
+                    {refundProofUrl && (
                       <div>
                         <p className="text-xs text-slate-500">Proof</p>
                         <a
-                          href={getFileUrl(detail.refund_proof_path) ?? '#'}
+                          href={refundProofUrl ?? '#'}
                           target="_blank"
                           rel="noreferrer"
                           className="text-blue-600 hover:underline text-sm"
@@ -597,6 +602,22 @@ function ReturnRefundModal({
   const [refundAmount, setRefundAmount] = useState('')
   const [refundMethod, setRefundMethod] = useState('')
   const [refundProof, setRefundProof] = useState<File | null>(null)
+  const [refundProofPreview, setRefundProofPreview] = useState<string | null>(null)
+  const refundProofInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (!refundProof) {
+      setRefundProofPreview(null)
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(refundProof)
+    setRefundProofPreview(previewUrl)
+
+    return () => {
+      URL.revokeObjectURL(previewUrl)
+    }
+  }, [refundProof])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -612,15 +633,18 @@ function ReturnRefundModal({
       return
     }
 
+    if (!refundMethod) {
+      setError('Refund method is required')
+      return
+    }
+
     setSubmitting(true)
     try {
       const formData = new FormData()
       formData.append('action', 'mark_refunded')
       formData.append('admin_note', adminNote.trim())
       formData.append('refund_amount', refundAmount)
-      if (refundMethod) {
-        formData.append('refund_method', refundMethod)
-      }
+      formData.append('refund_method', refundMethod)
       if (refundProof) {
         formData.append('refund_proof_path', refundProof)
       }
@@ -689,19 +713,19 @@ function ReturnRefundModal({
 
           <div>
             <label htmlFor="refundMethod" className="block text-sm font-medium text-gray-700 mb-1">
-              Refund Method (Optional)
+              Refund Method <span className="text-red-500">*</span>
             </label>
             <select
               id="refundMethod"
               value={refundMethod}
               onChange={(event) => setRefundMethod(event.target.value)}
+              required
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">Select method</option>
               <option value="bank_transfer">Bank Transfer</option>
               <option value="cash">Cash</option>
-              <option value="card_refund">Card Refund</option>
-              <option value="store_credit">Store Credit</option>
+              <option value="other">Other</option>
             </select>
           </div>
 
@@ -725,12 +749,77 @@ function ReturnRefundModal({
               Refund Proof (Optional)
             </label>
             <input
+              ref={refundProofInputRef}
               id="refundProof"
               type="file"
               accept="image/*,application/pdf"
               onChange={(event) => setRefundProof(event.target.files?.[0] || null)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              className="hidden"
             />
+            <div className="grid grid-cols-1 gap-3">
+              <div
+                className={`relative aspect-square w-36 rounded-xl border-2 border-dashed transition-all duration-200 ${
+                  refundProof
+                    ? 'border-gray-200 bg-white shadow-md hover:shadow-lg'
+                    : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md cursor-pointer'
+                }`}
+                onClick={() => {
+                  if (!refundProof) {
+                    refundProofInputRef.current?.click()
+                  }
+                }}
+              >
+                {refundProof ? (
+                  refundProof.type.startsWith('image/') && refundProofPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={refundProofPreview}
+                      alt="Refund proof"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-gray-500">
+                      <i className="fa-solid fa-file text-lg text-gray-400" />
+                      <span className="line-clamp-2">{refundProof.name}</span>
+                    </div>
+                  )
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-gray-500">
+                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                      <i className="fa-solid fa-cloud-arrow-up text-gray-400 text-lg" />
+                    </div>
+                    <span>Click to upload</span>
+                  </div>
+                )}
+                {refundProof && (
+                  <div className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-md bg-white/90 px-2 py-1 text-[10px] font-semibold text-gray-700 shadow hover:bg-white"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        refundProofInputRef.current?.click()
+                      }}
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md bg-white/90 px-2 py-1 text-[10px] font-semibold text-red-600 shadow hover:bg-white"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setRefundProof(null)
+                        if (refundProofInputRef.current) {
+                          refundProofInputRef.current.value = ''
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {error && (

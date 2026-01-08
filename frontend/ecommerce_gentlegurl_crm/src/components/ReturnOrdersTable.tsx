@@ -65,21 +65,21 @@ const statusOptions = ['requested', 'approved', 'rejected', 'in_transit', 'recei
 const badgeStyle = (status: string) => {
   switch (status) {
     case 'requested':
-      return 'bg-amber-50 text-amber-700'
+      return 'bg-amber-100 text-amber-800'
     case 'approved':
-      return 'bg-blue-50 text-blue-700'
+      return 'bg-sky-100 text-sky-800'
     case 'in_transit':
-      return 'bg-purple-50 text-purple-700'
+      return 'bg-violet-100 text-violet-800'
     case 'received':
-      return 'bg-emerald-50 text-emerald-700'
+      return 'bg-teal-100 text-teal-800'
     case 'refunded':
-      return 'bg-green-50 text-green-700'
+      return 'bg-green-100 text-green-800'
     case 'rejected':
-      return 'bg-rose-50 text-rose-700'
+      return 'bg-rose-100 text-rose-800'
     case 'cancelled':
       return 'bg-gray-200 text-gray-700'
     default:
-      return 'bg-gray-100 text-gray-700'
+      return 'bg-slate-100 text-slate-700'
   }
 }
 
