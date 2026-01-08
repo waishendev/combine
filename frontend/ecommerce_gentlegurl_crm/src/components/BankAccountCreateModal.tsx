@@ -16,10 +16,7 @@ interface FormState {
   bank_name: string
   account_name: string
   account_number: string
-  branch: string
-  swift_code: string
   instructions: string
-  isActive: 'active' | 'inactive'
   isDefault: 'yes' | 'no'
 }
 
@@ -28,10 +25,7 @@ const initialFormState: FormState = {
   bank_name: '',
   account_name: '',
   account_number: '',
-  branch: '',
-  swift_code: '',
   instructions: '',
-  isActive: 'active',
   isDefault: 'no',
 }
 
@@ -112,8 +106,6 @@ export default function BankAccountCreateModal({
     const trimmedBankName = form.bank_name.trim()
     const trimmedAccountName = form.account_name.trim()
     const trimmedAccountNumber = form.account_number.trim()
-    const trimmedBranch = form.branch.trim()
-    const trimmedSwiftCode = form.swift_code.trim()
     const trimmedInstructions = form.instructions.trim()
 
     setSubmitting(true)
@@ -125,10 +117,8 @@ export default function BankAccountCreateModal({
       formData.append('bank_name', trimmedBankName)
       formData.append('account_name', trimmedAccountName)
       formData.append('account_number', trimmedAccountNumber)
-      formData.append('branch', trimmedBranch)
-      formData.append('swift_code', trimmedSwiftCode)
       formData.append('instructions', trimmedInstructions)
-      formData.append('is_active', form.isActive === 'active' ? '1' : '0')
+      formData.append('is_active', '1')
       formData.append('is_default', form.isDefault === 'yes' ? '1' : '0')
 
       if (logoFile) {
@@ -183,11 +173,11 @@ export default function BankAccountCreateModal({
             bank_name: trimmedBankName,
             account_name: trimmedAccountName,
             account_number: trimmedAccountNumber,
-            branch: trimmedBranch || null,
-            swift_code: trimmedSwiftCode || null,
+            branch: null,
+            swift_code: null,
             logo_url: logoPreview || '',
             qr_image_url: qrImagePreview || null,
-            isActive: form.isActive === 'active',
+            isActive: true,
             isDefault: form.isDefault === 'yes',
             sort_order: null,
             instructions: trimmedInstructions || null,
@@ -218,7 +208,7 @@ export default function BankAccountCreateModal({
         }}
       />
       <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">Create Bank Account</h2>
           <button
             onClick={() => {
@@ -233,9 +223,9 @@ export default function BankAccountCreateModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5">
-          <div className="grid grid-cols-2 gap-6">
+          <div className="flex flex-col gap-6 lg:flex-row">
             {/* Left Side - Image Upload */}
-            <div className="space-y-4">
+            <div className="space-y-4 w-full lg:w-1/2">
               {/* Logo field hidden for now */}
               <div className="hidden">
                 <h3 className="text-sm font-medium text-gray-700 mb-1">Logo</h3>
@@ -361,7 +351,7 @@ export default function BankAccountCreateModal({
             </div>
 
             {/* Right Side - Form Fields */}
-            <div className="space-y-4">
+            <div className="space-y-4 w-full lg:w-1/2">
               <div>
                 <label
                   htmlFor="label"
@@ -444,44 +434,6 @@ export default function BankAccountCreateModal({
 
               <div>
                 <label
-                  htmlFor="branch"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Branch
-                </label>
-                <input
-                  id="branch"
-                  name="branch"
-                  type="text"
-                  value={form.branch}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., Main Branch"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="swift_code"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Swift Code
-                </label>
-                <input
-                  id="swift_code"
-                  name="swift_code"
-                  type="text"
-                  value={form.swift_code}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., MBBEMYKL"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div>
-                <label
                   htmlFor="instructions"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
@@ -497,26 +449,6 @@ export default function BankAccountCreateModal({
                   placeholder="Additional instructions for payment"
                   disabled={submitting}
                 />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="isActive"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Status
-                </label>
-                <select
-                  id="isActive"
-                  name="isActive"
-                  value={form.isActive}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={submitting}
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
               </div>
 
               <div>
@@ -571,4 +503,3 @@ export default function BankAccountCreateModal({
     </div>
   )
 }
-
