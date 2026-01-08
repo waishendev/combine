@@ -3,6 +3,7 @@
 namespace App\Services\Reports;
 
 use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\ReturnRequest;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,8 @@ class SalesReportService
 
         $ordersCount = (clone $baseQuery)->count();
         $revenue = (float) (clone $baseQuery)->sum('grand_total');
+        $returnAmount = $this->refundAmountForRange($start, $end);
+        $netRevenue = $revenue - $returnAmount;
         $itemsCount = (int) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
@@ -49,9 +52,11 @@ class SalesReportService
                 'orders_count' => (int) $ordersCount,
                 'items_count' => $itemsCount,
                 'revenue' => $revenue,
-                'average_order_value' => $ordersCount > 0 ? $revenue / $ordersCount : 0.0,
+                'return_amount' => $returnAmount,
+                'net_revenue' => $netRevenue,
+                'average_order_value' => $ordersCount > 0 ? $netRevenue / $ordersCount : 0.0,
                 'cogs' => $cogs,
-                'gross_profit' => $profitSupported && $cogs !== null ? $revenue - $cogs : null,
+                'gross_profit' => $profitSupported && $cogs !== null ? $netRevenue - $cogs : null,
             ],
             'by_status' => $byStatus,
         ];
@@ -66,14 +71,18 @@ class SalesReportService
             ->map(function ($row) use ($profitSupported) {
                 $revenue = (float) $row->revenue;
                 $cogs = (float) $row->cogs;
+                $returnAmount = (float) $row->return_amount;
+                $netRevenue = $revenue - $returnAmount;
 
                 return [
                     'date' => $row->date_bucket,
                     'orders_count' => (int) $row->orders_count,
                     'items_count' => (int) $row->items_count,
                     'revenue' => $revenue,
+                    'return_amount' => $returnAmount,
+                    'net_revenue' => $netRevenue,
                     'cogs' => $profitSupported ? $cogs : null,
-                    'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+                    'gross_profit' => $profitSupported ? $netRevenue - $cogs : null,
                 ];
             })
             ->values();
@@ -123,14 +132,18 @@ class SalesReportService
             ->map(function ($row) use ($profitSupported) {
                 $revenue = (float) $row->revenue;
                 $cogs = (float) $row->cogs;
+                $returnAmount = (float) $row->return_amount;
+                $netRevenue = $revenue - $returnAmount;
 
                 return [
                     'date' => $row->date_bucket,
                     'orders_count' => (int) $row->orders_count,
                     'items_count' => (int) $row->items_count,
                     'revenue' => $revenue,
+                    'return_amount' => $returnAmount,
+                    'net_revenue' => $netRevenue,
                     'cogs' => $profitSupported ? $cogs : null,
-                    'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+                    'gross_profit' => $profitSupported ? $netRevenue - $cogs : null,
                 ];
             })
             ->values();
@@ -380,24 +393,29 @@ class SalesReportService
         $ordersCount = 0;
         $itemsCount = 0;
         $revenue = 0.0;
+        $returnAmount = 0.0;
         $cogs = 0.0;
 
         foreach ($rows as $row) {
             $ordersCount += $row['orders_count'] ?? 0;
             $itemsCount += $row['items_count'] ?? 0;
             $revenue += $row['revenue'] ?? 0;
+            $returnAmount += $row['return_amount'] ?? 0;
             if ($profitSupported && $row['cogs'] !== null) {
                 $cogs += $row['cogs'];
             }
         }
+        $netRevenue = $revenue - $returnAmount;
 
         return [
             'orders_count' => $ordersCount,
             'items_count' => $itemsCount,
             'revenue' => $revenue,
-            'average_order_value' => $ordersCount > 0 ? $revenue / $ordersCount : 0.0,
+            'return_amount' => $returnAmount,
+            'net_revenue' => $netRevenue,
+            'average_order_value' => $ordersCount > 0 ? $netRevenue / $ordersCount : 0.0,
             'cogs' => $profitSupported ? $cogs : null,
-            'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+            'gross_profit' => $profitSupported ? $netRevenue - $cogs : null,
         ];
     }
 
@@ -406,6 +424,8 @@ class SalesReportService
         $baseQuery = $this->baseOrdersQuery($start, $end);
         $ordersCount = (int) (clone $baseQuery)->count();
         $revenue = (float) (clone $baseQuery)->sum('grand_total');
+        $returnAmount = $this->refundAmountForRange($start, $end);
+        $netRevenue = $revenue - $returnAmount;
         $itemsCount = (int) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
@@ -413,9 +433,9 @@ class SalesReportService
             ->whereIn('orders.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
             ->sum('order_items.quantity');
         $cogs = $profitSupported ? $this->cogsForOrderItems($start, $end) : null;
-        $grossProfit = $profitSupported && $cogs !== null ? $revenue - $cogs : null;
+        $grossProfit = $profitSupported && $cogs !== null ? $netRevenue - $cogs : null;
         if ($grossProfit !== null) {
-            $grossMargin = $revenue > 0 ? ($grossProfit / $revenue) * 100 : 0.0;
+            $grossMargin = $netRevenue > 0 ? ($grossProfit / $netRevenue) * 100 : 0.0;
         } else {
             $grossMargin = null;
         }
@@ -424,7 +444,9 @@ class SalesReportService
             'orders_count' => $ordersCount,
             'items_count' => $itemsCount,
             'revenue' => $revenue,
-            'average_order_value' => $ordersCount > 0 ? $revenue / $ordersCount : 0.0,
+            'return_amount' => $returnAmount,
+            'net_revenue' => $netRevenue,
+            'average_order_value' => $ordersCount > 0 ? $netRevenue / $ordersCount : 0.0,
             'cogs' => $cogs,
             'gross_profit' => $grossProfit,
             'gross_margin' => $grossMargin,
@@ -434,12 +456,16 @@ class SalesReportService
     private function buildSummary(Carbon $start, Carbon $end, bool $profitSupported): array
     {
         $revenue = (float) $this->baseOrdersQuery($start, $end)->sum('grand_total');
+        $returnAmount = $this->refundAmountForRange($start, $end);
+        $netRevenue = $revenue - $returnAmount;
         $cogs = $profitSupported ? $this->cogsForOrderItems($start, $end) : null;
-        $grossProfit = $profitSupported && $cogs !== null ? $revenue - $cogs : null;
-        $grossMargin = $grossProfit !== null && $revenue > 0 ? ($grossProfit / $revenue) * 100 : null;
+        $grossProfit = $profitSupported && $cogs !== null ? $netRevenue - $cogs : null;
+        $grossMargin = $grossProfit !== null && $netRevenue > 0 ? ($grossProfit / $netRevenue) * 100 : null;
 
         return [
             'revenue' => $revenue,
+            'return_amount' => $returnAmount,
+            'net_revenue' => $netRevenue,
             'cogs' => $cogs,
             'gross_profit' => $grossProfit,
             'gross_margin' => $grossMargin,
@@ -448,11 +474,13 @@ class SalesReportService
 
     private function buildByCategoryQuery(Carbon $start, Carbon $end, bool $profitSupported): array
     {
+        $refundsSubquery = $this->refundsByOrderSubquery($start, $end);
         $rowsQuery = DB::table('orders as o')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
             ->join('product_categories as pc', 'pc.product_id', '=', 'p.id')
             ->join('categories as c', 'c.id', '=', 'pc.category_id')
+            ->leftJoinSub($refundsSubquery, 'order_refunds', 'o.id', '=', 'order_refunds.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
@@ -462,7 +490,10 @@ class SalesReportService
                 'c.name as category_name',
                 DB::raw('COUNT(DISTINCT o.id) as orders_count'),
                 DB::raw('SUM(oi.quantity) as items_count'),
-                DB::raw('SUM(oi.line_total) as revenue')
+                DB::raw('SUM(oi.line_total) as revenue'),
+                DB::raw(
+                    'SUM(oi.line_total - (CASE WHEN o.grand_total > 0 THEN (oi.line_total / o.grand_total) * COALESCE(order_refunds.refund_amount, 0) ELSE 0 END)) as net_revenue'
+                )
             )
             ->orderByDesc('revenue');
 
@@ -474,6 +505,7 @@ class SalesReportService
 
         $transformRow = function ($row) use ($profitSupported) {
             $revenue = (float) $row->revenue;
+            $netRevenue = (float) $row->net_revenue;
             $cogs = (float) $row->cogs;
 
             return [
@@ -482,8 +514,10 @@ class SalesReportService
                 'orders_count' => (int) $row->orders_count,
                 'items_count' => (int) $row->items_count,
                 'revenue' => $revenue,
+                'return_amount' => max($revenue - $netRevenue, 0),
+                'net_revenue' => $netRevenue,
                 'cogs' => $profitSupported ? $cogs : null,
-                'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+                'gross_profit' => $profitSupported ? $netRevenue - $cogs : null,
             ];
         };
 
@@ -504,12 +538,16 @@ class SalesReportService
             ->select('order_id', DB::raw('SUM(quantity) as items_count'))
             ->groupBy('order_id');
 
+        $refundsSubquery = $this->refundsByOrderSubquery($start, $end);
+
         $rowsQuery = $this->baseOrdersQuery($start, $end)
             ->leftJoinSub($itemsSubquery, 'order_item_sums', 'orders.id', '=', 'order_item_sums.order_id')
+            ->leftJoinSub($refundsSubquery, 'order_refunds', 'orders.id', '=', 'order_refunds.order_id')
             ->selectRaw("{$dateExpression} as date_bucket")
             ->selectRaw('COUNT(*) as orders_count')
             ->selectRaw('COALESCE(SUM(order_item_sums.items_count), 0) as items_count')
-            ->selectRaw('SUM(grand_total) as revenue');
+            ->selectRaw('SUM(grand_total) as revenue')
+            ->selectRaw('COALESCE(SUM(order_refunds.refund_amount), 0) as return_amount');
 
         if ($profitSupported) {
             $cogsSubquery = DB::table('order_items as oi')
@@ -535,9 +573,11 @@ class SalesReportService
 
     private function buildByProductsQuery(Carbon $start, Carbon $end, bool $profitSupported): array
     {
+        $refundsSubquery = $this->refundsByOrderSubquery($start, $end);
         $rowsQuery = DB::table('orders as o')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
+            ->leftJoinSub($refundsSubquery, 'order_refunds', 'o.id', '=', 'order_refunds.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
@@ -548,7 +588,10 @@ class SalesReportService
                 'p.sku',
                 DB::raw('COUNT(DISTINCT o.id) as orders_count'),
                 DB::raw('SUM(oi.quantity) as items_count'),
-                DB::raw('SUM(oi.line_total) as revenue')
+                DB::raw('SUM(oi.line_total) as revenue'),
+                DB::raw(
+                    'SUM(oi.line_total - (CASE WHEN o.grand_total > 0 THEN (oi.line_total / o.grand_total) * COALESCE(order_refunds.refund_amount, 0) ELSE 0 END)) as net_revenue'
+                )
             )
             ->orderByDesc('revenue');
 
@@ -560,6 +603,7 @@ class SalesReportService
 
         $transformRow = function ($row) use ($profitSupported) {
             $revenue = (float) $row->revenue;
+            $netRevenue = (float) $row->net_revenue;
             $cogs = (float) $row->cogs;
 
             return [
@@ -569,8 +613,10 @@ class SalesReportService
                 'orders_count' => (int) $row->orders_count,
                 'items_count' => (int) $row->items_count,
                 'revenue' => $revenue,
+                'return_amount' => max($revenue - $netRevenue, 0),
+                'net_revenue' => $netRevenue,
                 'cogs' => $profitSupported ? $cogs : null,
-                'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+                'gross_profit' => $profitSupported ? $netRevenue - $cogs : null,
             ];
         };
 
@@ -583,9 +629,12 @@ class SalesReportService
             ->select('order_id', DB::raw('SUM(quantity) as items_count'))
             ->groupBy('order_id');
 
+        $refundsSubquery = $this->refundsByOrderSubquery($start, $end);
+
         $rowsQuery = $this->baseOrdersQuery($start, $end)
             ->join('customers as c', 'orders.customer_id', '=', 'c.id')
             ->leftJoinSub($itemsSubquery, 'order_item_sums', 'orders.id', '=', 'order_item_sums.order_id')
+            ->leftJoinSub($refundsSubquery, 'order_refunds', 'orders.id', '=', 'order_refunds.order_id')
             ->groupBy('c.id', 'c.name', 'c.email')
             ->select(
                 'c.id as customer_id',
@@ -593,7 +642,9 @@ class SalesReportService
                 'c.email as customer_email',
                 DB::raw('COUNT(orders.id) as orders_count'),
                 DB::raw('COALESCE(SUM(order_item_sums.items_count), 0) as items_count'),
-                DB::raw('SUM(orders.grand_total) as revenue')
+                DB::raw('SUM(orders.grand_total) as revenue'),
+                DB::raw('COALESCE(SUM(order_refunds.refund_amount), 0) as return_amount'),
+                DB::raw('SUM(orders.grand_total - COALESCE(order_refunds.refund_amount, 0)) as net_revenue')
             )
             ->orderByDesc('revenue');
 
@@ -613,6 +664,8 @@ class SalesReportService
         $transformRow = function ($row) use ($profitSupported) {
             $ordersCount = (int) $row->orders_count;
             $revenue = (float) $row->revenue;
+            $returnAmount = (float) $row->return_amount;
+            $netRevenue = (float) $row->net_revenue;
             $cogs = (float) $row->cogs;
 
             return [
@@ -622,12 +675,37 @@ class SalesReportService
                 'orders_count' => $ordersCount,
                 'items_count' => (int) $row->items_count,
                 'revenue' => $revenue,
-                'average_order_value' => $ordersCount > 0 ? $revenue / $ordersCount : 0.0,
+                'return_amount' => $returnAmount,
+                'net_revenue' => $netRevenue,
+                'average_order_value' => $ordersCount > 0 ? $netRevenue / $ordersCount : 0.0,
                 'cogs' => $profitSupported ? $cogs : null,
-                'gross_profit' => $profitSupported ? $revenue - $cogs : null,
+                'gross_profit' => $profitSupported ? $netRevenue - $cogs : null,
             ];
         };
 
         return [$rowsQuery, $transformRow];
+    }
+
+    private function refundsByOrderSubquery(Carbon $start, Carbon $end)
+    {
+        return ReturnRequest::query()
+            ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
+            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
+            ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
+            ->whereNotNull('return_requests.refunded_at')
+            ->groupBy('return_requests.order_id')
+            ->select('return_requests.order_id', DB::raw('SUM(return_requests.refund_amount) as refund_amount'));
+    }
+
+    private function refundAmountForRange(Carbon $start, Carbon $end): float
+    {
+        return (float) ReturnRequest::query()
+            ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
+            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
+            ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
+            ->whereNotNull('return_requests.refunded_at')
+            ->sum('return_requests.refund_amount');
     }
 }

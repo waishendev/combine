@@ -10,6 +10,8 @@ import { useI18n } from '@/lib/i18n'
 type MonthlySalesPoint = {
   month: string
   revenue: number
+  return_amount: number
+  net_revenue: number
   orders_count: number
 }
 
@@ -27,6 +29,7 @@ type TopProduct = {
   sku: string | null
   qty: number
   revenue: number
+  net_revenue: number
   refund_amount: number
   refund_percent: number
 }
@@ -38,6 +41,7 @@ type DashboardOverviewResponse = {
   }
   kpis: {
     revenue: KpiComparison
+    net_revenue: KpiComparison
     orders_count: KpiComparison
     new_customers: KpiComparison
     refund_amount: KpiComparison
@@ -140,7 +144,7 @@ export default function DashboardPage() {
 
   const monthlySales = data?.charts.monthly_sales ?? []
   const maxRevenue = useMemo(() => {
-    return monthlySales.reduce((max, item) => Math.max(max, item.revenue), 0)
+    return monthlySales.reduce((max, item) => Math.max(max, item.net_revenue), 0)
   }, [monthlySales])
   const chartTicks = useMemo(() => {
     if (maxRevenue <= 0) {
@@ -159,10 +163,10 @@ export default function DashboardPage() {
     return [
       {
         title: t('dashboard.revenue'),
-        value: formatCurrency(data.kpis.revenue.current),
-        badgeText: buildBadgeText(data.kpis.revenue),
-        tooltipLines: buildTooltipLines(data.kpis.revenue, formatCurrency),
-        trend: data.kpis.revenue.trend,
+        value: formatCurrency(data.kpis.net_revenue.current),
+        badgeText: buildBadgeText(data.kpis.net_revenue),
+        tooltipLines: buildTooltipLines(data.kpis.net_revenue, formatCurrency),
+        trend: data.kpis.net_revenue.trend,
       },
       {
         title: t('dashboard.orders'),
@@ -272,8 +276,8 @@ export default function DashboardPage() {
                 </div>
                 <div className="ml-16 flex h-full w-full items-end gap-4">
                   {monthlySales.map((month) => {
-                    const heightPercent = maxRevenue > 0 ? (month.revenue / maxRevenue) * 100 : 0
-                    const aov = month.orders_count > 0 ? month.revenue / month.orders_count : 0
+                    const heightPercent = maxRevenue > 0 ? (month.net_revenue / maxRevenue) * 100 : 0
+                    const aov = month.orders_count > 0 ? month.net_revenue / month.orders_count : 0
 
                     return (
                       <div key={month.month} className="group relative flex h-full flex-1 flex-col items-center justify-end">
@@ -287,7 +291,7 @@ export default function DashboardPage() {
                         <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-48 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600 shadow-lg opacity-0 transition group-hover:opacity-100">
                           <p className="text-xs text-slate-500">Month: {month.month}</p>
                           <p className="text-sm font-semibold text-slate-900">
-                            Revenue: {formatCurrency(month.revenue)}
+                            NET REVENUE: {formatCurrency(month.net_revenue)}
                           </p>
                           <p>Orders: {formatNumber(month.orders_count)}</p>
                           {month.orders_count > 0 && <p>AOV: {formatCurrency(aov)}</p>}
@@ -313,7 +317,7 @@ export default function DashboardPage() {
                     <tr>
                       <th className="px-3 sm:px-4 py-3">Product</th>
                       <th className="px-3 sm:px-4 py-3 text-right">Qty</th>
-                      <th className="px-3 sm:px-4 py-3 text-right">Revenue</th>
+                      <th className="px-3 sm:px-4 py-3 text-right">NET REVENUE</th>
                       <th className="px-3 sm:px-4 py-3 text-right">Refund %</th>
                     </tr>
                   </thead>
@@ -350,7 +354,7 @@ export default function DashboardPage() {
                             {formatNumber(product.qty)}
                           </td>
                           <td className="px-3 sm:px-4 py-3 text-right font-medium text-slate-900">
-                            {formatCurrency(product.revenue)}
+                            {formatCurrency(product.net_revenue)}
                           </td>
                           <td className="px-3 sm:px-4 py-3 text-right text-slate-700">
                             {formatPercent(product.refund_percent || 0)}

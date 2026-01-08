@@ -25,6 +25,8 @@ type DailyTotals = {
   orders_count?: number
   items_count?: number
   revenue?: number
+  return_amount?: number
+  net_revenue?: number
   average_order_value?: number | null
   cogs?: number | null
   gross_profit?: number | null
@@ -36,6 +38,8 @@ type DailyRow = {
   orders_count: number
   items_count: number
   revenue: number
+  return_amount?: number
+  net_revenue?: number
   cogs?: number | null
   gross_profit?: number | null
 }
@@ -202,7 +206,11 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
           return
         }
         const data: DailyReportResponse = await response.json()
-        const responseRows = data.rows ?? []
+        const responseRows = (data.rows ?? []).map((row) => ({
+          ...row,
+          net_revenue: row.net_revenue ?? row.revenue,
+          return_amount: row.return_amount ?? 0,
+        }))
         setRows(responseRows)
         setTotalsPage(data.totals_page ?? null)
         setGrandTotals(data.grand_totals ?? data.totals ?? null)
@@ -306,13 +314,13 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
   }, [resolvedParams.hasDateFrom, resolvedParams.hasDateTo, showingRange])
 
   const summaryCards = useMemo(() => {
-    const revenue = grandTotals?.revenue ?? null
+    const revenue = grandTotals?.net_revenue ?? grandTotals?.revenue ?? null
     const cogs = grandTotals?.cogs ?? null
     const grossProfit = grandTotals?.gross_profit ?? null
     const margin = grandTotals?.gross_margin ?? null
 
     return [
-      { label: 'Revenue', value: revenue, isMoney: true },
+      { label: 'NET REVENUE', value: revenue, isMoney: true },
       { label: 'COGS', value: cogs, isMoney: true },
       { label: 'Gross Profit', value: grossProfit, isMoney: true },
       { label: 'Gross Margin %', value: margin, isMoney: false },
@@ -337,6 +345,8 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         acc.orders_count += row.orders_count
         acc.items_count += row.items_count
         acc.revenue += row.revenue
+        acc.return_amount += row.return_amount ?? 0
+        acc.net_revenue += row.net_revenue ?? row.revenue
         acc.cogs += row.cogs ?? 0
         acc.gross_profit += row.gross_profit ?? 0
         return acc
@@ -345,6 +355,8 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         orders_count: 0,
         items_count: 0,
         revenue: 0,
+        return_amount: 0,
+        net_revenue: 0,
         cogs: 0,
         gross_profit: 0,
       },
@@ -546,7 +558,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                 Items
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
-                Revenue
+                NET REVENUE
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 COGS
@@ -572,7 +584,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                   <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
                   <td className="px-4 py-2 border border-gray-200">
-                    RM {formatAmount(row.revenue)}
+                    RM {formatAmount(row.net_revenue ?? row.revenue)}
                   </td>
                   <td className="px-4 py-2 border border-gray-200">
                     {row.cogs === null || row.cogs === undefined
@@ -598,9 +610,9 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                 {pageTotals?.items_count ?? '—'}
               </td>
               <td className="border border-gray-300 px-4 py-2 text-left text-sm">
-                {pageTotals?.revenue === undefined || pageTotals?.revenue === null
+                {pageTotals?.net_revenue === undefined || pageTotals?.net_revenue === null
                   ? '—'
-                  : `RM ${formatAmount(pageTotals.revenue)}`}
+                  : `RM ${formatAmount(pageTotals.net_revenue)}`}
               </td>
               <td className="border border-gray-300 px-4 py-2 text-left text-sm">
                 {pageTotals?.cogs === undefined || pageTotals?.cogs === null
