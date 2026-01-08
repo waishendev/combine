@@ -71,7 +71,7 @@ const badgeStyle = (status: string) => {
     case 'in_transit':
       return 'bg-violet-100 text-violet-800'
     case 'received':
-      return 'bg-teal-100 text-teal-800'
+      return 'bg-cyan-100 text-cyan-800'
     case 'refunded':
       return 'bg-green-100 text-green-800'
     case 'rejected':

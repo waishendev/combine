@@ -14,7 +14,7 @@ export const getReturnStatusBadgeClasses = (status?: string | null) => {
     case "in_transit":
       return `${base} border-violet-200 bg-violet-100 text-violet-800`;
     case "received":
-      return `${base} border-teal-200 bg-teal-100 text-teal-800`;
+      return `${base} border-cyan-200 bg-cyan-100 text-cyan-800`;
     case "refunded":
       return `${base} border-green-200 bg-green-100 text-green-800`;
     case "rejected":
