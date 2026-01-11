@@ -94,7 +94,9 @@ class ShopSettingController extends Controller
             'ecommerce.return_tracking_submit_days' => 7,
         ];
 
-        $value = SettingService::get($key, $defaultValues[$key]);
+        $settingKey = $this->resolveSettingKey($key);
+        $defaultKey = $settingKey === 'ecommerce.invoice_profile' ? 'invoice_profile' : $key;
+        $value = SettingService::get($settingKey, $defaultValues[$defaultKey]);
 
         return response()->json([
             'data' => [
@@ -163,8 +165,9 @@ class ShopSettingController extends Controller
                 ]);
         }
 
+        $settingKey = $this->resolveSettingKey($key);
         $setting = Setting::updateOrCreate(
-            ['key' => $key],
+            ['key' => $settingKey],
             ['value' => $data]
         );
 
@@ -172,7 +175,7 @@ class ShopSettingController extends Controller
 
         return response()->json([
             'data' => [
-                'key' => $setting->key,
+                'key' => $key,
                 'value' => $setting->value,
             ],
             'message' => 'Setting updated successfully.',
@@ -493,5 +496,14 @@ class ShopSettingController extends Controller
                 'default_fee' => 0,
             ],
         ];
+    }
+
+    protected function resolveSettingKey(string $key): string
+    {
+        if ($key === 'invoice_profile') {
+            return 'ecommerce.invoice_profile';
+        }
+
+        return $key;
     }
 }
