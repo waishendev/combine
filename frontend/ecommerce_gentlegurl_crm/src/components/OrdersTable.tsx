@@ -120,6 +120,20 @@ export default function OrdersTable({
     setFilters((prev) => (prev.status ? prev : { ...prev, status: queryDisplayStatus }))
   }, [queryDisplayStatus])
 
+  useEffect(() => {
+    if (!queryFilters.dateFrom && !queryFilters.dateTo) return
+    setInputs((prev) => ({
+      ...prev,
+      dateFrom: prev.dateFrom || queryFilters.dateFrom,
+      dateTo: prev.dateTo || queryFilters.dateTo,
+    }))
+    setFilters((prev) => ({
+      ...prev,
+      dateFrom: prev.dateFrom || queryFilters.dateFrom,
+      dateTo: prev.dateTo || queryFilters.dateTo,
+    }))
+  }, [queryFilters.dateFrom, queryFilters.dateTo])
+
   function DualSortIcons({
     active,
     dir,
@@ -154,11 +168,13 @@ export default function OrdersTable({
     const fetchOrders = async () => {
       setLoading(true)
       try {
+        const dateFrom = filters.dateFrom || queryFilters.dateFrom
+        const dateTo = filters.dateTo || queryFilters.dateTo
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
-        if (queryFilters.dateFrom) qs.set('date_from', queryFilters.dateFrom)
-        if (queryFilters.dateTo) qs.set('date_to', queryFilters.dateTo)
+        if (dateFrom) qs.set('date_from', dateFrom)
+        if (dateTo) qs.set('date_to', dateTo)
         if (filters.orderNo) qs.set('order_no', filters.orderNo)
         if (filters.customerName) qs.set('customer_name', filters.customerName)
         if (filters.customerEmail) qs.set('customer_email', filters.customerEmail)
