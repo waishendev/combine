@@ -424,6 +424,8 @@ export default function OrdersTable({
     customerName: 'Customer Name',
     customerEmail: 'Customer Email',
     status: 'Status',
+    dateFrom: 'Date From',
+    dateTo: 'Date To',
   }
 
   const renderFilterValue = (key: keyof OrderFilterValues, value: string) => {

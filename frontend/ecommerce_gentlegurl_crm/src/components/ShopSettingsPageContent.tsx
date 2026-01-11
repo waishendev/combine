@@ -163,11 +163,11 @@ const defaultShippingSettings = {
     SG: {
       label: 'Singapore',
       countries: ['SG'],
-      states: [],
+      states: [] as string[],
       fee: 25,
       free_shipping: {
         enabled: false,
-        min_order_amount: null,
+        min_order_amount: null as number | null,
       },
     },
   },
@@ -279,7 +279,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         const contact = payload.data?.shop_contact_widget?.whatsapp ?? defaultContactSettings
         const homepage = payload.data?.homepage_products ?? defaultHomepageSettings
         const shipping = payload.data?.shipping ?? defaultShippingSettings
-        const legacyFreeShipping = shipping.free_shipping
+        const legacyFreeShipping = 'free_shipping' in shipping ? shipping.free_shipping : undefined
         const footer = payload.data?.footer ?? defaultFooterSettings
         const invoiceProfile = payload.data?.invoice_profile ?? defaultInvoiceProfileSettings
         const pageReviews = payload.data?.page_reviews ?? defaultPageReviewsSettings
@@ -350,9 +350,9 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                   legacyFreeShipping?.enabled ??
                   defaultShippingSettings.zones.SG.free_shipping.enabled,
                 min_order_amount:
-                  shipping.zones?.SG?.free_shipping?.min_order_amount ??
+                  (shipping.zones?.SG?.free_shipping?.min_order_amount ??
                   legacyFreeShipping?.min_order_amount ??
-                  defaultShippingSettings.zones.SG.free_shipping.min_order_amount,
+                  defaultShippingSettings.zones.SG.free_shipping.min_order_amount) as number | null,
               },
             },
           },

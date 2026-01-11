@@ -28,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
     typeof baseMetadata.title === "string" && baseMetadata.title.trim().length > 0
       ? baseMetadata.title
       : "Gentlegurls";
-  const description = baseMetadata.description;
+  const description = baseMetadata.description ?? undefined;
 
   return {
     ...baseMetadata,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, FormEvent } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 import TableEmptyState from './TableEmptyState'
@@ -275,7 +275,7 @@ export default function ReturnOrdersTable() {
         }))
       }
       setViewingReturnId((current) => {
-        if (current && !mapped.find((row) => row.id === current)) {
+        if (current && !mapped.find((row: ReturnRow) => row.id === current)) {
           return null
         }
         return current

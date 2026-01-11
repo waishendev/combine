@@ -44,7 +44,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 
   const resolvedTitle =
     typeof baseMetadata.title === "string" ? baseMetadata.title : product.name;
-  const resolvedDescription = baseMetadata.description;
+  const resolvedDescription = baseMetadata.description ?? undefined;
 
   const ogImage =
     productSeo?.meta_og_image ??

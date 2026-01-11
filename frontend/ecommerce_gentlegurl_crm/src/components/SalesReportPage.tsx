@@ -259,7 +259,7 @@ export default function SalesReportPage({
           ...row,
           net_revenue: row.net_revenue ?? row.revenue,
           return_amount: row.return_amount ?? 0,
-        }))
+        })) as CategoryRow[] | ProductRow[] | CustomerRow[]
         setRows(normalizedRows)
         setTotalsPage(data.totals_page ?? null)
         setGrandTotals(data.grand_totals ?? null)

@@ -25,6 +25,7 @@ type Totals = {
 
 type ShippingSetting = {
   label?: string;
+  flat_fee?: number;
   currency?: string;
   free_shipping?: {
     enabled?: boolean;

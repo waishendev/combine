@@ -127,7 +127,7 @@ export function buildProductGalleryMedia(source: ProductMediaSource): ProductMed
 
   const normalizedImages = sortedImages.map((item) => ({
     ...item,
-    url: normalizeMediaUrl(item.url ?? item.image_path ?? null),
+    url: normalizeMediaUrl(item.url ?? ('image_path' in item ? item.image_path : null) ?? null),
   }));
 
   const normalizedVideo = video
