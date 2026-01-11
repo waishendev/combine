@@ -13,13 +13,23 @@ class MembershipTierService
 {
     public function getActiveRuleForTier(?string $tier): ?MembershipTierRule
     {
-        if (!$tier) {
-            return null;
+        $rule = null;
+
+        if ($tier) {
+            $rule = MembershipTierRule::query()
+                ->where('tier', $tier)
+                ->where('is_active', true)
+                ->first();
+        }
+
+        if ($rule) {
+            return $rule;
         }
 
         return MembershipTierRule::query()
-            ->where('tier', $tier)
             ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('min_spent_last_x_months')
             ->first();
     }
 
