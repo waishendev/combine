@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
@@ -138,13 +137,12 @@ const getFileUrl = (path?: string | null) => {
 
 export default function ReturnOrdersTable() {
   const { t } = useI18n()
-  const searchParams = useSearchParams()
-  const orderNumberParam = searchParams.get('order_no')?.trim() ?? ''
   const [rows, setRows] = useState<ReturnRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [filterDraft, setFilterDraft] = useState({ search: '', status: '' })
   const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
   const [pageSize, setPageSize] = useState(15)
@@ -240,13 +238,6 @@ export default function ReturnOrdersTable() {
   useEffect(() => {
     fetchReturns()
   }, [fetchReturns])
-
-  useEffect(() => {
-    if (!orderNumberParam) return
-    setSearch(orderNumberParam)
-    setFilterDraft((prev) => ({ ...prev, search: orderNumberParam }))
-    setCurrentPage(1)
-  }, [orderNumberParam])
 
   const handleSort = (column: keyof ReturnRow) => {
     if (sortColumn === column) {
@@ -352,37 +343,11 @@ export default function ReturnOrdersTable() {
     <div>
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
         <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={filterDraft.search}
-              onChange={(event) =>
-                setFilterDraft((prev) => ({ ...prev, search: event.target.value }))
-              }
-              placeholder="Order number"
-              className="h-10 w-52 rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:ring-blue-500"
-              disabled={loading}
-            />
-            <select
-              value={filterDraft.status}
-              onChange={(event) =>
-                setFilterDraft((prev) => ({ ...prev, status: event.target.value }))
-              }
-              className="h-10 rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:ring-blue-500"
-              disabled={loading}
-            >
-              <option value="">All status</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {formatStatusLabel(status)}
-                </option>
-              ))}
-            </select>
             <button
               type="button"
               onClick={() => {
-                setSearch(filterDraft.search.trim())
-                setStatusFilter(filterDraft.status)
-                setCurrentPage(1)
+                setFilterDraft({ search, status: statusFilter })
+                setIsFilterOpen(true)
               }}
               className="flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-50"
               disabled={loading}
@@ -435,10 +400,8 @@ export default function ReturnOrdersTable() {
                     onClick={() => {
                       if (filter.key === 'search') {
                         setSearch('')
-                        setFilterDraft((prev) => ({ ...prev, search: '' }))
                       } else {
                         setStatusFilter('')
-                        setFilterDraft((prev) => ({ ...prev, status: '' }))
                       }
                       setCurrentPage(1)
                     }}
@@ -542,6 +505,84 @@ export default function ReturnOrdersTable() {
         onPageChange={handlePageChange}
         disabled={loading}
       />
+      {isFilterOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setIsFilterOpen(false)}
+          />
+          <div className="relative w-full max-w-md rounded-lg bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-800">Filter Returns</h2>
+              <button
+                type="button"
+                onClick={() => setIsFilterOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
+                aria-label="Close filter"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="space-y-4 px-5 py-4 text-sm">
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Search
+                </label>
+                <input
+                  value={filterDraft.search}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, search: event.target.value }))}
+                  placeholder="Order number, customer name/email"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Status
+                </label>
+                <select
+                  value={filterDraft.status}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, status: event.target.value }))}
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                >
+                  <option value="">All status</option>
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {formatStatusLabel(status)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('')
+                  setStatusFilter('')
+                  setFilterDraft({ search: '', status: '' })
+                  setCurrentPage(1)
+                  setIsFilterOpen(false)
+                }}
+                className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch(filterDraft.search.trim())
+                  setStatusFilter(filterDraft.status)
+                  setCurrentPage(1)
+                  setIsFilterOpen(false)
+                }}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
