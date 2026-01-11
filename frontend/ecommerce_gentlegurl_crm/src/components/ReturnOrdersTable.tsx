@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
@@ -137,6 +138,7 @@ const getFileUrl = (path?: string | null) => {
 
 export default function ReturnOrdersTable() {
   const { t } = useI18n()
+  const searchParams = useSearchParams()
   const [rows, setRows] = useState<ReturnRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -166,6 +168,46 @@ export default function ReturnOrdersTable() {
     per_page: 15,
     total: 0,
   })
+
+  const queryFilters = useMemo(() => {
+    return {
+      orderNo: searchParams.get('order_no') ?? '',
+      customerName: searchParams.get('customer_name') ?? '',
+      customerEmail: searchParams.get('customer_email') ?? '',
+      status: searchParams.get('status') ?? '',
+      dateFrom: searchParams.get('date_from') ?? '',
+      dateTo: searchParams.get('date_to') ?? '',
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!orderNoFilter && queryFilters.orderNo) {
+      setOrderNoFilter(queryFilters.orderNo)
+    }
+    if (!customerNameFilter && queryFilters.customerName) {
+      setCustomerNameFilter(queryFilters.customerName)
+    }
+    if (!customerEmailFilter && queryFilters.customerEmail) {
+      setCustomerEmailFilter(queryFilters.customerEmail)
+    }
+    if (!statusFilter && queryFilters.status) {
+      setStatusFilter(queryFilters.status)
+    }
+    if (!dateFromFilter && queryFilters.dateFrom) {
+      setDateFromFilter(queryFilters.dateFrom)
+    }
+    if (!dateToFilter && queryFilters.dateTo) {
+      setDateToFilter(queryFilters.dateTo)
+    }
+  }, [
+    orderNoFilter,
+    customerNameFilter,
+    customerEmailFilter,
+    statusFilter,
+    dateFromFilter,
+    dateToFilter,
+    queryFilters,
+  ])
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
