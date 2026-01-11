@@ -441,7 +441,7 @@ export default function ReturnOrdersTable() {
               })
               setIsFilterOpen(true)
             }}
-            className="flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-50"
+            className="flex items-center gap-2 rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-50"
             disabled={loading}
           >
             <i className="fa-solid fa-filter" />
@@ -450,7 +450,7 @@ export default function ReturnOrdersTable() {
           <button
             type="button"
             onClick={fetchReturns}
-            className="flex items-center gap-2 rounded-md bg-green-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-600 disabled:opacity-50"
+            className="flex items-center gap-2 rounded bg-green-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-600 disabled:opacity-50"
             disabled={loading}
           >
             <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-rotate-right'}`} />
