@@ -733,6 +733,7 @@ export default function OrderViewPanel({
                     <p className="text-slate-500">No return requests</p>
                   ) : (
                     order.returns.map((returnRequest) => {
+                      const orderNumber = order.order_no || order.order_number || ''
                       const refundStatus =
                         returnRequest.refund?.status ||
                         (order.payment_status === 'refunded' ? 'refunded' : 'not_refunded')
@@ -760,7 +761,7 @@ export default function OrderViewPanel({
                               </p>
                             </div>
                             <a
-                              href={`/returns?return_id=${returnRequest.id}`}
+                              href={`/returns?order_no=${encodeURIComponent(orderNumber)}`}
                               className="inline-flex items-center rounded border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
                             >
                               View Return

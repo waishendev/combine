@@ -8,6 +8,8 @@ export interface OrderFilterValues {
   customerName: string
   customerEmail: string
   status: string
+  dateFrom: string
+  dateTo: string
 }
 
 export const orderFiltersFormId = 'order-filters-form'
@@ -17,6 +19,8 @@ export const emptyOrderFilters: OrderFilterValues = {
   customerName: '',
   customerEmail: '',
   status: '',
+  dateFrom: '',
+  dateTo: '',
 }
 
 interface OrderFiltersProps {
@@ -156,8 +160,43 @@ export default function OrderFilters({
           </select>
         </div>
 
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="dateFrom"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Date From
+            </label>
+            <input
+              id="dateFrom"
+              name="dateFrom"
+              type="date"
+              value={values.dateFrom}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="dateTo"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Date To
+            </label>
+            <input
+              id="dateTo"
+              name="dateTo"
+              type="date"
+              value={values.dateTo}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        </div>
+
       </div>
     </form>
   )
 }
-
