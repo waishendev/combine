@@ -141,9 +141,20 @@ export default function ReturnOrdersTable() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
-  const [search, setSearch] = useState('')
+  const [orderNoFilter, setOrderNoFilter] = useState('')
+  const [customerNameFilter, setCustomerNameFilter] = useState('')
+  const [customerEmailFilter, setCustomerEmailFilter] = useState('')
+  const [dateFromFilter, setDateFromFilter] = useState('')
+  const [dateToFilter, setDateToFilter] = useState('')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [filterDraft, setFilterDraft] = useState({ search: '', status: '' })
+  const [filterDraft, setFilterDraft] = useState({
+    order_no: '',
+    customer_name: '',
+    customer_email: '',
+    status: '',
+    date_from: '',
+    date_to: '',
+  })
   const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
   const [pageSize, setPageSize] = useState(15)
   const [currentPage, setCurrentPage] = useState(1)
@@ -161,13 +172,22 @@ export default function ReturnOrdersTable() {
     params.set('page', String(currentPage))
     params.set('per_page', String(pageSize))
     if (statusFilter) params.set('status', statusFilter)
-    if (search) {
-      params.set('order_no', search)
-      params.set('customer_name', search)
-      params.set('customer_email', search)
-    }
+    if (orderNoFilter) params.set('order_no', orderNoFilter)
+    if (customerNameFilter) params.set('customer_name', customerNameFilter)
+    if (customerEmailFilter) params.set('customer_email', customerEmailFilter)
+    if (dateFromFilter) params.set('date_from', dateFromFilter)
+    if (dateToFilter) params.set('date_to', dateToFilter)
     return params.toString()
-  }, [statusFilter, search, currentPage, pageSize])
+  }, [
+    statusFilter,
+    orderNoFilter,
+    customerNameFilter,
+    customerEmailFilter,
+    dateFromFilter,
+    dateToFilter,
+    currentPage,
+    pageSize,
+  ])
 
   const fetchReturns = useCallback(async () => {
     setLoading(true)
@@ -325,15 +345,38 @@ export default function ReturnOrdersTable() {
   }
 
   const activeFilters = useMemo(() => {
-    const filters: Array<{ key: 'search' | 'status'; label: string; value: string }> = []
-    if (search) {
-      filters.push({ key: 'search', label: 'Search', value: search })
+    const filters: Array<{
+      key: 'order_no' | 'customer_name' | 'customer_email' | 'status' | 'date_from' | 'date_to'
+      label: string
+      value: string
+    }> = []
+    if (orderNoFilter) {
+      filters.push({ key: 'order_no', label: 'Order No', value: orderNoFilter })
+    }
+    if (customerNameFilter) {
+      filters.push({ key: 'customer_name', label: 'Customer Name', value: customerNameFilter })
+    }
+    if (customerEmailFilter) {
+      filters.push({ key: 'customer_email', label: 'Customer Email', value: customerEmailFilter })
     }
     if (statusFilter) {
       filters.push({ key: 'status', label: 'Status', value: statusFilter })
     }
+    if (dateFromFilter) {
+      filters.push({ key: 'date_from', label: 'Date From', value: dateFromFilter })
+    }
+    if (dateToFilter) {
+      filters.push({ key: 'date_to', label: 'Date To', value: dateToFilter })
+    }
     return filters
-  }, [search, statusFilter])
+  }, [
+    orderNoFilter,
+    customerNameFilter,
+    customerEmailFilter,
+    statusFilter,
+    dateFromFilter,
+    dateToFilter,
+  ])
 
   const handleReturnUpdated = () => {
     fetchReturns()
@@ -343,28 +386,35 @@ export default function ReturnOrdersTable() {
     <div>
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
         <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setFilterDraft({ search, status: statusFilter })
-                setIsFilterOpen(true)
-              }}
-              className="flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-50"
-              disabled={loading}
-            >
-              <i className="fa-solid fa-filter" />
-              {t('common.filter')}
-            </button>
-            <button
-              type="button"
-              onClick={fetchReturns}
-              className="flex items-center gap-2 rounded-md bg-green-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-600 disabled:opacity-50"
-              disabled={loading}
-            >
-              <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-rotate-right'}`} />
-              Refresh
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setFilterDraft({
+                order_no: orderNoFilter,
+                customer_name: customerNameFilter,
+                customer_email: customerEmailFilter,
+                status: statusFilter,
+                date_from: dateFromFilter,
+                date_to: dateToFilter,
+              })
+              setIsFilterOpen(true)
+            }}
+            className="flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-50"
+            disabled={loading}
+          >
+            <i className="fa-solid fa-filter" />
+            {t('common.filter')}
+          </button>
+          <button
+            type="button"
+            onClick={fetchReturns}
+            className="flex items-center gap-2 rounded-md bg-green-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-600 disabled:opacity-50"
+            disabled={loading}
+          >
+            <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-arrow-rotate-right'}`} />
+            Refresh
+          </button>
+        </div>
 
         <div className="flex items-center gap-3">
           <label htmlFor="pageSize" className="text-sm text-gray-700">
@@ -384,35 +434,43 @@ export default function ReturnOrdersTable() {
             ))}
           </select>
         </div>
+      </div>
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {activeFilters.map((filter) => (
+            <span
+              key={filter.key}
+              className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs"
+            >
+              <span className="font-semibold">{filter.label}</span>
+              <span>{filter.value}</span>
+              <button
+                type="button"
+                className="text-blue-600 hover:text-blue-800"
+                onClick={() => {
+                  if (filter.key === 'order_no') {
+                    setOrderNoFilter('')
+                  } else if (filter.key === 'customer_name') {
+                    setCustomerNameFilter('')
+                  } else if (filter.key === 'customer_email') {
+                    setCustomerEmailFilter('')
+                  } else if (filter.key === 'status') {
+                    setStatusFilter('')
+                  } else if (filter.key === 'date_from') {
+                    setDateFromFilter('')
+                  } else if (filter.key === 'date_to') {
+                    setDateToFilter('')
+                  }
+                  setCurrentPage(1)
+                }}
+                aria-label={`Remove ${filter.label} filter`}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </span>
+          ))}
         </div>
-          {activeFilters.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              {activeFilters.map((filter) => (
-                <span
-                  key={filter.key}
-                  className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs"
-                >
-                  <span className="font-semibold">{filter.label}</span>
-                  <span>{filter.value}</span>
-                  <button
-                    type="button"
-                    className="text-blue-600 hover:text-blue-800"
-                    onClick={() => {
-                      if (filter.key === 'search') {
-                        setSearch('')
-                      } else {
-                        setStatusFilter('')
-                      }
-                      setCurrentPage(1)
-                    }}
-                    aria-label={`Remove ${filter.label} filter`}
-                  >
-                    <i className="fa-solid fa-xmark" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+      )}
 
       <div className="bg-white shadow rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -526,12 +584,36 @@ export default function ReturnOrdersTable() {
             <div className="space-y-4 px-5 py-4 text-sm">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
-                  Search
+                  Order No
                 </label>
                 <input
-                  value={filterDraft.search}
-                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, search: event.target.value }))}
-                  placeholder="Order number, customer name/email"
+                  value={filterDraft.order_no}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, order_no: event.target.value }))}
+                  placeholder="Order number"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Customer Name
+                </label>
+                <input
+                  value={filterDraft.customer_name}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, customer_name: event.target.value }))}
+                  placeholder="Customer name"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Customer Email
+                </label>
+                <input
+                  value={filterDraft.customer_email}
+                  onChange={(event) =>
+                    setFilterDraft((prev) => ({ ...prev, customer_email: event.target.value }))
+                  }
+                  placeholder="Customer email"
                   className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                 />
               </div>
@@ -552,14 +634,47 @@ export default function ReturnOrdersTable() {
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Date From
+                </label>
+                <input
+                  type="date"
+                  value={filterDraft.date_from}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, date_from: event.target.value }))}
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
+                  Date To
+                </label>
+                <input
+                  type="date"
+                  value={filterDraft.date_to}
+                  onChange={(event) => setFilterDraft((prev) => ({ ...prev, date_to: event.target.value }))}
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
             </div>
             <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-5 py-4">
               <button
                 type="button"
                 onClick={() => {
-                  setSearch('')
+                  setOrderNoFilter('')
+                  setCustomerNameFilter('')
+                  setCustomerEmailFilter('')
                   setStatusFilter('')
-                  setFilterDraft({ search: '', status: '' })
+                  setDateFromFilter('')
+                  setDateToFilter('')
+                  setFilterDraft({
+                    order_no: '',
+                    customer_name: '',
+                    customer_email: '',
+                    status: '',
+                    date_from: '',
+                    date_to: '',
+                  })
                   setCurrentPage(1)
                   setIsFilterOpen(false)
                 }}
@@ -570,8 +685,12 @@ export default function ReturnOrdersTable() {
               <button
                 type="button"
                 onClick={() => {
-                  setSearch(filterDraft.search.trim())
+                  setOrderNoFilter(filterDraft.order_no.trim())
+                  setCustomerNameFilter(filterDraft.customer_name.trim())
+                  setCustomerEmailFilter(filterDraft.customer_email.trim())
                   setStatusFilter(filterDraft.status)
+                  setDateFromFilter(filterDraft.date_from)
+                  setDateToFilter(filterDraft.date_to)
                   setCurrentPage(1)
                   setIsFilterOpen(false)
                 }}
