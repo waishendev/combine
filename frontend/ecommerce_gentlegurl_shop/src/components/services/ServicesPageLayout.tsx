@@ -63,7 +63,7 @@ export function ServicesPageLayout({
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<number | null>(null);
-  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
+  const [openFaqId, setOpenFaqId] = useState<string | null>(null);
 
   useEffect(() => {
     setActiveSlide(0);
@@ -302,7 +302,8 @@ export function ServicesPageLayout({
 
           <div className="grid gap-4 sm:grid-cols-2">
             {faqs.map((item, index) => {
-              const isOpen = openFaqIndex === index;
+              const faqId = `${item.question}-${index}`;
+              const isOpen = openFaqId === faqId;
               // Check if answer contains bullet points (• or -)
               const hasBulletPoints = item.answer.includes("•") || item.answer.includes("-");
               // Split answer into lines if it contains bullet points
@@ -321,12 +322,12 @@ export function ServicesPageLayout({
 
               return (
                 <div
-                  key={item.question}
+                  key={faqId}
                   className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
                 >
                   <button
                     type="button"
-                    onClick={() => setOpenFaqIndex(isOpen ? null : index)}
+                    onClick={() => setOpenFaqId(isOpen ? null : faqId)}
                     className="flex w-full cursor-pointer items-center justify-between gap-3 text-left text-sm font-semibold text-[var(--foreground)]"
                   >
                     <span>{item.question}</span>
