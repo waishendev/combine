@@ -139,35 +139,6 @@ const getFileUrl = (path?: string | null) => {
 export default function ReturnOrdersTable() {
   const { t } = useI18n()
   const searchParams = useSearchParams()
-  const [rows, setRows] = useState<ReturnRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState('')
-  const [orderNoFilter, setOrderNoFilter] = useState('')
-  const [customerNameFilter, setCustomerNameFilter] = useState('')
-  const [customerEmailFilter, setCustomerEmailFilter] = useState('')
-  const [dateFromFilter, setDateFromFilter] = useState('')
-  const [dateToFilter, setDateToFilter] = useState('')
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [filterDraft, setFilterDraft] = useState({
-    order_no: '',
-    customer_name: '',
-    customer_email: '',
-    status: '',
-    date_from: '',
-    date_to: '',
-  })
-  const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
-  const [pageSize, setPageSize] = useState(15)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof ReturnRow | null>('createdAt')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('desc')
-  const [meta, setMeta] = useState<Meta>({
-    current_page: 1,
-    last_page: 1,
-    per_page: 15,
-    total: 0,
-  })
 
   const queryFilters = useMemo(() => {
     return {
@@ -180,32 +151,52 @@ export default function ReturnOrdersTable() {
     }
   }, [searchParams])
 
+  const [rows, setRows] = useState<ReturnRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState(queryFilters.status)
+  const [orderNoFilter, setOrderNoFilter] = useState(queryFilters.orderNo)
+  const [customerNameFilter, setCustomerNameFilter] = useState(queryFilters.customerName)
+  const [customerEmailFilter, setCustomerEmailFilter] = useState(queryFilters.customerEmail)
+  const [dateFromFilter, setDateFromFilter] = useState(queryFilters.dateFrom)
+  const [dateToFilter, setDateToFilter] = useState(queryFilters.dateTo)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [filterDraft, setFilterDraft] = useState(() => ({
+    order_no: queryFilters.orderNo,
+    customer_name: queryFilters.customerName,
+    customer_email: queryFilters.customerEmail,
+    status: queryFilters.status,
+    date_from: queryFilters.dateFrom,
+    date_to: queryFilters.dateTo,
+  }))
+  const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
+  const [pageSize, setPageSize] = useState(15)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortColumn, setSortColumn] = useState<keyof ReturnRow | null>('createdAt')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('desc')
+  const [meta, setMeta] = useState<Meta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 15,
+    total: 0,
+  })
+
   useEffect(() => {
-    if (!orderNoFilter && queryFilters.orderNo) {
-      setOrderNoFilter(queryFilters.orderNo)
-    }
-    if (!customerNameFilter && queryFilters.customerName) {
-      setCustomerNameFilter(queryFilters.customerName)
-    }
-    if (!customerEmailFilter && queryFilters.customerEmail) {
-      setCustomerEmailFilter(queryFilters.customerEmail)
-    }
-    if (!statusFilter && queryFilters.status) {
-      setStatusFilter(queryFilters.status)
-    }
-    if (!dateFromFilter && queryFilters.dateFrom) {
-      setDateFromFilter(queryFilters.dateFrom)
-    }
-    if (!dateToFilter && queryFilters.dateTo) {
-      setDateToFilter(queryFilters.dateTo)
-    }
+    setOrderNoFilter(queryFilters.orderNo)
+    setCustomerNameFilter(queryFilters.customerName)
+    setCustomerEmailFilter(queryFilters.customerEmail)
+    setStatusFilter(queryFilters.status)
+    setDateFromFilter(queryFilters.dateFrom)
+    setDateToFilter(queryFilters.dateTo)
+    setFilterDraft({
+      order_no: queryFilters.orderNo,
+      customer_name: queryFilters.customerName,
+      customer_email: queryFilters.customerEmail,
+      status: queryFilters.status,
+      date_from: queryFilters.dateFrom,
+      date_to: queryFilters.dateTo,
+    })
   }, [
-    orderNoFilter,
-    customerNameFilter,
-    customerEmailFilter,
-    statusFilter,
-    dateFromFilter,
-    dateToFilter,
     queryFilters,
   ])
 
