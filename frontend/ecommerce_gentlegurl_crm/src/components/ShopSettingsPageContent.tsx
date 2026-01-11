@@ -1264,7 +1264,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
             </div>
           )}
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2 md:col-span-2">
+            {/* <label className="space-y-2 md:col-span-2">
               <span className="block text-sm font-medium text-slate-800">Company Logo URL</span>
               <input
                 type="url"
@@ -1279,7 +1279,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 placeholder="https://example.com/logo.png"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-            </label>
+            </label> */}
 
             <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Company Name</span>
@@ -1295,7 +1295,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               />
             </label>
 
-            <label className="space-y-2">
+            {/* <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Company Reg No</span>
               <input
                 type="text"
@@ -1310,9 +1310,9 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 placeholder="e.g. 202401234567"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-            </label>
+            </label> */}
 
-            <label className="space-y-2">
+            {/* <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Currency</span>
               <input
                 type="text"
@@ -1323,6 +1323,22 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                   setInvoiceProfileSettings((prev) => ({ ...prev, currency: event.target.value }))
                 }
                 placeholder="MYR"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label> */}
+
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Footer Note</span>
+              <input
+                type="text"
+                value={invoiceProfileSettings.footer_note}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setInvoiceProfileSettings((prev) => ({
+                    ...prev,
+                    footer_note: event.target.value,
+                  }))
+                }
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </label>
@@ -1344,7 +1360,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
               />
             </label>
 
-            <label className="space-y-2">
+            {/* <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Company Phone</span>
               <input
                 type="text"
@@ -1359,9 +1375,9 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 placeholder="+60123456789"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-            </label>
+            </label> */}
 
-            <label className="space-y-2">
+            {/* <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Company Email</span>
               <input
                 type="email"
@@ -1376,9 +1392,9 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 placeholder="support@example.com"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-            </label>
+            </label> */}
 
-            <label className="space-y-2">
+            {/* <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Company Website</span>
               <input
                 type="url"
@@ -1393,23 +1409,9 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
                 placeholder="https://example.com"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-            </label>
+            </label> */}
 
-            <label className="space-y-2 md:col-span-2">
-              <span className="block text-sm font-medium text-slate-800">Footer Note</span>
-              <textarea
-                value={invoiceProfileSettings.footer_note}
-                disabled={!canEdit}
-                onChange={(event) =>
-                  setInvoiceProfileSettings((prev) => ({
-                    ...prev,
-                    footer_note: event.target.value,
-                  }))
-                }
-                rows={2}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </label>
+          
           </div>
 
           <div className="flex justify-end">
