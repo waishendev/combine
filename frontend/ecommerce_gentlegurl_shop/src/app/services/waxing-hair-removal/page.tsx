@@ -72,7 +72,19 @@ export default function WaxingHairRemovalPage() {
       pricing={pricing}
       faqs={faqs}
       notes={notes}
-      heroImage="/images/remove.jpg"
+      heroImage="/images/CUSTOMERGIVE/DETAILS-05.jpg"
+      galleryImages={[
+        {
+          src: "/images/CUSTOMERGIVE/DETAILS-06.jpg",
+          alt: "Waxing price list (detail 06)",
+          caption: "Upper body and lower body waxing options.",
+        },
+        {
+          src: "/images/CUSTOMERGIVE/DETAILS-07.jpg",
+          alt: "Hair removal price list (detail 07)",
+          caption: "Bikini, face waxing, and 810 laser packages.",
+        },
+      ]}
     />
   );
 }

@@ -76,22 +76,22 @@ export default function NailServicesPage() {
       pricing={pricing}
       faqs={faqs}
       notes={notes}
-      heroImage="/images/slideshow_placeholder.jpg"
+      heroImage="/images/CUSTOMERGIVE/DETAILS-01.jpg"
       galleryImages={[
         {
-          src: "/images/placeholder.png",
-          alt: "Price list photo one (placeholder)",
-          caption: "Placeholder — replace with the manicure & nail extension price list photo.",
+          src: "/images/CUSTOMERGIVE/DETAILS-02.jpg",
+          alt: "Nail services price list (detail 02)",
+          caption: "Manicure, gel manicure, and nail extension details.",
         },
         {
-          src: "/images/placeholder.png",
-          alt: "Price list photo two (placeholder)",
-          caption: "Placeholder — replace with the manicure add-ons and extensions price list photo.",
+          src: "/images/CUSTOMERGIVE/DETAILS-03.jpg",
+          alt: "Nail services price list (detail 03)",
+          caption: "Nail art, spa add-ons, and special finishes.",
         },
         {
-          src: "/images/placeholder.png",
-          alt: "Price list photo three (placeholder)",
-          caption: "Placeholder — replace with the pedicure price list photo.",
+          src: "/images/CUSTOMERGIVE/DETAILS-04.jpg",
+          alt: "Nail services price list (detail 04)",
+          caption: "Pedicure options and removal pricing.",
         },
       ]}
     />
