@@ -448,7 +448,7 @@ export default function AccountPage() {
                   <span className="font-semibold text-[var(--accent-stronger)]">{loyalty.current_tier.name}</span>
                 </p>
                 <p className="text-xs text-[color:var(--text-muted)]">
-                  Multiplier: x{loyalty.current_tier.multiplier} • Min spend: RM {loyalty.current_tier.min_spend.toFixed(2)}
+                  • Min spend: RM {loyalty.current_tier.min_spend.toFixed(2)}
                 </p>
               </div>
 

@@ -29,8 +29,13 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
 
   if (!safeMedia.length || !activeMedia) {
     return (
-      <div className="flex aspect-square items-center justify-center rounded-lg bg-[var(--muted)]/40 text-[color:var(--text-muted)]">
-        No Media
+      <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-[var(--muted)]/40">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={PLACEHOLDER_IMAGE}
+          alt="No media available"
+          className="h-full w-full object-cover"
+        />
       </div>
     );
   }

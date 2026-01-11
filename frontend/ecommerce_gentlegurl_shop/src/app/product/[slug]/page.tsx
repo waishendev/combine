@@ -247,11 +247,14 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                         className="object-cover transition duration-500 ease-out group-hover:scale-110"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
-                        No Image
-                      </div>
+                      <Image
+                        src="/images/placeholder.png"
+                        alt={related.name}
+                        fill
+                        className="object-cover transition duration-500 ease-out group-hover:scale-110"
+                      />
                     )}
-                    <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-white/80 to-transparent" />
+                    
                   </div>
                   <div className="space-y-2 p-3">
                     <h3 className="line-clamp-2 text-sm font-semibold text-[var(--foreground)]">

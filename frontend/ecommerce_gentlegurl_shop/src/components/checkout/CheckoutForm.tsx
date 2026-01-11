@@ -1176,9 +1176,7 @@ export default function CheckoutForm() {
                       {imageUrl ? (
                         <Image src={imageUrl} alt={item.name} fill className="object-contain" />
                       ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-[var(--foreground)]/60">
-                          No Image
-                        </div>
+                        <Image src="/images/placeholder.png" alt={item.name} fill className="object-contain" />
                       )}
                     </div>
 

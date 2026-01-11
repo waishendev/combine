@@ -58,7 +58,7 @@ export function AccountWishlistGrid({ initialItems }: AccountWishlistGridProps) 
               {image ? (
                 <Image src={image} alt={productName} fill className="object-cover transition duration-300 group-hover:scale-105" sizes="(min-width: 1024px) 300px, 45vw" />
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-[var(--foreground)]/60">No image</div>
+                <Image src="/images/placeholder.png" alt={productName} fill className="object-cover transition duration-300 group-hover:scale-105" sizes="(min-width: 1024px) 300px, 45vw" />
               )}
             </Link>
 
