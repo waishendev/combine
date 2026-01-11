@@ -23,14 +23,14 @@ class DatabaseSeeder extends Seeder
             BankAccountSeeder::class,
             LoyaltySettingSeeder::class,
             MembershipTiersSeeder::class,
-            // LoyaltyRewardSeederReal::class,
-            // StoreLocationsSeederReal::class,
-            // FooterWidgetSeederReal::class,
+            LoyaltyRewardSeederReal::class,
+            StoreLocationsSeederReal::class,
+            FooterWidgetSeederReal::class,
 
             SuperAdminRoleSeeder::class,
             SuperAdminSeeder::class,
             PaymentGatewaySeeder::class,
-            
+
             // FooterWidgetSeederTesting::class,
             // FrontendTestDataSeeder::class,
             // LoyaltyRewardSeederTesting::class,
