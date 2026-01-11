@@ -1,4 +1,5 @@
 import { ServicesPageLayout } from "@/components/services/ServicesPageLayout";
+import { getHomepage } from "@/lib/server/getHomepage";
 
 const services = [
   { title: "适合对象", description: "只适合刚入行新手小白或爱好者。" },
@@ -51,7 +52,10 @@ const notes = [
   "课程结束可获得工作室毕业文凭。",
 ];
 
-export default function NailCoursesPage() {
+export default async function NailCoursesPage() {
+  const homepage = await getHomepage();
+  const whatsapp = homepage?.contact?.whatsapp;
+
   return (
     <ServicesPageLayout
       title="美甲全科班"
@@ -61,10 +65,16 @@ export default function NailCoursesPage() {
       faqs={faqs}
       notes={notes}
       heroSlides={[
-        { src: "/images/CUSTOMERGIVE/Gel Manicure.jpeg", alt: "Gel manicure showcase" },
-        { src: "/images/CUSTOMERGIVE/Manicure.jpeg", alt: "Manicure showcase" },
-        { src: "/images/CUSTOMERGIVE/Nail Strengthening.jpeg", alt: "Nail strengthening showcase" },
+        { src: "/images/CUSTOMERGIVE/Manicure.jpeg", alt: "Gel manicure with design" },
+        { src: "/images/CUSTOMERGIVE/Gel Manicure.jpeg", alt: "Gel manicure with design" },
+        { src: "/images/CUSTOMERGIVE/Gel Manicure with Design.jpeg", alt: "Gel manicure with design" },
+        // { src: "/images/CUSTOMERGIVE/Pedicure RM45.jpeg", alt: "Gel manicure with design" },
+        { src: "/images/CUSTOMERGIVE/Gel Pedicure.jpeg", alt: "Gel manicure with design" },
+        { src: "/images/CUSTOMERGIVE/Gel Pedicure with Design.jpeg", alt: "Gel pedicure with design" },
       ]}
+      whatsappPhone={whatsapp?.phone ?? null}
+      whatsappEnabled={whatsapp?.enabled ?? false}
+      whatsappDefaultMessage={whatsapp?.default_message ?? null}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { ServicesPageLayout } from "@/components/services/ServicesPageLayout";
+import { getHomepage } from "@/lib/server/getHomepage";
 
 const services = [
   { title: "Waxing (Upper Body)", description: "Arms, underarm, back, chest, and stomach options with smooth results." },
@@ -63,7 +64,10 @@ const notes = [
   "Subject to technician availability.",
 ];
 
-export default function WaxingHairRemovalPage() {
+export default async function WaxingHairRemovalPage() {
+  const homepage = await getHomepage();
+  const whatsapp = homepage?.contact?.whatsapp;
+
   return (
     <ServicesPageLayout
       title="Waxing & Hair Removal"
@@ -75,8 +79,10 @@ export default function WaxingHairRemovalPage() {
       heroSlides={[
         { src: "/images/CUSTOMERGIVE/Waxing.jpeg", alt: "Waxing service highlight" },
         { src: "/images/CUSTOMERGIVE/810 Laser Ice Hair Removal.jpeg", alt: "Laser hair removal highlight" },
-        { src: "/images/wax.jpg", alt: "Waxing essentials" },
       ]}
+      whatsappPhone={whatsapp?.phone ?? null}
+      whatsappEnabled={whatsapp?.enabled ?? false}
+      whatsappDefaultMessage={whatsapp?.default_message ?? null}
     />
   );
 }

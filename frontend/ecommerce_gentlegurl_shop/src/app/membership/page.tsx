@@ -96,18 +96,19 @@ export default function MembershipPage() {
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-muted)]">{tier.code}</p>
+                    {/* <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-muted)]">{tier.code}</p> */}
                     <h3 className="text-lg font-semibold text-[var(--foreground)]">{tier.name}</h3>
                   </div>
-                  {tier.badge_image_url ? (
+                  {/* {tier.badge_image_url ? (
                     <div className="relative h-12 w-12 overflow-hidden rounded-full bg-[var(--background-soft)]">
                       <Image src={tier.badge_image_url} alt={tier.name} fill className="object-contain" />
                     </div>
-                  ) : (
+                  ) 
+                  : (
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--background-soft)] text-xs font-semibold text-[var(--accent-strong)]">
                       {(tier.name || tier.code).charAt(0)}
                     </div>
-                  )}
+                  )} */}
                 </div>
                 <p className="text-sm text-[color:var(--text-muted)]">
                   Multiplier <span className="font-semibold">x{tier.multiplier.toFixed(2)}</span>

@@ -28,6 +28,9 @@ type ServicesPageLayoutProps = {
   heroImage?: string;
   heroSlides?: { src: string; alt: string }[];
   galleryImages?: { src: string; alt: string; caption?: string }[];
+  whatsappPhone?: string | null;
+  whatsappEnabled?: boolean;
+  whatsappDefaultMessage?: string | null;
 };
 
 export function ServicesPageLayout({
@@ -40,8 +43,12 @@ export function ServicesPageLayout({
   heroImage,
   heroSlides,
   galleryImages,
+  whatsappPhone,
+  whatsappEnabled = true,
+  whatsappDefaultMessage,
 }: ServicesPageLayoutProps) {
   const pricingRef = useRef<HTMLDivElement | null>(null);
+  const slideContainerRef = useRef<HTMLDivElement | null>(null);
   const slides =
     heroSlides && heroSlides.length > 0
       ? heroSlides
@@ -52,22 +59,78 @@ export function ServicesPageLayout({
           },
         ];
   const [activeSlide, setActiveSlide] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<number | null>(null);
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setActiveSlide(0);
   }, [title, slides.length]);
 
-  const handleBook = () => {
-    console.log("book");
-    pricingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const getWhatsAppUrl = () => {
+    if (!whatsappEnabled || !whatsappPhone) return "#";
+    const sanitizedPhone = whatsappPhone.replace(/[^\d]/g, "");
+    const message = whatsappDefaultMessage ?? `Hi! I would like to book an appointment for ${title}.`;
+    return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
   };
 
-  const handlePrevSlide = () => {
-    setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
+  const showBookButton = whatsappEnabled && whatsappPhone;
+
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
   };
 
-  const handleNextSlide = () => {
-    setActiveSlide((prev) => (prev + 1) % slides.length);
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe) {
+      setActiveSlide((prev) => (prev + 1) % slides.length);
+    }
+    if (isRightSwipe) {
+      setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
+    }
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    setDragStart(e.clientX);
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (dragStart !== null) {
+      e.preventDefault();
+      setIsDragging(true);
+    }
+  };
+
+  const onMouseUp = (e: React.MouseEvent) => {
+    if (dragStart === null) return;
+    const distance = dragStart - e.clientX;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe) {
+      setActiveSlide((prev) => (prev + 1) % slides.length);
+    }
+    if (isRightSwipe) {
+      setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
+    }
+
+    setDragStart(null);
+    setIsDragging(false);
   };
 
   return (
@@ -77,28 +140,38 @@ export function ServicesPageLayout({
         <section className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
           <div className="relative grid gap-10 p-8 sm:p-10 lg:grid-cols-2 lg:items-center">
-            <div className="space-y-6">
-              <div className="inline-flex items-center gap-2 rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs font-semibold tracking-[0.2em] text-[var(--accent-strong)]">
-                <span className="h-2 w-2 rounded-full bg-[var(--accent-strong)]" />
-                GENTLE CARE
-              </div>
+            <div className="order-2 space-y-6 lg:order-1">
+          
               <div className="space-y-3">
                 <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">{title}</h1>
                 <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg">{subtitle}</p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleBook}
-                  className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white shadow-md transition hover:bg-[var(--accent-strong)]"
-                >
-                  Book an Appointment
-                </button>
-              </div>
+              {showBookButton && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <a
+                    href={getWhatsAppUrl()}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white shadow-md transition hover:bg-[var(--accent-strong)]"
+                  >
+                    Book an Appointment
+                  </a>
+                </div>
+              )}
             </div>
 
-            <div className="flex justify-center lg:justify-end">
-              <div className="relative h-64 w-full max-w-md overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)]">
+            <div className="order-1 flex justify-center lg:order-2 lg:justify-end">
+              <div
+                ref={slideContainerRef}
+                className="relative h-70 w-full max-w-md overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)] cursor-grab active:cursor-grabbing"
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+                onMouseDown={onMouseDown}
+                onMouseMove={onMouseMove}
+                onMouseUp={onMouseUp}
+                onMouseLeave={onMouseUp}
+              >
                 {slides.map((slide, index) => (
                   <div
                     key={`${slide.src}-${slide.alt}`}
@@ -113,40 +186,25 @@ export function ServicesPageLayout({
                       className="object-cover"
                       sizes="(min-width: 1024px) 420px, (min-width: 640px) 520px, 100vw"
                       priority={index === activeSlide}
+                      draggable={false}
                     />
                   </div>
                 ))}
                 {slides.length > 1 && (
-                  <div className="absolute inset-x-0 bottom-3 flex items-center justify-between px-3">
-                    <button
-                      type="button"
-                      onClick={handlePrevSlide}
-                      className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-sm transition hover:bg-white"
-                      aria-label="Previous slide"
-                    >
-                      Prev
-                    </button>
-                    <div className="flex items-center gap-2">
+                  <div className="absolute inset-x-0 bottom-3 flex items-center justify-center">
+                    <div className="flex items-center gap-2 rounded-full bg-black/30 px-3 py-1.5 backdrop-blur-sm">
                       {slides.map((slide, index) => (
                         <button
                           key={`${slide.src}-dot`}
                           type="button"
                           onClick={() => setActiveSlide(index)}
                           className={`h-2 w-2 rounded-full transition ${
-                            index === activeSlide ? "bg-[var(--accent)]" : "bg-white/70"
+                            index === activeSlide ? "bg-white" : "bg-white/50"
                           }`}
                           aria-label={`Go to slide ${index + 1}`}
                         />
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleNextSlide}
-                      className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-sm transition hover:bg-white"
-                      aria-label="Next slide"
-                    >
-                      Next
-                    </button>
                   </div>
                 )}
               </div>
@@ -243,20 +301,62 @@ export function ServicesPageLayout({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {faqs.map((item) => (
-              <details
-                key={item.question}
-                className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
-              >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-[var(--foreground)]">
-                  {item.question}
-                  <span className="rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs text-[var(--foreground)]/70 transition group-open:rotate-45">
-                    +
-                  </span>
-                </summary>
-                <p className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">{item.answer}</p>
-              </details>
-            ))}
+            {faqs.map((item, index) => {
+              const isOpen = openFaqIndex === index;
+              // Check if answer contains bullet points (• or -)
+              const hasBulletPoints = item.answer.includes("•") || item.answer.includes("-");
+              // Split answer into lines if it contains bullet points
+              // Split by • first, then by newlines, then filter empty strings
+              const answerLines = hasBulletPoints
+                ? item.answer
+                    .split(/•/)
+                    .map((line) => line.trim())
+                    .filter((line) => line.length > 0)
+                : item.answer.includes("\n")
+                  ? item.answer
+                      .split("\n")
+                      .map((line) => line.trim())
+                      .filter((line) => line.length > 0)
+                  : [item.answer];
+
+              return (
+                <div
+                  key={item.question}
+                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaqIndex(isOpen ? null : index)}
+                    className="flex w-full cursor-pointer items-center justify-between gap-3 text-left text-sm font-semibold text-[var(--foreground)]"
+                  >
+                    <span>{item.question}</span>
+                    <span
+                      className={`rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs text-[var(--foreground)]/70 transition ${
+                        isOpen ? "rotate-45" : ""
+                      }`}
+                    >
+                      +
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">
+                      {hasBulletPoints && answerLines.length > 1 ? (
+                        <ul className="space-y-2">
+                          {answerLines.map((line, lineIndex) => (
+                            <li key={lineIndex} className="flex items-start gap-2">
+                              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/70" />
+                              <span>{line}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p>{item.answer}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
 

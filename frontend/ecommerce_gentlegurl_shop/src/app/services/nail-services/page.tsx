@@ -1,4 +1,5 @@
 import { ServicesPageLayout } from "@/components/services/ServicesPageLayout";
+import { getHomepage } from "@/lib/server/getHomepage";
 
 const services = [
   {
@@ -67,19 +68,25 @@ const notes = [
   "We also carry Korean & Chinese beauty products and POP MART blind boxes — feel free to have a look during your visit 🛒",
 ];
 
-export default function NailServicesPage() {
+export default async function NailServicesPage() {
+  const homepage = await getHomepage();
+  const whatsapp = homepage?.contact?.whatsapp;
+
   return (
     <ServicesPageLayout
       title="Nail Services"
-      subtitle="Hi dear🥰 Here’s our price list📋 Please let us know in advance so we can reserve sufficient time for your appointment."
+      subtitle="Hi dear🥰 Here's our price list📋 Please let us know in advance so we can reserve sufficient time for your appointment."
       services={services}
       pricing={pricing}
       faqs={faqs}
       notes={notes}
       heroSlides={[
+        { src: "/images/CUSTOMERGIVE/Manicure.jpeg", alt: "Gel manicure with design" },
+        { src: "/images/CUSTOMERGIVE/Gel Manicure.jpeg", alt: "Gel manicure with design" },
         { src: "/images/CUSTOMERGIVE/Gel Manicure with Design.jpeg", alt: "Gel manicure with design" },
+        // { src: "/images/CUSTOMERGIVE/Pedicure RM45.jpeg", alt: "Gel manicure with design" },
+        { src: "/images/CUSTOMERGIVE/Gel Pedicure.jpeg", alt: "Gel manicure with design" },
         { src: "/images/CUSTOMERGIVE/Gel Pedicure with Design.jpeg", alt: "Gel pedicure with design" },
-        { src: "/images/CUSTOMERGIVE/Deluxe Spa Manicure.jpeg", alt: "Deluxe spa manicure" },
       ]}
       galleryImages={[
         {
@@ -98,6 +105,9 @@ export default function NailServicesPage() {
           caption: "Placeholder — replace with the pedicure price list photo.",
         },
       ]}
+      whatsappPhone={whatsapp?.phone ?? null}
+      whatsappEnabled={whatsapp?.enabled ?? false}
+      whatsappDefaultMessage={whatsapp?.default_message ?? null}
     />
   );
 }
