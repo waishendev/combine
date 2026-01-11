@@ -13,7 +13,7 @@ return new class extends Migration {
             $table->string('email', 255)->unique();
             $table->string('phone', 30)->unique()->nullable();
             $table->string('password', 255);
-            $table->string('tier')->default('normal');
+            $table->string('tier')->default('basic');
             $table->timestamp('tier_marked_pending_at')->nullable();
             $table->timestamp('tier_effective_at')->nullable();
             $table->boolean('is_active')->default(true);

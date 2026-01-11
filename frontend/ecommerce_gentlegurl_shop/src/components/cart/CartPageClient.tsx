@@ -273,7 +273,7 @@ export default function CartPageClient() {
                       </div>
 
                       <div className="flex min-w-0 items-center gap-3 lg:gap-4">
-                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/30">
+                        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/30">
                           {imageUrl ? (
                             <Image src={imageUrl} alt={name} fill className="object-contain" />
                           ) : (

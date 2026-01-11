@@ -226,9 +226,6 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
                 )}
                 {isVideo && (
                   <>
-                    <span className="absolute right-2 top-2 rounded bg-black/65 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
-                      Video
-                    </span>
                     <span className="absolute inset-0 flex items-center justify-center text-white">
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55">
                         <i className="fa-solid fa-play text-xs" />
