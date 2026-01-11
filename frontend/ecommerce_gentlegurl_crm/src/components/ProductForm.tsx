@@ -1782,24 +1782,24 @@ export default function ProductForm({
                           {t('product.videoProcessing')}
                         </div>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600"
-                        onClick={() => videoInputRef.current?.click()}
-                        aria-label={t('product.replaceVideo')}
-                      >
-                        <i className="fa-solid fa-video" />
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
-                        onClick={handleVideoRemove}
-                        aria-label={t('product.removeVideo')}
-                      >
-                        <i className="fa-solid fa-trash" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600"
+                          onClick={() => videoInputRef.current?.click()}
+                          aria-label={t('product.replaceVideo')}
+                        >
+                          <i className="fa-solid fa-video" />
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+                          onClick={handleVideoRemove}
+                          aria-label={t('product.removeVideo')}
+                        >
+                          <i className="fa-solid fa-trash" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                   {pendingVideo?.status === 'uploading' && (

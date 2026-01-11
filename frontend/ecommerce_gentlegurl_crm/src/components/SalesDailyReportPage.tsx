@@ -378,66 +378,72 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
     <div className="space-y-6">
       {isFilterOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center"
           role="dialog"
           aria-modal="true"
-          onClick={() => setIsFilterOpen(false)}
         >
           <div
-            className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setIsFilterOpen(false)}
+          />
+          <div
+            className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase text-slate-400">Filters</p>
-                <h3 className="text-lg font-semibold text-slate-700">Refine report data</h3>
-              </div>
+            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+              <h2 className="text-lg font-semibold">
+                Filter
+              </h2>
               <button
                 type="button"
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50"
                 onClick={() => setIsFilterOpen(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                aria-label="Close"
               >
-                Close
+                <i className="fa-solid fa-xmark" />
               </button>
             </div>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-slate-500">Date From</label>
-                <input
-                  type="date"
-                  value={inputs.date_from}
-                  onChange={(event) =>
-                    setInputs((prev) => ({ ...prev, date_from: event.target.value }))
-                  }
-                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-slate-500">Date To</label>
-                <input
-                  type="date"
-                  value={inputs.date_to}
-                  onChange={(event) =>
-                    setInputs((prev) => ({ ...prev, date_to: event.target.value }))
-                  }
-                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                />
+            <div className="p-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-slate-500">Date From</label>
+                  <input
+                    type="date"
+                    value={inputs.date_from}
+                    onChange={(event) =>
+                      setInputs((prev) => ({ ...prev, date_from: event.target.value }))
+                    }
+                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-slate-500">Date To</label>
+                  <input
+                    type="date"
+                    value={inputs.date_to}
+                    onChange={(event) =>
+                      setInputs((prev) => ({ ...prev, date_to: event.target.value }))
+                    }
+                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                  />
+                </div>
               </div>
             </div>
-            <div className="mt-8 flex flex-wrap justify-end gap-3">
+            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
               <button
                 type="button"
                 onClick={handleReset}
-                className="h-10 rounded border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
               >
                 Reset
               </button>
               <button
                 type="button"
                 onClick={handleApply}
-                className="h-10 rounded bg-blue-600 px-4 text-sm font-semibold text-white shadow hover:bg-blue-700"
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                disabled={loading}
               >
-                Apply
+                Apply Filter
               </button>
             </div>
           </div>
