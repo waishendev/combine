@@ -72,7 +72,11 @@ export default function WaxingHairRemovalPage() {
       pricing={pricing}
       faqs={faqs}
       notes={notes}
-      heroImage="/images/remove.jpg"
+      heroSlides={[
+        { src: "/images/CUSTOMERGIVE/Waxing.jpeg", alt: "Waxing service highlight" },
+        { src: "/images/CUSTOMERGIVE/810 Laser Ice Hair Removal.jpeg", alt: "Laser hair removal highlight" },
+        { src: "/images/wax.jpg", alt: "Waxing essentials" },
+      ]}
     />
   );
 }

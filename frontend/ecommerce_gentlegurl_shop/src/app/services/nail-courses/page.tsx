@@ -60,7 +60,11 @@ export default function NailCoursesPage() {
       pricing={pricing}
       faqs={faqs}
       notes={notes}
-      heroImage="/images/placeholder.png"
+      heroSlides={[
+        { src: "/images/CUSTOMERGIVE/Gel Manicure.jpeg", alt: "Gel manicure showcase" },
+        { src: "/images/CUSTOMERGIVE/Manicure.jpeg", alt: "Manicure showcase" },
+        { src: "/images/CUSTOMERGIVE/Nail Strengthening.jpeg", alt: "Nail strengthening showcase" },
+      ]}
     />
   );
 }

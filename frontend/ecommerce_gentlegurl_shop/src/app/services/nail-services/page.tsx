@@ -76,7 +76,11 @@ export default function NailServicesPage() {
       pricing={pricing}
       faqs={faqs}
       notes={notes}
-      heroImage="/images/slideshow_placeholder.jpg"
+      heroSlides={[
+        { src: "/images/CUSTOMERGIVE/Gel Manicure with Design.jpeg", alt: "Gel manicure with design" },
+        { src: "/images/CUSTOMERGIVE/Gel Pedicure with Design.jpeg", alt: "Gel pedicure with design" },
+        { src: "/images/CUSTOMERGIVE/Deluxe Spa Manicure.jpeg", alt: "Deluxe spa manicure" },
+      ]}
       galleryImages={[
         {
           src: "/images/placeholder.png",

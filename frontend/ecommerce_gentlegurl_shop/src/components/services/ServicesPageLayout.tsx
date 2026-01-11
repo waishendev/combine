@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ServiceItem = {
   title: string;
@@ -26,6 +26,7 @@ type ServicesPageLayoutProps = {
   faqs: FAQItem[];
   notes: string[];
   heroImage?: string;
+  heroSlides?: { src: string; alt: string }[];
   galleryImages?: { src: string; alt: string; caption?: string }[];
 };
 
@@ -37,13 +38,36 @@ export function ServicesPageLayout({
   faqs,
   notes,
   heroImage,
+  heroSlides,
   galleryImages,
 }: ServicesPageLayoutProps) {
   const pricingRef = useRef<HTMLDivElement | null>(null);
+  const slides =
+    heroSlides && heroSlides.length > 0
+      ? heroSlides
+      : [
+          {
+            src: heroImage || "/images/slideshow_placeholder.jpg",
+            alt: `${title} hero visual`,
+          },
+        ];
+  const [activeSlide, setActiveSlide] = useState(0);
+
+  useEffect(() => {
+    setActiveSlide(0);
+  }, [title, slides.length]);
 
   const handleBook = () => {
     console.log("book");
     pricingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handlePrevSlide = () => {
+    setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
+  };
+
+  const handleNextSlide = () => {
+    setActiveSlide((prev) => (prev + 1) % slides.length);
   };
 
   return (
@@ -75,14 +99,56 @@ export function ServicesPageLayout({
 
             <div className="flex justify-center lg:justify-end">
               <div className="relative h-64 w-full max-w-md overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)]">
-                <Image
-                  src={heroImage || "/images/slideshow_placeholder.jpg"}
-                  alt={`${title} hero visual`}
-                  fill
-                  className="object-cover"
-                  sizes="(min-width: 1024px) 420px, (min-width: 640px) 520px, 100vw"
-                  priority
-                />
+                {slides.map((slide, index) => (
+                  <div
+                    key={`${slide.src}-${slide.alt}`}
+                    className={`absolute inset-0 transition-opacity duration-500 ${
+                      index === activeSlide ? "opacity-100" : "opacity-0"
+                    }`}
+                  >
+                    <Image
+                      src={slide.src}
+                      alt={slide.alt}
+                      fill
+                      className="object-cover"
+                      sizes="(min-width: 1024px) 420px, (min-width: 640px) 520px, 100vw"
+                      priority={index === activeSlide}
+                    />
+                  </div>
+                ))}
+                {slides.length > 1 && (
+                  <div className="absolute inset-x-0 bottom-3 flex items-center justify-between px-3">
+                    <button
+                      type="button"
+                      onClick={handlePrevSlide}
+                      className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-sm transition hover:bg-white"
+                      aria-label="Previous slide"
+                    >
+                      Prev
+                    </button>
+                    <div className="flex items-center gap-2">
+                      {slides.map((slide, index) => (
+                        <button
+                          key={`${slide.src}-dot`}
+                          type="button"
+                          onClick={() => setActiveSlide(index)}
+                          className={`h-2 w-2 rounded-full transition ${
+                            index === activeSlide ? "bg-[var(--accent)]" : "bg-white/70"
+                          }`}
+                          aria-label={`Go to slide ${index + 1}`}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleNextSlide}
+                      className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-sm transition hover:bg-white"
+                      aria-label="Next slide"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
