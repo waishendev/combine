@@ -88,23 +88,7 @@ export default async function NailServicesPage() {
         { src: "/images/CUSTOMERGIVE/Gel Pedicure.jpeg", alt: "Gel manicure with design" },
         { src: "/images/CUSTOMERGIVE/Gel Pedicure with Design.jpeg", alt: "Gel pedicure with design" },
       ]}
-      galleryImages={[
-        {
-          src: "/images/placeholder.png",
-          alt: "Price list photo one (placeholder)",
-          caption: "Placeholder — replace with the manicure & nail extension price list photo.",
-        },
-        {
-          src: "/images/placeholder.png",
-          alt: "Price list photo two (placeholder)",
-          caption: "Placeholder — replace with the manicure add-ons and extensions price list photo.",
-        },
-        {
-          src: "/images/placeholder.png",
-          alt: "Price list photo three (placeholder)",
-          caption: "Placeholder — replace with the pedicure price list photo.",
-        },
-      ]}
+
       whatsappPhone={whatsapp?.phone ?? null}
       whatsappEnabled={whatsapp?.enabled ?? false}
       whatsappDefaultMessage={whatsapp?.default_message ?? null}

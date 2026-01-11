@@ -211,7 +211,7 @@ export function ServicesPageLayout({
             </div>
           </div>
         </section>
-
+{/* 
         {galleryImages && galleryImages.length > 0 && (
           <section className="space-y-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -235,7 +235,7 @@ export function ServicesPageLayout({
               ))}
             </div>
           </section>
-        )}
+        )} */}
 
         {/* Services */}
         <section className="space-y-6">
@@ -300,9 +300,9 @@ export function ServicesPageLayout({
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/45 to-transparent sm:ml-6" />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 items-start">
             {faqs.map((item, index) => {
-              const faqId = `${item.question}-${index}`;
+              const faqId = `faq-${index}`;
               const isOpen = openFaqId === faqId;
               // Check if answer contains bullet points (• or -)
               const hasBulletPoints = item.answer.includes("•") || item.answer.includes("-");
