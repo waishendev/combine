@@ -134,6 +134,7 @@ export default function CheckoutForm() {
     postcode: "",
     is_default: false,
   });
+  const [addressFormErrors, setAddressFormErrors] = useState<Record<string, string[]>>({});
 
   const [form, setForm] = useState({
     shipping_name: "",
@@ -690,6 +691,14 @@ export default function CheckoutForm() {
 
   const updateAddressForm = (field: keyof AddressPayload, value: string | boolean) => {
     setAddressForm((prev) => ({ ...prev, [field]: value } as AddressPayload));
+    // Clear error for this field when user starts typing
+    if (addressFormErrors[field]) {
+      setAddressFormErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
   };
 
   const handleSaveAddress = async () => {
@@ -699,17 +708,55 @@ export default function CheckoutForm() {
       postcode: addressForm.postcode || null,
     };
 
+    // Clear previous errors
+    setAddressFormErrors({});
+    setError(null);
+
     try {
       if (editingAddress) {
         await updateCustomerAddress(editingAddress.id, payload);
       } else {
         await createCustomerAddress(payload);
       }
-      await fetchAddresses();
+      
+      // Only update the address list, don't auto-select
+      const response = await getCustomerAddresses();
+      const list = response.data ?? [];
+      setAddresses(list);
+      
       setAddressMode("list");
       setEditingAddress(null);
-      setTempSelectedAddressId(selectedAddressId);
+      // Keep the current temp selection, don't auto-select the new/edited address
+      setTempSelectedAddressId(tempSelectedAddressId);
+      setAddressFormErrors({});
     } catch (err: unknown) {
+      // Check if error has validation errors structure
+      if (err && typeof err === "object" && "data" in err) {
+        const errorData = err.data as unknown;
+        if (errorData && typeof errorData === "object" && "errors" in errorData) {
+          const errors = errorData.errors as Record<string, string[] | string>;
+          const formattedErrors: Record<string, string[]> = {};
+          
+          // Convert errors to array format
+          for (const [key, value] of Object.entries(errors)) {
+            if (Array.isArray(value)) {
+              formattedErrors[key] = value;
+            } else if (typeof value === "string") {
+              formattedErrors[key] = [value];
+            }
+          }
+          
+          setAddressFormErrors(formattedErrors);
+          
+          // Also set general error message if available
+          if ("message" in errorData && typeof errorData.message === "string") {
+            setError(errorData.message);
+          }
+          return;
+        }
+      }
+      
+      // Fallback to generic error
       const message = err instanceof Error ? err.message : "Unable to save address.";
       setError(message);
     }
@@ -730,6 +777,8 @@ export default function CheckoutForm() {
       country: normalizeCountryValue(address.country),
       is_default: address.is_default,
     });
+    setAddressFormErrors({});
+    setError(null);
     setAddressMode("form");
   };
 
@@ -748,6 +797,8 @@ export default function CheckoutForm() {
       postcode: "",
       is_default: addresses.length === 0,
     });
+    setAddressFormErrors({});
+    setError(null);
     setAddressMode("form");
   };
 
@@ -1566,6 +1617,11 @@ export default function CheckoutForm() {
               </div>
             ) : (
               <div className="space-y-3">
+                {error && (
+                  <div className="rounded bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Label</label>
@@ -1594,16 +1650,26 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.name}
                       onChange={(e) => updateAddressForm("name", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                      className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
+                        addressFormErrors.name ? "border-red-500" : "border-[var(--muted)]"
+                      }`}
                     />
+                    {addressFormErrors.name && (
+                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.name[0]}</p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Phone</label>
                     <input
                       value={addressForm.phone}
                       onChange={(e) => updateAddressForm("phone", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                      className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
+                        addressFormErrors.phone ? "border-red-500" : "border-[var(--muted)]"
+                      }`}
                     />
+                    {addressFormErrors.phone && (
+                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.phone[0]}</p>
+                    )}
                   </div>
                 </div>
 
@@ -1612,8 +1678,13 @@ export default function CheckoutForm() {
                   <input
                     value={addressForm.line1}
                     onChange={(e) => updateAddressForm("line1", e.target.value)}
-                    className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                    className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
+                      addressFormErrors.line1 ? "border-red-500" : "border-[var(--muted)]"
+                    }`}
                   />
+                  {addressFormErrors.line1 && (
+                    <p className="mt-1 text-xs text-red-500">{addressFormErrors.line1[0]}</p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 2</label>
@@ -1630,16 +1701,26 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.city}
                       onChange={(e) => updateAddressForm("city", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                      className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
+                        addressFormErrors.city ? "border-red-500" : "border-[var(--muted)]"
+                      }`}
                     />
+                    {addressFormErrors.city && (
+                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.city[0]}</p>
+                    )}
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">State</label>
+                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">
+                      State
+                    </label>
                     {isAddressMalaysia ? (
                       <select
+                        required
                         value={addressForm.state ?? ""}
                         onChange={(e) => updateAddressForm("state", e.target.value)}
-                        className="w-full rounded border border-[var(--muted)] bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                        className={`w-full rounded border bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
+                          addressFormErrors.state ? "border-red-500" : "border-[var(--muted)]"
+                        }`}
                       >
                         <option value="">Select state</option>
                         {MALAYSIA_STATES_WEST.map((state) => (
@@ -1657,8 +1738,13 @@ export default function CheckoutForm() {
                       <input
                         value={addressForm.state ?? ""}
                         onChange={(e) => updateAddressForm("state", e.target.value)}
-                        className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                        className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
+                          addressFormErrors.state ? "border-red-500" : "border-[var(--muted)]"
+                        }`}
                       />
+                    )}
+                    {addressFormErrors.state && (
+                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.state[0]}</p>
                     )}
                   </div>
                   <div>
@@ -1666,8 +1752,13 @@ export default function CheckoutForm() {
                     <input
                       value={addressForm.postcode ?? ""}
                       onChange={(e) => updateAddressForm("postcode", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                      className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
+                        addressFormErrors.postcode ? "border-red-500" : "border-[var(--muted)]"
+                      }`}
                     />
+                    {addressFormErrors.postcode && (
+                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.postcode[0]}</p>
+                    )}
                   </div>
                 </div>
 

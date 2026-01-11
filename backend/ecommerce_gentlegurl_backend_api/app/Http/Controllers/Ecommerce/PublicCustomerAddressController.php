@@ -33,15 +33,15 @@ class PublicCustomerAddressController extends Controller
         $customer = $this->requireCustomer();
 
         $data = $request->validate([
-            'label' => ['nullable', 'string', 'max:255'],
+            'label' => ['required', 'string', 'max:255'],
             'type' => ['required', 'in:billing,shipping'],
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:50'],
             'line1' => ['required', 'string', 'max:255'],
-            'line2' => ['nullable', 'string', 'max:255'],
+            'line2' => ['required', 'string', 'max:255'],
             'city' => ['required', 'string', 'max:255'],
-            'state' => ['nullable', 'string', 'max:255'],
-            'postcode' => ['nullable', 'string', 'max:20'],
+            'state' => ['required', 'string', 'max:255'],
+            'postcode' => ['required', 'string', 'max:20'],
             'country' => ['required', 'string', 'max:255'],
             'is_default' => ['sometimes', 'boolean'],
         ]);
@@ -76,15 +76,15 @@ class PublicCustomerAddressController extends Controller
             ->firstOrFail();
 
         $data = $request->validate([
-            'label' => ['nullable', 'string', 'max:255'],
+            'label' => ['required', 'string', 'max:255'],
             'type' => ['required', 'in:billing,shipping'],
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:50'],
             'line1' => ['required', 'string', 'max:255'],
-            'line2' => ['nullable', 'string', 'max:255'],
+            'line2' => ['required', 'string', 'max:255'],
             'city' => ['required', 'string', 'max:255'],
-            'state' => ['nullable', 'string', 'max:255'],
-            'postcode' => ['nullable', 'string', 'max:20'],
+            'state' => ['required', 'string', 'max:255'],
+            'postcode' => ['required', 'string', 'max:20'],
             'country' => ['required', 'string', 'max:255'],
             'is_default' => ['sometimes', 'boolean'],
         ]);

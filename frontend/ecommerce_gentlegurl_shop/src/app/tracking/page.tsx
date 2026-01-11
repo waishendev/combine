@@ -173,7 +173,7 @@ export default function TrackingPage() {
             </div>
           </div>
 
-          {result.returns && result.returns.length > 0 && (
+          {/* {result.returns && result.returns.length > 0 && (
             <div className="rounded-2xl border border-[var(--muted)] bg-[var(--background-soft)]/40 p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
                 Return Requests
@@ -234,7 +234,7 @@ export default function TrackingPage() {
                 ))}
               </div>
             </div>
-          )}
+          )} */}
 
           {/* <p className="text-xs text-[var(--foreground)]/60">
             Need help? Contact us via <Link href="/contact" className="text-[var(--accent-strong)] underline">support</Link>.
