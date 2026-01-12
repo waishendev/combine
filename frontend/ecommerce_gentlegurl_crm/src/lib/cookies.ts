@@ -6,6 +6,7 @@ import { cookies } from 'next/headers'
 export async function hasSessionCookie(): Promise<boolean> {
   const ck = await cookies()
   const sessionCookie = 
+    ck.get('gentlegurl-crm-session') ||
     ck.get('laravel-session') || 
     ck.get('connect.sid') || 
     ck.get('gentlegurl-api-session')

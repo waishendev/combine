@@ -3,16 +3,31 @@ import { NextRequest, NextResponse } from 'next/server';
 // Proxy route for /api/proxy/* that forwards to backend
 // Example: /api/proxy/admins -> http://localhost:8000/api/admins
 
-const AUTH_COOKIE_NAMES = [
+const CRM_SESSION_COOKIE = 'gentlegurl-crm-session';
+const LEGACY_AUTH_COOKIE_NAMES = [
   'connect.sid',
   'laravel-session',
   'gentlegurl-api-session',
 ];
 
 function clearAuthCookies(response: NextResponse) {
-  AUTH_COOKIE_NAMES.forEach((name) => {
-    response.cookies.set(name, '', { maxAge: 0, path: '/' });
-  });
+  response.cookies.set(CRM_SESSION_COOKIE, '', { maxAge: 0, path: '/' });
+}
+
+function getSessionCookieValue(request: NextRequest) {
+  const crmCookie = request.cookies.get(CRM_SESSION_COOKIE)?.value;
+  if (crmCookie) {
+    return { value: crmCookie, fromLegacy: false };
+  }
+
+  for (const legacyName of LEGACY_AUTH_COOKIE_NAMES) {
+    const legacyCookie = request.cookies.get(legacyName)?.value;
+    if (legacyCookie) {
+      return { value: legacyCookie, fromLegacy: true };
+    }
+  }
+
+  return { value: null, fromLegacy: false };
 }
 
 function isUnauthenticatedResponse(data: unknown, status: number) {
@@ -98,9 +113,19 @@ async function handleRequest(
     const allCookies = request.cookies.getAll();
     console.log(`[Proxy API] All cookies:`, allCookies.map(c => ({ name: c.name, value: c.value.substring(0, 50) + '...' })));
     
-    // Build cookie header - include all cookies, especially laravel-session
-    const cookiePairs = allCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-    const cookieHeader = cookiePairs || request.headers.get('cookie') || '';
+    const { value: sessionCookie, fromLegacy } = getSessionCookieValue(request);
+    const filteredCookies = allCookies.filter(
+      (cookie) =>
+        cookie.name !== CRM_SESSION_COOKIE &&
+        !LEGACY_AUTH_COOKIE_NAMES.includes(cookie.name),
+    );
+    const cookiePairs = [
+      ...filteredCookies.map(cookie => `${cookie.name}=${cookie.value}`),
+      ...(sessionCookie
+        ? LEGACY_AUTH_COOKIE_NAMES.map((name) => `${name}=${sessionCookie}`)
+        : []),
+    ];
+    const cookieHeader = cookiePairs.join('; ');
     console.log(`[Proxy API] Cookie header length:`, cookieHeader.length);
     console.log(`[Proxy API] Has laravel-session:`, cookieHeader.includes('laravel-session'));
 
@@ -246,6 +271,7 @@ async function handleRequest(
         const value = valueParts.join('=');
         
         if (name && value) {
+          const normalizedName = name.trim();
           let httpOnly = false;
           let sameSite: 'strict' | 'lax' | 'none' = 'lax';
           let path = '/';
@@ -270,7 +296,11 @@ async function handleRequest(
             }
           });
           
-          nextResponse.cookies.set(name.trim(), value.trim(), {
+          const cookieName = LEGACY_AUTH_COOKIE_NAMES.includes(normalizedName)
+            ? CRM_SESSION_COOKIE
+            : normalizedName;
+
+          nextResponse.cookies.set(cookieName, value.trim(), {
             httpOnly,
             sameSite,
             path,
@@ -278,6 +308,14 @@ async function handleRequest(
             ...(maxAge && { maxAge }),
           });
         }
+      });
+    }
+
+    if (fromLegacy && sessionCookie && !request.cookies.get(CRM_SESSION_COOKIE)) {
+      nextResponse.cookies.set(CRM_SESSION_COOKIE, sessionCookie, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
       });
     }
 
