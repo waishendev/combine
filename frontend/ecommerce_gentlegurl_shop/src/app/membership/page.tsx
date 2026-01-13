@@ -111,7 +111,10 @@ export default function MembershipPage() {
                   )} */}
                 </div>
                 <p className="text-sm text-[color:var(--text-muted)]">
-                  Multiplier <span className="font-semibold">x{tier.multiplier.toFixed(2)}</span>
+                  Earns{" "}
+                  <span className="font-semibold">
+                    {(tier.multiplier * 1).toFixed(2)} pts / RM
+                  </span>
                 </p>
                 <p className="text-sm text-[color:var(--text-muted)]">
                   Min spend: <span className="font-semibold">{formatCurrency(tier.min_spend)}</span>

@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "api.innovforge.net",
+        hostname: "api.gentlegurls.com",
         pathname: "/**",
       },
       // local backend
