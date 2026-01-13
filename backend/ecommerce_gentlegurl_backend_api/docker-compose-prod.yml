@@ -167,6 +167,7 @@ services:
     volumes:
       - ./nginx:/etc/nginx/conf.d:ro
       - .:/var/www:ro
+      - laravel_storage:/var/www/storage:ro 
     restart: unless-stopped
     networks:
       - appnet

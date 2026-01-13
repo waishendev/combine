@@ -1559,7 +1559,7 @@ export default function ProductForm({
                               >
                                 <i className="fa-solid fa-image text-xs" />
                               </button>
-                              <button
+                              {/* <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -1580,7 +1580,7 @@ export default function ProductForm({
                                 aria-label={t('product.moveDown')}
                               >
                                 <i className="fa-solid fa-arrow-down text-xs" />
-                              </button>
+                              </button> */}
                               {existingImages.length === 0 && (
                                 <button
                                   type="button"
@@ -1643,7 +1643,7 @@ export default function ProductForm({
                               >
                                 <i className="fa-solid fa-image text-xs" />
                               </button>
-                              <button
+                              {/* <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -1664,7 +1664,7 @@ export default function ProductForm({
                                 aria-label={t('product.moveDown')}
                               >
                                 <i className="fa-solid fa-arrow-down text-xs" />
-                              </button>
+                              </button> */}
                               <button
                                 type="button"
                                 onClick={(e) => {
