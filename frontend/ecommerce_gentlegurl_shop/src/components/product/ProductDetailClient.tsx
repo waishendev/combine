@@ -18,6 +18,7 @@ export type VariantItem = {
   price?: number | string | null;
   stock?: number | null;
   track_stock?: boolean | null;
+  is_active?: boolean | null;
   image_url?: string | null;
 };
 
@@ -61,6 +62,7 @@ export default function ProductDetailClient({
   rewardPoints,
 }: ProductDetailClientProps) {
   const isRewardOnly = product.is_reward_only === true;
+  const isVariantProduct = product.type === "variant";
   const variants = Array.isArray(product.variants) ? product.variants : [];
   const hasVariants = product.type === "variant" && variants.length > 0;
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
@@ -102,9 +104,33 @@ export default function ProductDetailClient({
     ? priceNumber.toFixed(2)
     : String(selectedVariant?.price ?? product.price ?? "0");
 
-  const stockValue = selectedVariant?.stock ?? product.stock ?? null;
-  const trackStock = selectedVariant?.track_stock ?? true;
-  const showStock = !isRewardOnly && trackStock;
+  const variantPriceRange = useMemo(() => {
+    if (!hasVariants || selectedVariant) {
+      return null;
+    }
+    const prices = variants
+      .filter((variant) => variant.is_active !== false)
+      .map((variant) => Number(variant.price ?? product.price ?? 0))
+      .filter((value) => Number.isFinite(value));
+    if (prices.length === 0) {
+      return null;
+    }
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const formattedMin = minPrice.toFixed(2);
+    const formattedMax = maxPrice.toFixed(2);
+    return minPrice === maxPrice ? formattedMin : `${formattedMin} – ${formattedMax}`;
+  }, [hasVariants, selectedVariant, variants, product.price]);
+
+  const productTrackStock = (product as { track_stock?: boolean | null }).track_stock ?? true;
+  const stockValue = isVariantProduct
+    ? selectedVariant?.stock ?? null
+    : product.stock ?? null;
+  const trackStock = isVariantProduct
+    ? (selectedVariant?.track_stock ?? true)
+    : productTrackStock;
+  const showStock = !isRewardOnly && trackStock && (!isVariantProduct || !!selectedVariant);
+  const stockForCart = trackStock ? stockValue : null;
 
   const soldCountValue = Number(product.sold_count ?? 0);
   const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
@@ -138,10 +164,10 @@ export default function ProductDetailClient({
           <div className="flex flex-wrap items-center gap-3">
             {!isRewardOnly && (
               <div className="text-xl font-bold text-[var(--accent-strong)]">
-                RM {displayPrice}
+                RM {variantPriceRange ?? displayPrice}
               </div>
             )}
-            {!isRewardOnly && (
+            {!isRewardOnly && !isVariantProduct && (
               <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
                 Sold {soldCount}
               </span>
@@ -159,18 +185,34 @@ export default function ProductDetailClient({
               <div className="flex flex-wrap gap-2">
                 {variants.map((variant) => {
                   const isActive = variant.id === selectedVariantId;
+                  const isActive = variant.is_active !== false;
+                  const outOfStock = (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
+                  const isAvailable = isActive && !outOfStock;
+                  const disabledLabel = !isActive ? "Unavailable" : "Out of stock";
                   return (
                     <button
                       key={variant.id}
                       type="button"
-                      onClick={() => setSelectedVariantId(variant.id)}
+                      onClick={() => {
+                        if (!isAvailable) return;
+                        setSelectedVariantId(variant.id);
+                      }}
+                      disabled={!isAvailable}
+                      title={!isAvailable ? disabledLabel : undefined}
                       className={`rounded border px-3 py-2 text-sm transition ${
                         isActive
                           ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-                          : "border-[var(--card-border)] bg-white text-[var(--foreground)] hover:border-[var(--accent)]"
+                          : !isAvailable
+                            ? "border-[var(--card-border)] bg-[var(--background-soft)] text-[var(--text-muted)] opacity-70"
+                            : "border-[var(--card-border)] bg-white text-[var(--foreground)] hover:border-[var(--accent)]"
                       }`}
                     >
-                      {variant.name}
+                      <span className="block">{variant.name}</span>
+                      {!isAvailable && (
+                        <span className="block text-[10px] uppercase text-[color:var(--status-error)]">
+                          {disabledLabel}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -214,7 +256,7 @@ export default function ProductDetailClient({
             <div className="flex flex-wrap items-center gap-3">
               <AddToCartButton
                 productId={product.id}
-                stock={showStock ? stockValue : null}
+                stock={stockForCart}
                 productVariantId={selectedVariantId}
                 requiresVariant={product.type === "variant"}
               />

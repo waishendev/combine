@@ -48,7 +48,13 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:products,slug'],
-            'sku' => ['required', 'string', 'max:100', 'unique:products,sku'],
+            'sku' => [
+                Rule::requiredIf(fn() => $request->input('type') !== 'variant'),
+                'nullable',
+                'string',
+                'max:100',
+                'unique:products,sku',
+            ],
             'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
             'description' => ['nullable', 'string'],
             'price' => ['required', 'numeric'],
@@ -75,6 +81,7 @@ class ProductController extends Controller
             'variants.*.price' => ['nullable', 'numeric'],
             'variants.*.cost_price' => ['nullable', 'numeric'],
             'variants.*.stock' => ['nullable', 'integer'],
+            'variants.*.low_stock_threshold' => ['nullable', 'integer'],
             'variants.*.track_stock' => ['nullable', 'boolean'],
             'variants.*.is_active' => ['nullable', 'boolean'],
             'variants.*.sort_order' => ['nullable', 'integer'],
@@ -82,6 +89,10 @@ class ProductController extends Controller
             'variant_images' => ['nullable', 'array'],
             'variant_images.*' => ['nullable', 'image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
         ]);
+
+        if (($validated['type'] ?? 'single') === 'variant' && empty($validated['sku'])) {
+            $validated['sku'] = null;
+        }
 
         $product = Product::create($validated + [
             'type' => $validated['type'] ?? 'single',
@@ -121,7 +132,13 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'slug' => ['sometimes', 'string', 'max:255', Rule::unique('products', 'slug')->ignore($product->id)],
-            'sku' => ['sometimes', 'string', 'max:100', Rule::unique('products', 'sku')->ignore($product->id)],
+            'sku' => [
+                Rule::requiredIf(fn() => ($request->input('type') ?? $product->type) !== 'variant'),
+                'nullable',
+                'string',
+                'max:100',
+                Rule::unique('products', 'sku')->ignore($product->id),
+            ],
             'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
             'description' => ['nullable', 'string'],
             'price' => ['sometimes', 'numeric'],
@@ -151,6 +168,7 @@ class ProductController extends Controller
             'variants.*.price' => ['nullable', 'numeric'],
             'variants.*.cost_price' => ['nullable', 'numeric'],
             'variants.*.stock' => ['nullable', 'integer'],
+            'variants.*.low_stock_threshold' => ['nullable', 'integer'],
             'variants.*.track_stock' => ['nullable', 'boolean'],
             'variants.*.is_active' => ['nullable', 'boolean'],
             'variants.*.sort_order' => ['nullable', 'integer'],
@@ -158,6 +176,10 @@ class ProductController extends Controller
             'variant_images' => ['nullable', 'array'],
             'variant_images.*' => ['nullable', 'image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
         ]);
+
+        if (($validated['type'] ?? $product->type) === 'variant' && array_key_exists('sku', $validated) && empty($validated['sku'])) {
+            $validated['sku'] = null;
+        }
 
         $product->fill($validated);
         $product->dummy_sold_count = $request->has('dummy_sold_count')
@@ -289,6 +311,7 @@ class ProductController extends Controller
                 'price' => $variantData['price'] ?? null,
                 'cost_price' => $variantData['cost_price'] ?? null,
                 'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
+                'low_stock_threshold' => isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0,
                 'track_stock' => filter_var($variantData['track_stock'] ?? true, FILTER_VALIDATE_BOOLEAN),
                 'is_active' => filter_var($variantData['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
                 'sort_order' => isset($variantData['sort_order']) ? (int) $variantData['sort_order'] : 0,

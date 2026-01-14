@@ -71,7 +71,9 @@ class CartService
                 'variant_sku' => $variant?->sku,
                 'product_slug' => $product?->slug,
                 'product_image' => $thumbnail,
-                'product_stock' => $variant?->stock ?? $product?->stock,
+                'product_stock' => $variant
+                    ? ($variant->track_stock ? $variant->stock : null)
+                    : ($product?->track_stock ? $product?->stock : null),
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price_snapshot,
                 'line_total' => $lineTotal,

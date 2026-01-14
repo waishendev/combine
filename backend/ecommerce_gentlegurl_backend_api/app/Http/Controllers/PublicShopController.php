@@ -455,6 +455,7 @@ class PublicShopController extends Controller
                     'sku' => $variant->sku,
                     'price' => $variant->price ?? $product->price,
                     'stock' => $variant->stock,
+                    'low_stock_threshold' => $variant->low_stock_threshold,
                     'track_stock' => $variant->track_stock,
                     'is_active' => $variant->is_active,
                     'sort_order' => $variant->sort_order,

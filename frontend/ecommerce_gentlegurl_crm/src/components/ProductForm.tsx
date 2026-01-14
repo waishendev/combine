@@ -38,6 +38,7 @@ type VariantFormValue = {
   price: string
   costPrice: string
   stock: string
+  lowStockThreshold: string
   trackStock: boolean
   isActive: boolean
   sortOrder: number
@@ -95,6 +96,7 @@ const emptyVariant = (sortOrder = 0): VariantFormValue => ({
   price: '',
   costPrice: '',
   stock: '',
+  lowStockThreshold: '',
   trackStock: true,
   isActive: true,
   sortOrder,
@@ -196,6 +198,10 @@ export default function ProductForm({
             ? String(variant.costPrice)
             : '',
         stock: variant.stock !== null && variant.stock !== undefined ? String(variant.stock) : '',
+        lowStockThreshold:
+          variant.lowStockThreshold !== null && variant.lowStockThreshold !== undefined
+            ? String(variant.lowStockThreshold)
+            : '',
         trackStock: variant.trackStock ?? true,
         isActive: variant.isActive ?? true,
         sortOrder: variant.sortOrder ?? index,
@@ -1218,6 +1224,24 @@ export default function ProductForm({
       return
     }
 
+    if (form.type === 'variant') {
+      const invalidVariant = variants.find((variant) => {
+        if (!variant.name.trim() || !variant.sku.trim() || !variant.price) {
+          return true
+        }
+        if (variant.trackStock) {
+          return variant.stock === '' || variant.lowStockThreshold === ''
+        }
+        return false
+      })
+
+      if (invalidVariant) {
+        setError('Please complete all required variant fields before saving.')
+        setSubmitting(false)
+        return
+      }
+    }
+
     const formData = new FormData()
     formData.append('name', form.name.trim())
     formData.append('slug', form.slug.trim())
@@ -1258,6 +1282,7 @@ export default function ProductForm({
         formData.append(`variants[${index}][price]`, variant.price || '0')
         formData.append(`variants[${index}][cost_price]`, variant.costPrice || '0')
         formData.append(`variants[${index}][stock]`, variant.stock || '0')
+        formData.append(`variants[${index}][low_stock_threshold]`, variant.lowStockThreshold || '0')
         formData.append(`variants[${index}][track_stock]`, variant.trackStock ? '1' : '0')
         formData.append(`variants[${index}][is_active]`, variant.isActive ? '1' : '0')
         formData.append(`variants[${index}][sort_order]`, String(index))
@@ -2068,14 +2093,15 @@ export default function ProductForm({
               </div>
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="sku">
-                  {t('product.sku')} <span className="text-red-500">*</span>
+                  {t('product.sku')}
+                  {form.type !== 'variant' && <span className="text-red-500"> *</span>}
                 </label>
                 <input
                   id="sku"
                   name="sku"
                   value={form.sku}
                   onChange={handleChange}
-                  required
+                  required={form.type !== 'variant'}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder={t('product.skuPlaceholder')}
                 />
@@ -2353,85 +2379,89 @@ export default function ProductForm({
           <p className="text-sm text-gray-500 mt-1">{t('product.pricingInventoryDescription')}</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="price">
-              {t('product.price')} <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-              <input
-                id="price"
-                name="price"
-                type="number"
-                step="0.01"
-                value={form.price}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="0.00"
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="costPrice">
-              {t('product.costPrice')} 
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-              <input
-                id="costPrice"
-                name="costPrice"
-                type="number"
-                step="0.01"
-                value={form.costPrice}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="0.00"
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="stock">
-              {t('product.stockQuantity')} <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="stock"
-              name="stock"
-              type="number"
-              value={form.stock}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder="0"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="lowStockThreshold">
-              {t('product.lowStockThreshold')}
-            </label>
-            <input
-              id="lowStockThreshold"
-              name="lowStockThreshold"
-              type="number"
-              value={form.lowStockThreshold}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder="0"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="dummySoldCount">
-              Extra Sold (Display Only)
-            </label>
-            <input
-              id="dummySoldCount"
-              name="dummySoldCount"
-              type="number"
-              min="0"
-              value={form.dummySoldCount}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder="0"
-            />
-          </div>
+          {form.type !== 'variant' && (
+            <>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="price">
+                  {t('product.price')} <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                  <input
+                    id="price"
+                    name="price"
+                    type="number"
+                    step="0.01"
+                    value={form.price}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="costPrice">
+                  {t('product.costPrice')}
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                  <input
+                    id="costPrice"
+                    name="costPrice"
+                    type="number"
+                    step="0.01"
+                    value={form.costPrice}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="stock">
+                  {t('product.stockQuantity')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="stock"
+                  name="stock"
+                  type="number"
+                  value={form.stock}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="lowStockThreshold">
+                  {t('product.lowStockThreshold')}
+                </label>
+                <input
+                  id="lowStockThreshold"
+                  name="lowStockThreshold"
+                  type="number"
+                  value={form.lowStockThreshold}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="dummySoldCount">
+                  Extra Sold (Display Only)
+                </label>
+                <input
+                  id="dummySoldCount"
+                  name="dummySoldCount"
+                  type="number"
+                  min="0"
+                  value={form.dummySoldCount}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="0"
+                />
+              </div>
+            </>
+          )}
           {mode === 'edit' && !rewardOnly && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="status">
@@ -2572,16 +2602,30 @@ export default function ProductForm({
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Stock</label>
-                  <input
-                    type="number"
-                    value={variant.stock}
-                    onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="0"
-                  />
-                </div>
+                {variant.trackStock && (
+                  <>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Stock</label>
+                      <input
+                        type="number"
+                        value={variant.stock}
+                        onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Low Stock Threshold</label>
+                      <input
+                        type="number"
+                        value={variant.lowStockThreshold}
+                        onChange={(event) => handleVariantChange(index, 'lowStockThreshold', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0"
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
                   <div>
                     <p className="text-sm font-medium text-gray-900">Track Stock</p>

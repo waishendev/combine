@@ -51,6 +51,8 @@ export type ProductDetail = {
     price?: string | number | null;
     stock?: number | null;
     track_stock?: boolean | null;
+    is_active?: boolean | null;
+    low_stock_threshold?: number | null;
     image_url?: string | null;
   }>;
   seo?: {

@@ -15,6 +15,7 @@ return new class extends Migration {
             $table->decimal('price', 12, 2)->nullable();
             $table->decimal('cost_price', 12, 2)->nullable();
             $table->integer('stock')->default(0);
+            $table->integer('low_stock_threshold')->default(0);
             $table->boolean('track_stock')->default(true);
             $table->boolean('is_active')->default(true);
             $table->unsignedInteger('sort_order')->default(0);

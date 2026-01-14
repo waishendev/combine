@@ -63,6 +63,7 @@ export type ProductApiItem = {
     price?: string | number | null
     cost_price?: string | number | null
     stock?: number | string | null
+    low_stock_threshold?: number | string | null
     track_stock?: boolean | number | string | null
     is_active?: boolean | number | string | null
     sort_order?: number | string | null
@@ -234,6 +235,12 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
             ? variant.stock
             : typeof variant.stock === 'string'
               ? Number.parseInt(variant.stock, 10)
+              : null,
+        lowStockThreshold:
+          typeof variant.low_stock_threshold === 'number'
+            ? variant.low_stock_threshold
+            : typeof variant.low_stock_threshold === 'string'
+              ? Number.parseInt(variant.low_stock_threshold, 10)
               : null,
         trackStock: toBoolean(variant.track_stock),
         isActive: toBoolean(variant.is_active),

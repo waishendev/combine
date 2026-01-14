@@ -29,6 +29,7 @@ export interface ProductVariant {
   price?: number | null
   costPrice?: number | null
   stock?: number | null
+  lowStockThreshold?: number | null
   trackStock?: boolean
   isActive?: boolean
   sortOrder?: number
