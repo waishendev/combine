@@ -99,7 +99,7 @@ class PublicHomepageController extends Controller
             $bestSellerDays = (int) ($bestSellerConfig['days'] ?? 60);
 
             $newProducts = Product::query()
-                ->with(['categories', 'images'])
+                ->with(['categories', 'images', 'variants'])
                 ->where('is_active', true)
                 ->where('created_at', '>=', $now->copy()->subDays($newProductDays))
                 ->orderByDesc('created_at')
@@ -116,7 +116,7 @@ class PublicHomepageController extends Controller
                 ->toArray();
 
             $bestSellersQuery = Product::query()
-                ->with(['categories', 'images'])
+                ->with(['categories', 'images', 'variants'])
                 ->whereIn('id', $bestSellerProductIds)
                 ->where('is_active', true);
 
@@ -128,7 +128,7 @@ class PublicHomepageController extends Controller
             $bestSellers = $bestSellersQuery->get();
 
             $featuredProducts = Product::query()
-                ->with(['categories', 'images'])
+                ->with(['categories', 'images', 'variants'])
                 ->where('is_active', true)
                 ->where('is_featured', true)
                 ->orderByDesc('created_at')
@@ -323,8 +323,42 @@ class PublicHomepageController extends Controller
     {
         return collect($products)->map(function (Product $product) use ($wishlistLookup) {
             $product->setAttribute('is_in_wishlist', isset($wishlistLookup[$product->id]));
+            [$minPrice, $maxPrice, $priceDisplay] = $this->resolvePriceRange($product);
+            if ($product->type === 'variant' && $minPrice !== null) {
+                $product->setAttribute('price', $minPrice);
+            }
+            $product->setAttribute('min_price', $minPrice);
+            $product->setAttribute('max_price', $maxPrice);
+            $product->setAttribute('price_display', $priceDisplay);
             return $product;
         });
+    }
+
+    protected function resolvePriceRange(Product $product): array
+    {
+        if ($product->type !== 'variant') {
+            $price = $product->price !== null ? (float) $product->price : null;
+            return [$price, $price, $price !== null ? number_format($price, 2) : null];
+        }
+
+        $variants = $product->relationLoaded('variants') ? $product->variants : $product->variants()->get();
+        $prices = $variants
+            ->map(fn($variant) => $variant->price ?? $product->price)
+            ->filter(fn($value) => $value !== null)
+            ->map(fn($value) => (float) $value)
+            ->values();
+
+        if ($prices->isEmpty()) {
+            return [null, null, null];
+        }
+
+        $minPrice = $prices->min();
+        $maxPrice = $prices->max();
+        $display = $minPrice === $maxPrice
+            ? number_format($minPrice, 2)
+            : sprintf('%s - %s', number_format($minPrice, 2), number_format($maxPrice, 2));
+
+        return [$minPrice, $maxPrice, $display];
     }
 
     protected function defaultFooterSetting(): array

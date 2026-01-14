@@ -49,7 +49,7 @@ class CartService
 
     public function formatCart(Cart $cart): array
     {
-        $cart->load(['items.product.images', 'items.productVariant']);
+        $cart->load(['items.product.images', 'items.product.variants', 'items.productVariant']);
 
         $items = $cart->items->map(function ($item) {
             $lineTotal = (float) $item->unit_price_snapshot * (int) $item->quantity;
@@ -66,6 +66,7 @@ class CartService
                 'id' => $item->id,
                 'product_id' => $item->product_id,
                 'product_variant_id' => $item->product_variant_id,
+                'product_type' => $product?->type,
                 'product_name' => $product?->name,
                 'variant_name' => $variant?->title,
                 'variant_sku' => $variant?->sku,
@@ -74,6 +75,18 @@ class CartService
                 'product_stock' => $variant
                     ? ($variant->track_stock ? $variant->stock : null)
                     : ($product?->track_stock ? $product?->stock : null),
+                'available_variants' => $product && $product->type === 'variant'
+                    ? $product->variants->map(fn($productVariant) => [
+                        'id' => $productVariant->id,
+                        'name' => $productVariant->title,
+                        'sku' => $productVariant->sku,
+                        'price' => $productVariant->price,
+                        'stock' => $productVariant->stock,
+                        'track_stock' => $productVariant->track_stock,
+                        'is_active' => $productVariant->is_active,
+                        'image_url' => $productVariant->image_url,
+                    ])->values()
+                    : [],
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price_snapshot,
                 'line_total' => $lineTotal,

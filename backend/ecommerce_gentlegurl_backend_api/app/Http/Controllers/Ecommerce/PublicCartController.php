@@ -176,6 +176,71 @@ class PublicCartController extends Controller
         return $this->respond($this->cartService->formatCart($cart->fresh()));
     }
 
+    public function updateItem(Request $request, CartItem $item)
+    {
+        $validated = $request->validate([
+            'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
+            'quantity' => ['nullable', 'integer', 'min:1'],
+            'session_token' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $customer = $this->currentCustomer();
+        $sessionToken = $customer ? null : ($validated['session_token'] ?? $request->query('session_token'));
+
+        $result = $this->cartService->findOrCreateCart($customer, $sessionToken);
+        $cart = $result['cart'];
+
+        if ($item->cart_id !== $cart->id) {
+            return $this->respond(null, __('Item not found in this cart.'), false, 404);
+        }
+
+        if ($item->locked) {
+            return $this->respondError(__('This reward item cannot be modified from cart.'), 422);
+        }
+
+        $product = $item->product;
+        if (! $product || $product->is_reward_only) {
+            return $this->respondError(__('This product cannot be updated.'), 422);
+        }
+
+        $variantId = $validated['product_variant_id'] ?? $item->product_variant_id;
+        $variant = $variantId ? $this->resolveVariant($product, (int) $variantId) : null;
+
+        if ($product->type === 'variant' && ! $variant) {
+            return $this->respondError(__('Variant is required for this product.'), 422);
+        }
+
+        $quantity = (int) ($validated['quantity'] ?? $item->quantity);
+        $availableStock = $this->resolveStock($product, $variant);
+        if ($availableStock !== null && $quantity > $availableStock) {
+            return $this->respondError(__('Insufficient stock. Max available: :stock', ['stock' => $availableStock]), 422);
+        }
+
+        $unitPrice = $this->resolvePrice($product, $variant);
+        $existing = CartItem::where('cart_id', $cart->id)
+            ->where('product_id', $product->id)
+            ->when($variant, fn($query) => $query->where('product_variant_id', $variant->id))
+            ->when(!$variant, fn($query) => $query->whereNull('product_variant_id'))
+            ->where('id', '!=', $item->id)
+            ->first();
+
+        if ($existing) {
+            $existing->update([
+                'quantity' => $quantity,
+                'unit_price_snapshot' => $unitPrice,
+            ]);
+            $item->delete();
+        } else {
+            $item->update([
+                'product_variant_id' => $variant?->id,
+                'quantity' => $quantity,
+                'unit_price_snapshot' => $unitPrice,
+            ]);
+        }
+
+        return $this->respond($this->cartService->formatCart($cart->fresh()));
+    }
+
     public function merge(Request $request)
     {
         $sessionToken = $request->input('session_token') ?? $request->query('session_token');
@@ -244,7 +309,12 @@ class PublicCartController extends Controller
 
         if (! $variantId) {
             throw ValidationException::withMessages([
-                'product_variant_id' => __('Variant is required for this product.'),
+                'items' => [
+                    [
+                        'product_id' => $product->id,
+                        'message' => __('Variant is required for this product.'),
+                    ],
+                ],
             ])->status(422);
         }
 
@@ -255,7 +325,12 @@ class PublicCartController extends Controller
 
         if (! $variant) {
             throw ValidationException::withMessages([
-                'product_variant_id' => __('Selected variant is not available.'),
+                'items' => [
+                    [
+                        'product_id' => $product->id,
+                        'message' => __('Selected variant is not available.'),
+                    ],
+                ],
             ])->status(422);
         }
 

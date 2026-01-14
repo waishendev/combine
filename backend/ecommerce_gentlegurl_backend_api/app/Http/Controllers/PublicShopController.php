@@ -137,6 +137,11 @@ class PublicShopController extends Controller
             'images' => function ($query) {
                 $query->orderBy('sort_order')->orderBy('id');
             },
+            'variants' => function ($query) {
+                $query->where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('id');
+            },
             'video',
         ])
             ->where('is_active', true)
@@ -243,12 +248,19 @@ class PublicShopController extends Controller
                         ];
                     });
 
+                [$minPrice, $maxPrice, $priceDisplay] = $this->resolvePriceRange($product);
+                $price = $product->type === 'variant' && $minPrice !== null ? $minPrice : $product->price;
+
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
                     'slug' => $product->slug,
                     'sku' => $product->sku,
-                    'price' => $product->price,
+                    'type' => $product->type,
+                    'price' => $price,
+                    'min_price' => $minPrice,
+                    'max_price' => $maxPrice,
+                    'price_display' => $priceDisplay,
                     'is_in_wishlist' => isset($wishlistLookup[$product->id]),
                     'dummy_sold_count' => $dummySoldCount,
                     'real_sold_count' => $realSoldCount,
@@ -500,6 +512,33 @@ class PublicShopController extends Controller
             ->pluck('total_qty', 'product_id')
             ->map(fn($qty) => (int) $qty)
             ->all();
+    }
+
+    protected function resolvePriceRange(Product $product): array
+    {
+        if ($product->type !== 'variant') {
+            $price = $product->price !== null ? (float) $product->price : null;
+            return [$price, $price, $price !== null ? number_format($price, 2) : null];
+        }
+
+        $variants = $product->relationLoaded('variants') ? $product->variants : $product->variants()->get();
+        $prices = $variants
+            ->map(fn($variant) => $variant->price ?? $product->price)
+            ->filter(fn($value) => $value !== null)
+            ->map(fn($value) => (float) $value)
+            ->values();
+
+        if ($prices->isEmpty()) {
+            return [null, null, null];
+        }
+
+        $minPrice = $prices->min();
+        $maxPrice = $prices->max();
+        $display = $minPrice === $maxPrice
+            ? number_format($minPrice, 2)
+            : sprintf('%s - %s', number_format($minPrice, 2), number_format($maxPrice, 2));
+
+        return [$minPrice, $maxPrice, $display];
     }
 
     protected function resolveWishlistProductIds(Request $request): array

@@ -1017,7 +1017,12 @@ class PublicCheckoutController extends Controller
 
         if (! $variantId) {
             throw ValidationException::withMessages([
-                'items' => __('Variant is required for this product.'),
+                'items' => [
+                    [
+                        'product_id' => $product->id,
+                        'message' => __('Variant is required for this product.'),
+                    ],
+                ],
             ])->status(422);
         }
 
@@ -1028,7 +1033,12 @@ class PublicCheckoutController extends Controller
 
         if (! $variant) {
             throw ValidationException::withMessages([
-                'items' => __('Selected variant is not available.'),
+                'items' => [
+                    [
+                        'product_id' => $product->id,
+                        'message' => __('Selected variant is not available.'),
+                    ],
+                ],
             ])->status(422);
         }
 

@@ -141,12 +141,23 @@ export type CartItem = {
   id: number;
   product_id: number;
   product_variant_id?: number | null;
+  product_type?: string | null;
   name: string;
   sku?: string | null;
   variant_name?: string | null;
   variant_sku?: string | null;
   product_image?: string | null;
   product_stock?: number | null;
+  available_variants?: Array<{
+    id: number;
+    name: string;
+    sku?: string | null;
+    price?: number | string | null;
+    stock?: number | null;
+    track_stock?: boolean | null;
+    is_active?: boolean | null;
+    image_url?: string | null;
+  }>;
   unit_price: string;
   quantity: number;
   line_total: string;
@@ -317,7 +328,7 @@ export type StoreLocationImage = {
   sort_order?: number;
 };
 
-type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 type ApiRequestOptions = RequestInit & {
   jsonBody?: unknown;
@@ -399,6 +410,10 @@ export function post<T>(path: string, jsonBody?: unknown, options?: ApiRequestOp
 
 export function put<T>(path: string, jsonBody?: unknown, options?: ApiRequestOptions) {
   return apiRequest<T>(path, "PUT", { ...options, jsonBody });
+}
+
+export function patch<T>(path: string, jsonBody?: unknown, options?: ApiRequestOptions) {
+  return apiRequest<T>(path, "PATCH", { ...options, jsonBody });
 }
 
 export function del<T>(path: string, options?: ApiRequestOptions) {
@@ -534,6 +549,22 @@ export async function addCartItemIncrement(payload: {
 }): Promise<CartResponse> {
   const response = await post<{ data: CartResponse }>(
     "/public/shop/cart/items/add",
+    payload,
+    { includeSessionToken: true, headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
+}
+
+export async function updateCartItem(
+  itemId: number,
+  payload: {
+    product_variant_id?: number;
+    quantity?: number;
+  },
+): Promise<CartResponse> {
+  const response = await patch<{ data: CartResponse }>(
+    `/public/shop/cart/items/${itemId}`,
     payload,
     { includeSessionToken: true, headers: { Accept: "application/json" } },
   );
