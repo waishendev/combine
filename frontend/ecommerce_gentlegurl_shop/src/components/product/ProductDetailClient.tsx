@@ -184,7 +184,7 @@ export default function ProductDetailClient({
               <p className="text-sm font-semibold text-[var(--foreground)]">Variants</p>
               <div className="flex flex-wrap gap-2">
                 {variants.map((variant) => {
-                  const isActive = variant.id === selectedVariantId;
+                  const isSelected = variant.id === selectedVariantId;
                   const isActive = variant.is_active !== false;
                   const outOfStock = (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
                   const isAvailable = isActive && !outOfStock;
@@ -200,7 +200,7 @@ export default function ProductDetailClient({
                       disabled={!isAvailable}
                       title={!isAvailable ? disabledLabel : undefined}
                       className={`rounded border px-3 py-2 text-sm transition ${
-                        isActive
+                        isSelected
                           ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
                           : !isAvailable
                             ? "border-[var(--card-border)] bg-[var(--background-soft)] text-[var(--text-muted)] opacity-70"
