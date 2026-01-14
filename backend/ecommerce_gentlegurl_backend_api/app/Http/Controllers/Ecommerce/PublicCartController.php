@@ -6,8 +6,10 @@ use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\CartItem;
 use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\ProductVariant;
 use App\Services\Ecommerce\CartService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class PublicCartController extends Controller
 {
@@ -31,6 +33,7 @@ class PublicCartController extends Controller
     {
         $validated = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
+            'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'quantity' => ['required', 'integer', 'min:0'],
             'session_token' => ['nullable', 'string', 'max:100'],
         ]);
@@ -43,6 +46,8 @@ class PublicCartController extends Controller
 
         $product = Product::find($validated['product_id']);
         $quantity = (int) $validated['quantity'];
+        $variantId = $validated['product_variant_id'] ?? null;
+        $variant = $this->resolveVariant($product, $variantId);
 
         if (!$product || $product->is_reward_only) {
             return $this->respondError(__('This product cannot be added to cart.'), 422);
@@ -50,6 +55,8 @@ class PublicCartController extends Controller
 
         $item = CartItem::where('cart_id', $cart->id)
             ->where('product_id', $product->id)
+            ->when($variant, fn($query) => $query->where('product_variant_id', $variant->id))
+            ->when(!$variant, fn($query) => $query->whereNull('product_variant_id'))
             ->first();
 
         if ($item?->locked) {
@@ -59,21 +66,25 @@ class PublicCartController extends Controller
         if ($quantity === 0) {
             $item?->delete();
         } else {
-            if ($product->stock !== null && $quantity > (int) $product->stock) {
-                return $this->respondError(__('Insufficient stock. Max available: :stock', ['stock' => (int) $product->stock]), 422);
+            $availableStock = $this->resolveStock($product, $variant);
+            if ($availableStock !== null && $quantity > $availableStock) {
+                return $this->respondError(__('Insufficient stock. Max available: :stock', ['stock' => $availableStock]), 422);
             }
+
+            $unitPrice = $this->resolvePrice($product, $variant);
 
             if ($item) {
                 $item->update([
                     'quantity' => $quantity,
-                    'unit_price_snapshot' => $product->price,
+                    'unit_price_snapshot' => $unitPrice,
                 ]);
             } else {
                 CartItem::create([
                     'cart_id' => $cart->id,
                     'product_id' => $product->id,
+                    'product_variant_id' => $variant?->id,
                     'quantity' => $quantity,
-                    'unit_price_snapshot' => $product->price,
+                    'unit_price_snapshot' => $unitPrice,
                 ]);
             }
         }
@@ -85,6 +96,7 @@ class PublicCartController extends Controller
     {
         $validated = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
+            'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'quantity' => ['required', 'integer', 'min:1'],
             'session_token' => ['nullable', 'string', 'max:100'],
         ]);
@@ -97,6 +109,8 @@ class PublicCartController extends Controller
 
         $product = Product::find($validated['product_id']);
         $delta = (int) $validated['quantity'];
+        $variantId = $validated['product_variant_id'] ?? null;
+        $variant = $this->resolveVariant($product, $variantId);
 
         if (!$product || $product->is_reward_only) {
             return $this->respondError(__('This product cannot be added to cart.'), 422);
@@ -104,6 +118,8 @@ class PublicCartController extends Controller
 
         $item = CartItem::where('cart_id', $cart->id)
             ->where('product_id', $product->id)
+            ->when($variant, fn($query) => $query->where('product_variant_id', $variant->id))
+            ->when(!$variant, fn($query) => $query->whereNull('product_variant_id'))
             ->first();
 
         if ($item?->locked) {
@@ -112,23 +128,27 @@ class PublicCartController extends Controller
 
         $newQuantity = $delta + (int) ($item?->quantity ?? 0);
 
-        if ($product->stock !== null && $newQuantity > (int) $product->stock) {
-            return $this->respondError(__('Insufficient stock. Max available: :stock', ['stock' => (int) $product->stock]), 422);
+        $availableStock = $this->resolveStock($product, $variant);
+        if ($availableStock !== null && $newQuantity > $availableStock) {
+            return $this->respondError(__('Insufficient stock. Max available: :stock', ['stock' => $availableStock]), 422);
         }
+
+        $unitPrice = $this->resolvePrice($product, $variant);
 
         if ($newQuantity <= 0) {
             $item?->delete();
         } elseif ($item) {
             $item->update([
                 'quantity' => $newQuantity,
-                'unit_price_snapshot' => $product->price,
+                'unit_price_snapshot' => $unitPrice,
             ]);
         } else {
             CartItem::create([
                 'cart_id' => $cart->id,
                 'product_id' => $product->id,
+                'product_variant_id' => $variant?->id,
                 'quantity' => $newQuantity,
-                'unit_price_snapshot' => $product->price,
+                'unit_price_snapshot' => $unitPrice,
             ]);
         }
 
@@ -210,5 +230,60 @@ class PublicCartController extends Controller
         $item->delete();
 
         return $this->respond($this->cartService->formatCart($cart->fresh()));
+    }
+
+    protected function resolveVariant(?Product $product, ?int $variantId): ?ProductVariant
+    {
+        if (! $product) {
+            return null;
+        }
+
+        if ($product->type !== 'variant') {
+            return null;
+        }
+
+        if (! $variantId) {
+            throw ValidationException::withMessages([
+                'product_variant_id' => __('Variant is required for this product.'),
+            ])->status(422);
+        }
+
+        $variant = ProductVariant::where('id', $variantId)
+            ->where('product_id', $product->id)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $variant) {
+            throw ValidationException::withMessages([
+                'product_variant_id' => __('Selected variant is not available.'),
+            ])->status(422);
+        }
+
+        return $variant;
+    }
+
+    protected function resolvePrice(Product $product, ?ProductVariant $variant): float
+    {
+        if ($variant) {
+            return (float) ($variant->price ?? $product->price);
+        }
+
+        return (float) $product->price;
+    }
+
+    protected function resolveStock(Product $product, ?ProductVariant $variant): ?int
+    {
+        if ($variant) {
+            if (! $variant->track_stock) {
+                return null;
+            }
+            return (int) ($variant->stock ?? 0);
+        }
+
+        if (! $product->track_stock) {
+            return null;
+        }
+
+        return $product->stock !== null ? (int) $product->stock : null;
     }
 }

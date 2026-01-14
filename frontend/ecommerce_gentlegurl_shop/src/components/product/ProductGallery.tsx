@@ -8,9 +8,10 @@ type ProductGalleryProps = {
   initialIndex?: number;
   videoPoster?: string | null;
   alt: string;
+  activeUrl?: string | null;
 };
 
-export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: ProductGalleryProps) {
+export function ProductGallery({ media, initialIndex = 0, videoPoster, alt, activeUrl }: ProductGalleryProps) {
   const safeMedia = media.filter((item) => item.url);
   const [activeIndex, setActiveIndex] = useState(
     initialIndex >= 0 && initialIndex < safeMedia.length ? initialIndex : 0,
@@ -44,6 +45,14 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt }: Pr
   const poster = activeMedia.thumbnail_url
     ? getImageSrc(activeMedia.thumbnail_url)
     : videoPoster || undefined;
+
+  useEffect(() => {
+    if (!activeUrl) return;
+    const nextIndex = safeMedia.findIndex((item) => item.url === activeUrl);
+    if (nextIndex >= 0 && nextIndex !== activeIndex) {
+      setActiveIndex(nextIndex);
+    }
+  }, [activeUrl, activeIndex, safeMedia]);
 
   // Generate thumbnails for all video items
   useEffect(() => {

@@ -140,8 +140,11 @@ export type Customer = CustomerProfile;
 export type CartItem = {
   id: number;
   product_id: number;
+  product_variant_id?: number | null;
   name: string;
   sku?: string | null;
+  variant_name?: string | null;
+  variant_sku?: string | null;
   product_image?: string | null;
   product_stock?: number | null;
   unit_price: string;
@@ -512,6 +515,7 @@ export async function getCart(): Promise<CartResponse> {
 
 export async function addOrUpdateCartItem(payload: {
   product_id: number;
+  product_variant_id?: number;
   quantity: number;
 }): Promise<CartResponse> {
   const response = await post<{ data: CartResponse }>(
@@ -525,6 +529,7 @@ export async function addOrUpdateCartItem(payload: {
 
 export async function addCartItemIncrement(payload: {
   product_id: number;
+  product_variant_id?: number;
   quantity: number;
 }): Promise<CartResponse> {
   const response = await post<{ data: CartResponse }>(
@@ -560,7 +565,13 @@ export async function mergeCart(payload?: { session_token?: string }) {
 }
 
 export type CheckoutPreviewPayload = {
-  items?: { product_id: number; quantity: number; is_reward?: boolean; reward_redemption_id?: number | null }[];
+  items?: {
+    product_id: number;
+    product_variant_id?: number | null;
+    quantity: number;
+    is_reward?: boolean;
+    reward_redemption_id?: number | null;
+  }[];
   voucher_code?: string | null;
   customer_voucher_id?: number | null;
   shipping_method: "shipping" | "self_pickup";
@@ -583,6 +594,7 @@ export type CheckoutPreviewPayload = {
 export type CheckoutPayload = {
   items?: Array<{
     product_id: number;
+    product_variant_id?: number | null;
     quantity: number;
     is_reward?: boolean;
     reward_redemption_id?: number;

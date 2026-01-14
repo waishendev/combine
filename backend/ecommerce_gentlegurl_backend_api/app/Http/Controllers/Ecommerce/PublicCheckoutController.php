@@ -10,6 +10,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\Cart;
 use App\Services\BillplzService;
 use App\Services\Ecommerce\CartService;
@@ -239,9 +240,14 @@ class PublicCheckoutController extends Controller
                     $orderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $item['product_id'],
+                        'product_variant_id' => $item['product_variant_id'] ?? null,
                         'product_name_snapshot' => $item['name'],
                         'sku_snapshot' => $item['sku'] ?? null,
+                        'variant_name_snapshot' => $item['variant_name'] ?? null,
+                        'variant_sku_snapshot' => $item['variant_sku'] ?? null,
                         'price_snapshot' => $item['unit_price'],
+                        'variant_price_snapshot' => $item['variant_price'] ?? null,
+                        'variant_cost_snapshot' => $item['variant_cost'] ?? null,
                         'quantity' => $item['quantity'],
                         'line_total' => $item['line_total'],
                         'is_reward' => $item['is_reward'] ?? false,
@@ -543,6 +549,7 @@ class PublicCheckoutController extends Controller
         return $request->validate([
             'items' => ['nullable', 'array'],
             'items.*.product_id' => ['required_with:items', 'integer', 'exists:products,id'],
+            'items.*.product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
             'items.*.is_reward' => ['sometimes', 'boolean'],
             'items.*.reward_redemption_id' => ['nullable', 'integer', 'exists:loyalty_redemptions,id'],
@@ -659,7 +666,7 @@ class PublicCheckoutController extends Controller
         $subtotal = 0;
 
         if ($cart && $cart->items()->count() > 0) {
-            $cart->loadMissing(['items.product']);
+            $cart->loadMissing(['items.product', 'items.productVariant']);
 
             foreach ($cart->items as $cartItem) {
                 $product = $cartItem->product;
@@ -728,13 +735,20 @@ class PublicCheckoutController extends Controller
                     ])->status(422);
                 }
 
-                $lineTotal = (float) $product->price * (int) $cartItem->quantity;
+                $variant = $this->resolveVariantForCheckout($product, $cartItem->product_variant_id);
+                $unitPrice = $this->resolveVariantPrice($product, $variant);
+                $lineTotal = $unitPrice * (int) $cartItem->quantity;
                 $items[] = [
                     'product_id' => $product->id,
+                    'product_variant_id' => $variant?->id,
                     'name' => $product->name,
                     'sku' => $product->sku,
+                    'variant_name' => $variant?->title,
+                    'variant_sku' => $variant?->sku,
+                    'variant_price' => $variant?->price,
+                    'variant_cost' => $variant?->cost_price,
                     'quantity' => (int) $cartItem->quantity,
-                    'unit_price' => (float) $product->price,
+                    'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
                     'is_reward' => false,
                     'reward_redemption_id' => null,
@@ -818,13 +832,21 @@ class PublicCheckoutController extends Controller
                     ])->status(422);
                 }
 
-                $lineTotal = (float) $product->price * (int) ($input['quantity'] ?? 1);
+                $variantId = $input['product_variant_id'] ?? null;
+                $variant = $this->resolveVariantForCheckout($product, $variantId);
+                $unitPrice = $this->resolveVariantPrice($product, $variant);
+                $lineTotal = $unitPrice * (int) ($input['quantity'] ?? 1);
                 $items[] = [
                     'product_id' => $product->id,
+                    'product_variant_id' => $variant?->id,
                     'name' => $product->name,
                     'sku' => $product->sku,
+                    'variant_name' => $variant?->title,
+                    'variant_sku' => $variant?->sku,
+                    'variant_price' => $variant?->price,
+                    'variant_cost' => $variant?->cost_price,
                     'quantity' => (int) ($input['quantity'] ?? 1),
-                    'unit_price' => (float) $product->price,
+                    'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
                     'is_reward' => false,
                     'reward_redemption_id' => null,
@@ -929,14 +951,11 @@ class PublicCheckoutController extends Controller
             ->unique()
             ->values();
 
-        $productIds = $itemsCollection
+        $normalItems = $itemsCollection
             ->filter(fn($item) => empty($item['reward_redemption_id']))
-            ->pluck('product_id')
-            ->filter()
-            ->unique()
             ->values();
 
-        if ($productIds->isEmpty() && $rewardRedemptionIds->isEmpty()) {
+        if ($normalItems->isEmpty() && $rewardRedemptionIds->isEmpty()) {
             return;
         }
 
@@ -958,24 +977,23 @@ class PublicCheckoutController extends Controller
             return;
         }
 
-        $cart->items()
-            ->where(function ($query) use ($productIds, $rewardRedemptionIds) {
-                if ($productIds->isNotEmpty()) {
-                    $query->where(function ($subQuery) use ($productIds) {
-                        $subQuery->whereNull('reward_redemption_id')
-                            ->whereIn('product_id', $productIds);
-                    });
-                }
+        foreach ($normalItems as $item) {
+            $cart->items()
+                ->whereNull('reward_redemption_id')
+                ->where('product_id', $item['product_id'])
+                ->when(
+                    !empty($item['product_variant_id']),
+                    fn($query) => $query->where('product_variant_id', $item['product_variant_id']),
+                    fn($query) => $query->whereNull('product_variant_id')
+                )
+                ->delete();
+        }
 
-                if ($rewardRedemptionIds->isNotEmpty()) {
-                    if ($productIds->isNotEmpty()) {
-                        $query->orWhereIn('reward_redemption_id', $rewardRedemptionIds);
-                    } else {
-                        $query->whereIn('reward_redemption_id', $rewardRedemptionIds);
-                    }
-                }
-            })
-            ->delete();
+        if ($rewardRedemptionIds->isNotEmpty()) {
+            $cart->items()
+                ->whereIn('reward_redemption_id', $rewardRedemptionIds)
+                ->delete();
+        }
 
         $cart->customer_id = $cart->customer_id ?: $customer?->id;
 
@@ -989,5 +1007,40 @@ class PublicCheckoutController extends Controller
     protected function generateOrderNumber(): string
     {
         return 'ORD' . Carbon::now()->format('YmdHis') . rand(100, 999);
+    }
+
+    protected function resolveVariantForCheckout(Product $product, ?int $variantId): ?ProductVariant
+    {
+        if ($product->type !== 'variant') {
+            return null;
+        }
+
+        if (! $variantId) {
+            throw ValidationException::withMessages([
+                'items' => __('Variant is required for this product.'),
+            ])->status(422);
+        }
+
+        $variant = ProductVariant::where('id', $variantId)
+            ->where('product_id', $product->id)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $variant) {
+            throw ValidationException::withMessages([
+                'items' => __('Selected variant is not available.'),
+            ])->status(422);
+        }
+
+        return $variant;
+    }
+
+    protected function resolveVariantPrice(Product $product, ?ProductVariant $variant): float
+    {
+        if ($variant) {
+            return (float) ($variant->price ?? $product->price);
+        }
+
+        return (float) $product->price;
     }
 }

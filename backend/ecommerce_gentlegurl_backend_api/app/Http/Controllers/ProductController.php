@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductMedia;
+use App\Models\Ecommerce\ProductVariant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -16,7 +17,7 @@ class ProductController extends Controller
     {
         $perPage = $request->integer('per_page', 15);
 
-        $products = Product::with(['categories', 'images', 'video'])
+        $products = Product::with(['categories', 'images', 'video', 'variants'])
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })
@@ -48,7 +49,7 @@ class ProductController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:products,slug'],
             'sku' => ['required', 'string', 'max:100', 'unique:products,sku'],
-            'type' => ['sometimes', 'string', Rule::in(['single', 'package'])],
+            'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
             'description' => ['nullable', 'string'],
             'price' => ['required', 'numeric'],
             'cost_price' => ['nullable', 'numeric'],
@@ -68,6 +69,18 @@ class ProductController extends Controller
             'images' => ['nullable', 'array'],
             'images.*' => ['image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
+            'variants' => ['nullable', 'array'],
+            'variants.*.sku' => ['required_with:variants.*.title', 'string', 'max:100'],
+            'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
+            'variants.*.price' => ['nullable', 'numeric'],
+            'variants.*.cost_price' => ['nullable', 'numeric'],
+            'variants.*.stock' => ['nullable', 'integer'],
+            'variants.*.track_stock' => ['nullable', 'boolean'],
+            'variants.*.is_active' => ['nullable', 'boolean'],
+            'variants.*.sort_order' => ['nullable', 'integer'],
+            'variants.*.remove_image' => ['nullable', 'boolean'],
+            'variant_images' => ['nullable', 'array'],
+            'variant_images.*' => ['nullable', 'image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
         ]);
 
         $product = Product::create($validated + [
@@ -90,12 +103,14 @@ class ProductController extends Controller
         // 处理产品图片上传
         $this->handleImageUpload($product, $request);
 
-        return $this->respond($product->load(['categories', 'images', 'video', 'packageChildren']), __('Product created successfully.'));
+        $this->syncVariants($product, $request);
+
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants', 'packageChildren']), __('Product created successfully.'));
     }
 
     public function show(Product $product)
     {
-        return $this->respond($product->load(['categories', 'images', 'video', 'packageChildren.childProduct']));
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct']));
     }
 
     public function update(Request $request, Product $product)
@@ -107,7 +122,7 @@ class ProductController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'slug' => ['sometimes', 'string', 'max:255', Rule::unique('products', 'slug')->ignore($product->id)],
             'sku' => ['sometimes', 'string', 'max:100', Rule::unique('products', 'sku')->ignore($product->id)],
-            'type' => ['sometimes', 'string', Rule::in(['single', 'package'])],
+            'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
             'description' => ['nullable', 'string'],
             'price' => ['sometimes', 'numeric'],
             'cost_price' => ['nullable', 'numeric'],
@@ -129,6 +144,19 @@ class ProductController extends Controller
             'main_image_index' => ['nullable', 'integer', 'min:0'],
             'delete_image_ids' => ['nullable', 'array'],
             'delete_image_ids.*' => ['integer', 'exists:product_media,id'],
+            'variants' => ['sometimes', 'array'],
+            'variants.*.id' => ['nullable', 'integer', 'exists:product_variants,id'],
+            'variants.*.sku' => ['required_with:variants.*.title', 'string', 'max:100'],
+            'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
+            'variants.*.price' => ['nullable', 'numeric'],
+            'variants.*.cost_price' => ['nullable', 'numeric'],
+            'variants.*.stock' => ['nullable', 'integer'],
+            'variants.*.track_stock' => ['nullable', 'boolean'],
+            'variants.*.is_active' => ['nullable', 'boolean'],
+            'variants.*.sort_order' => ['nullable', 'integer'],
+            'variants.*.remove_image' => ['nullable', 'boolean'],
+            'variant_images' => ['nullable', 'array'],
+            'variant_images.*' => ['nullable', 'image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
         ]);
 
         $product->fill($validated);
@@ -154,7 +182,9 @@ class ProductController extends Controller
             $this->handleImageUpload($product, $request);
         }
 
-        return $this->respond($product->load(['categories', 'images', 'video', 'packageChildren.childProduct']), __('Product updated successfully.'));
+        $this->syncVariants($product, $request);
+
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct']), __('Product updated successfully.'));
     }
 
     public function destroy(Product $product)
@@ -218,6 +248,96 @@ class ProductController extends Controller
                 'size_bytes' => $image->getSize() ?? 0,
                 'status' => 'ready',
             ]);
+        }
+    }
+
+    protected function syncVariants(Product $product, Request $request): void
+    {
+        $variantsInput = $request->input('variants');
+
+        if ($product->type !== 'variant') {
+            if ($request->has('variants') || $product->variants()->exists()) {
+                $this->deleteVariants($product, []);
+            }
+            return;
+        }
+
+        if (! $request->has('variants')) {
+            return;
+        }
+
+        $variantFiles = $request->file('variant_images', []);
+        $keepIds = [];
+
+        foreach ($variantsInput ?? [] as $index => $variantData) {
+            if (! is_array($variantData)) {
+                continue;
+            }
+
+            $variantId = $variantData['id'] ?? null;
+            $variant = $variantId
+                ? $product->variants()->where('id', $variantId)->first()
+                : new ProductVariant(['product_id' => $product->id]);
+
+            if (! $variant) {
+                continue;
+            }
+
+            $payload = [
+                'sku' => $variantData['sku'] ?? $variant->sku,
+                'title' => $variantData['title'] ?? $variant->title,
+                'price' => $variantData['price'] ?? null,
+                'cost_price' => $variantData['cost_price'] ?? null,
+                'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
+                'track_stock' => filter_var($variantData['track_stock'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                'is_active' => filter_var($variantData['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                'sort_order' => isset($variantData['sort_order']) ? (int) $variantData['sort_order'] : 0,
+            ];
+
+            if (! empty($variantData['remove_image'])) {
+                $this->deleteVariantImage($variant);
+                $payload['image_path'] = null;
+            }
+
+            if (isset($variantFiles[$index])) {
+                $this->deleteVariantImage($variant);
+                $file = $variantFiles[$index];
+                $filename = sprintf(
+                    'products/%s/variants/%s.%s',
+                    $product->id,
+                    Str::uuid(),
+                    $file->getClientOriginalExtension()
+                );
+                $payload['image_path'] = $file->storeAs('', $filename, 'public');
+            }
+
+            $variant->fill($payload);
+            $variant->product_id = $product->id;
+            $variant->save();
+
+            $keepIds[] = $variant->id;
+        }
+
+        $this->deleteVariants($product, $keepIds);
+    }
+
+    protected function deleteVariants(Product $product, array $keepIds): void
+    {
+        $variantsToDelete = $product->variants()
+            ->when(! empty($keepIds), fn($query) => $query->whereNotIn('id', $keepIds))
+            ->get();
+
+        foreach ($variantsToDelete as $variant) {
+            $this->deleteVariantImage($variant);
+            $variant->delete();
+        }
+    }
+
+    protected function deleteVariantImage(ProductVariant $variant): void
+    {
+        $path = $variant->getRawOriginal('image_path');
+        if ($path && Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
         }
     }
 

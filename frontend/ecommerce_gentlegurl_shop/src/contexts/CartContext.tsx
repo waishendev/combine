@@ -63,7 +63,7 @@ export type CartContextValue = {
   voucherError: string | null;
   voucherMessage: string | null;
   reloadCart: () => Promise<void>;
-  addToCart: (productId: number, quantity: number) => Promise<void>;
+  addToCart: (productId: number, quantity: number, productVariantId?: number) => Promise<void>;
   updateItemQuantity: (itemId: number, quantity: number) => Promise<void>;
   removeItem: (itemId: number) => Promise<void>;
   onCustomerLogin: () => Promise<void>;
@@ -204,10 +204,14 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
   }, [reloadCart]);
 
   const addToCart = useCallback(
-    async (productId: number, quantity: number) => {
+    async (productId: number, quantity: number, productVariantId?: number) => {
       setIsLoading(true);
       try {
-        const response = await addCartItemIncrement({ product_id: productId, quantity });
+        const response = await addCartItemIncrement({
+          product_id: productId,
+          product_variant_id: productVariantId,
+          quantity,
+        });
         applyCartResponse(response);
       } finally {
         setIsLoading(false);
@@ -248,7 +252,11 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
         }
 
         // Sync with server in background (without showing loading state)
-        const response = await addOrUpdateCartItem({ product_id: productId, quantity });
+        const response = await addOrUpdateCartItem({
+          product_id: productId,
+          product_variant_id: targetItem?.product_variant_id ?? undefined,
+          quantity,
+        });
         applyCartResponse(response);
       } catch (error) {
         // On error, reload cart to get correct state

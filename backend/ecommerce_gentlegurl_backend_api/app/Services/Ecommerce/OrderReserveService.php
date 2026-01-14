@@ -4,6 +4,7 @@ namespace App\Services\Ecommerce;
 
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\ProductVariant;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -50,6 +51,9 @@ class OrderReserveService
         $products = Product::whereIn('id', $normalItems->pluck('product_id'))
             ->get()
             ->keyBy('id');
+        $variants = ProductVariant::whereIn('id', $normalItems->pluck('product_variant_id')->filter())
+            ->get()
+            ->keyBy('id');
 
         $errors = [];
 
@@ -59,8 +63,31 @@ class OrderReserveService
                 continue;
             }
 
-            $available = (int) ($product->stock ?? 0);
             $requested = (int) ($item['quantity'] ?? 0);
+            $variantId = $item['product_variant_id'] ?? null;
+
+            if ($variantId) {
+                $variant = $variants->get($variantId);
+                if (! $variant || ! $variant->track_stock) {
+                    continue;
+                }
+                $available = (int) ($variant->stock ?? 0);
+                if ($requested > $available) {
+                    $errors[] = sprintf(
+                        'Insufficient stock for %s (ID %d). Max available: %d.',
+                        $variant->title ?? 'variant',
+                        $variant->id,
+                        $available
+                    );
+                }
+                continue;
+            }
+
+            if (! $product->track_stock) {
+                continue;
+            }
+
+            $available = (int) ($product->stock ?? 0);
 
             if ($requested > $available) {
                 $errors[] = sprintf(
@@ -94,8 +121,36 @@ class OrderReserveService
                 continue;
             }
 
+            $variantId = (int) ($item['product_variant_id'] ?? 0);
+            if ($variantId) {
+                $variant = ProductVariant::where('id', $variantId)->lockForUpdate()->first();
+                if (! $variant || ! $variant->track_stock) {
+                    continue;
+                }
+
+                $available = (int) ($variant->stock ?? 0);
+                $requested = (int) ($item['quantity'] ?? 0);
+
+                if ($requested > $available) {
+                    throw ValidationException::withMessages([
+                        'items' => [
+                            sprintf(
+                                'Insufficient stock for %s (ID %d). Max available: %d.',
+                                $variant->title ?? 'variant',
+                                $variant->id,
+                                $available
+                            ),
+                        ],
+                    ])->status(422);
+                }
+
+                $variant->stock = $available - $requested;
+                $variant->save();
+                continue;
+            }
+
             $product = Product::where('id', $productId)->lockForUpdate()->first();
-            if (!$product) {
+            if (!$product || ! $product->track_stock) {
                 continue;
             }
 
@@ -129,8 +184,17 @@ class OrderReserveService
                 continue;
             }
 
+            if ($item->product_variant_id) {
+                $variant = ProductVariant::where('id', $item->product_variant_id)->lockForUpdate()->first();
+                if ($variant && $variant->track_stock) {
+                    $variant->stock = (int) ($variant->stock ?? 0) + (int) $item->quantity;
+                    $variant->save();
+                }
+                continue;
+            }
+
             $product = Product::where('id', $item->product_id)->lockForUpdate()->first();
-            if (!$product) {
+            if (!$product || ! $product->track_stock) {
                 continue;
             }
 

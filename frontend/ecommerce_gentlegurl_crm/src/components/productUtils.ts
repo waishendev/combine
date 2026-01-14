@@ -55,6 +55,19 @@ export type ProductApiItem = {
   categories?: ProductApiCategory[] | null
   images?: ProductApiImage[] | null
   video?: ProductApiVideo | null
+  variants?: Array<{
+    id?: number | string | null
+    name?: string | null
+    title?: string | null
+    sku?: string | null
+    price?: string | number | null
+    cost_price?: string | number | null
+    stock?: number | string | null
+    track_stock?: boolean | number | string | null
+    is_active?: boolean | number | string | null
+    sort_order?: number | string | null
+    image_url?: string | null
+  }> | null
 }
 
 export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => {
@@ -196,5 +209,42 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
                 : undefined,
         }
       : null,
+    variants: Array.isArray(item.variants)
+      ? item.variants.map((variant) => ({
+        id:
+          typeof variant.id === 'number'
+            ? variant.id
+            : Number(variant.id) || 0,
+        name: variant.title ?? variant.name ?? '',
+        sku: variant.sku ?? '',
+        price:
+          typeof variant.price === 'number'
+            ? variant.price
+            : typeof variant.price === 'string'
+              ? Number.parseFloat(variant.price)
+              : null,
+        costPrice:
+          typeof variant.cost_price === 'number'
+            ? variant.cost_price
+            : typeof variant.cost_price === 'string'
+              ? Number.parseFloat(variant.cost_price)
+              : null,
+        stock:
+          typeof variant.stock === 'number'
+            ? variant.stock
+            : typeof variant.stock === 'string'
+              ? Number.parseInt(variant.stock, 10)
+              : null,
+        trackStock: toBoolean(variant.track_stock),
+        isActive: toBoolean(variant.is_active),
+        sortOrder:
+          typeof variant.sort_order === 'number'
+            ? variant.sort_order
+            : typeof variant.sort_order === 'string'
+              ? Number.parseInt(variant.sort_order, 10)
+              : 0,
+        imageUrl: variant.image_url ?? null,
+      }))
+      : [],
   }
 }

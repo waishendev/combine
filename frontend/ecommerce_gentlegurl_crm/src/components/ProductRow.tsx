@@ -22,6 +22,19 @@ export interface ProductVideo {
   height?: number
 }
 
+export interface ProductVariant {
+  id: number
+  name: string
+  sku: string
+  price?: number | null
+  costPrice?: number | null
+  stock?: number | null
+  trackStock?: boolean
+  isActive?: boolean
+  sortOrder?: number
+  imageUrl?: string | null
+}
+
 export interface ProductRowData {
   id: number
   name: string
@@ -47,6 +60,7 @@ export interface ProductRowData {
   categories: string
   images: ProductImage[]
   video?: ProductVideo | null
+  variants?: ProductVariant[]
 }
 
 interface ProductRowProps {

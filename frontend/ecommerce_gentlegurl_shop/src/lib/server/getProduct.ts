@@ -24,6 +24,7 @@ export type ProductDetail = {
   id: number;
   name: string;
   slug: string;
+  type?: string | null;
   price: string | number;
   image_url?: string | null;
   cover_image_url?: string | null;
@@ -43,6 +44,15 @@ export type ProductDetail = {
   review_summary?: ReviewSummary;
   recent_reviews?: ReviewItem[];
   review_settings?: ReviewSettings;
+  variants?: Array<{
+    id: number;
+    name: string;
+    sku?: string | null;
+    price?: string | number | null;
+    stock?: number | null;
+    track_stock?: boolean | null;
+    image_url?: string | null;
+  }>;
   seo?: {
     meta_title?: string | null;
     meta_description?: string | null;
@@ -73,7 +83,14 @@ function normalizeProductImages(product: ProductDetail): ProductDetail {
     ? normalizeImageUrl(product.cover_image_url)
     : null;
 
-  return { ...product, images, media, cover_image_url: coverImageUrl };
+  const variants = Array.isArray(product.variants)
+    ? product.variants.map((variant) => ({
+        ...variant,
+        image_url: variant.image_url ? normalizeImageUrl(variant.image_url) : variant.image_url,
+      }))
+    : product.variants;
+
+  return { ...product, images, media, variants, cover_image_url: coverImageUrl };
 }
 
 export async function getProduct(slug: string, options?: { reward?: boolean }): Promise<ProductDetail | null> {

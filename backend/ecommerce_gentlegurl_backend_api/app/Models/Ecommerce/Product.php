@@ -73,6 +73,13 @@ class Product extends Model
             ->where('type', 'video');
     }
 
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class)
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
     public function getCoverImageUrlAttribute(): ?string
     {
         $images = $this->relationLoaded('images')

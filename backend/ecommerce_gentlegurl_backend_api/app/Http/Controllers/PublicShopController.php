@@ -346,7 +346,7 @@ class PublicShopController extends Controller
     {
         $allowRewardOnly = $request->boolean('reward', false);
 
-        $product = Product::with(['categories', 'images', 'video', 'packageChildren.childProduct'])
+        $product = Product::with(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct'])
             ->where('slug', $slug)
             ->where('is_active', true)
             ->when(!$allowRewardOnly, fn($query) => $query->where('is_reward_only', false))
@@ -428,6 +428,7 @@ class PublicShopController extends Controller
             'name' => $product->name,
             'slug' => $product->slug,
             'sku' => $product->sku,
+            'type' => $product->type,
             'description' => $product->description,
             'price' => $product->price,
             'stock' => $product->stock,
@@ -443,6 +444,22 @@ class PublicShopController extends Controller
             'cover_image_url' => $product->cover_image_url,
             'categories' => $categories,
             'package_children' => $product->packageChildren,
+            'variants' => $product->variants
+                ->where('is_active', true)
+                ->sortBy('sort_order')
+                ->sortBy('id')
+                ->values()
+                ->map(fn($variant) => [
+                    'id' => $variant->id,
+                    'name' => $variant->title,
+                    'sku' => $variant->sku,
+                    'price' => $variant->price ?? $product->price,
+                    'stock' => $variant->stock,
+                    'track_stock' => $variant->track_stock,
+                    'is_active' => $variant->is_active,
+                    'sort_order' => $variant->sort_order,
+                    'image_url' => $variant->image_url,
+                ]),
             'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),
             'related_products' => $relatedProducts,
             'is_reward_only' => $product->is_reward_only,

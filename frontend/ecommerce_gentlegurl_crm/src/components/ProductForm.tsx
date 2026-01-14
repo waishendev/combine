@@ -31,6 +31,22 @@ type PendingVideoUpload = {
   status: 'pending' | 'uploading' | 'failed'
 }
 
+type VariantFormValue = {
+  id?: number
+  name: string
+  sku: string
+  price: string
+  costPrice: string
+  stock: string
+  trackStock: boolean
+  isActive: boolean
+  sortOrder: number
+  imageUrl?: string | null
+  imageFile?: File | null
+  imagePreview?: string | null
+  removeImage?: boolean
+}
+
 type ProductFormValues = {
   name: string
   slug: string
@@ -72,6 +88,21 @@ const emptyForm: ProductFormValues = {
   categoryIds: [],
   metaOgImageFile: null,
 }
+
+const emptyVariant = (sortOrder = 0): VariantFormValue => ({
+  name: '',
+  sku: '',
+  price: '',
+  costPrice: '',
+  stock: '',
+  trackStock: true,
+  isActive: true,
+  sortOrder,
+  imageUrl: null,
+  imageFile: null,
+  imagePreview: null,
+  removeImage: false,
+})
 
 type RewardFormValues = {
   title: string
@@ -153,6 +184,29 @@ export default function ProductForm({
   const [existingVideo, setExistingVideo] = useState<ProductVideo | null>(
     product?.video ?? null,
   )
+  const [variants, setVariants] = useState<VariantFormValue[]>(() => {
+    if (mode === 'edit' && product?.variants?.length) {
+      return product.variants.map((variant, index) => ({
+        id: variant.id,
+        name: variant.name ?? '',
+        sku: variant.sku ?? '',
+        price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
+        costPrice:
+          variant.costPrice !== null && variant.costPrice !== undefined
+            ? String(variant.costPrice)
+            : '',
+        stock: variant.stock !== null && variant.stock !== undefined ? String(variant.stock) : '',
+        trackStock: variant.trackStock ?? true,
+        isActive: variant.isActive ?? true,
+        sortOrder: variant.sortOrder ?? index,
+        imageUrl: variant.imageUrl ?? null,
+        imageFile: null,
+        imagePreview: null,
+        removeImage: false,
+      }))
+    }
+    return []
+  })
   const pendingImagesRef = useRef<PendingImageUpload[]>([])
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
   const [draggingType, setDraggingType] = useState<'new' | 'existing' | null>(null)
@@ -197,6 +251,22 @@ export default function ProductForm({
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [isCategoryDropdownOpen])
+
+  useEffect(() => {
+    return () => {
+      variants.forEach((variant) => {
+        if (variant.imagePreview) {
+          URL.revokeObjectURL(variant.imagePreview)
+        }
+      })
+    }
+  }, [variants])
+
+  useEffect(() => {
+    if (form.type === 'variant' && variants.length === 0) {
+      setVariants([emptyVariant(0)])
+    }
+  }, [form.type, variants.length])
 
   useEffect(() => {
     if (!showCategories) {
@@ -1026,6 +1096,7 @@ export default function ProductForm({
     setExistingImages([])
     setExistingVideo(null)
     setCreatedProductId(null)
+    setVariants([])
   }
 
   const handleCancel = () => {
@@ -1049,6 +1120,82 @@ export default function ProductForm({
     }))
   }
 
+  const handleAddVariant = () => {
+    setVariants((prev) => [...prev, emptyVariant(prev.length)])
+  }
+
+  const handleRemoveVariant = (index: number) => {
+    setVariants((prev) => prev.filter((_, idx) => idx !== index))
+  }
+
+  const handleVariantChange = (
+    index: number,
+    field: keyof VariantFormValue,
+    value: string | boolean,
+  ) => {
+    setVariants((prev) =>
+      prev.map((variant, idx) =>
+        idx === index
+          ? {
+              ...variant,
+              [field]: value,
+            }
+          : variant,
+      ),
+    )
+  }
+
+  const handleVariantImageChange = (index: number, file: File | null) => {
+    setVariants((prev) =>
+      prev.map((variant, idx) => {
+        if (idx !== index) return variant
+        if (variant.imagePreview) {
+          URL.revokeObjectURL(variant.imagePreview)
+        }
+        return {
+          ...variant,
+          imageFile: file,
+          imagePreview: file ? URL.createObjectURL(file) : null,
+          removeImage: false,
+        }
+      }),
+    )
+  }
+
+  const handleVariantImageRemove = (index: number) => {
+    setVariants((prev) =>
+      prev.map((variant, idx) => {
+        if (idx !== index) return variant
+        if (variant.imagePreview) {
+          URL.revokeObjectURL(variant.imagePreview)
+        }
+        return {
+          ...variant,
+          imageFile: null,
+          imagePreview: null,
+          removeImage: true,
+          imageUrl: null,
+        }
+      }),
+    )
+  }
+
+  const handleVariantReorder = (index: number, direction: 'up' | 'down') => {
+    setVariants((prev) => {
+      const next = [...prev]
+      const targetIndex = direction === 'up' ? index - 1 : index + 1
+      if (targetIndex < 0 || targetIndex >= next.length) {
+        return prev
+      }
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return next.map((variant, idx) => ({
+        ...variant,
+        sortOrder: idx,
+      }))
+    })
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitting(true)
@@ -1063,6 +1210,12 @@ export default function ProductForm({
         setSubmitting(false)
         return
       }
+    }
+
+    if (form.type === 'variant' && variants.length === 0) {
+      setError('Please add at least one variant.')
+      setSubmitting(false)
+      return
     }
 
     const formData = new FormData()
@@ -1092,6 +1245,28 @@ export default function ProductForm({
     if (showCategories) {
       form.categoryIds.forEach((id) => {
         formData.append('category_ids[]', String(id))
+      })
+    }
+
+    if (form.type === 'variant') {
+      variants.forEach((variant, index) => {
+        if (variant.id) {
+          formData.append(`variants[${index}][id]`, String(variant.id))
+        }
+        formData.append(`variants[${index}][title]`, variant.name.trim())
+        formData.append(`variants[${index}][sku]`, variant.sku.trim())
+        formData.append(`variants[${index}][price]`, variant.price || '0')
+        formData.append(`variants[${index}][cost_price]`, variant.costPrice || '0')
+        formData.append(`variants[${index}][stock]`, variant.stock || '0')
+        formData.append(`variants[${index}][track_stock]`, variant.trackStock ? '1' : '0')
+        formData.append(`variants[${index}][is_active]`, variant.isActive ? '1' : '0')
+        formData.append(`variants[${index}][sort_order]`, String(index))
+        if (variant.removeImage) {
+          formData.append(`variants[${index}][remove_image]`, '1')
+        }
+        if (variant.imageFile) {
+          formData.append(`variant_images[${index}]`, variant.imageFile)
+        }
       })
     }
 
@@ -1905,7 +2080,7 @@ export default function ProductForm({
                   placeholder={t('product.skuPlaceholder')}
                 />
               </div>
-              {/* <div className="space-y-2">
+              <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="type">
                   {t('product.type')}
                 </label>
@@ -1917,9 +2092,10 @@ export default function ProductForm({
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 >
                   <option value="single">{t('product.typeSingle')}</option>
-                  <option value="bundle">{t('product.typeBundle')}</option>
+                  <option value="variant">Variant</option>
+                  <option value="package">{t('product.typeBundle')}</option>
                 </select>
-              </div> */}
+              </div>
 
               <div className="space-y-2 md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="description">
@@ -2293,6 +2469,182 @@ export default function ProductForm({
           )}
         </div>
       </div>
+
+      {form.type === 'variant' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Variants</h3>
+              <p className="text-sm text-gray-500 mt-1">Manage variant options, pricing, and stock.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddVariant}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <i className="fa-solid fa-plus" />
+              Add Variant
+            </button>
+          </div>
+          {variants.length === 0 && (
+            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+              No variants yet. Add your first variant.
+            </div>
+          )}
+          {variants.map((variant, index) => (
+            <div key={variant.id ?? index} className="rounded-lg border border-gray-200 p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Variant #{index + 1}</p>
+                  <p className="text-xs text-gray-500">Sort order: {index + 1}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleVariantReorder(index, 'up')}
+                    className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    disabled={index === 0}
+                  >
+                    <i className="fa-solid fa-arrow-up" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleVariantReorder(index, 'down')}
+                    className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    disabled={index === variants.length - 1}
+                  >
+                    <i className="fa-solid fa-arrow-down" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveVariant(index)}
+                    className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                  >
+                    <i className="fa-solid fa-trash" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Name</label>
+                  <input
+                    value={variant.name}
+                    onChange={(event) => handleVariantChange(index, 'name', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="200ml"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">SKU</label>
+                  <input
+                    value={variant.sku}
+                    onChange={(event) => handleVariantChange(index, 'sku', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="SKU-200ML"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Price</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={variant.price}
+                      onChange={(event) => handleVariantChange(index, 'price', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Cost Price</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={variant.costPrice}
+                      onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Stock</label>
+                  <input
+                    type="number"
+                    value={variant.stock}
+                    onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Track Stock</p>
+                    <p className="text-xs text-gray-500">Disable if inventory is not limited.</p>
+                  </div>
+                  <Switch
+                    checked={variant.trackStock}
+                    onCheckedChange={(checked) => handleVariantChange(index, 'trackStock', checked)}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Active</p>
+                    <p className="text-xs text-gray-500">Hide variant from shop if disabled.</p>
+                  </div>
+                  <Switch
+                    checked={variant.isActive}
+                    onCheckedChange={(checked) => handleVariantChange(index, 'isActive', checked)}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">Variant Image</label>
+                  <div className="flex flex-wrap items-center gap-4">
+                    {variant.imagePreview || variant.imageUrl ? (
+                      <img
+                        src={variant.imagePreview ?? variant.imageUrl ?? ''}
+                        alt={variant.name || 'Variant image'}
+                        className="h-20 w-20 rounded border border-gray-200 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
+                        No image
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <label className="cursor-pointer rounded border border-gray-300 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(event) =>
+                            handleVariantImageChange(index, event.target.files?.[0] ?? null)
+                          }
+                        />
+                        Upload Image
+                      </label>
+                      {(variant.imagePreview || variant.imageUrl) && (
+                        <button
+                          type="button"
+                          onClick={() => handleVariantImageRemove(index)}
+                          className="rounded border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* SEO & Metadata Section */}
       <div className="space-y-4">
