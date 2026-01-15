@@ -441,6 +441,14 @@
                 @if($item->sku_snapshot)
                   <div class="sku">SKU: {{ $item->sku_snapshot }}</div>
                 @endif
+                @if($item->variant_name_snapshot)
+                  <div class="sku">
+                    Variant: {{ $item->variant_name_snapshot }}
+                    @if($item->variant_sku_snapshot)
+                      ({{ $item->variant_sku_snapshot }})
+                    @endif
+                  </div>
+                @endif
 
                 <!-- Optional: show price x qty in a friendly way -->
                 <!-- <div class="price-line">

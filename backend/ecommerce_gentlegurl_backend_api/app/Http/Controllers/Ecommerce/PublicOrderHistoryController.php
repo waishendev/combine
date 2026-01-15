@@ -48,11 +48,14 @@ class PublicOrderHistoryController extends Controller
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'items' => $order->items->map(function ($item) {
                     $thumbnail = $item->product?->cover_image_url;
+                    $productType = $item->product?->type;
 
                     return [
                         'id' => $item->id,
                         'product_id' => $item->product_id,
                         'product_variant_id' => $item->product_variant_id,
+                        'product_type' => $productType,
+                        'is_variant_product' => $productType === 'variant',
                         'product_slug' => $item->product?->slug,
                         'name' => $item->product_name_snapshot,
                         'sku' => $item->sku_snapshot,
@@ -97,11 +100,14 @@ class PublicOrderHistoryController extends Controller
 
         $items = $order->items->map(function ($item) {
             $thumbnail = $item->product?->cover_image_url;
+            $productType = $item->product?->type;
 
             return [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
                 'product_variant_id' => $item->product_variant_id,
+                'product_type' => $productType,
+                'is_variant_product' => $productType === 'variant',
                 'product_slug' => $item->product?->slug,
                 'name' => $item->product_name_snapshot,
                 'sku' => $item->sku_snapshot,

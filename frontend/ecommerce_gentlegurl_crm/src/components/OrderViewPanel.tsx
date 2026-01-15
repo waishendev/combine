@@ -53,7 +53,12 @@ type OrderDetailData = {
   }
   items?: Array<{
     product_id: number
+    product_variant_id?: number | null
+    product_type?: string | null
+    is_variant_product?: boolean | null
     product_name: string
+    variant_name?: string | null
+    variant_sku?: string | null
     quantity: number
     unit_price?: string | null
     line_total: string
@@ -439,7 +444,15 @@ export default function OrderViewPanel({
                                   imagePath={item.product_image}
                                   alt={item.product_name}
                                 />
-                                <span className="font-medium text-slate-900">{item.product_name}</span>
+                                <div>
+                                  <div className="font-medium text-slate-900">{item.product_name}</div>
+                                  {(item.product_type === 'variant' || item.product_variant_id) && (
+                                    <div className="text-xs text-slate-500">
+                                      Variant: {item.variant_name ?? '—'}
+                                      {item.variant_sku ? ` (${item.variant_sku})` : ''}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </td>
                             <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>

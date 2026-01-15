@@ -4,6 +4,11 @@ export type ReturnRequestItem = {
   order_item_id: number;
   product_name?: string | null;
   sku?: string | null;
+  product_variant_id?: number | null;
+  product_type?: string | null;
+  is_variant_product?: boolean | null;
+  variant_name?: string | null;
+  variant_sku?: string | null;
   order_quantity?: number | null;
   requested_quantity?: number | null;
   product_image?: string | null;

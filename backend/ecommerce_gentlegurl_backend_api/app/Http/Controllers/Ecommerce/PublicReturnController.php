@@ -91,6 +91,7 @@ class PublicReturnController extends Controller
 
         $orderItems = OrderItem::where('order_id', $order->id)
             ->whereIn('id', collect($validated['items'])->pluck('order_item_id'))
+            ->with('product')
             ->get()
             ->keyBy('id');
 
@@ -185,9 +186,15 @@ class PublicReturnController extends Controller
             'initial_image_urls' => $returnRequest->initial_image_urls,
             'item_summaries' => $returnRequest->items->map(function (ReturnRequestItem $item) use ($orderItems) {
                 $orderItem = $orderItems->get($item->order_item_id);
+                $productType = $orderItem?->product?->type;
                 return [
                     'order_item_id' => $item->order_item_id,
                     'product_name' => $orderItem?->product_name_snapshot,
+                    'product_variant_id' => $orderItem?->product_variant_id,
+                    'product_type' => $productType,
+                    'is_variant_product' => $productType === 'variant',
+                    'variant_name' => $orderItem?->variant_name_snapshot,
+                    'variant_sku' => $orderItem?->variant_sku_snapshot,
                     'quantity' => $item->quantity,
                 ];
             })->values(),
@@ -243,6 +250,7 @@ class PublicReturnController extends Controller
                 'refunded_at' => $request->refunded_at,
                 'items' => $request->items->map(function (ReturnRequestItem $item) {
                     $thumbnail = $item->orderItem?->product?->cover_image_url;
+                    $productType = $item->orderItem?->product?->type;
 
                     return [
                         'order_item_id' => $item->order_item_id,
@@ -250,6 +258,11 @@ class PublicReturnController extends Controller
                         'requested_quantity' => $item->quantity,
                         'quantity' => $item->orderItem?->quantity,
                         'sku' => $item->orderItem?->sku_snapshot,
+                        'product_variant_id' => $item->orderItem?->product_variant_id,
+                        'product_type' => $productType,
+                        'is_variant_product' => $productType === 'variant',
+                        'variant_name' => $item->orderItem?->variant_name_snapshot,
+                        'variant_sku' => $item->orderItem?->variant_sku_snapshot,
                         'product_image' => $thumbnail,
                         'cover_image_url' => $thumbnail,
                     ];
@@ -276,6 +289,7 @@ class PublicReturnController extends Controller
         $items = $returnRequest->items->map(function (ReturnRequestItem $item) {
             $thumbnail = $item->orderItem?->product?->cover_image_url;
             $unitPrice = $item->orderItem?->price_snapshot;
+            $productType = $item->orderItem?->product?->type;
 
             if ($unitPrice !== null) {
                 $unitPrice = number_format((float) $unitPrice, 2, '.', '');
@@ -285,6 +299,11 @@ class PublicReturnController extends Controller
                 'order_item_id' => $item->order_item_id,
                 'product_name' => $item->orderItem?->product_name_snapshot,
                 'sku' => $item->orderItem?->sku_snapshot,
+                'product_variant_id' => $item->orderItem?->product_variant_id,
+                'product_type' => $productType,
+                'is_variant_product' => $productType === 'variant',
+                'variant_name' => $item->orderItem?->variant_name_snapshot,
+                'variant_sku' => $item->orderItem?->variant_sku_snapshot,
                 'order_quantity' => $item->orderItem?->quantity,
                 'requested_quantity' => $item->quantity,
                 'product_image' => $thumbnail,

@@ -720,8 +720,13 @@ export type OrderTrackingResponse = {
     };
     items: {
       product_id?: number | null;
+      product_variant_id?: number | null;
+      product_type?: string | null;
+      is_variant_product?: boolean | null;
       product_name: string;
       product_slug?: string | null;
+      variant_name?: string | null;
+      variant_sku?: string | null;
       product_image?: string | null;
       cover_image_url?: string | null;
       quantity: number;

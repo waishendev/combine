@@ -20,6 +20,11 @@ export type ReturnRequestSummary = {
     requested_quantity?: number | null;
     quantity?: number | null;
     sku?: string | null;
+    product_variant_id?: number | null;
+    product_type?: string | null;
+    is_variant_product?: boolean | null;
+    variant_name?: string | null;
+    variant_sku?: string | null;
     product_image?: string | null;
     cover_image_url?: string | null;
   }> | null;

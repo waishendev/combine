@@ -37,6 +37,24 @@ class ProductController extends Controller
             })
             ->paginate($perPage);
 
+        $products->getCollection()->transform(function (Product $product) {
+            $variants = $product->relationLoaded('variants') ? $product->variants : collect();
+            $variantPrices = $variants
+                ->map(fn(ProductVariant $variant) => $variant->price)
+                ->filter(fn($value) => $value !== null)
+                ->map(fn($value) => (float) $value)
+                ->values();
+
+            $minPrice = $variantPrices->isNotEmpty() ? $variantPrices->min() : null;
+            $maxPrice = $variantPrices->isNotEmpty() ? $variantPrices->max() : null;
+
+            $product->setAttribute('min_variant_price', $minPrice);
+            $product->setAttribute('max_variant_price', $maxPrice);
+            $product->setAttribute('variants_count', $variants->count());
+
+            return $product;
+        });
+
         return $this->respond($products);
     }
 

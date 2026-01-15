@@ -30,11 +30,17 @@ class PublicOrderTrackingController extends Controller
 
         $items = $order->items->map(function ($item) {
             $thumbnail = $item->product?->cover_image_url;
+            $productType = $item->product?->type;
 
             return [
                 'product_id' => $item->product_id,
+                'product_variant_id' => $item->product_variant_id,
+                'product_type' => $productType,
+                'is_variant_product' => $productType === 'variant',
                 'product_name' => $item->product_name_snapshot ?? $item->product?->name,
                 'product_slug' => $item->product?->slug,
+                'variant_name' => $item->variant_name_snapshot,
+                'variant_sku' => $item->variant_sku_snapshot,
                 'product_image' => $thumbnail,
                 'cover_image_url' => $thumbnail,
                 'quantity' => $item->quantity,

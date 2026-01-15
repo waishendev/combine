@@ -44,6 +44,9 @@ export interface ProductRowData {
   type: string
   description: string
   price: number
+  minVariantPrice?: number | null
+  maxVariantPrice?: number | null
+  variantsCount?: number
   costPrice: number
   stock: number
   lowStockThreshold: number
@@ -85,6 +88,30 @@ export default function ProductRow({
 }: ProductRowProps) {
   const { t } = useI18n()
   const mainImage = product.images.find((image) => image.isMain) ?? product.images[0]
+  const formatAmount = (value: number) =>
+    value.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+
+  const renderPrice = () => {
+    if (product.type === 'variant') {
+      const minPrice = product.minVariantPrice
+      const maxPrice = product.maxVariantPrice
+      if (typeof minPrice !== 'number' || typeof maxPrice !== 'number') {
+        return '—'
+      }
+      if (Number.isNaN(minPrice) || Number.isNaN(maxPrice)) {
+        return '—'
+      }
+      if (minPrice === maxPrice) {
+        return `RM ${formatAmount(minPrice)}`
+      }
+      return `RM ${formatAmount(minPrice)} - ${formatAmount(maxPrice)}`
+    }
+
+    return `RM ${formatAmount(product.price)}`
+  }
 
   return (
     <tr className="text-sm">
@@ -107,7 +134,7 @@ export default function ProductRow({
       {!hideCategories && (
         <td className="px-4 py-2 border border-gray-200">{product.categories}</td>
       )}
-      <td className="px-4 py-2 border border-gray-200">{product.price.toFixed(2)}</td>
+      <td className="px-4 py-2 border border-gray-200">{renderPrice()}</td>
       <td className="px-4 py-2 border border-gray-200">{product.stock}</td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
