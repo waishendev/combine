@@ -376,7 +376,15 @@ class PublicHomepageController extends Controller
             return $counts;
         }
 
-        $variantProducts->loadMissing('variants');
+        if ($variantProducts instanceof \Illuminate\Database\Eloquent\Collection) {
+            $variantProducts->loadMissing('variants');
+        } else {
+            $variantIds = $variantProducts->pluck('id')->all();
+            $variantProducts = Product::query()
+                ->whereIn('id', $variantIds)
+                ->with('variants')
+                ->get();
+        }
         $variantIdToProductId = [];
         foreach ($variantProducts as $product) {
             foreach ($product->variants as $variant) {

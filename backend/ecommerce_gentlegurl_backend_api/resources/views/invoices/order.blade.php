@@ -455,8 +455,8 @@
 
                 <!-- Optional: show price x qty in a friendly way -->
                 <!-- <div class="price-line">
-                  {{ $currency }} {{ number_format((float) $item->price_snapshot, 2) }}
-                  × {{ (int) $item->quantity }}
+                  {{ $currency }} {{ number_format((float) $item['unit_price'], 2) }}
+                  × {{ (int) $item['quantity'] }}
                 </div> -->
               </td>
 
