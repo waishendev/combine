@@ -46,7 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         // 处理验证异常 - 返回 422 错误
         $exceptions->render(function (Illuminate\Validation\ValidationException $e, \Illuminate\Http\Request $request) {
-            if ($request->expectsJson() || $request->is('api/*')) {
+            if ($request->expectsJson() || $request->is('api/*') || $request->is('public/shop*')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
@@ -58,7 +58,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // 处理认证异常 - 返回 401 错误
         $exceptions->render(function (Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {
-            if ($request->expectsJson() || $request->is('api/*')) {
+            if ($request->expectsJson() || $request->is('api/*') || $request->is('public/shop*')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthenticated',
@@ -70,7 +70,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // 处理授权异常 - 返回 403 错误
         $exceptions->render(function (Illuminate\Auth\Access\AuthorizationException $e, \Illuminate\Http\Request $request) {
-            if ($request->expectsJson() || $request->is('api/*')) {
+            if ($request->expectsJson() || $request->is('api/*') || $request->is('public/shop*')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Forbidden',
@@ -82,7 +82,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // 处理路由未找到异常（通常由认证中间件尝试重定向到不存在的路由引起）
         $exceptions->render(function (Symfony\Component\Routing\Exception\RouteNotFoundException $e, \Illuminate\Http\Request $request) {
-            if ($request->expectsJson() || $request->is('api/*')) {
+            if ($request->expectsJson() || $request->is('api/*') || $request->is('public/shop*')) {
                 // 如果是 API 路由，返回 401 未认证错误而不是路由未找到
                 return response()->json([
                     'success' => false,
@@ -95,7 +95,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // 处理 HTTP 异常
         $exceptions->render(function (Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e, \Illuminate\Http\Request $request) {
-            if ($request->expectsJson() || $request->is('api/*')) {
+            if ($request->expectsJson() || $request->is('api/*') || $request->is('public/shop*')) {
                 return response()->json([
                     'success' => false,
                     'message' => $e->getMessage() ?: 'HTTP Error',

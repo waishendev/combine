@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { normalizeImageUrl } from "../imageUrl";
 import { ReviewItem, ReviewSettings, ReviewSummary } from "../types/reviews";
+import { fetchJson } from "./fetchJson";
 
 export type ProductImage = {
   id: number;
@@ -121,28 +122,25 @@ export async function getProduct(slug: string, options?: { reward?: boolean }): 
     const qs = searchParams.toString();
     const url = `${siteUrl}/api/proxy/public/shop/products/${slug}${qs ? `?${qs}` : ""}`;
 
-    const res = await fetch(url, {
+    const json = await fetchJson(url, {
       method: "GET",
       headers: {
-        Accept: "application/json",
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
-      cache: "no-store",
     });
-
-    if (!res.ok) {
-      console.error("[getProduct] Failed:", res.status, await res.text());
-      return null;
-    }
-
-    const json = await res.json();
     const product = (json.data as ProductDetail) ?? null;
 
     if (!product) return null;
 
     return normalizeProductImages(product);
   } catch (error) {
+    if (error instanceof Error) {
+      const message = error.message;
+      if (message.includes("HTTP 404") || message.includes("status=404")) {
+        return null;
+      }
+    }
     console.error("[getProduct] Error:", error);
-    return null;
+    throw error;
   }
 }
