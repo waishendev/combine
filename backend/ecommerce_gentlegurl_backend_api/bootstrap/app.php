@@ -104,4 +104,16 @@ return Application::configure(basePath: dirname(__DIR__))
                 ], $e->getStatusCode());
             }
         });
+
+        // 兜底处理未捕获异常，确保 public/shop 返回 JSON 而不是 HTML
+        $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
+            if ($request->expectsJson() || $request->is('api/*') || $request->is('public/shop*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Server Error',
+                    'errors' => null,
+                    'data' => null,
+                ], 500);
+            }
+        });
     })->create();
