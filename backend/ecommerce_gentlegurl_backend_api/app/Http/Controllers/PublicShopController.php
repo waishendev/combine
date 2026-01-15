@@ -360,8 +360,15 @@ class PublicShopController extends Controller
     {
         $allowRewardOnly = $request->boolean('reward', false);
 
-        $product = Product::with(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct'])
-            ->where('slug', $slug)
+        $productQuery = Product::with(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct']);
+
+        if (preg_match('/^\d+$/', $slug) === 1) {
+            $productQuery->where('id', $slug);
+        } else {
+            $productQuery->where('slug', $slug);
+        }
+
+        $product = $productQuery
             ->where('is_active', true)
             ->when(!$allowRewardOnly, fn($query) => $query->where('is_reward_only', false))
             ->firstOrFail();

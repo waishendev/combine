@@ -29,11 +29,12 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     return {};
   }
 
+  const productSlug = (product as { slug?: string | null }).slug ?? slug;
   const homepageSeo = homepage?.seo ?? null;
   const productSeo = (product as { seo?: SeoPayload | null }).seo ?? null;
   const baseMetadata = mapSeoToMetadata(productSeo, homepageSeo);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-  const canonicalUrl = new URL(`/product/${slug}`, siteUrl).toString();
+  const canonicalUrl = new URL(`/product/${productSlug}`, siteUrl).toString();
 
   const resolvedTitle =
     typeof baseMetadata.title === "string" ? baseMetadata.title : product.name;
@@ -93,19 +94,20 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   const product = await getProduct(slug, { reward: isRewardContext });
   if (!product) return notFound();
 
+  const productSlug = (product as { slug?: string | null }).slug ?? slug;
   const rewardPoints =
     (product as { points_required?: number | null })?.points_required ??
     (product as { reward_points_required?: number | null })?.reward_points_required ??
     null;
 
   const [reviewsData, eligibility] = await Promise.all([
-    getProductReviews(slug),
-    getProductReviewEligibility(slug),
+    getProductReviews(productSlug),
+    getProductReviewEligibility(productSlug),
   ]);
 
   return (
     <ProductDetailClient
-      slug={slug}
+      slug={productSlug}
       product={{
         ...product,
         related_products: Array.isArray(product.related_products)
