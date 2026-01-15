@@ -16,6 +16,7 @@ use App\Services\Ecommerce\ProductReviewService;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
 
 class PublicShopController extends Controller
@@ -535,6 +536,10 @@ class PublicShopController extends Controller
 
         $variantProducts = $products->filter(fn(Product $product) => $product->type === 'variant');
         if ($variantProducts->isEmpty()) {
+            return $counts;
+        }
+
+        if (!Schema::hasColumn('order_items', 'product_variant_id')) {
             return $counts;
         }
 
