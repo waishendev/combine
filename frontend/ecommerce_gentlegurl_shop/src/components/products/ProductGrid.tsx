@@ -34,9 +34,11 @@ export default function ProductGrid({ items }: ProductGridProps) {
   return (
     <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
       {items?.map((product) => {
+        const normalizedSlug =
+          typeof product.slug === "string" ? product.slug.trim().toLowerCase() : null;
         const resolvedSlug =
-          typeof product.slug === "string" && product.slug.trim().length > 0
-            ? product.slug.trim()
+          normalizedSlug && !["null", "undefined"].includes(normalizedSlug)
+            ? product.slug!.trim()
             : product.id
               ? String(product.id)
               : "";
