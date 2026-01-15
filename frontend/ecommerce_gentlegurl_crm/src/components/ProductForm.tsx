@@ -2445,23 +2445,23 @@ export default function ProductForm({
                   placeholder="0"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="dummySoldCount">
-                  Extra Sold (Display Only)
-                </label>
-                <input
-                  id="dummySoldCount"
-                  name="dummySoldCount"
-                  type="number"
-                  min="0"
-                  value={form.dummySoldCount}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="0"
-                />
-              </div>
             </>
           )}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700" htmlFor="dummySoldCount">
+              Extra Sold (Display Only)
+            </label>
+            <input
+              id="dummySoldCount"
+              name="dummySoldCount"
+              type="number"
+              min="0"
+              value={form.dummySoldCount}
+              onChange={handleChange}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              placeholder="0"
+            />
+          </div>
           {mode === 'edit' && !rewardOnly && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="status">

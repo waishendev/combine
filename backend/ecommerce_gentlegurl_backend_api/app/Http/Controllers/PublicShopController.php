@@ -229,7 +229,7 @@ class PublicShopController extends Controller
             ->paginate($perPage)
             ->appends($request->query());
 
-        $realSoldCounts = $this->calculateRealSoldCounts($products->getCollection()->pluck('id')->all());
+        $realSoldCounts = $this->calculateRealSoldCountsForProducts($products->getCollection());
 
         $products->setCollection(
             $products->getCollection()->map(function (Product $product) use ($wishlistLookup, $realSoldCounts) {
@@ -404,7 +404,7 @@ class PublicShopController extends Controller
                 });
         }
 
-        $realSoldCountLookup = $this->calculateRealSoldCounts([$product->id]);
+        $realSoldCountLookup = $this->calculateRealSoldCountsForProducts(collect([$product]));
         $realSoldCount = $realSoldCountLookup[$product->id] ?? 0;
         $dummySoldCount = (int) ($product->dummy_sold_count ?? 0);
         $soldCount = $realSoldCount + $dummySoldCount;
@@ -496,22 +496,69 @@ class PublicShopController extends Controller
         return $this->respond($data);
     }
 
-    protected function calculateRealSoldCounts(array $productIds): array
+    protected function calculateRealSoldCountsForProducts($products): array
     {
-        if (empty($productIds)) {
+        $products = collect($products);
+        if ($products->isEmpty()) {
             return [];
         }
 
-        return OrderItem::query()
-            ->selectRaw('product_id, SUM(quantity) AS total_qty')
-            ->whereIn('product_id', $productIds)
+        $nonVariantIds = $products
+            ->filter(fn(Product $product) => $product->type !== 'variant')
+            ->pluck('id')
+            ->all();
+
+        $counts = [];
+        if (!empty($nonVariantIds)) {
+            $counts = OrderItem::query()
+                ->selectRaw('product_id, SUM(quantity) AS total_qty')
+                ->whereIn('product_id', $nonVariantIds)
+                ->whereHas('order', function ($query) {
+                    $query->where('payment_status', 'paid');
+                })
+                ->groupBy('product_id')
+                ->pluck('total_qty', 'product_id')
+                ->map(fn($qty) => (int) $qty)
+                ->all();
+        }
+
+        $variantProducts = $products->filter(fn(Product $product) => $product->type === 'variant');
+        if ($variantProducts->isEmpty()) {
+            return $counts;
+        }
+
+        $variantProducts->loadMissing('variants');
+        $variantIdToProductId = [];
+        foreach ($variantProducts as $product) {
+            foreach ($product->variants as $variant) {
+                $variantIdToProductId[$variant->id] = $product->id;
+            }
+        }
+
+        if (empty($variantIdToProductId)) {
+            return $counts;
+        }
+
+        $variantCounts = OrderItem::query()
+            ->selectRaw('product_variant_id, SUM(quantity) AS total_qty')
+            ->whereIn('product_variant_id', array_keys($variantIdToProductId))
             ->whereHas('order', function ($query) {
                 $query->where('payment_status', 'paid');
             })
-            ->groupBy('product_id')
-            ->pluck('total_qty', 'product_id')
+            ->groupBy('product_variant_id')
+            ->pluck('total_qty', 'product_variant_id')
             ->map(fn($qty) => (int) $qty)
             ->all();
+
+        foreach ($variantCounts as $variantId => $qty) {
+            $productId = $variantIdToProductId[$variantId] ?? null;
+            if (!$productId) {
+                continue;
+            }
+            $counts[$productId] = ($counts[$productId] ?? 0) + $qty;
+        }
+
+        return $counts;
     }
 
     protected function resolvePriceRange(Product $product): array
