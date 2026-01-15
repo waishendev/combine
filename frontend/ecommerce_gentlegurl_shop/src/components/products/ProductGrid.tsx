@@ -34,7 +34,12 @@ export default function ProductGrid({ items }: ProductGridProps) {
   return (
     <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
       {items?.map((product) => {
-        const productSlug = product.slug ?? product.id;
+        const resolvedSlug =
+          typeof product.slug === "string" && product.slug.trim().length > 0
+            ? product.slug.trim()
+            : product.id
+              ? String(product.id)
+              : "";
         const priceNumber = Number(product.price);
         const priceLabel = Number.isFinite(priceNumber) ? priceNumber.toFixed(2) : product.price;
         const image = getPrimaryProductImage(product);
@@ -55,7 +60,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
               />
             </div>
 
-            <Link href={`/product/${productSlug}`} className="block">
+            <Link href={`/product/${resolvedSlug}`} prefetch={false} className="block">
               <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {/* <Image
