@@ -106,6 +106,7 @@ class ReturnRequestController extends Controller
 
                 return [
                     'product_id' => $orderItem?->product_id,
+                    'product_sku' => $orderItem?->sku_snapshot,
                     'product_variant_id' => $orderItem?->product_variant_id,
                     'product_type' => $productType,
                     'is_variant_product' => $productType === 'variant',

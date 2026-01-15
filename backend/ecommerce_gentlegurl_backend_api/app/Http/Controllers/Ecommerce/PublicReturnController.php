@@ -190,6 +190,7 @@ class PublicReturnController extends Controller
                 return [
                     'order_item_id' => $item->order_item_id,
                     'product_name' => $orderItem?->product_name_snapshot,
+                    'product_sku' => $orderItem?->sku_snapshot,
                     'product_variant_id' => $orderItem?->product_variant_id,
                     'product_type' => $productType,
                     'is_variant_product' => $productType === 'variant',
@@ -258,6 +259,7 @@ class PublicReturnController extends Controller
                         'requested_quantity' => $item->quantity,
                         'quantity' => $item->orderItem?->quantity,
                         'sku' => $item->orderItem?->sku_snapshot,
+                        'product_sku' => $item->orderItem?->sku_snapshot,
                         'product_variant_id' => $item->orderItem?->product_variant_id,
                         'product_type' => $productType,
                         'is_variant_product' => $productType === 'variant',
@@ -299,6 +301,7 @@ class PublicReturnController extends Controller
                 'order_item_id' => $item->order_item_id,
                 'product_name' => $item->orderItem?->product_name_snapshot,
                 'sku' => $item->orderItem?->sku_snapshot,
+                'product_sku' => $item->orderItem?->sku_snapshot,
                 'product_variant_id' => $item->orderItem?->product_variant_id,
                 'product_type' => $productType,
                 'is_variant_product' => $productType === 'variant',

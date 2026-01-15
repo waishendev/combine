@@ -37,8 +37,10 @@ export type ProductDetail = {
   gallery?: (ProductImage | string)[];
   is_in_wishlist?: boolean;
   dummy_sold_count?: number | null;
+  extra_sold?: number | null;
   real_sold_count?: number | null;
   sold_count?: number | null;
+  sold_total?: number | null;
   is_reward_only?: boolean;
   related_products?: unknown;
   review_summary?: ReviewSummary;

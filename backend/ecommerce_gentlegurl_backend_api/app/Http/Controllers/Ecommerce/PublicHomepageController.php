@@ -186,9 +186,14 @@ class PublicHomepageController extends Controller
         $wishlistIds = $this->resolveWishlistProductIds($request);
         $wishlistLookup = array_flip($wishlistIds);
 
-        $data['new_products'] = $this->mapProductsWithWishlistStatus($data['new_products'], $wishlistLookup);
-        $data['best_sellers'] = $this->mapProductsWithWishlistStatus($data['best_sellers'], $wishlistLookup);
-        $data['featured_products'] = $this->mapProductsWithWishlistStatus($data['featured_products'], $wishlistLookup);
+        $allProducts = collect($data['new_products'])
+            ->merge($data['best_sellers'])
+            ->merge($data['featured_products']);
+        $realSoldCounts = $this->calculateRealSoldCountsForProducts($allProducts);
+
+        $data['new_products'] = $this->mapProductsWithWishlistStatus($data['new_products'], $wishlistLookup, $realSoldCounts);
+        $data['best_sellers'] = $this->mapProductsWithWishlistStatus($data['best_sellers'], $wishlistLookup, $realSoldCounts);
+        $data['featured_products'] = $this->mapProductsWithWishlistStatus($data['featured_products'], $wishlistLookup, $realSoldCounts);
 
         return response()->json([
             'data' => $data,
@@ -319,19 +324,90 @@ class PublicHomepageController extends Controller
         return $query->pluck('product_id')->all();
     }
 
-    protected function mapProductsWithWishlistStatus($products, array $wishlistLookup)
+    protected function mapProductsWithWishlistStatus($products, array $wishlistLookup, array $realSoldCounts = [])
     {
-        return collect($products)->map(function (Product $product) use ($wishlistLookup) {
+        return collect($products)->map(function (Product $product) use ($wishlistLookup, $realSoldCounts) {
             $product->setAttribute('is_in_wishlist', isset($wishlistLookup[$product->id]));
             [$minPrice, $maxPrice, $priceDisplay] = $this->resolvePriceRange($product);
+            $realSoldCount = $realSoldCounts[$product->id] ?? 0;
+            $dummySoldCount = (int) ($product->dummy_sold_count ?? 0);
+            $soldTotal = $realSoldCount + $dummySoldCount;
             if ($product->type === 'variant' && $minPrice !== null) {
                 $product->setAttribute('price', $minPrice);
             }
             $product->setAttribute('min_price', $minPrice);
             $product->setAttribute('max_price', $maxPrice);
             $product->setAttribute('price_display', $priceDisplay);
+            $product->setAttribute('extra_sold', $dummySoldCount);
+            $product->setAttribute('real_sold_count', $realSoldCount);
+            $product->setAttribute('sold_total', $soldTotal);
             return $product;
         });
+    }
+
+    protected function calculateRealSoldCountsForProducts($products): array
+    {
+        $products = collect($products);
+        if ($products->isEmpty()) {
+            return [];
+        }
+
+        $nonVariantIds = $products
+            ->filter(fn(Product $product) => $product->type !== 'variant')
+            ->pluck('id')
+            ->all();
+
+        $counts = [];
+        if (!empty($nonVariantIds)) {
+            $counts = OrderItem::query()
+                ->selectRaw('product_id, SUM(quantity) AS total_qty')
+                ->whereIn('product_id', $nonVariantIds)
+                ->whereHas('order', function ($query) {
+                    $query->where('payment_status', 'paid');
+                })
+                ->groupBy('product_id')
+                ->pluck('total_qty', 'product_id')
+                ->map(fn($qty) => (int) $qty)
+                ->all();
+        }
+
+        $variantProducts = $products->filter(fn(Product $product) => $product->type === 'variant');
+        if ($variantProducts->isEmpty()) {
+            return $counts;
+        }
+
+        $variantProducts->loadMissing('variants');
+        $variantIdToProductId = [];
+        foreach ($variantProducts as $product) {
+            foreach ($product->variants as $variant) {
+                $variantIdToProductId[$variant->id] = $product->id;
+            }
+        }
+
+        if (empty($variantIdToProductId)) {
+            return $counts;
+        }
+
+        $variantCounts = OrderItem::query()
+            ->selectRaw('product_variant_id, SUM(quantity) AS total_qty')
+            ->whereIn('product_variant_id', array_keys($variantIdToProductId))
+            ->whereHas('order', function ($query) {
+                $query->where('payment_status', 'paid');
+            })
+            ->groupBy('product_variant_id')
+            ->pluck('total_qty', 'product_variant_id')
+            ->map(fn($qty) => (int) $qty)
+            ->all();
+
+        foreach ($variantCounts as $variantId => $qty) {
+            $productId = $variantIdToProductId[$variantId] ?? null;
+            if (!$productId) {
+                continue;
+            }
+            $counts[$productId] = ($counts[$productId] ?? 0) + $qty;
+        }
+
+        return $counts;
     }
 
     protected function resolvePriceRange(Product $product): array

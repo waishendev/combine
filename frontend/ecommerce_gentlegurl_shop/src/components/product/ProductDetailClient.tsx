@@ -34,6 +34,8 @@ type ProductDetailClientProps = {
     is_reward_only?: boolean;
     description?: string | null;
     sold_count?: number | null;
+    sold_total?: number | null;
+    extra_sold?: number | null;
     variants?: VariantItem[];
     related_products?: Array<{
       id: number | string;
@@ -132,7 +134,9 @@ export default function ProductDetailClient({
   const showStock = !isRewardOnly && trackStock && (!isVariantProduct || !!selectedVariant);
   const stockForCart = trackStock ? stockValue : null;
 
-  const soldCountValue = Number(product.sold_count ?? 0);
+  const soldCountValue = Number(
+    product.sold_total ?? (Number(product.sold_count ?? 0) + Number(product.extra_sold ?? 0)),
+  );
   const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
 
   const relatedProducts = Array.isArray(product.related_products)

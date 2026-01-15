@@ -15,6 +15,7 @@ type ReturnItem = {
   is_variant_product?: boolean | null
   variant_name?: string | null
   variant_sku?: string | null
+  product_sku?: string | null
   // Legacy fields for backward compatibility
   order_item_id?: number
   product_name_snapshot?: string | null
@@ -492,7 +493,7 @@ export default function ReturnViewPanel({
                           const productName = item.product_name ?? item.product_name_snapshot ?? 'Item'
                           const quantity = item.quantity ?? item.requested_quantity ?? 0
                           const productImage = item.product_image ?? item.cover_image_url ?? null
-                          const sku = item.sku_snapshot ?? '—'
+                          const sku = item.variant_sku ?? item.product_sku ?? item.sku_snapshot ?? '—'
                           const imageUrl = getImageUrl(productImage)
                           
                           return (
