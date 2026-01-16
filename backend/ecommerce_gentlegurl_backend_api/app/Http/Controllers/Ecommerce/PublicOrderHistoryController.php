@@ -52,7 +52,7 @@ class PublicOrderHistoryController extends Controller
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
-                'items' => $order->items->map(function ($item) use ($order, $reviewWindowDays) {
+                'items' => $order->items->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
                     $thumbnail = $item->product?->cover_image_url;
                     $productType = $item->product?->type;
                     $review = $item->review;
@@ -120,7 +120,7 @@ class PublicOrderHistoryController extends Controller
         $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
         $reviewWindowDays = (int) ($reviewSettings['review_window_days'] ?? 30);
 
-        $items = $order->items->map(function ($item) use ($order, $reviewWindowDays) {
+        $items = $order->items->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
             $thumbnail = $item->product?->cover_image_url;
             $productType = $item->product?->type;
             $review = $item->review;
