@@ -8,11 +8,9 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::table('product_reviews', function (Blueprint $table) {
-            $table->foreignId('variant_id')
+            $table->unsignedBigInteger('variant_id')
                 ->nullable()
-                ->after('order_item_id')
-                ->constrained('product_variants')
-                ->nullOnDelete();
+                ->after('order_item_id');
 
             $table->dropUnique('product_reviews_customer_id_product_id_unique');
             $table->unique('order_item_id');
@@ -24,7 +22,7 @@ return new class extends Migration {
         Schema::table('product_reviews', function (Blueprint $table) {
             $table->dropUnique(['order_item_id']);
             $table->unique(['customer_id', 'product_id']);
-            $table->dropConstrainedForeignId('variant_id');
+            $table->dropColumn('variant_id');
         });
     }
 };
