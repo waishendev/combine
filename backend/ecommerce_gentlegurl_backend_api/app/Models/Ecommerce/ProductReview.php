@@ -14,6 +14,7 @@ class ProductReview extends Model
         'customer_id',
         'order_id',
         'order_item_id',
+        'variant_id',
         'rating',
         'title',
         'body',
@@ -44,5 +45,10 @@ class ProductReview extends Model
     public function orderItem()
     {
         return $this->belongsTo(OrderItem::class);
+    }
+
+    public function variant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 }

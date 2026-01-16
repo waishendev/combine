@@ -51,7 +51,7 @@ class ProductReviewService
 
     public function recentReviews(int $productId, int $limit = 3): array
     {
-        return ProductReview::with('customer')
+        return ProductReview::with(['customer', 'orderItem.productVariant'])
             ->where('product_id', $productId)
             ->orderByDesc('created_at')
             ->limit($limit)
@@ -62,6 +62,12 @@ class ProductReviewService
 
     public function transformReview(ProductReview $review): array
     {
+        $orderItem = $review->orderItem;
+        $variant = $orderItem?->productVariant;
+        $variantName = $orderItem?->variant_name_snapshot ?? $variant?->title;
+        $variantSku = $orderItem?->variant_sku_snapshot ?? $variant?->sku;
+        $variantId = $review->variant_id ?? $orderItem?->product_variant_id ?? $variant?->id;
+
         return [
             'id' => $review->id,
             'rating' => $review->rating,
@@ -69,6 +75,11 @@ class ProductReviewService
             'body' => $review->body,
             'customer_name' => $review->customer?->name ?? 'Anonymous',
             'created_at' => $review->created_at?->toIso8601String(),
+            'variant' => $variantId ? [
+                'id' => $variantId,
+                'name' => $variantName,
+                'sku' => $variantSku,
+            ] : null,
         ];
     }
 
@@ -117,17 +128,17 @@ class ProductReviewService
 
         $existingReview = ProductReview::where('product_id', $product->id)
             ->where('customer_id', $customer->id)
+            ->orderByDesc('created_at')
             ->first();
 
-        $latestCustomerOrderItem = OrderItem::with('order')
-            ->where('product_id', $product->id)
+        $latestCustomerOrderItem = OrderItem::where('product_id', $product->id)
             ->whereHas('order', function ($query) use ($customer) {
                 $query->where('customer_id', $customer->id);
             })
-            ->orderByDesc('id')
+            ->latest('id')
             ->first();
 
-        $completedOrderItem = OrderItem::with('order')
+        $completedOrderItems = OrderItem::with(['order', 'review'])
             ->where('product_id', $product->id)
             ->whereHas('order', function ($query) use ($customer) {
                 $query->where('customer_id', $customer->id)
@@ -135,24 +146,40 @@ class ProductReviewService
             })
             ->orderByDesc('order_id')
             ->orderByDesc('id')
-            ->first();
+            ->get();
 
         if (! $latestCustomerOrderItem) {
             $reason = 'NOT_PURCHASED';
-        } elseif (! $completedOrderItem) {
+        } elseif ($completedOrderItems->isEmpty()) {
             $reason = 'ORDER_NOT_COMPLETED';
         } else {
-            $eligibleOrderItem = $completedOrderItem;
-            $completedAt = $this->resolveCompletionDate($completedOrderItem->order);
-            $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
+            $hasReviewed = false;
+            $hasExpired = false;
 
-            if ($existingReview) {
-                $reason = 'ALREADY_REVIEWED';
-            } elseif ($deadlineAt && Carbon::now()->greaterThan($deadlineAt)) {
-                $reason = 'REVIEW_WINDOW_EXPIRED';
-            } else {
+            foreach ($completedOrderItems as $orderItem) {
+                if ($orderItem->review) {
+                    $hasReviewed = true;
+                    continue;
+                }
+
+                $completedAt = $this->resolveCompletionDate($orderItem->order);
+                $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
+
+                if ($deadlineAt && Carbon::now()->greaterThan($deadlineAt)) {
+                    $hasExpired = true;
+                    continue;
+                }
+
+                $eligibleOrderItem = $orderItem;
                 $canReview = true;
                 $reason = null;
+                break;
+            }
+
+            if (! $eligibleOrderItem) {
+                $reason = $hasExpired ? 'REVIEW_WINDOW_EXPIRED' : 'ALREADY_REVIEWED';
+                $completedAt = $this->resolveCompletionDate($completedOrderItems->first()?->order);
+                $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
             }
         }
 
@@ -168,7 +195,7 @@ class ProductReviewService
         ];
     }
 
-    protected function resolveCompletionDate(?Order $order): ?Carbon
+    public function resolveCompletionDate(?Order $order): ?Carbon
     {
         if (! $order) {
             return null;

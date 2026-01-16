@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\ProductReview;
 use App\Services\Ecommerce\ProductReviewService;
 use Illuminate\Http\Request;
@@ -23,7 +24,7 @@ class PublicProductReviewController extends Controller
             ->where('is_active', true)
             ->firstOrFail();
 
-        $reviews = ProductReview::with('customer')
+        $reviews = ProductReview::with(['customer', 'orderItem.productVariant'])
             ->where('product_id', $product->id)
             ->orderByDesc('created_at')
             ->get()
@@ -55,6 +56,7 @@ class PublicProductReviewController extends Controller
             'review_window_days' => $eligibility['review_window_days'],
             'completed_at' => $eligibility['completed_at']?->toIso8601String(),
             'deadline_at' => $eligibility['deadline_at']?->toIso8601String(),
+            'eligible_order_item_id' => $eligibility['eligible_order_item']?->id,
         ]);
     }
 
@@ -63,6 +65,7 @@ class PublicProductReviewController extends Controller
         $customer = $this->requireCustomer();
 
         $validated = $request->validate([
+            'order_item_id' => ['required', 'integer', 'exists:order_items,id'],
             'rating' => ['required', 'integer', 'min:1', 'max:5'],
             'title' => ['nullable', 'string', 'max:120'],
             'body' => ['required', 'string', 'max:2000'],
@@ -80,19 +83,41 @@ class PublicProductReviewController extends Controller
             ]);
         }
 
-        $eligibility = $this->reviewService->determineEligibility($product, $customer);
+        $orderItem = OrderItem::with(['order', 'review'])
+            ->where('id', $validated['order_item_id'])
+            ->firstOrFail();
 
-        if (! $eligibility['can_review']) {
+        if (! $orderItem->order || $orderItem->order->customer_id !== $customer->id) {
             return $this->respondError(__('You are not eligible to review this product.'), 422, [
-                'reason' => $eligibility['reason'],
+                'reason' => 'NOT_PURCHASED',
             ]);
         }
 
-        $orderItem = $eligibility['eligible_order_item'];
+        if ((int) $orderItem->product_id !== (int) $product->id) {
+            return $this->respondError(__('Review item does not match this product.'), 422, [
+                'reason' => 'NOT_PURCHASED',
+            ]);
+        }
 
-        if (! $orderItem || ! $orderItem->order) {
-            return $this->respondError(__('Unable to verify order for review.'), 422, [
+        if ($orderItem->order->status !== 'completed') {
+            return $this->respondError(__('You can review after the order is completed.'), 422, [
                 'reason' => 'ORDER_NOT_COMPLETED',
+            ]);
+        }
+
+        if ($orderItem->review || ProductReview::where('order_item_id', $orderItem->id)->exists()) {
+            return $this->respondError(__('You already reviewed this purchase.'), 422, [
+                'reason' => 'ALREADY_REVIEWED',
+            ]);
+        }
+
+        $reviewWindowDays = (int) ($settings['review_window_days'] ?? 30);
+        $completedAt = $this->reviewService->resolveCompletionDate($orderItem->order);
+        $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
+
+        if ($deadlineAt && now()->greaterThan($deadlineAt)) {
+            return $this->respondError(__('Review window has expired.'), 422, [
+                'reason' => 'REVIEW_WINDOW_EXPIRED',
             ]);
         }
 
@@ -101,10 +126,11 @@ class PublicProductReviewController extends Controller
             'customer_id' => $customer->id,
             'order_id' => $orderItem->order_id,
             'order_item_id' => $orderItem->id,
+            'variant_id' => $orderItem->product_variant_id,
             'rating' => $validated['rating'],
             'title' => $validated['title'] ?? null,
             'body' => $validated['body'],
-        ])->load('customer');
+        ])->load(['customer', 'orderItem.productVariant']);
 
         return $this->respond([
             'my_review' => $this->reviewService->transformReview($review),

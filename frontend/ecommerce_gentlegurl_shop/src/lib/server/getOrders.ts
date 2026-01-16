@@ -16,6 +16,9 @@ export type OrderItemSummary = {
   line_total?: string | number;
   product_image?: string | null;
   cover_image_url?: string | null;
+  review_id?: number | null;
+  reviewed_at?: string | null;
+  can_review?: boolean | null;
 };
 
 export type OrderSummary = {

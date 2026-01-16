@@ -27,7 +27,7 @@ export async function fetchProductReviewEligibility(slug: string): Promise<Revie
 
 export async function submitProductReview(
   slug: string,
-  payload: { rating: number; title?: string | null; body: string },
+  payload: { order_item_id: number; rating: number; title?: string | null; body: string },
 ): Promise<{ my_review: ReviewItem; summary: ReviewSummary }> {
   const response = await post<SubmitReviewResponse>(`/public/shop/products/${slug}/reviews`, payload);
   return response.data;
