@@ -15,9 +15,10 @@ use App\Models\Promotion;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\SettingService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Http\Request;
 
 class PublicShopController extends Controller
 {
@@ -510,7 +511,9 @@ class PublicShopController extends Controller
 
     protected function calculateRealSoldCountsForProducts($products): array
     {
-        $products = collect($products);
+        $products = $products instanceof EloquentCollection
+            ? $products
+            : new EloquentCollection($products);
         if ($products->isEmpty()) {
             return [];
         }
