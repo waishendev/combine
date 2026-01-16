@@ -171,10 +171,16 @@ class OrderController extends Controller
             'customer' => $order->customer,
             'items' => $order->items->map(function ($item) {
                 $thumbnail = $item->product?->cover_image_url;
+                $productType = $item->product?->type;
 
                 return [
                     'product_id' => $item->product_id,
+                    'product_variant_id' => $item->product_variant_id,
+                    'product_type' => $productType,
+                    'is_variant_product' => $productType === 'variant',
                     'product_name' => $item->product_name_snapshot ?? $item->product_name ?? $item->product?->name,
+                    'variant_name' => $item->variant_name_snapshot,
+                    'variant_sku' => $item->variant_sku_snapshot,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->price_snapshot ?? $item->unit_price,
                     'line_total' => $item->line_total,
@@ -196,10 +202,16 @@ class OrderController extends Controller
                     'items' => $return->items->map(function ($item) {
                         $orderItem = $item->orderItem;
                         $productName = $orderItem?->product_name_snapshot ?? $orderItem?->product_name ?? '';
+                        $productType = $orderItem?->product?->type;
 
                         return [
                             'order_item_id' => $item->order_item_id,
                             'product_name' => $productName,
+                            'product_variant_id' => $orderItem?->product_variant_id,
+                            'product_type' => $productType,
+                            'is_variant_product' => $productType === 'variant',
+                            'variant_name' => $orderItem?->variant_name_snapshot,
+                            'variant_sku' => $orderItem?->variant_sku_snapshot,
                             'qty' => $item->quantity,
                         ];
                     }),

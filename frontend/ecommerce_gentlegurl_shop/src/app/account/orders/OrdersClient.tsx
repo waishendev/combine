@@ -452,6 +452,9 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       const isReviewed = reviewedItemIds[item.id] === true;
                       const disabled = isReviewed || !item.product_slug;
                       const canReview = statusKey === "completed";
+                      const shouldShowVariant = item.product_type === "variant" || !!item.product_variant_id;
+                      const variantName = item.variant_name ?? "—";
+                      const variantSkuSuffix = item.variant_sku ? ` (${item.variant_sku})` : "";
                       return (
                         <div
                           key={item.id}
@@ -467,6 +470,12 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                             <div>
                               <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
+                              {shouldShowVariant && (
+                                <p className="text-xs text-[var(--foreground)]/60">
+                                  Variant: {variantName}
+                                  {variantSkuSuffix}
+                                </p>
+                              )}
                             </div>
                           </div>
                           {canReview && (

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { normalizeImageUrl } from "../imageUrl";
 import { ReviewItem, ReviewSettings, ReviewSummary } from "../types/reviews";
+import { fetchJson } from "./fetchJson";
 
 export type ProductImage = {
   id: number;
@@ -24,6 +25,7 @@ export type ProductDetail = {
   id: number;
   name: string;
   slug: string;
+  type?: string | null;
   price: string | number;
   image_url?: string | null;
   cover_image_url?: string | null;
@@ -36,13 +38,26 @@ export type ProductDetail = {
   gallery?: (ProductImage | string)[];
   is_in_wishlist?: boolean;
   dummy_sold_count?: number | null;
+  extra_sold?: number | null;
   real_sold_count?: number | null;
   sold_count?: number | null;
+  sold_total?: number | null;
   is_reward_only?: boolean;
   related_products?: unknown;
   review_summary?: ReviewSummary;
   recent_reviews?: ReviewItem[];
   review_settings?: ReviewSettings;
+  variants?: Array<{
+    id: number;
+    name: string;
+    sku?: string | null;
+    price?: string | number | null;
+    stock?: number | null;
+    track_stock?: boolean | null;
+    is_active?: boolean | null;
+    low_stock_threshold?: number | null;
+    image_url?: string | null;
+  }>;
   seo?: {
     meta_title?: string | null;
     meta_description?: string | null;
@@ -73,7 +88,14 @@ function normalizeProductImages(product: ProductDetail): ProductDetail {
     ? normalizeImageUrl(product.cover_image_url)
     : null;
 
-  return { ...product, images, media, cover_image_url: coverImageUrl };
+  const variants = Array.isArray(product.variants)
+    ? product.variants.map((variant) => ({
+        ...variant,
+        image_url: variant.image_url ? normalizeImageUrl(variant.image_url) : variant.image_url,
+      }))
+    : product.variants;
+
+  return { ...product, images, media, variants, cover_image_url: coverImageUrl };
 }
 
 export async function getProduct(slug: string, options?: { reward?: boolean }): Promise<ProductDetail | null> {
@@ -100,28 +122,25 @@ export async function getProduct(slug: string, options?: { reward?: boolean }): 
     const qs = searchParams.toString();
     const url = `${siteUrl}/api/proxy/public/shop/products/${slug}${qs ? `?${qs}` : ""}`;
 
-    const res = await fetch(url, {
+    const json = await fetchJson(url, {
       method: "GET",
       headers: {
-        Accept: "application/json",
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
-      cache: "no-store",
     });
-
-    if (!res.ok) {
-      console.error("[getProduct] Failed:", res.status, await res.text());
-      return null;
-    }
-
-    const json = await res.json();
     const product = (json.data as ProductDetail) ?? null;
 
     if (!product) return null;
 
     return normalizeProductImages(product);
   } catch (error) {
+    if (error instanceof Error) {
+      const message = error.message;
+      if (message.includes("HTTP 404") || message.includes("status=404")) {
+        return null;
+      }
+    }
     console.error("[getProduct] Error:", error);
-    return null;
+    throw error;
   }
 }

@@ -38,6 +38,9 @@ export type ProductApiItem = {
   type?: string | null
   description?: string | null
   price?: string | number | null
+  min_variant_price?: string | number | null
+  max_variant_price?: string | number | null
+  variants_count?: number | string | null
   cost_price?: string | number | null
   stock?: number | string | null
   low_stock_threshold?: number | string | null
@@ -55,6 +58,20 @@ export type ProductApiItem = {
   categories?: ProductApiCategory[] | null
   images?: ProductApiImage[] | null
   video?: ProductApiVideo | null
+  variants?: Array<{
+    id?: number | string | null
+    name?: string | null
+    title?: string | null
+    sku?: string | null
+    price?: string | number | null
+    cost_price?: string | number | null
+    stock?: number | string | null
+    low_stock_threshold?: number | string | null
+    track_stock?: boolean | number | string | null
+    is_active?: boolean | number | string | null
+    sort_order?: number | string | null
+    image_url?: string | null
+  }> | null
 }
 
 export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => {
@@ -73,6 +90,27 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
       : typeof item.price === 'string'
         ? Number.parseFloat(item.price)
         : 0
+
+  const minVariantValue =
+    typeof item.min_variant_price === 'number'
+      ? item.min_variant_price
+      : typeof item.min_variant_price === 'string'
+        ? Number.parseFloat(item.min_variant_price)
+        : null
+
+  const maxVariantValue =
+    typeof item.max_variant_price === 'number'
+      ? item.max_variant_price
+      : typeof item.max_variant_price === 'string'
+        ? Number.parseFloat(item.max_variant_price)
+        : null
+
+  const variantsCountValue =
+    typeof item.variants_count === 'number'
+      ? item.variants_count
+      : typeof item.variants_count === 'string'
+        ? Number.parseInt(item.variants_count, 10)
+        : undefined
 
   const costValue =
     typeof item.cost_price === 'number'
@@ -102,6 +140,57 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
         ? Number.parseInt(item.dummy_sold_count, 10)
         : undefined
 
+  const normalizedVariants = Array.isArray(item.variants)
+    ? item.variants.map((variant) => ({
+      id:
+        typeof variant.id === 'number'
+          ? variant.id
+          : Number(variant.id) || 0,
+      name: variant.title ?? variant.name ?? '',
+      sku: variant.sku ?? '',
+      price:
+        typeof variant.price === 'number'
+          ? variant.price
+          : typeof variant.price === 'string'
+            ? Number.parseFloat(variant.price)
+            : null,
+      costPrice:
+        typeof variant.cost_price === 'number'
+          ? variant.cost_price
+          : typeof variant.cost_price === 'string'
+            ? Number.parseFloat(variant.cost_price)
+            : null,
+      stock:
+        typeof variant.stock === 'number'
+          ? variant.stock
+          : typeof variant.stock === 'string'
+            ? Number.parseInt(variant.stock, 10)
+            : null,
+      lowStockThreshold:
+        typeof variant.low_stock_threshold === 'number'
+          ? variant.low_stock_threshold
+          : typeof variant.low_stock_threshold === 'string'
+            ? Number.parseInt(variant.low_stock_threshold, 10)
+            : null,
+      trackStock: toBoolean(variant.track_stock),
+      isActive: toBoolean(variant.is_active),
+      sortOrder:
+        typeof variant.sort_order === 'number'
+          ? variant.sort_order
+          : typeof variant.sort_order === 'string'
+            ? Number.parseInt(variant.sort_order, 10)
+            : 0,
+      imageUrl: variant.image_url ?? null,
+    }))
+    : []
+
+  const variantPriceValues = normalizedVariants
+    .map((variant) => variant.price)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+
+  const derivedMinPrice = variantPriceValues.length > 0 ? Math.min(...variantPriceValues) : null
+  const derivedMaxPrice = variantPriceValues.length > 0 ? Math.max(...variantPriceValues) : null
+
   return {
     id: normalizedId,
     name: item.name ?? '-',
@@ -110,6 +199,9 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     type: item.type ?? '-',
     description: item.description ?? '-',
     price: Number.isFinite(priceValue) ? priceValue : 0,
+    minVariantPrice: Number.isFinite(minVariantValue ?? NaN) ? minVariantValue : derivedMinPrice,
+    maxVariantPrice: Number.isFinite(maxVariantValue ?? NaN) ? maxVariantValue : derivedMaxPrice,
+    variantsCount: Number.isFinite(variantsCountValue ?? NaN) ? variantsCountValue : normalizedVariants.length,
     costPrice: Number.isFinite(costValue) ? costValue : 0,
     stock: Number.isFinite(stockValue) ? stockValue : 0,
     lowStockThreshold: Number.isFinite(lowStockValue) ? lowStockValue : 0,
@@ -196,5 +288,6 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
                 : undefined,
         }
       : null,
+    variants: normalizedVariants,
   }
 }

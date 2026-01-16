@@ -433,25 +433,36 @@
           </tr>
         </thead>
         <tbody>
-          @foreach($order->items as $item)
+          @foreach($items as $item)
             <tr>
               <td>
-                <div class="item-name">{{ $item->product_name_snapshot }}</div>
+                <div class="item-name">{{ $item['product_name'] }}</div>
 
-                @if($item->sku_snapshot)
-                  <div class="sku">SKU: {{ $item->sku_snapshot }}</div>
+                @php
+                  $sku = $item['variant_sku'] ?? $item['product_sku'];
+                @endphp
+                @if($sku)
+                  <div class="sku">SKU: {{ $sku }}</div>
+                @endif
+                @if($item['variant_name'])
+                  <div class="sku">
+                    Variant: {{ $item['variant_name'] }}
+                    @if($item['variant_sku'])
+                      ({{ $item['variant_sku'] }})
+                    @endif
+                  </div>
                 @endif
 
                 <!-- Optional: show price x qty in a friendly way -->
                 <!-- <div class="price-line">
-                  {{ $currency }} {{ number_format((float) $item->price_snapshot, 2) }}
-                  × {{ (int) $item->quantity }}
+                  {{ $currency }} {{ number_format((float) $item['unit_price'], 2) }}
+                  × {{ (int) $item['quantity'] }}
                 </div> -->
               </td>
 
-              <td class="numeric">{{ (int) $item->quantity }}</td>
-              <td class="numeric">{{ $currency }} {{ number_format((float) $item->price_snapshot, 2) }}</td>
-              <td class="numeric">{{ $currency }} {{ number_format((float) $item->line_total, 2) }}</td>
+              <td class="numeric">{{ (int) $item['quantity'] }}</td>
+              <td class="numeric">{{ $currency }} {{ number_format((float) $item['unit_price'], 2) }}</td>
+              <td class="numeric">{{ $currency }} {{ number_format((float) $item['line_total'], 2) }}</td>
             </tr>
           @endforeach
         </tbody>

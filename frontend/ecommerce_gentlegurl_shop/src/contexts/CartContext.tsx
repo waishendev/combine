@@ -6,11 +6,11 @@ import {
   CartResponse,
   CheckoutPreviewResponse,
   addCartItemIncrement,
-  addOrUpdateCartItem,
   getCart,
   mergeCart,
   previewCheckout,
   removeCartItem,
+  updateCartItem,
   resetCartSession,
 } from "../lib/apiClient";
 import { clearSessionToken, getOrCreateSessionToken, setSessionToken as persistSessionToken } from "../lib/sessionToken";
@@ -63,8 +63,9 @@ export type CartContextValue = {
   voucherError: string | null;
   voucherMessage: string | null;
   reloadCart: () => Promise<void>;
-  addToCart: (productId: number, quantity: number) => Promise<void>;
+  addToCart: (productId: number, quantity: number, productVariantId?: number) => Promise<void>;
   updateItemQuantity: (itemId: number, quantity: number) => Promise<void>;
+  updateItemVariant: (itemId: number, productVariantId: number) => Promise<void>;
   removeItem: (itemId: number) => Promise<void>;
   onCustomerLogin: () => Promise<void>;
   applyVoucher: (voucherCode?: string | null, customerVoucherId?: number | null) => Promise<boolean>;
@@ -204,10 +205,14 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
   }, [reloadCart]);
 
   const addToCart = useCallback(
-    async (productId: number, quantity: number) => {
+    async (productId: number, quantity: number, productVariantId?: number) => {
       setIsLoading(true);
       try {
-        const response = await addCartItemIncrement({ product_id: productId, quantity });
+        const response = await addCartItemIncrement({
+          product_id: productId,
+          product_variant_id: productVariantId,
+          quantity,
+        });
         applyCartResponse(response);
       } finally {
         setIsLoading(false);
@@ -236,19 +241,15 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
       );
 
       try {
-        let productId = items.find((item) => item.id === itemId)?.product_id;
-        if (!productId) {
-          const cart = await getCart();
-          applyCartResponse(cart);
-          productId = cart.items.find((item) => item.id === itemId)?.product_id;
-        }
-
-        if (!productId) {
+        if (!targetItem) {
           throw new Error("Cart item not found");
         }
 
         // Sync with server in background (without showing loading state)
-        const response = await addOrUpdateCartItem({ product_id: productId, quantity });
+        const response = await updateCartItem(itemId, {
+          quantity,
+          product_variant_id: targetItem.product_variant_id ?? undefined,
+        });
         applyCartResponse(response);
       } catch (error) {
         // On error, reload cart to get correct state
@@ -258,6 +259,21 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
       }
     },
     [applyCartResponse, items],
+  );
+
+  const updateItemVariant = useCallback(
+    async (itemId: number, productVariantId: number) => {
+      setIsLoading(true);
+      try {
+        const response = await updateCartItem(itemId, {
+          product_variant_id: productVariantId,
+        });
+        applyCartResponse(response);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [applyCartResponse],
   );
 
   const removeItem = useCallback(
@@ -392,9 +408,17 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
           setVoucherError("Select items to apply voucher.");
           return false;
         }
+        const hasMissingVariant = selectedItems.some(
+          (item) => item.product_type === "variant" && !item.product_variant_id,
+        );
+        if (hasMissingVariant) {
+          setVoucherError("Select variants for all items before applying a voucher.");
+          return false;
+        }
 
         const payloadItems = selectedItems.map((item) => ({
           product_id: item.product_id,
+          product_variant_id: item.product_variant_id ?? undefined,
           quantity: item.quantity,
           is_reward: item.is_reward,
           reward_redemption_id: item.reward_redemption_id ?? undefined,
@@ -496,6 +520,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     reloadCart,
     addToCart,
     updateItemQuantity,
+    updateItemVariant,
     removeItem,
     onCustomerLogin,
     applyVoucher,

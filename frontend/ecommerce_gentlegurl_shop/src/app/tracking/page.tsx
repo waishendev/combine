@@ -153,7 +153,15 @@ export default function TrackingPage() {
                           className="h-12 w-12 object-cover"
                         />
                       </div>
-                      <div className="font-medium text-[var(--foreground)]">{item.product_name}</div>
+                      <div>
+                        <div className="font-medium text-[var(--foreground)]">{item.product_name}</div>
+                        {(item.product_type === "variant" || item.product_variant_id) && (
+                          <div className="text-xs text-[var(--foreground)]/60">
+                            Variant: {item.variant_name ?? "—"}
+                            {item.variant_sku ? ` (${item.variant_sku})` : ""}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="col-span-6 text-right text-sm text-[var(--foreground)]/70 sm:col-span-2 sm:text-right">
                       <span className="sm:hidden">Unit: </span>

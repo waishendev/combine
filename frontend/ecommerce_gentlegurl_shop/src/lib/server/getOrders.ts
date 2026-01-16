@@ -3,9 +3,14 @@ import { cookies } from "next/headers";
 export type OrderItemSummary = {
   id: number;
   product_id: number;
+  product_variant_id?: number | null;
+  product_type?: string | null;
+  is_variant_product?: boolean | null;
   product_slug?: string | null;
   name?: string;
   sku?: string | null;
+  variant_name?: string | null;
+  variant_sku?: string | null;
   quantity: number;
   unit_price?: string | number;
   line_total?: string | number;

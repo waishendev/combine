@@ -12,9 +12,14 @@ class OrderItem extends Model
     protected $fillable = [
         'order_id',
         'product_id',
+        'product_variant_id',
         'product_name_snapshot',
         'sku_snapshot',
+        'variant_name_snapshot',
+        'variant_sku_snapshot',
         'price_snapshot',
+        'variant_price_snapshot',
+        'variant_cost_snapshot',
         'quantity',
         'line_total',
         'is_package',
@@ -28,6 +33,8 @@ class OrderItem extends Model
     {
         return [
             'price_snapshot' => 'decimal:2',
+            'variant_price_snapshot' => 'decimal:2',
+            'variant_cost_snapshot' => 'decimal:2',
             'quantity' => 'integer',
             'line_total' => 'decimal:2',
             'is_package' => 'boolean',
@@ -44,6 +51,11 @@ class OrderItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function productVariant()
+    {
+        return $this->belongsTo(ProductVariant::class);
     }
 
     public function parentPackageItem()

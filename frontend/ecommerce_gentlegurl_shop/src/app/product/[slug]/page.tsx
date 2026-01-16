@@ -1,21 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Image from "next/image";
-import Link from "next/link";
-import AddToCartButton from "@/components/cart/AddToCartButton";
-import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
-import { ProductReviewsSection } from "@/components/product/ProductReviewsSection";
 import { getProduct } from "@/lib/server/getProduct";
 import { getHomepage } from "@/lib/server/getHomepage";
 import { getProductReviewEligibility } from "@/lib/server/getProductReviewEligibility";
 import { getProductReviews } from "@/lib/server/getProductReviews";
 import { normalizeImageUrl } from "@/lib/imageUrl";
-import { buildProductGalleryMedia, getPrimaryProductImage, getVideoPoster } from "@/lib/productMedia";
-import { ReviewSettings } from "@/lib/types/reviews";
-import { ProductGallery } from "@/components/product/ProductGallery";
-import { RewardRedeemPanel } from "@/components/product/RewardRedeemPanel";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 import { cache } from "react";
 import { mapSeoToMetadata, type SeoPayload } from "@/lib/seo";
+import ProductDetailClient from "@/components/product/ProductDetailClient";
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>;
@@ -36,11 +29,12 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     return {};
   }
 
+  const productSlug = (product as { slug?: string | null }).slug ?? slug;
   const homepageSeo = homepage?.seo ?? null;
   const productSeo = (product as { seo?: SeoPayload | null }).seo ?? null;
   const baseMetadata = mapSeoToMetadata(productSeo, homepageSeo);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-  const canonicalUrl = new URL(`/product/${slug}`, siteUrl).toString();
+  const canonicalUrl = new URL(`/product/${productSlug}`, siteUrl).toString();
 
   const resolvedTitle =
     typeof baseMetadata.title === "string" ? baseMetadata.title : product.name;
@@ -99,178 +93,37 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
 
   const product = await getProduct(slug, { reward: isRewardContext });
   if (!product) return notFound();
-  const isRewardOnly = product.is_reward_only === true;
+
+  const productSlug = (product as { slug?: string | null }).slug ?? slug;
   const rewardPoints =
     (product as { points_required?: number | null })?.points_required ??
     (product as { reward_points_required?: number | null })?.reward_points_required ??
     null;
 
   const [reviewsData, eligibility] = await Promise.all([
-    getProductReviews(slug),
-    getProductReviewEligibility(slug),
+    getProductReviews(productSlug),
+    getProductReviewEligibility(productSlug),
   ]);
 
-  const galleryMedia = buildProductGalleryMedia(product);
-  const videoItem = galleryMedia.find((item) => item.type === "video");
-  const videoPoster = videoItem ? getVideoPoster(product, videoItem) : null;
-  const initialIndex = galleryMedia.findIndex((item) => item.type === "video");
-  const soldCountValue = Number(product.sold_count ?? 0);
-  const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
-  const relatedProducts = Array.isArray(product.related_products)
-    ? (product.related_products as Array<{
-        id: number | string;
-        name: string;
-        slug?: string;
-        price: number | string;
-        thumbnail?: string | null;
-      }>)
-    : [];
-
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8">
-      <div className="grid gap-8 md:grid-cols-2">
-        {/* 左边图片 */}
-        <div className="relative">
-          <ProductGallery
-            media={galleryMedia}
-            initialIndex={initialIndex >= 0 ? initialIndex : 0}
-            videoPoster={videoPoster}
-            alt={product.name}
-          />
-          <div className="absolute right-3 top-3 z-10">
-            <WishlistToggleButton
-              productId={product.id}
-              initialIsWishlisted={product.is_in_wishlist ?? false}
-            />
-          </div>
-        </div>
-
-        {/* 右边信息 */}
-        <div className="space-y-4">
-          <h1 className="text-2xl font-semibold">{product.name}</h1>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {!isRewardOnly && (
-              <div className="text-xl font-bold text-[var(--accent-strong)]">
-                RM {Number(product.price).toFixed(2)}
-              </div>
-            )}
-            {!isRewardOnly && (
-              <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-                Sold {soldCount}
-              </span>
-            )}
-          {isRewardOnly && (
-            <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
-              Reward Item
-            </span>
-          )}
-        </div>
-
-        {isRewardOnly && product.stock != null && (
-          <div className="text-sm text-[color:var(--text-muted)]">
-            <p>Stock left: {product.stock}</p>
-            {product.stock <= 0 && (
-              <p className="mt-1 font-semibold text-[color:var(--status-error)]">Out of stock</p>
-            )}
-          </div>
-        )}
-
-        {!isRewardOnly && product.stock != null && (
-          <div className="text-sm text-[color:var(--text-muted)]">
-            <p>Stock left: {product.stock}</p>
-            {product.stock <= 0 && (
-              <p className="mt-1 font-semibold text-[color:var(--status-error)]">Out of stock</p>
-            )}
-            </div>
-          )}
-
-          {product.description && (
-            <div className="prose max-w-none text-sm text-[color:var(--text-muted)]">
-              {product.description}
-            </div>
-          )}
-          {isRewardOnly || isRewardContext ? (
-            <RewardRedeemPanel
-              productId={product.id}
-              slug={slug}
-              fallbackPoints={rewardPoints}
-              isRewardOnly={isRewardOnly}
-              stock={product.stock ?? null}
-            />
-          ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <AddToCartButton productId={product.id} stock={product.stock ?? null} />
-            </div>
-          )}
-        </div>
-      </div>
-      <ProductReviewsSection
-        slug={slug}
-        initialReviews={reviewsData}
-        initialEligibility={eligibility}
-        settings={product.review_settings as ReviewSettings | undefined}
-      />
-            {relatedProducts.length > 0 && (
-        <section className="mt-12 space-y-6">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[var(--accent-strong)]">
-              Recommended
-            </p>
-            <h2 className="text-xl font-semibold text-[var(--foreground)]">
-              You May Also Like
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-            {relatedProducts.map((related) => {
-              const priceNumber = Number(related.price);
-              const priceLabel = Number.isFinite(priceNumber)
-                ? priceNumber.toFixed(2)
-                : related.price;
-              const thumbnail = related.thumbnail
-                ? normalizeImageUrl(related.thumbnail)
-                : null;
-
-              return (
-                <Link
-                  key={related.id}
-                  href={`/product/${related.slug ?? related.id}`}
-                  className="group relative overflow-hidden rounded-md border border-[var(--card-border)] bg-[var(--card)]/90 shadow-[0_16px_50px_-36px_rgba(15,23,42,0.6)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-36px_rgba(var(--accent-rgb),0.45)]"
-                >
-                  <div className="relative h-36 w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] via-white/80 to-white">
-                    {thumbnail ? (
-                      <Image
-                        src={thumbnail}
-                        alt={related.name}
-                        fill
-                        className="object-cover transition duration-500 ease-out group-hover:scale-110"
-                      />
-                    ) : (
-                      <Image
-                        src="/images/placeholder.png"
-                        alt={related.name}
-                        fill
-                        className="object-cover transition duration-500 ease-out group-hover:scale-110"
-                      />
-                    )}
-                    
-                  </div>
-                  <div className="space-y-2 p-3">
-                    <h3 className="line-clamp-2 text-sm font-semibold text-[var(--foreground)]">
-                      {related.name}
-                    </h3>
-
-                    <span className="text-sm font-semibold text-[var(--accent-strong)]">
-                      RM {priceLabel}
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
-    </main>
+    <ProductDetailClient
+      slug={productSlug}
+      product={{
+        ...product,
+        related_products: Array.isArray(product.related_products)
+          ? (product.related_products as Array<{
+              id: number | string;
+              name: string;
+              slug?: string;
+              price: number | string;
+              thumbnail?: string | null;
+            }>)
+          : [],
+      }}
+      reviewsData={reviewsData}
+      eligibility={eligibility}
+      isRewardContext={isRewardContext}
+      rewardPoints={rewardPoints}
+    />
   );
 }

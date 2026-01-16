@@ -16,6 +16,7 @@ export default function CartPageClient() {
     isLoading,
     isApplyingVoucher,
     updateItemQuantity,
+    updateItemVariant,
     removeItem,
     selectedItems,
     selectedItemIds,
@@ -192,6 +193,10 @@ export default function CartPageClient() {
   const allSelected = items.length > 0 && selectedItemIds.length === items.length;
   const selectedCount = selectedItems.length;
   const showShippingPending = shippingMethod === "shipping" && selectedCount > 0;
+  const hasMissingVariant = selectedItems.some(
+    (item) => item.product_type === "variant" && !item.product_variant_id,
+  );
+  const checkoutDisabled = selectedCount === 0 || hasMissingVariant;
 
   const gridColsMd =
     "md:grid-cols-[26px_minmax(220px,1fr)_110px_120px_120px_64px]";
@@ -257,8 +262,16 @@ export default function CartPageClient() {
                   "Unnamed Product";
                 const sku = item.sku ?? (item.product as { sku?: string })?.sku;
                 const productSlug = item.product?.slug ?? (item as { product_slug?: string }).product_slug;
-                const variantLabel = (item as { variant_label?: string }).variant_label;
+                const variantLabel =
+                  item.variant_name ??
+                  item.available_variants?.find((variant) => variant.id === item.product_variant_id)?.name ??
+                  (item as { variant_label?: string }).variant_label ??
+                  null;
                 const maxStock = getItemStock(item);
+                const hasVariantSelection =
+                  item.product_type === "variant" &&
+                  Array.isArray(item.available_variants) &&
+                  item.available_variants.length > 0;
 
                 return (
                   <div key={item.id} className="bg-[var(--card)]/70 px-3 py-2 lg:px-4 lg:py-4">
@@ -305,8 +318,44 @@ export default function CartPageClient() {
 
                             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
                               {sku && <span>SKU: {sku}</span>}
-                              {variantLabel && <span>{variantLabel}</span>}
+                              {item.product_type === "variant" && (
+                                <span className={variantLabel ? "" : "text-[color:var(--status-error)]"}>
+                                  Variant: {variantLabel ?? "Please select variant"}
+                                </span>
+                              )}
                             </div>
+                            {hasVariantSelection && (
+                              <div className="mt-2">
+                                <select
+                                  value={item.product_variant_id ?? ""}
+                                  onChange={(event) => {
+                                    const nextId = Number(event.target.value);
+                                    if (!Number.isFinite(nextId)) return;
+                                    updateItemVariant(item.id, nextId);
+                                  }}
+                                  className="w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 px-2 py-1 text-xs outline-none"
+                                >
+                                  <option value="" disabled>
+                                    Select variant
+                                  </option>
+                                  {item.available_variants?.map((variant) => {
+                                    const isActive = variant.is_active !== false;
+                                    const outOfStock =
+                                      (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
+                                    const isSelectable = isActive && !outOfStock;
+                                    const suffix = !isSelectable
+                                      ? " (Out of stock)"
+                                      : "";
+                                    return (
+                                      <option key={variant.id} value={variant.id} disabled={!isSelectable}>
+                                        {variant.name}
+                                        {suffix}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </div>
+                            )}
                         </div>
                       </div>
 
@@ -403,7 +452,15 @@ export default function CartPageClient() {
                 item.name ?? (item.product as { name?: string })?.name ?? "Unnamed Product";
               const sku = item.sku ?? (item.product as { sku?: string })?.sku;
               const productSlug = item.product?.slug ?? (item as { product_slug?: string }).product_slug;
-              const variantLabel = (item as { variant_label?: string }).variant_label;
+              const variantLabel =
+                item.variant_name ??
+                item.available_variants?.find((variant) => variant.id === item.product_variant_id)?.name ??
+                (item as { variant_label?: string }).variant_label ??
+                null;
+              const hasVariantSelection =
+                item.product_type === "variant" &&
+                Array.isArray(item.available_variants) &&
+                item.available_variants.length > 0;
               const maxStock = getItemStock(item);
 
               return (
@@ -439,13 +496,47 @@ export default function CartPageClient() {
 
                         <div className="text-xs text-[var(--foreground)]/60">
                           {sku && <span>SKU: {sku}</span>}
-                          {variantLabel && <span className="ml-2">{variantLabel}</span>}
+                          {item.product_type === "variant" && (
+                            <span className={variantLabel ? "ml-2" : "ml-2 text-[color:var(--status-error)]"}>
+                              Variant: {variantLabel ?? "Please select variant"}
+                            </span>
+                          )}
                           {isReward && (
                             <span className="rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
                               Reward
                             </span>
                           )}
                         </div>
+                        {hasVariantSelection && (
+                          <div className="mt-2">
+                            <select
+                              value={item.product_variant_id ?? ""}
+                              onChange={(event) => {
+                                const nextId = Number(event.target.value);
+                                if (!Number.isFinite(nextId)) return;
+                                updateItemVariant(item.id, nextId);
+                              }}
+                              className="w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 px-2 py-1 text-xs outline-none"
+                            >
+                              <option value="" disabled>
+                                Select variant
+                              </option>
+                              {item.available_variants?.map((variant) => {
+                                const isActive = variant.is_active !== false;
+                                const outOfStock =
+                                  (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
+                                const isSelectable = isActive && !outOfStock;
+                                const suffix = !isSelectable ? " (Out of stock)" : "";
+                                return (
+                                  <option key={variant.id} value={variant.id} disabled={!isSelectable}>
+                                    {variant.name}
+                                    {suffix}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                        )}
 
                         <div className="text-sm font-medium text-[var(--foreground)]">
                           RM {unitPrice.toFixed(2)}
@@ -594,11 +685,20 @@ export default function CartPageClient() {
             <button
               type="button"
               onClick={() => router.push("/checkout")}
-              disabled={selectedCount === 0}
+              disabled={checkoutDisabled}
               className="mt-4 w-full rounded-md bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {selectedCount === 0 ? "Select items to checkout" : `Proceed to Checkout (${selectedCount})`}
+              {selectedCount === 0
+                ? "Select items to checkout"
+                : hasMissingVariant
+                  ? "Select variants to checkout"
+                  : `Proceed to Checkout (${selectedCount})`}
             </button>
+            {hasMissingVariant && (
+              <p className="mt-2 text-xs text-[color:var(--status-error)]">
+                Please select variants for all variant products before checkout.
+              </p>
+            )}
 
           </div>
         </aside>
@@ -637,10 +737,10 @@ export default function CartPageClient() {
             <button
               type="button"
               onClick={() => router.push("/checkout")}
-              disabled={selectedCount === 0}
+              disabled={checkoutDisabled}
               className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Checkout
+              {hasMissingVariant ? "Select variants" : "Checkout"}
             </button>
           </div>
         </div>

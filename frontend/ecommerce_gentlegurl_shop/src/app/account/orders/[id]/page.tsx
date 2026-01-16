@@ -114,6 +114,12 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   <div>
                     <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
                     <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
+                    {(item.product_type === "variant" || item.product_variant_id) && (
+                      <p className="text-xs text-[var(--foreground)]/60">
+                        Variant: {item.variant_name ?? "—"}
+                        {item.variant_sku ? ` (${item.variant_sku})` : ""}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="w-full text-left text-sm text-[var(--foreground)] sm:w-auto sm:text-right">

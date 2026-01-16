@@ -195,6 +195,12 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
                   <div>
                     <p className="text-sm font-semibold text-[var(--foreground)]">{item.product_name ?? "Item"}</p>
                     <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku ?? "—"}</p>
+                    {(item.product_type === "variant" || item.product_variant_id) && (
+                      <p className="text-xs text-[var(--foreground)]/60">
+                        Variant: {item.variant_name ?? "—"}
+                        {item.variant_sku ? ` (${item.variant_sku})` : ""}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="text-sm text-[var(--foreground)]/70">

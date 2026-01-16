@@ -10,6 +10,12 @@ type ReturnItem = {
   line_total?: string | number | null
   product_image?: string | null
   cover_image_url?: string | null
+  product_variant_id?: number | null
+  product_type?: string | null
+  is_variant_product?: boolean | null
+  variant_name?: string | null
+  variant_sku?: string | null
+  product_sku?: string | null
   // Legacy fields for backward compatibility
   order_item_id?: number
   product_name_snapshot?: string | null
@@ -487,7 +493,7 @@ export default function ReturnViewPanel({
                           const productName = item.product_name ?? item.product_name_snapshot ?? 'Item'
                           const quantity = item.quantity ?? item.requested_quantity ?? 0
                           const productImage = item.product_image ?? item.cover_image_url ?? null
-                          const sku = item.sku_snapshot ?? '—'
+                          const sku = item.variant_sku ?? item.product_sku ?? item.sku_snapshot ?? '—'
                           const imageUrl = getImageUrl(productImage)
                           
                           return (
@@ -510,6 +516,12 @@ export default function ReturnViewPanel({
                                 <div>
                                   <p className="text-sm font-semibold text-slate-900">{productName}</p>
                                   <p className="text-xs text-slate-500">SKU: {sku}</p>
+                                  {(item.product_type === 'variant' || item.product_variant_id) && (
+                                    <p className="text-xs text-slate-500">
+                                      Variant: {item.variant_name ?? '—'}
+                                      {item.variant_sku ? ` (${item.variant_sku})` : ''}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                               <div className="text-sm text-slate-600">

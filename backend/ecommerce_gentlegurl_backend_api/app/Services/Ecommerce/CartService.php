@@ -49,13 +49,14 @@ class CartService
 
     public function formatCart(Cart $cart): array
     {
-        $cart->load(['items.product.images']);
+        $cart->load(['items.product.images', 'items.product.variants', 'items.productVariant']);
 
         $items = $cart->items->map(function ($item) {
             $lineTotal = (float) $item->unit_price_snapshot * (int) $item->quantity;
 
             $product = $item->product;
-            $thumbnail = $product?->cover_image_url;
+            $variant = $item->productVariant;
+            $thumbnail = $variant?->image_url ?? $product?->cover_image_url;
             if (!$thumbnail) {
                 $legacyImage = $product?->image_url ?? $product?->image_path ?? null;
                 $thumbnail = $this->resolveImageUrl($legacyImage);
@@ -64,10 +65,28 @@ class CartService
             return [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
+                'product_variant_id' => $item->product_variant_id,
+                'product_type' => $product?->type,
                 'product_name' => $product?->name,
+                'variant_name' => $variant?->title,
+                'variant_sku' => $variant?->sku,
                 'product_slug' => $product?->slug,
                 'product_image' => $thumbnail,
-                'product_stock' => $product?->stock,
+                'product_stock' => $variant
+                    ? ($variant->track_stock ? $variant->stock : null)
+                    : ($product?->track_stock ? $product?->stock : null),
+                'available_variants' => $product && $product->type === 'variant'
+                    ? $product->variants->map(fn($productVariant) => [
+                        'id' => $productVariant->id,
+                        'name' => $productVariant->title,
+                        'sku' => $productVariant->sku,
+                        'price' => $productVariant->price,
+                        'stock' => $productVariant->stock,
+                        'track_stock' => $productVariant->track_stock,
+                        'is_active' => $productVariant->is_active,
+                        'image_url' => $productVariant->image_url,
+                    ])->values()
+                    : [],
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price_snapshot,
                 'line_total' => $lineTotal,
@@ -130,17 +149,21 @@ class CartService
             return $guestCart;
         }
 
-        $customerItems = $customerCart->items()->get()->keyBy('product_id');
+        $customerItems = $customerCart->items()
+            ->get()
+            ->keyBy(fn($item) => sprintf('%s:%s', $item->product_id, $item->product_variant_id ?? ''));
 
         foreach ($guestCart->items as $guestItem) {
-            if ($customerItems->has($guestItem->product_id)) {
+            $key = sprintf('%s:%s', $guestItem->product_id, $guestItem->product_variant_id ?? '');
+            if ($customerItems->has($key)) {
                 /** @var CartItem $item */
-                $item = $customerItems->get($guestItem->product_id);
+                $item = $customerItems->get($key);
                 $item->quantity += $guestItem->quantity;
                 $item->save();
             } else {
                 $customerCart->items()->create([
                     'product_id' => $guestItem->product_id,
+                    'product_variant_id' => $guestItem->product_variant_id,
                     'quantity' => $guestItem->quantity,
                     'unit_price_snapshot' => $guestItem->unit_price_snapshot,
                 ]);

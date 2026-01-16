@@ -15,8 +15,10 @@ use App\Models\Promotion;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\SettingService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PublicShopController extends Controller
 {
@@ -137,6 +139,11 @@ class PublicShopController extends Controller
             'images' => function ($query) {
                 $query->orderBy('sort_order')->orderBy('id');
             },
+            'variants' => function ($query) {
+                $query->where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('id');
+            },
             'video',
         ])
             ->where('is_active', true)
@@ -224,7 +231,7 @@ class PublicShopController extends Controller
             ->paginate($perPage)
             ->appends($request->query());
 
-        $realSoldCounts = $this->calculateRealSoldCounts($products->getCollection()->pluck('id')->all());
+        $realSoldCounts = $this->calculateRealSoldCountsForProducts($products->getCollection());
 
         $products->setCollection(
             $products->getCollection()->map(function (Product $product) use ($wishlistLookup, $realSoldCounts) {
@@ -243,16 +250,25 @@ class PublicShopController extends Controller
                         ];
                     });
 
+                [$minPrice, $maxPrice, $priceDisplay] = $this->resolvePriceRange($product);
+                $price = $product->type === 'variant' && $minPrice !== null ? $minPrice : $product->price;
+
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
                     'slug' => $product->slug,
                     'sku' => $product->sku,
-                    'price' => $product->price,
+                    'type' => $product->type,
+                    'price' => $price,
+                    'min_price' => $minPrice,
+                    'max_price' => $maxPrice,
+                    'price_display' => $priceDisplay,
                     'is_in_wishlist' => isset($wishlistLookup[$product->id]),
                     'dummy_sold_count' => $dummySoldCount,
+                    'extra_sold' => $dummySoldCount,
                     'real_sold_count' => $realSoldCount,
                     'sold_count' => $soldCount,
+                    'sold_total' => $soldCount,
                     'images' => $sortedImages,
                     'cover_image_url' => $product->cover_image_url,
                 ];
@@ -346,8 +362,15 @@ class PublicShopController extends Controller
     {
         $allowRewardOnly = $request->boolean('reward', false);
 
-        $product = Product::with(['categories', 'images', 'video', 'packageChildren.childProduct'])
-            ->where('slug', $slug)
+        $productQuery = Product::with(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct']);
+
+        if (preg_match('/^\d+$/', $slug) === 1) {
+            $productQuery->where('id', $slug);
+        } else {
+            $productQuery->where('slug', $slug);
+        }
+
+        $product = $productQuery
             ->where('is_active', true)
             ->when(!$allowRewardOnly, fn($query) => $query->where('is_reward_only', false))
             ->firstOrFail();
@@ -392,7 +415,7 @@ class PublicShopController extends Controller
                 });
         }
 
-        $realSoldCountLookup = $this->calculateRealSoldCounts([$product->id]);
+        $realSoldCountLookup = $this->calculateRealSoldCountsForProducts(collect([$product]));
         $realSoldCount = $realSoldCountLookup[$product->id] ?? 0;
         $dummySoldCount = (int) ($product->dummy_sold_count ?? 0);
         $soldCount = $realSoldCount + $dummySoldCount;
@@ -428,14 +451,17 @@ class PublicShopController extends Controller
             'name' => $product->name,
             'slug' => $product->slug,
             'sku' => $product->sku,
+            'type' => $product->type,
             'description' => $product->description,
             'price' => $product->price,
             'stock' => $product->stock,
             'track_stock' => $product->track_stock,
             'is_in_stock' => $isInStock,
             'dummy_sold_count' => $dummySoldCount,
+            'extra_sold' => $dummySoldCount,
             'real_sold_count' => $realSoldCount,
             'sold_count' => $soldCount,
+            'sold_total' => $soldCount,
             'images' => $product->images,
             'video' => $product->video,
             'gallery' => $gallery,
@@ -443,6 +469,23 @@ class PublicShopController extends Controller
             'cover_image_url' => $product->cover_image_url,
             'categories' => $categories,
             'package_children' => $product->packageChildren,
+            'variants' => $product->variants
+                ->where('is_active', true)
+                ->sortBy('sort_order')
+                ->sortBy('id')
+                ->values()
+                ->map(fn($variant) => [
+                    'id' => $variant->id,
+                    'name' => $variant->title,
+                    'sku' => $variant->sku,
+                    'price' => $variant->price ?? $product->price,
+                    'stock' => $variant->stock,
+                    'low_stock_threshold' => $variant->low_stock_threshold,
+                    'track_stock' => $variant->track_stock,
+                    'is_active' => $variant->is_active,
+                    'sort_order' => $variant->sort_order,
+                    'image_url' => $variant->image_url,
+                ]),
             'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),
             'related_products' => $relatedProducts,
             'is_reward_only' => $product->is_reward_only,
@@ -466,22 +509,102 @@ class PublicShopController extends Controller
         return $this->respond($data);
     }
 
-    protected function calculateRealSoldCounts(array $productIds): array
+    protected function calculateRealSoldCountsForProducts($products): array
     {
-        if (empty($productIds)) {
+        $products = $products instanceof EloquentCollection
+            ? $products
+            : new EloquentCollection($products);
+        if ($products->isEmpty()) {
             return [];
         }
 
-        return OrderItem::query()
-            ->selectRaw('product_id, SUM(quantity) AS total_qty')
-            ->whereIn('product_id', $productIds)
+        $nonVariantIds = $products
+            ->filter(fn(Product $product) => $product->type !== 'variant')
+            ->pluck('id')
+            ->all();
+
+        $counts = [];
+        if (!empty($nonVariantIds)) {
+            $counts = OrderItem::query()
+                ->selectRaw('product_id, SUM(quantity) AS total_qty')
+                ->whereIn('product_id', $nonVariantIds)
+                ->whereHas('order', function ($query) {
+                    $query->where('payment_status', 'paid');
+                })
+                ->groupBy('product_id')
+                ->pluck('total_qty', 'product_id')
+                ->map(fn($qty) => (int) $qty)
+                ->all();
+        }
+
+        $variantProducts = $products->filter(fn(Product $product) => $product->type === 'variant');
+        if ($variantProducts->isEmpty()) {
+            return $counts;
+        }
+
+        if (!Schema::hasColumn('order_items', 'product_variant_id')) {
+            return $counts;
+        }
+
+        $variantProducts->loadMissing('variants');
+        $variantIdToProductId = [];
+        foreach ($variantProducts as $product) {
+            foreach ($product->variants as $variant) {
+                $variantIdToProductId[$variant->id] = $product->id;
+            }
+        }
+
+        if (empty($variantIdToProductId)) {
+            return $counts;
+        }
+
+        $variantCounts = OrderItem::query()
+            ->selectRaw('product_variant_id, SUM(quantity) AS total_qty')
+            ->whereIn('product_variant_id', array_keys($variantIdToProductId))
             ->whereHas('order', function ($query) {
                 $query->where('payment_status', 'paid');
             })
-            ->groupBy('product_id')
-            ->pluck('total_qty', 'product_id')
+            ->groupBy('product_variant_id')
+            ->pluck('total_qty', 'product_variant_id')
             ->map(fn($qty) => (int) $qty)
             ->all();
+
+        foreach ($variantCounts as $variantId => $qty) {
+            $productId = $variantIdToProductId[$variantId] ?? null;
+            if (!$productId) {
+                continue;
+            }
+            $counts[$productId] = ($counts[$productId] ?? 0) + $qty;
+        }
+
+        return $counts;
+    }
+
+    protected function resolvePriceRange(Product $product): array
+    {
+        if ($product->type !== 'variant') {
+            $price = $product->price !== null ? (float) $product->price : null;
+            return [$price, $price, $price !== null ? number_format($price, 2) : null];
+        }
+
+        $variants = $product->relationLoaded('variants') ? $product->variants : $product->variants()->get();
+        $prices = $variants
+            ->map(fn($variant) => $variant->price ?? $product->price)
+            ->filter(fn($value) => $value !== null)
+            ->map(fn($value) => (float) $value)
+            ->values();
+
+        if ($prices->isEmpty()) {
+            return [null, null, null];
+        }
+
+        $minPrice = $prices->min();
+        $maxPrice = $prices->max();
+        $display = $minPrice === $maxPrice
+            ? number_format($minPrice, 2)
+            : sprintf('%s - %s', number_format($minPrice, 2), number_format($maxPrice, 2));
+
+        return [$minPrice, $maxPrice, $display];
     }
 
     protected function resolveWishlistProductIds(Request $request): array

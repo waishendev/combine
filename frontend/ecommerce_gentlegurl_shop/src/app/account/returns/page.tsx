@@ -137,6 +137,12 @@ export default async function AccountReturnsPage() {
                               {item.sku && (
                                 <p className="text-xs text-[var(--foreground)]/60">SKU: {item.sku}</p>
                               )}
+                              {(item.product_type === "variant" || item.product_variant_id) && (
+                                <p className="text-xs text-[var(--foreground)]/60">
+                                  Variant: {item.variant_name ?? "—"}
+                                  {item.variant_sku ? ` (${item.variant_sku})` : ""}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <p className="text-xs text-[var(--foreground)]/70">

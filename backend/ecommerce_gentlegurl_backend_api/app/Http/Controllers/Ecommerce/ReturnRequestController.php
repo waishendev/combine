@@ -102,10 +102,17 @@ class ReturnRequestController extends Controller
             'items' => $returnRequest->items->map(function ($item) {
                 $orderItem = $item->orderItem;
                 $thumbnail = $orderItem?->product?->cover_image_url;
+                $productType = $orderItem?->product?->type;
 
                 return [
                     'product_id' => $orderItem?->product_id,
+                    'product_sku' => $orderItem?->sku_snapshot,
+                    'product_variant_id' => $orderItem?->product_variant_id,
+                    'product_type' => $productType,
+                    'is_variant_product' => $productType === 'variant',
                     'product_name' => $orderItem?->product_name_snapshot ?? $orderItem?->product?->name,
+                    'variant_name' => $orderItem?->variant_name_snapshot,
+                    'variant_sku' => $orderItem?->variant_sku_snapshot,
                     'quantity' => $item->quantity,
                     'unit_price' => $orderItem?->price_snapshot,
                     'line_total' => $orderItem?->line_total,

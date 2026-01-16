@@ -16,6 +16,8 @@ interface ProductGridProps {
     media?: Array<{ type?: string; url?: string | null; sort_order?: number | null }>;
     is_in_wishlist?: boolean;
     sold_count?: number | string;
+    sold_total?: number | string;
+    extra_sold?: number | string;
   }>;
 }
 
@@ -32,11 +34,20 @@ export default function ProductGrid({ items }: ProductGridProps) {
   return (
     <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
       {items?.map((product) => {
-        const productSlug = product.slug ?? product.id;
+        const normalizedSlug =
+          typeof product.slug === "string" ? product.slug.trim().toLowerCase() : null;
+        const resolvedSlug =
+          normalizedSlug && !["null", "undefined"].includes(normalizedSlug)
+            ? product.slug!.trim()
+            : product.id
+              ? String(product.id)
+              : "";
         const priceNumber = Number(product.price);
         const priceLabel = Number.isFinite(priceNumber) ? priceNumber.toFixed(2) : product.price;
         const image = getPrimaryProductImage(product);
-        const soldCountValue = Number(product.sold_count ?? 0);
+        const soldCountValue = Number(
+          product.sold_total ?? (Number(product.sold_count ?? 0) + Number(product.extra_sold ?? 0)),
+        );
         const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
 
         return (
@@ -51,7 +62,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
               />
             </div>
 
-            <Link href={`/product/${productSlug}`} className="block">
+            <Link href={`/product/${resolvedSlug}`} prefetch={false} className="block">
               <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-b from-[var(--background-soft)] to-[var(--card)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {/* <Image

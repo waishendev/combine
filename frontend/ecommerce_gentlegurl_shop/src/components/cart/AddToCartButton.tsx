@@ -6,9 +6,16 @@ import { useCart } from "@/contexts/CartContext";
 type AddToCartButtonProps = {
   productId: number;
   stock?: number | null;
+  productVariantId?: number | null;
+  requiresVariant?: boolean;
 };
 
-export default function AddToCartButton({ productId, stock }: AddToCartButtonProps) {
+export default function AddToCartButton({
+  productId,
+  stock,
+  productVariantId,
+  requiresVariant,
+}: AddToCartButtonProps) {
   const { addToCart } = useCart();
   const [qty, setQty] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,6 +32,10 @@ export default function AddToCartButton({ productId, stock }: AddToCartButtonPro
 
   const handleAdd = async () => {
     if (qty <= 0) return;
+    if (requiresVariant && !productVariantId) {
+      setNotice("Please select a variant before adding to cart.");
+      return;
+    }
     if (maxStock !== null && qty > maxStock) {
       setQty(maxStock);
       setNotice(`Only ${maxStock} available in stock.`);
@@ -32,7 +43,7 @@ export default function AddToCartButton({ productId, stock }: AddToCartButtonPro
     }
     setIsSubmitting(true);
     try {
-      await addToCart(productId, qty);
+      await addToCart(productId, qty, productVariantId ?? undefined);
       setNotice(null);
     } catch (error) {
       const message =
@@ -98,7 +109,11 @@ export default function AddToCartButton({ productId, stock }: AddToCartButtonPro
         <button
           type="button"
           onClick={handleAdd}
-          disabled={isSubmitting || (maxStock !== null && maxStock <= 0)}
+          disabled={
+            isSubmitting ||
+            (requiresVariant && !productVariantId) ||
+            (maxStock !== null && maxStock <= 0)
+          }
           className="rounded bg-[var(--accent)] px-6 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? "Adding..." : "Add to Cart"}

@@ -23,6 +23,8 @@ type Product = {
   media?: Array<{ type?: string; url?: string | null; sort_order?: number | null }>;
   is_in_wishlist?: boolean;
   sold_count?: number | string;
+  sold_total?: number | string;
+  extra_sold?: number | string;
 };
 
 type ShopMenuCategory = {

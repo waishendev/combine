@@ -140,6 +140,7 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/cart', [PublicCartController::class, 'show']);
         Route::post('/cart/items', [PublicCartController::class, 'addOrUpdateItem']);
         Route::post('/cart/items/add', [PublicCartController::class, 'addItemIncrement']);
+        Route::patch('/cart/items/{item}', [PublicCartController::class, 'updateItem']);
         Route::delete('/cart/items/{item}', [PublicCartController::class, 'removeItem']);
         Route::post('/cart/reset', [PublicCartController::class, 'reset']);
         Route::post('/cart/reward-items/{item}/cancel', [PublicCartController::class, 'cancelRewardItem']);

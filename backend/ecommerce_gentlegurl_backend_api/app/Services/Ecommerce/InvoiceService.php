@@ -12,9 +12,21 @@ class InvoiceService
         $order->loadMissing(['items', 'pickupStore']);
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
+        $items = $order->items->map(function ($item) {
+            return [
+                'product_name' => $item->product_name_snapshot,
+                'product_sku' => $item->sku_snapshot,
+                'variant_name' => $item->variant_name_snapshot,
+                'variant_sku' => $item->variant_sku_snapshot,
+                'quantity' => (int) $item->quantity,
+                'unit_price' => (float) $item->price_snapshot,
+                'line_total' => (float) $item->line_total,
+            ];
+        })->values();
 
         return app('dompdf.wrapper')->loadView('invoices.order', [
             'order' => $order,
+            'items' => $items,
             'invoiceProfile' => $invoiceProfile,
         ]);
     }

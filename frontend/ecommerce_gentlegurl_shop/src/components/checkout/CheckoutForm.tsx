@@ -162,6 +162,9 @@ export default function CheckoutForm() {
   const isShippingMalaysia = normalizeCountryValue(form.shipping_country) === "MY";
   const isAddressMalaysia = normalizeCountryValue(addressForm.country) === "MY";
   const isBillingMalaysia = normalizeCountryValue(billingForm.billing_country) === "MY";
+  const hasMissingVariant = selectedItems.some(
+    (item) => item.product_type === "variant" && !item.product_variant_id,
+  );
   
   const safeTotals = useMemo(() => {
     const previewSubtotal = Number(shippingPreview?.subtotal ?? totals.subtotal ?? 0);
@@ -360,6 +363,10 @@ export default function CheckoutForm() {
       setShippingPreview(null);
       return;
     }
+    if (hasMissingVariant) {
+      setShippingPreview(null);
+      return;
+    }
 
     const addressSource = isLoggedIn ? selectedAddress : null;
     const country = normalizeCountryValue(addressSource?.country ?? form.shipping_country);
@@ -377,6 +384,7 @@ export default function CheckoutForm() {
 
     const payloadItems = selectedItems.map((item) => ({
       product_id: item.product_id,
+      product_variant_id: item.product_variant_id ?? undefined,
       quantity: item.quantity,
       is_reward: item.is_reward,
       reward_redemption_id: item.reward_redemption_id ?? undefined,
@@ -418,6 +426,7 @@ export default function CheckoutForm() {
     isLoggedIn,
     selectedAddress,
     selectedItems,
+    hasMissingVariant,
     sessionToken,
     shippingMethod,
   ]);
@@ -531,6 +540,10 @@ export default function CheckoutForm() {
       setError("Please select at least one item in your cart.");
       return;
     }
+    if (hasMissingVariant) {
+      setError("Please select variants for all variant items before checkout.");
+      return;
+    }
 
     if (!paymentMethod) {
       setError("Please select a payment method.");
@@ -616,6 +629,7 @@ export default function CheckoutForm() {
       const payload: CheckoutPayload = {
         items: selectedItems.map((item) => ({
           product_id: item.product_id,
+          product_variant_id: item.product_variant_id ?? undefined,
           quantity: item.quantity,
           is_reward: item.is_reward,
           reward_redemption_id: item.reward_redemption_id ?? undefined,
@@ -1234,6 +1248,11 @@ export default function CheckoutForm() {
                     <div className="flex-1 space-y-1">
                       <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
                       <p className="text-xs text-[var(--foreground)]/60">Qty: {item.quantity}</p>
+                      {item.variant_name && (
+                        <p className="text-[11px] text-[var(--foreground)]/50">
+                          Variant: {item.variant_name}
+                        </p>
+                      )}
                       {item.sku && <p className="text-[11px] text-[var(--foreground)]/50">SKU: {item.sku}</p>}
                     </div>
 
