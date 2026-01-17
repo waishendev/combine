@@ -232,8 +232,31 @@ export async function getHomepage(): Promise<HomepageData | null> {
     }
 
     const json = await res.json();
+    const payload = (json.data as HomepageData) ?? null;
+    if (!payload) {
+      return null;
+    }
 
-    return (json.data as HomepageData) ?? null;
+    const normalizeProduct = (product: HomepageProduct): HomepageProduct => ({
+      ...product,
+      promotion_active:
+        product.promotion_active ??
+        (product.is_on_sale ?? false),
+      sale_price:
+        product.sale_price ??
+        product.effective_price ??
+        null,
+      original_price:
+        product.original_price ??
+        product.price,
+    });
+
+    return {
+      ...payload,
+      featured_products: payload.featured_products.map(normalizeProduct),
+      new_products: payload.new_products.map(normalizeProduct),
+      best_sellers: payload.best_sellers.map(normalizeProduct),
+    };
   } catch (error) {
     console.error("[getHomepage] Error:", error);
     return null;
