@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton";
@@ -17,6 +17,14 @@ export type VariantItem = {
   sku?: string | null;
   price?: number | string | null;
   sale_price?: number | string | null;
+  sale_price_start_at?: string | null;
+  sale_price_end_at?: string | null;
+  original_price?: number | string | null;
+  effective_price?: number | string | null;
+  is_on_sale?: boolean | null;
+  promotion_active?: boolean | null;
+  promotion_end_at?: string | null;
+  discount_percent?: number | null;
   stock?: number | null;
   track_stock?: boolean | null;
   is_active?: boolean | null;
@@ -32,6 +40,14 @@ type ProductDetailClientProps = {
     type?: string | null;
     price: number | string;
     sale_price?: number | string | null;
+    sale_price_start_at?: string | null;
+    sale_price_end_at?: string | null;
+    original_price?: number | string | null;
+    effective_price?: number | string | null;
+    is_on_sale?: boolean | null;
+    promotion_active?: boolean | null;
+    promotion_end_at?: string | null;
+    discount_percent?: number | null;
     stock?: number | null;
     is_reward_only?: boolean;
     description?: string | null;
@@ -78,15 +94,38 @@ export default function ProductDetailClient({
 
   const formatAmount = (value: number) => value.toFixed(2);
 
+  const parseDateTime = (value: string | null | undefined) => {
+    if (!value) return null;
+    const normalized = value.includes("T") ? value : value.replace(" ", "T");
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatPromoEndAt = (date: Date) => {
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+      date.getHours(),
+    )}:${pad(date.getMinutes())}`;
+  };
+
+  const formatCountdown = (diffMs: number) => {
+    if (diffMs <= 0) return "00:00:00";
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const timeLabel = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+      2,
+      "0",
+    )}:${String(seconds).padStart(2, "0")}`;
+    return days > 0 ? `${days} days ${timeLabel}` : timeLabel;
+  };
+
   const getDiscountPercent = (price: number | null, salePrice: number | null) => {
     if (!price || !salePrice) return null;
     if (salePrice >= price) return null;
     return Math.round((1 - salePrice / price) * 100);
-  };
-
-  const getValidSalePrice = (price: number | null, salePrice: number | null) => {
-    if (!price || !salePrice) return null;
-    return salePrice < price ? salePrice : null;
   };
 
   const formatRange = (min: number, max: number) => {
@@ -124,12 +163,42 @@ export default function ProductDetailClient({
   const videoPoster = videoItem ? getVideoPoster(product, videoItem) : null;
   const initialIndex = galleryMedia.findIndex((item) => item.type === "video");
 
-  const basePrice = parseAmount(selectedVariant?.price ?? product.price ?? 0);
-  const baseSalePrice = parseAmount(selectedVariant?.sale_price ?? product.sale_price ?? null);
-  const resolvedSalePrice = getValidSalePrice(basePrice, baseSalePrice);
-  const selectedDiscountPercent = getDiscountPercent(basePrice, resolvedSalePrice);
-  const displayPrice = basePrice !== null ? formatAmount(basePrice) : "0.00";
-  const displaySalePrice = resolvedSalePrice !== null ? formatAmount(resolvedSalePrice) : null;
+  const baseOriginalPrice = parseAmount(
+    selectedVariant?.original_price ?? selectedVariant?.price ?? product.original_price ?? product.price ?? 0,
+  );
+  const baseEffectivePrice = parseAmount(
+    selectedVariant?.effective_price ??
+      selectedVariant?.sale_price ??
+      product.effective_price ??
+      product.sale_price ??
+      product.price ??
+      0,
+  );
+  const baseIsOnSale = selectedVariant
+    ? selectedVariant.is_on_sale === true
+    : product.is_on_sale === true;
+  const selectedDiscountPercent =
+    typeof (selectedVariant?.discount_percent ?? product.discount_percent) === "number"
+      ? Number(selectedVariant?.discount_percent ?? product.discount_percent)
+      : getDiscountPercent(baseOriginalPrice, baseEffectivePrice);
+  const saleEndAt = parseDateTime(
+    selectedVariant?.sale_price_end_at ?? product.sale_price_end_at ?? null,
+  );
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!saleEndAt) return undefined;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [saleEndAt?.getTime()]);
+
+  const isPromoExpired = saleEndAt ? now >= saleEndAt.getTime() : false;
+  const displayIsOnSale = baseIsOnSale && !isPromoExpired;
+  const displayPrice = baseOriginalPrice !== null ? formatAmount(baseOriginalPrice) : "0.00";
+  const displaySalePrice =
+    displayIsOnSale && baseEffectivePrice !== null ? formatAmount(baseEffectivePrice) : null;
+  const countdownLabel =
+    saleEndAt && displayIsOnSale ? formatCountdown(saleEndAt.getTime() - now) : null;
 
   const variantPriceRange = useMemo(() => {
     if (!hasVariants || selectedVariant) {
@@ -137,7 +206,9 @@ export default function ProductDetailClient({
     }
     const prices = variants
       .filter((variant) => variant.is_active !== false)
-      .map((variant) => parseAmount(variant.price ?? product.price ?? 0))
+      .map((variant) =>
+        parseAmount(variant.original_price ?? variant.price ?? product.original_price ?? product.price ?? 0),
+      )
       .filter((value): value is number => value !== null);
     if (prices.length === 0) {
       return null;
@@ -154,9 +225,10 @@ export default function ProductDetailClient({
     const sales = variants
       .filter((variant) => variant.is_active !== false)
       .map((variant) => {
-        const price = parseAmount(variant.price ?? product.price ?? 0);
-        const sale = parseAmount(variant.sale_price ?? null);
-        return price && sale && sale < price ? sale : null;
+        if (variant.is_on_sale !== true) {
+          return null;
+        }
+        return parseAmount(variant.effective_price ?? variant.sale_price ?? null);
       })
       .filter((value): value is number => value !== null);
     if (sales.length === 0) {
@@ -173,12 +245,15 @@ export default function ProductDetailClient({
     }
     const discounts = variants
       .filter((variant) => variant.is_active !== false)
-      .map((variant) =>
-        getDiscountPercent(
-          parseAmount(variant.price ?? product.price ?? 0),
-          parseAmount(variant.sale_price ?? null),
-        ),
-      )
+      .map((variant) => {
+        if (typeof variant.discount_percent === "number") {
+          return variant.discount_percent;
+        }
+        return getDiscountPercent(
+          parseAmount(variant.original_price ?? variant.price ?? product.original_price ?? product.price ?? 0),
+          parseAmount(variant.effective_price ?? variant.sale_price ?? null),
+        );
+      })
       .filter((value): value is number => value !== null);
     if (discounts.length === 0) {
       return null;
@@ -282,6 +357,17 @@ export default function ProductDetailClient({
               </span>
             )}
           </div>
+
+          {displayIsOnSale && saleEndAt && countdownLabel && (
+            <div className="rounded-lg border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/40 px-4 py-2 text-sm">
+              <p className="font-semibold text-[color:var(--status-warning)]">
+                Promotion ends at {formatPromoEndAt(saleEndAt)}
+              </p>
+              <p className="text-xs text-[color:var(--text-muted)]">
+                Ends in {countdownLabel}
+              </p>
+            </div>
+          )}
 
           {hasVariants && (
             <div className="space-y-2">

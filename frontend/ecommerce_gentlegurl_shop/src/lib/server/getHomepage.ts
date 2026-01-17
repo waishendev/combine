@@ -56,12 +56,32 @@ export type HomepageProduct = {
   slug: string;
   price: string;
   sale_price?: string | number | null;
+  sale_price_display?: string | null;
+  price_display?: string | null;
+  sale_price_start_at?: string | null;
+  sale_price_end_at?: string | null;
+  original_price?: string | number | { min: number; max: number } | null;
+  effective_price?: string | number | null;
+  is_on_sale?: boolean;
+  promotion_active?: boolean;
+  promotion_end_at?: string | null;
+  discount_percent?: number | null;
   type?: string | null;
   variants?: Array<{
     id: number;
     name: string;
     price?: string | number | null;
     sale_price?: string | number | null;
+    sale_price_display?: string | null;
+    price_display?: string | null;
+    sale_price_start_at?: string | null;
+    sale_price_end_at?: string | null;
+    original_price?: string | number | { min: number; max: number } | null;
+    effective_price?: string | number | null;
+    is_on_sale?: boolean | null;
+    promotion_active?: boolean | null;
+    promotion_end_at?: string | null;
+    discount_percent?: number | null;
     is_active?: boolean | null;
   }>;
   is_featured: boolean;
@@ -212,8 +232,68 @@ export async function getHomepage(): Promise<HomepageData | null> {
     }
 
     const json = await res.json();
+    const payload = (json.data as HomepageData) ?? null;
+    if (!payload) {
+      return null;
+    }
 
-    return (json.data as HomepageData) ?? null;
+    const normalizeProduct = (product: HomepageProduct): HomepageProduct => {
+      const originalPrice =
+        product.original_price ??
+        product.price;
+      const salePrice =
+        product.sale_price ??
+        product.effective_price ??
+        null;
+      const parsedOriginal =
+        typeof originalPrice === "number"
+          ? originalPrice
+          : typeof originalPrice === "string"
+            ? Number.parseFloat(originalPrice)
+            : typeof originalPrice === "object"
+              ? originalPrice.min
+              : NaN;
+      const parsedSale =
+        typeof salePrice === "number"
+          ? salePrice
+          : typeof salePrice === "string"
+            ? Number.parseFloat(salePrice)
+            : NaN;
+      const derivedDiscountPercent =
+        Number.isFinite(parsedOriginal) &&
+        Number.isFinite(parsedSale) &&
+        parsedOriginal > 0 &&
+        parsedSale < parsedOriginal
+          ? Math.round((1 - parsedSale / parsedOriginal) * 100)
+          : null;
+      const discountPercent =
+        typeof product.discount_percent === "number"
+          ? product.discount_percent
+          : derivedDiscountPercent;
+      const basePromotion =
+        product.promotion_active ??
+        product.is_on_sale ??
+        (discountPercent ?? 0) >= 1;
+      const promotionActive =
+        basePromotion &&
+        (discountPercent ?? 0) >= 1 &&
+        salePrice !== null;
+
+      return {
+        ...product,
+        promotion_active: promotionActive,
+        sale_price: salePrice,
+        original_price: originalPrice,
+        discount_percent: discountPercent,
+      };
+    };
+
+    return {
+      ...payload,
+      featured_products: payload.featured_products.map(normalizeProduct),
+      new_products: payload.new_products.map(normalizeProduct),
+      best_sellers: payload.best_sellers.map(normalizeProduct),
+    };
   } catch (error) {
     console.error("[getHomepage] Error:", error);
     return null;

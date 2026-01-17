@@ -21,6 +21,7 @@ use App\Models\BillplzBill;
 use App\Services\Voucher\VoucherService;
 use App\Services\Ecommerce\OrderReserveService;
 use Carbon\Carbon;
+use App\Support\Pricing\ProductPricing;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -736,8 +737,13 @@ class PublicCheckoutController extends Controller
                 }
 
                 $variant = $this->resolveVariantForCheckout($product, $cartItem->product_variant_id);
-                $unitPrice = $this->resolveVariantPrice($product, $variant);
+                $pricing = ProductPricing::build($product, $variant);
+                $unitPrice = (float) $pricing['effective_price'];
                 $lineTotal = $unitPrice * (int) $cartItem->quantity;
+                $priceChangeReason = ProductPricing::resolvePriceChangeReason(
+                    (float) $cartItem->unit_price_snapshot,
+                    $pricing,
+                );
                 $items[] = [
                     'product_id' => $product->id,
                     'product_variant_id' => $variant?->id,
@@ -750,6 +756,15 @@ class PublicCheckoutController extends Controller
                     'quantity' => (int) $cartItem->quantity,
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
+                    'original_price' => $pricing['original_price'],
+                    'sale_price' => $pricing['sale_price'],
+                    'sale_price_start_at' => $pricing['sale_price_start_at'],
+                    'sale_price_end_at' => $pricing['sale_price_end_at'],
+                    'is_on_sale' => $pricing['is_on_sale'],
+                    'effective_price' => $pricing['effective_price'],
+                    'discount_percent' => $pricing['discount_percent'],
+                    'price_changed' => $priceChangeReason !== null,
+                    'price_change_reason' => $priceChangeReason,
                     'is_reward' => false,
                     'reward_redemption_id' => null,
                     'locked' => false,
@@ -834,7 +849,8 @@ class PublicCheckoutController extends Controller
 
                 $variantId = $input['product_variant_id'] ?? null;
                 $variant = $this->resolveVariantForCheckout($product, $variantId);
-                $unitPrice = $this->resolveVariantPrice($product, $variant);
+                $pricing = ProductPricing::build($product, $variant);
+                $unitPrice = (float) $pricing['effective_price'];
                 $lineTotal = $unitPrice * (int) ($input['quantity'] ?? 1);
                 $items[] = [
                     'product_id' => $product->id,
@@ -848,6 +864,15 @@ class PublicCheckoutController extends Controller
                     'quantity' => (int) ($input['quantity'] ?? 1),
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
+                    'original_price' => $pricing['original_price'],
+                    'sale_price' => $pricing['sale_price'],
+                    'sale_price_start_at' => $pricing['sale_price_start_at'],
+                    'sale_price_end_at' => $pricing['sale_price_end_at'],
+                    'is_on_sale' => $pricing['is_on_sale'],
+                    'effective_price' => $pricing['effective_price'],
+                    'discount_percent' => $pricing['discount_percent'],
+                    'price_changed' => false,
+                    'price_change_reason' => null,
                     'is_reward' => false,
                     'reward_redemption_id' => null,
                     'locked' => false,
@@ -1047,21 +1072,8 @@ class PublicCheckoutController extends Controller
 
     protected function resolveVariantPrice(Product $product, ?ProductVariant $variant): float
     {
-        if ($variant) {
-            $price = (float) ($variant->price ?? $product->price);
-            $salePrice = $variant->sale_price;
-            if ($salePrice !== null && (float) $salePrice < $price) {
-                return (float) $salePrice;
-            }
-            return $price;
-        }
+        $pricing = ProductPricing::build($product, $variant);
 
-        $price = (float) $product->price;
-        $salePrice = $product->sale_price;
-        if ($salePrice !== null && (float) $salePrice < $price) {
-            return (float) $salePrice;
-        }
-
-        return $price;
+        return (float) $pricing['effective_price'];
     }
 }

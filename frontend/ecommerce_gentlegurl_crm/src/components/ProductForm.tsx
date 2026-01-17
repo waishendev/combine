@@ -37,6 +37,8 @@ type VariantFormValue = {
   sku: string
   price: string
   salePrice: string
+  salePriceStartAt: string
+  salePriceEndAt: string
   costPrice: string
   stock: string
   lowStockThreshold: string
@@ -57,6 +59,8 @@ type ProductFormValues = {
   description: string
   price: string
   salePrice: string
+  salePriceStartAt: string
+  salePriceEndAt: string
   costPrice: string
   stock: string
   lowStockThreshold: string
@@ -79,6 +83,8 @@ const emptyForm: ProductFormValues = {
   description: '',
   price: '',
   salePrice: '',
+  salePriceStartAt: '',
+  salePriceEndAt: '',
   costPrice: '',
   stock: '',
   lowStockThreshold: '',
@@ -98,6 +104,8 @@ const emptyVariant = (sortOrder = 0): VariantFormValue => ({
   sku: '',
   price: '',
   salePrice: '',
+  salePriceStartAt: '',
+  salePriceEndAt: '',
   costPrice: '',
   stock: '',
   lowStockThreshold: '',
@@ -130,6 +138,12 @@ const parsePriceValue = (value: string) => {
 }
 
 const formatPriceValue = (value: number) => value.toFixed(2)
+
+const formatDateTimeInput = (value?: string | null) => {
+  if (!value) return ''
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  return normalized.slice(0, 16)
+}
 
 const getDiscountPercent = (price: number | null, salePrice: number | null) => {
   if (!price || !salePrice) return null
@@ -181,6 +195,8 @@ export default function ProductForm({
           product.salePrice !== null && product.salePrice !== undefined
             ? String(product.salePrice)
             : '',
+        salePriceStartAt: formatDateTimeInput(product.salePriceStartAt),
+        salePriceEndAt: formatDateTimeInput(product.salePriceEndAt),
         costPrice: product.costPrice ? String(product.costPrice) : '',
         stock: product.stock ? String(product.stock) : '',
         lowStockThreshold: product.lowStockThreshold
@@ -228,6 +244,8 @@ export default function ProductForm({
           variant.salePrice !== null && variant.salePrice !== undefined
             ? String(variant.salePrice)
             : '',
+        salePriceStartAt: formatDateTimeInput(variant.salePriceStartAt),
+        salePriceEndAt: formatDateTimeInput(variant.salePriceEndAt),
         costPrice:
           variant.costPrice !== null && variant.costPrice !== undefined
             ? String(variant.costPrice)
@@ -1327,6 +1345,8 @@ export default function ProductForm({
     formData.append('description', form.description.trim())
     formData.append('price', form.price || '0')
     formData.append('sale_price', getNormalizedSalePrice(form.price, form.salePrice))
+    formData.append('sale_price_start_at', form.salePriceStartAt || '')
+    formData.append('sale_price_end_at', form.salePriceEndAt || '')
     formData.append('cost_price', form.costPrice || '0')
     formData.append('stock', form.stock || '0')
     formData.append('low_stock_threshold', form.lowStockThreshold || '0')
@@ -1362,6 +1382,8 @@ export default function ProductForm({
           `variants[${index}][sale_price]`,
           getNormalizedSalePrice(variant.price, variant.salePrice),
         )
+        formData.append(`variants[${index}][sale_price_start_at]`, variant.salePriceStartAt || '')
+        formData.append(`variants[${index}][sale_price_end_at]`, variant.salePriceEndAt || '')
         formData.append(`variants[${index}][cost_price]`, variant.costPrice || '0')
         formData.append(`variants[${index}][stock]`, variant.stock || '0')
         formData.append(`variants[${index}][low_stock_threshold]`, variant.lowStockThreshold || '0')
@@ -2506,6 +2528,34 @@ export default function ProductForm({
                 </div>
               </div>
               <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="salePriceStartAt">
+                  Start At
+                </label>
+                <input
+                  id="salePriceStartAt"
+                  name="salePriceStartAt"
+                  type="datetime-local"
+                  value={form.salePriceStartAt}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                />
+                <p className="text-xs text-gray-500">Leave empty to start immediately</p>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="salePriceEndAt">
+                  End At
+                </label>
+                <input
+                  id="salePriceEndAt"
+                  name="salePriceEndAt"
+                  type="datetime-local"
+                  value={form.salePriceEndAt}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                />
+                <p className="text-xs text-gray-500">Leave empty to never expire</p>
+              </div>
+              <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Discount %</label>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                   {simpleDiscountPercent !== null ? `${simpleDiscountPercent}%` : '—'}
@@ -2764,6 +2814,26 @@ export default function ProductForm({
                       placeholder="0.00"
                     />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Start At</label>
+                  <input
+                    type="datetime-local"
+                    value={variant.salePriceStartAt}
+                    onChange={(event) => handleVariantChange(index, 'salePriceStartAt', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  />
+                  <p className="text-xs text-gray-500">Leave empty to start immediately</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">End At</label>
+                  <input
+                    type="datetime-local"
+                    value={variant.salePriceEndAt}
+                    onChange={(event) => handleVariantChange(index, 'salePriceEndAt', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  />
+                  <p className="text-xs text-gray-500">Leave empty to never expire</p>
                 </div>
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">Discount %</label>
