@@ -107,19 +107,9 @@ export default function CursorTrail() {
   return (
     <div className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
       {sparkles.map((sparkle) => {
-        // 五角星 clip-path
-        const starPath = `polygon(
-          50% 0%, 
-          61% 35%, 
-          98% 35%, 
-          68% 57%, 
-          79% 91%, 
-          50% 70%, 
-          21% 91%, 
-          32% 57%, 
-          2% 35%, 
-          39% 35%
-        )`;
+        // 爱心 clip-path
+        const heartPath =
+          "path('M50% 15% C35% 0% 0% 20% 50% 60% C100% 20% 65% 0% 50% 15% Z')";
         
         const isWhite = sparkle.hue === 0;
         const bgColor = isWhite 
@@ -132,7 +122,7 @@ export default function CursorTrail() {
           width: sparkle.size,
           height: sparkle.size,
           background: bgColor,
-          clipPath: starPath,
+          clipPath: heartPath,
           transform: `translate(-50%, -50%) rotate(${sparkle.rotation}deg) scale(1)`,
           boxShadow: isWhite
             ? `0 0 10px rgba(255, 255, 255, 0.9), 0 0 15px rgba(255, 255, 255, 0.6)`
