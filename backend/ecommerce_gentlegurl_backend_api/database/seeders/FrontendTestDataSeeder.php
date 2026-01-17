@@ -8,6 +8,7 @@ use App\Models\Marquee;
 use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductImage;
+use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\ShopMenuItem;
 use App\Models\Ecommerce\PageReview;
 use App\Models\Ecommerce\StoreLocation;
@@ -38,6 +39,9 @@ class FrontendTestDataSeeder extends Seeder
 
         // 4. Products
         $products = $this->seedProducts();
+
+        // 4.1 Product Variants
+        $this->seedProductVariants($products);
 
         // 5. Link Products to Categories
         $this->linkProductsToCategories($products, $categories);
@@ -311,6 +315,7 @@ class FrontendTestDataSeeder extends Seeder
                 'type' => 'single',
                 'description' => 'Apple iPhone 15 Pro Max 256GB 钛金属黑色，配备A17 Pro芯片，6.7英寸Super Retina XDR显示屏。',
                 'price' => 4999.00,
+                'sale_price' => 4599.00,
                 'cost_price' => 4200.00,
                 'stock' => 9,
                 'low_stock_threshold' => 10,
@@ -401,6 +406,20 @@ class FrontendTestDataSeeder extends Seeder
                 'cost_price' => 35.00,
                 'stock' => 300,
                 'low_stock_threshold' => 30,
+                'track_stock' => true,
+                'is_active' => true,
+                'is_featured' => false,
+            ],
+            [
+                'name' => '运动连帽卫衣',
+                'slug' => 'sports-hoodie',
+                'sku' => 'HD-S-BASE',
+                'type' => 'variant',
+                'description' => '舒适加绒连帽卫衣，多尺码可选。',
+                'price' => 129.00,
+                'cost_price' => 65.00,
+                'stock' => 0,
+                'low_stock_threshold' => 0,
                 'track_stock' => true,
                 'is_active' => true,
                 'is_featured' => false,
@@ -503,6 +522,71 @@ class FrontendTestDataSeeder extends Seeder
         return $created;
     }
 
+    private function seedProductVariants(array $products): void
+    {
+        $productMap = [];
+        foreach ($products as $product) {
+            $productMap[$product->slug] = $product;
+        }
+
+        $hoodie = $productMap['sports-hoodie'] ?? null;
+        if (! $hoodie) {
+            return;
+        }
+
+        $variants = [
+            [
+                'product_id' => $hoodie->id,
+                'sku' => 'HD-S-S',
+                'title' => 'Size S',
+                'price' => 129.00,
+                'sale_price' => 99.00,
+                'cost_price' => 65.00,
+                'stock' => 25,
+                'low_stock_threshold' => 5,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 1,
+            ],
+            [
+                'product_id' => $hoodie->id,
+                'sku' => 'HD-S-M',
+                'title' => 'Size M',
+                'price' => 129.00,
+                'sale_price' => null,
+                'cost_price' => 65.00,
+                'stock' => 30,
+                'low_stock_threshold' => 5,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 2,
+            ],
+            [
+                'product_id' => $hoodie->id,
+                'sku' => 'HD-S-L',
+                'title' => 'Size L',
+                'price' => 139.00,
+                'sale_price' => 109.00,
+                'cost_price' => 70.00,
+                'stock' => 20,
+                'low_stock_threshold' => 5,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 3,
+            ],
+        ];
+
+        foreach ($variants as $variant) {
+            ProductVariant::updateOrCreate(
+                [
+                    'product_id' => $variant['product_id'],
+                    'sku' => $variant['sku'],
+                ],
+                $variant
+            );
+        }
+    }
+
     private function linkProductsToCategories(array $products, array $categories): void
     {
         $categoryMap = [];
@@ -524,6 +608,7 @@ class FrontendTestDataSeeder extends Seeder
             'macbook-pro-16-m3' => ['laptops', 'computers'],
             'mechanical-keyboard-rgb' => ['keyboard-mouse', 'computers'],
             'men-cotton-tshirt' => ['men-tshirts', 'men-clothing'],
+            'sports-hoodie' => ['men-tshirts', 'men-clothing'],
             'men-slim-jeans' => ['men-jeans', 'men-clothing'],
             'women-summer-dress' => ['women-dresses', 'women-clothing'],
             'women-leather-handbag' => ['women-bags', 'women-clothing'],
@@ -573,6 +658,9 @@ class FrontendTestDataSeeder extends Seeder
                 ['image_path' => '/images/products/keyboard-1.jpg', 'is_main' => true, 'sort_order' => 1],
             ],
             'men-cotton-tshirt' => [
+                ['image_path' => '/images/products/tshirt-men-1.jpg', 'is_main' => true, 'sort_order' => 1],
+            ],
+            'sports-hoodie' => [
                 ['image_path' => '/images/products/tshirt-men-1.jpg', 'is_main' => true, 'sort_order' => 1],
             ],
             'men-slim-jeans' => [

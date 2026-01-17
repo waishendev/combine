@@ -16,6 +16,7 @@ export type VariantItem = {
   name: string;
   sku?: string | null;
   price?: number | string | null;
+  sale_price?: number | string | null;
   stock?: number | null;
   track_stock?: boolean | null;
   is_active?: boolean | null;
@@ -30,6 +31,7 @@ type ProductDetailClientProps = {
     slug: string;
     type?: string | null;
     price: number | string;
+    sale_price?: number | string | null;
     stock?: number | null;
     is_reward_only?: boolean;
     description?: string | null;
@@ -69,6 +71,29 @@ export default function ProductDetailClient({
   const hasVariants = product.type === "variant" && variants.length > 0;
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
 
+  const parseAmount = (value: number | string | null | undefined) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const formatAmount = (value: number) => value.toFixed(2);
+
+  const getDiscountPercent = (price: number | null, salePrice: number | null) => {
+    if (!price || !salePrice) return null;
+    if (salePrice >= price) return null;
+    return Math.round((1 - salePrice / price) * 100);
+  };
+
+  const getValidSalePrice = (price: number | null, salePrice: number | null) => {
+    if (!price || !salePrice) return null;
+    return salePrice < price ? salePrice : null;
+  };
+
+  const formatRange = (min: number, max: number) => {
+    if (min === max) return formatAmount(min);
+    return `${formatAmount(min)} – ${formatAmount(max)}`;
+  };
+
   const selectedVariant = useMemo(
     () => variants.find((variant) => variant.id === selectedVariantId) ?? null,
     [variants, selectedVariantId],
@@ -99,12 +124,12 @@ export default function ProductDetailClient({
   const videoPoster = videoItem ? getVideoPoster(product, videoItem) : null;
   const initialIndex = galleryMedia.findIndex((item) => item.type === "video");
 
-  const priceNumber = Number(
-    selectedVariant?.price ?? product.price ?? 0,
-  );
-  const displayPrice = Number.isFinite(priceNumber)
-    ? priceNumber.toFixed(2)
-    : String(selectedVariant?.price ?? product.price ?? "0");
+  const basePrice = parseAmount(selectedVariant?.price ?? product.price ?? 0);
+  const baseSalePrice = parseAmount(selectedVariant?.sale_price ?? product.sale_price ?? null);
+  const resolvedSalePrice = getValidSalePrice(basePrice, baseSalePrice);
+  const selectedDiscountPercent = getDiscountPercent(basePrice, resolvedSalePrice);
+  const displayPrice = basePrice !== null ? formatAmount(basePrice) : "0.00";
+  const displaySalePrice = resolvedSalePrice !== null ? formatAmount(resolvedSalePrice) : null;
 
   const variantPriceRange = useMemo(() => {
     if (!hasVariants || selectedVariant) {
@@ -112,16 +137,53 @@ export default function ProductDetailClient({
     }
     const prices = variants
       .filter((variant) => variant.is_active !== false)
-      .map((variant) => Number(variant.price ?? product.price ?? 0))
-      .filter((value) => Number.isFinite(value));
+      .map((variant) => parseAmount(variant.price ?? product.price ?? 0))
+      .filter((value): value is number => value !== null);
     if (prices.length === 0) {
       return null;
     }
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
-    const formattedMin = minPrice.toFixed(2);
-    const formattedMax = maxPrice.toFixed(2);
-    return minPrice === maxPrice ? formattedMin : `${formattedMin} – ${formattedMax}`;
+    return formatRange(minPrice, maxPrice);
+  }, [hasVariants, selectedVariant, variants, product.price]);
+
+  const variantSaleRange = useMemo(() => {
+    if (!hasVariants || selectedVariant) {
+      return null;
+    }
+    const sales = variants
+      .filter((variant) => variant.is_active !== false)
+      .map((variant) => {
+        const price = parseAmount(variant.price ?? product.price ?? 0);
+        const sale = parseAmount(variant.sale_price ?? null);
+        return price && sale && sale < price ? sale : null;
+      })
+      .filter((value): value is number => value !== null);
+    if (sales.length === 0) {
+      return null;
+    }
+    const minSale = Math.min(...sales);
+    const maxSale = Math.max(...sales);
+    return formatRange(minSale, maxSale);
+  }, [hasVariants, selectedVariant, variants, product.price]);
+
+  const variantDiscountPercent = useMemo(() => {
+    if (!hasVariants || selectedVariant) {
+      return null;
+    }
+    const discounts = variants
+      .filter((variant) => variant.is_active !== false)
+      .map((variant) =>
+        getDiscountPercent(
+          parseAmount(variant.price ?? product.price ?? 0),
+          parseAmount(variant.sale_price ?? null),
+        ),
+      )
+      .filter((value): value is number => value !== null);
+    if (discounts.length === 0) {
+      return null;
+    }
+    return Math.max(...discounts);
   }, [hasVariants, selectedVariant, variants, product.price]);
 
   const productTrackStock = (product as { track_stock?: boolean | null }).track_stock ?? true;
@@ -167,8 +229,46 @@ export default function ProductDetailClient({
 
           <div className="flex flex-wrap items-center gap-3">
             {!isRewardOnly && (
-              <div className="text-xl font-bold text-[var(--accent-strong)]">
-                RM {variantPriceRange ?? displayPrice}
+              <div className="flex flex-wrap items-center gap-3">
+                {variantPriceRange && !selectedVariant ? (
+                  variantSaleRange ? (
+                    <>
+                      <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
+                        RM {variantPriceRange}
+                      </span>
+                      <span className="text-xl font-bold text-[var(--accent-strong)]">
+                        RM {variantSaleRange}
+                      </span>
+                      {variantDiscountPercent !== null && (
+                        <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
+                          UP TO -{variantDiscountPercent}%
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-xl font-bold text-[var(--accent-strong)]">
+                      RM {variantPriceRange}
+                    </span>
+                  )
+                ) : displaySalePrice ? (
+                  <>
+                    <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
+                      RM {displayPrice}
+                    </span>
+                    <span className="text-xl font-bold text-[var(--accent-strong)]">
+                      RM {displaySalePrice}
+                    </span>
+                    {selectedDiscountPercent !== null && (
+                      <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
+                        -{selectedDiscountPercent}%
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xl font-bold text-[var(--accent-strong)]">
+                    RM {displayPrice}
+                  </span>
+                )}
               </div>
             )}
             {!isRewardOnly && !isVariantProduct && (

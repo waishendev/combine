@@ -17,6 +17,14 @@ type Product = {
   id: number | string;
   name: string;
   price: number | string;
+  sale_price?: number | string | null;
+  type?: string | null;
+  variants?: Array<{
+    id?: number | string;
+    price?: number | string | null;
+    sale_price?: number | string | null;
+    is_active?: boolean | null;
+  }>;
   slug?: string;
   cover_image_url?: string | null;
   images?: Array<{ image_path?: string | null; url?: string | null; sort_order?: number | null }>;

@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ProductController extends Controller
 {
@@ -75,7 +76,8 @@ class ProductController extends Controller
             ],
             'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
             'description' => ['nullable', 'string'],
-            'price' => ['required', 'numeric'],
+            'price' => ['required', 'numeric', 'gt:0'],
+            'sale_price' => ['nullable', 'numeric', 'gte:0'],
             'cost_price' => ['nullable', 'numeric'],
             'stock' => ['sometimes', 'integer'],
             'low_stock_threshold' => ['sometimes', 'integer'],
@@ -96,7 +98,8 @@ class ProductController extends Controller
             'variants' => ['nullable', 'array'],
             'variants.*.sku' => ['required_with:variants.*.title', 'string', 'max:100'],
             'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
-            'variants.*.price' => ['nullable', 'numeric'],
+            'variants.*.price' => ['nullable', 'numeric', 'gt:0'],
+            'variants.*.sale_price' => ['nullable', 'numeric', 'gte:0'],
             'variants.*.cost_price' => ['nullable', 'numeric'],
             'variants.*.stock' => ['nullable', 'integer'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer'],
@@ -111,6 +114,7 @@ class ProductController extends Controller
         if (($validated['type'] ?? 'single') === 'variant' && empty($validated['sku'])) {
             $validated['sku'] = null;
         }
+        $this->validateSalePrice($validated, $request);
 
         $product = Product::create($validated + [
             'type' => $validated['type'] ?? 'single',
@@ -159,7 +163,8 @@ class ProductController extends Controller
             ],
             'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
             'description' => ['nullable', 'string'],
-            'price' => ['sometimes', 'numeric'],
+            'price' => ['sometimes', 'numeric', 'gt:0'],
+            'sale_price' => ['nullable', 'numeric', 'gte:0'],
             'cost_price' => ['nullable', 'numeric'],
             'stock' => ['sometimes', 'integer'],
             'low_stock_threshold' => ['sometimes', 'integer'],
@@ -183,7 +188,8 @@ class ProductController extends Controller
             'variants.*.id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'variants.*.sku' => ['required_with:variants.*.title', 'string', 'max:100'],
             'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
-            'variants.*.price' => ['nullable', 'numeric'],
+            'variants.*.price' => ['nullable', 'numeric', 'gt:0'],
+            'variants.*.sale_price' => ['nullable', 'numeric', 'gte:0'],
             'variants.*.cost_price' => ['nullable', 'numeric'],
             'variants.*.stock' => ['nullable', 'integer'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer'],
@@ -198,6 +204,7 @@ class ProductController extends Controller
         if (($validated['type'] ?? $product->type) === 'variant' && array_key_exists('sku', $validated) && empty($validated['sku'])) {
             $validated['sku'] = null;
         }
+        $this->validateSalePrice($validated, $request, $product);
 
         $product->fill($validated);
         $product->dummy_sold_count = $request->has('dummy_sold_count')
@@ -327,6 +334,7 @@ class ProductController extends Controller
                 'sku' => $variantData['sku'] ?? $variant->sku,
                 'title' => $variantData['title'] ?? $variant->title,
                 'price' => $variantData['price'] ?? null,
+                'sale_price' => $variantData['sale_price'] ?? null,
                 'cost_price' => $variantData['cost_price'] ?? null,
                 'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
                 'low_stock_threshold' => isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0,
@@ -454,6 +462,51 @@ class ProductController extends Controller
                 }
                 $product->meta_og_image = $metaOgImage;
                 $product->save();
+            }
+        }
+    }
+
+    protected function validateSalePrice(array $validated, Request $request, ?Product $product = null): void
+    {
+        if (array_key_exists('sale_price', $validated)) {
+            $price = array_key_exists('price', $validated)
+                ? (float) $validated['price']
+                : (float) ($product?->price ?? 0);
+            $salePrice = $validated['sale_price'];
+
+            if ($salePrice !== null) {
+                if (! $price || (float) $salePrice >= $price) {
+                    throw ValidationException::withMessages([
+                        'sale_price' => __('Sale price must be less than original price.'),
+                    ])->status(422);
+                }
+            }
+        }
+
+        if (! $request->has('variants')) {
+            return;
+        }
+
+        $variants = $validated['variants'] ?? $request->input('variants', []);
+        foreach ($variants as $index => $variantData) {
+            if (! is_array($variantData)) {
+                continue;
+            }
+
+            if (! array_key_exists('sale_price', $variantData) || $variantData['sale_price'] === null) {
+                continue;
+            }
+
+            $variantPrice = $variantData['price'] ?? null;
+            if ($variantPrice === null && $product && ! empty($variantData['id'])) {
+                $existingVariant = $product->variants()->where('id', $variantData['id'])->first();
+                $variantPrice = $existingVariant?->price;
+            }
+
+            if (! $variantPrice || (float) $variantData['sale_price'] >= (float) $variantPrice) {
+                throw ValidationException::withMessages([
+                    "variants.{$index}.sale_price" => __('Variant sale price must be less than variant price.'),
+                ])->status(422);
             }
         }
     }

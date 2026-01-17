@@ -55,6 +55,15 @@ export type HomepageProduct = {
   name: string;
   slug: string;
   price: string;
+  sale_price?: string | number | null;
+  type?: string | null;
+  variants?: Array<{
+    id: number;
+    name: string;
+    price?: string | number | null;
+    sale_price?: string | number | null;
+    is_active?: boolean | null;
+  }>;
   is_featured: boolean;
   stock: number | null;
   low_stock_threshold: number | null;

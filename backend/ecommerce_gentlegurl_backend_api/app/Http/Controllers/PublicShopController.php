@@ -260,6 +260,7 @@ class PublicShopController extends Controller
                     'sku' => $product->sku,
                     'type' => $product->type,
                     'price' => $price,
+                    'sale_price' => $product->sale_price,
                     'min_price' => $minPrice,
                     'max_price' => $maxPrice,
                     'price_display' => $priceDisplay,
@@ -271,6 +272,17 @@ class PublicShopController extends Controller
                     'sold_total' => $soldCount,
                     'images' => $sortedImages,
                     'cover_image_url' => $product->cover_image_url,
+                    'variants' => $product->variants
+                        ->where('is_active', true)
+                        ->sortBy('sort_order')
+                        ->sortBy('id')
+                        ->values()
+                        ->map(fn($variant) => [
+                            'id' => $variant->id,
+                            'price' => $variant->price ?? $product->price,
+                            'sale_price' => $variant->sale_price,
+                            'is_active' => $variant->is_active,
+                        ]),
                 ];
             })
         );
@@ -454,6 +466,7 @@ class PublicShopController extends Controller
             'type' => $product->type,
             'description' => $product->description,
             'price' => $product->price,
+            'sale_price' => $product->sale_price,
             'stock' => $product->stock,
             'track_stock' => $product->track_stock,
             'is_in_stock' => $isInStock,
@@ -479,6 +492,7 @@ class PublicShopController extends Controller
                     'name' => $variant->title,
                     'sku' => $variant->sku,
                     'price' => $variant->price ?? $product->price,
+                    'sale_price' => $variant->sale_price,
                     'stock' => $variant->stock,
                     'low_stock_threshold' => $variant->low_stock_threshold,
                     'track_stock' => $variant->track_stock,
