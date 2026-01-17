@@ -97,7 +97,7 @@ export default function ProductGrid({ items }: ProductGridProps) {
         const priceDisplay = product.price_display ?? formatPriceValue(product.original_price);
         const salePriceDisplay =
           product.sale_price_display ?? formatPriceValue(product.sale_price ?? null);
-        const promotionActive = product.promotion_active === true;
+        const promotionActive = product.promotion_active === true || product.is_on_sale === true;
         const image = getPrimaryProductImage(product);
         const soldCountValue = Number(
           product.sold_total ?? (Number(product.sold_count ?? 0) + Number(product.extra_sold ?? 0)),
