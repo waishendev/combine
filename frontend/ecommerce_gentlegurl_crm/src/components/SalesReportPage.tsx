@@ -161,12 +161,14 @@ export default function SalesReportPage({
     const hasValidPerPage = Number.isFinite(parsedPerPage) && parsedPerPage > 0
     const parsedTop = Number(searchParams.get('top'))
     const hasValidTop = Number.isFinite(parsedTop) && parsedTop > 0
+    const groupBy = searchParams.get('group_by') === 'product' ? 'product' : 'variant'
     return {
       dateFrom: searchParams.get('date_from') ?? defaultRange.from,
       dateTo: searchParams.get('date_to') ?? defaultRange.to,
       page: hasValidPage ? parsedPage : DEFAULT_PAGE,
       perPage: hasValidPerPage ? parsedPerPage : DEFAULT_PAGE_SIZE,
       top: hasValidTop ? parsedTop : DEFAULT_TOP_COUNT,
+      groupBy,
       hasValidPage,
       hasValidPerPage,
       hasValidTop,
@@ -209,7 +211,8 @@ export default function SalesReportPage({
       !resolvedParams.hasDateTo ||
       !resolvedParams.hasValidPage ||
       !resolvedParams.hasValidPerPage ||
-      !resolvedParams.hasValidTop
+      !resolvedParams.hasValidTop ||
+      (reportType === 'by-products' && !searchParams.has('group_by'))
 
     if (!needsDefaults) return
 
@@ -229,6 +232,9 @@ export default function SalesReportPage({
     if (!resolvedParams.hasValidTop) {
       nextParams.set('top', String(DEFAULT_TOP_COUNT))
     }
+    if (reportType === 'by-products' && !searchParams.has('group_by')) {
+      nextParams.set('group_by', resolvedParams.groupBy)
+    }
 
     router.replace(`${pathname}?${nextParams.toString()}`)
   }, [
@@ -240,8 +246,10 @@ export default function SalesReportPage({
     resolvedParams.hasValidPage,
     resolvedParams.hasValidPerPage,
     resolvedParams.hasValidTop,
+    resolvedParams.groupBy,
     router,
     searchParams,
+    reportType,
   ])
 
   useEffect(() => {
@@ -254,6 +262,9 @@ export default function SalesReportPage({
       qs.set('page', String(resolvedParams.page))
       qs.set('per_page', String(resolvedParams.perPage))
       qs.set('top', String(resolvedParams.top))
+      if (reportType === 'by-products') {
+        qs.set('group_by', resolvedParams.groupBy)
+      }
 
       try {
         const response = await fetch(
@@ -317,6 +328,7 @@ export default function SalesReportPage({
     resolvedParams.page,
     resolvedParams.perPage,
     resolvedParams.top,
+    resolvedParams.groupBy,
   ])
 
   const updateQuery = (next: Record<string, string>) => {
@@ -359,8 +371,11 @@ export default function SalesReportPage({
     qs.set('date_from', resolvedParams.dateFrom)
     qs.set('date_to', resolvedParams.dateTo)
     qs.set('format', 'csv')
+    if (reportType === 'by-products') {
+      qs.set('group_by', resolvedParams.groupBy)
+    }
     return `/api/proxy/ecommerce/reports/sales/export/${reportType}?${qs.toString()}`
-  }, [canExport, reportType, resolvedParams.dateFrom, resolvedParams.dateTo])
+  }, [canExport, reportType, resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.groupBy])
 
   const activeFilters = useMemo(() => {
     const filters: Array<{ key: string; label: string; value: string }> = []
@@ -378,8 +393,22 @@ export default function SalesReportPage({
         value: String(resolvedParams.top),
       })
     }
+    if (reportType === 'by-products') {
+      filters.push({
+        key: 'group_by',
+        label: 'Group By',
+        value: resolvedParams.groupBy === 'product' ? 'Product' : 'Variant',
+      })
+    }
     return filters
-  }, [resolvedParams.hasDateFrom, resolvedParams.hasDateTo, resolvedParams.top, showingRange])
+  }, [
+    reportType,
+    resolvedParams.hasDateFrom,
+    resolvedParams.hasDateTo,
+    resolvedParams.top,
+    resolvedParams.groupBy,
+    showingRange,
+  ])
 
   const columns = useMemo(() => {
     const baseColumns =
@@ -564,6 +593,24 @@ export default function SalesReportPage({
                     ))}
                   </select>
                 </div>
+                {reportType === 'by-products' ? (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-slate-500">Group By</label>
+                    <select
+                      className="h-10 rounded border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm"
+                      value={resolvedParams.groupBy}
+                      onChange={(event) => {
+                        updateQuery({
+                          group_by: event.target.value,
+                          page: String(DEFAULT_PAGE),
+                        })
+                      }}
+                    >
+                      <option value="variant">Variant</option>
+                      <option value="product">Product</option>
+                    </select>
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
@@ -652,6 +699,11 @@ export default function SalesReportPage({
                   } else if (filter.key === 'top') {
                     updateQuery({
                       top: String(DEFAULT_TOP_COUNT),
+                    })
+                  } else if (filter.key === 'group_by') {
+                    updateQuery({
+                      group_by: 'variant',
+                      page: String(DEFAULT_PAGE),
                     })
                   }
                 }}

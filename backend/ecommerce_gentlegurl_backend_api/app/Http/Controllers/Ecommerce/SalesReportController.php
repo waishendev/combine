@@ -63,12 +63,14 @@ class SalesReportController extends Controller
         $perPage = (int) $request->query('per_page', $request->query('limit', 15));
         $page = (int) $request->query('page', 1);
         $top = (int) $request->query('top', 5);
-        $data = $this->service->getByProducts($start, $end, $perPage, $page, $top);
+        $groupBy = $request->query('group_by', 'variant');
+        $data = $this->service->getByProducts($start, $end, $perPage, $page, $top, $groupBy);
 
         $this->attachMeta($request, $data, $defaultRangeApplied, $start, $end, [
             'per_page' => $perPage,
             'page' => $page,
             'top' => $top,
+            'group_by' => $groupBy,
         ]);
 
         return response()->json($data);
