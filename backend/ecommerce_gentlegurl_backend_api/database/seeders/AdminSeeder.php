@@ -101,6 +101,7 @@ class AdminSeeder extends Seeder
             'ecommerce.vouchers.create',
             'ecommerce.vouchers.update',
             'ecommerce.vouchers.delete',
+            'ecommerce.vouchers.assign',
             'ecommerce.reports.sales.view',
             'ecommerce.reports.sales.export',
             'ecommerce.dashboard.view',

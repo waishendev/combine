@@ -485,6 +485,9 @@ $protectedRoutes = function () {
         Route::get('/vouchers', [VoucherController::class, 'index'])
             ->middleware('permission:ecommerce.vouchers.view');
 
+        Route::get('/vouchers/assignable', [VoucherController::class, 'assignable'])
+            ->middleware('permission:ecommerce.vouchers.assign');
+
         Route::post('/vouchers', [VoucherController::class, 'store'])
             ->middleware('permission:ecommerce.vouchers.create');
 
@@ -496,6 +499,9 @@ $protectedRoutes = function () {
 
         Route::delete('/vouchers/{voucher}', [VoucherController::class, 'destroy'])
             ->middleware('permission:ecommerce.vouchers.delete');
+
+        Route::post('/customers/{customer}/vouchers/assign', [EcommerceCustomerController::class, 'assignVoucher'])
+            ->middleware('permission:ecommerce.vouchers.assign');
 
         // SEO Global
         Route::get('/seo-global', [SeoGlobalController::class, 'show'])

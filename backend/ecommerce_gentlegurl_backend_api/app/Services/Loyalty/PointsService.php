@@ -214,13 +214,18 @@ class PointsService
             ]);
 
             if ($reward->type === 'voucher' && $reward->voucher_id) {
+                $voucher = $reward->voucher;
                 CustomerVoucher::create([
                     'customer_id' => $customer->id,
                     'voucher_id' => $reward->voucher_id,
+                    'quantity_total' => 1,
+                    'quantity_used' => 0,
                     'source_redemption_id' => $redemption->id,
                     'status' => 'active',
                     'claimed_at' => $now,
-                    'expires_at' => null,
+                    'start_at' => $voucher?->start_at,
+                    'end_at' => $voucher?->end_at,
+                    'expires_at' => $voucher?->end_at,
                 ]);
 
                 $redemption->status = 'completed';

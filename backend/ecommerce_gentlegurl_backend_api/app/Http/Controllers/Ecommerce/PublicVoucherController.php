@@ -20,7 +20,7 @@ class PublicVoucherController extends Controller
 
         $query = CustomerVoucher::with('voucher')
             ->where('customer_id', $customer->id)
-            ->orderByDesc('claimed_at');
+            ->orderByRaw('COALESCE(assigned_at, claimed_at) DESC');
 
         $vouchers = $query
             ->when($status, fn($q) => $q->where('status', $status))
@@ -34,7 +34,8 @@ class PublicVoucherController extends Controller
             ->get();
 
         $vouchers->each(function (CustomerVoucher $voucher) use ($now) {
-            if ($voucher->status === 'active' && $voucher->expires_at && $voucher->expires_at->lt($now)) {
+            $endAt = $voucher->end_at ?? $voucher->expires_at ?? $voucher->voucher?->end_at;
+            if ($voucher->status === 'active' && $endAt && $endAt->lt($now)) {
                 $voucher->status = 'expired';
                 $voucher->save();
             }
@@ -44,9 +45,13 @@ class PublicVoucherController extends Controller
             return [
                 'id' => $customerVoucher->id,
                 'status' => $customerVoucher->status,
+                'assigned_at' => $customerVoucher->assigned_at,
                 'claimed_at' => $customerVoucher->claimed_at,
                 'used_at' => $customerVoucher->used_at,
-                'expires_at' => $customerVoucher->expires_at,
+                'expires_at' => $customerVoucher->end_at ?? $customerVoucher->expires_at,
+                'quantity_total' => $customerVoucher->quantity_total,
+                'quantity_used' => $customerVoucher->quantity_used,
+                'note' => $customerVoucher->note,
                 'voucher' => $customerVoucher->voucher ? [
                     'id' => $customerVoucher->voucher->id,
                     'code' => $customerVoucher->voucher->code,

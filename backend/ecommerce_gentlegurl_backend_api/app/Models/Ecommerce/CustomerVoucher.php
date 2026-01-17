@@ -12,19 +12,31 @@ class CustomerVoucher extends Model
     protected $fillable = [
         'customer_id',
         'voucher_id',
+        'quantity_total',
+        'quantity_used',
         'source_redemption_id',
+        'assigned_by_admin_id',
+        'assigned_at',
         'status',
         'claimed_at',
         'used_at',
+        'start_at',
+        'end_at',
         'expires_at',
+        'note',
         'meta',
     ];
 
     protected function casts(): array
     {
         return [
+            'quantity_total' => 'integer',
+            'quantity_used' => 'integer',
+            'assigned_at' => 'datetime',
             'claimed_at' => 'datetime',
             'used_at' => 'datetime',
+            'start_at' => 'datetime',
+            'end_at' => 'datetime',
             'expires_at' => 'datetime',
             'meta' => 'array',
         ];

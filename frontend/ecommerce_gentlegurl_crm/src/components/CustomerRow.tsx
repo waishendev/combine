@@ -17,9 +17,11 @@ export interface CustomerRowData {
 interface CustomerRowProps {
   customer: CustomerRowData
   showActions?: boolean
+  canAssignVoucher?: boolean
   canUpdate?: boolean
   canDelete?: boolean
   canView?: boolean
+  onAssignVoucher?: (customer: CustomerRowData) => void
   onEdit?: (customer: CustomerRowData) => void
   onDelete?: (customer: CustomerRowData) => void
   onView?: (customer: CustomerRowData) => void
@@ -28,9 +30,11 @@ interface CustomerRowProps {
 export default function CustomerRow({
   customer,
   showActions = false,
+  canAssignVoucher = false,
   canUpdate = false,
   canDelete = false,
   canView = false,
+  onAssignVoucher,
   onEdit,
   onDelete,
   onView,
@@ -51,7 +55,7 @@ export default function CustomerRow({
       <td className="px-4 py-2 border border-gray-200">{customer.createdAt}</td>
       {(showActions || canView) && (
         <td className="px-4 py-2 border border-gray-200">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {canView && (
               <button
                 type="button"
@@ -61,6 +65,16 @@ export default function CustomerRow({
                 title={t('customer.viewAction')}
               >
                 <i className="fa-solid fa-eye" />
+              </button>
+            )}
+            {canAssignVoucher && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2.5 py-1 text-xs text-white hover:bg-indigo-700"
+                onClick={() => onAssignVoucher?.(customer)}
+              >
+                <i className="fa-solid fa-ticket" />
+                Assign Voucher
               </button>
             )}
             {canUpdate && (
@@ -91,4 +105,3 @@ export default function CustomerRow({
     </tr>
   )
 }
-
