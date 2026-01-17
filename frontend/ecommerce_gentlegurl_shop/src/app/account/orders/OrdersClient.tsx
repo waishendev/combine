@@ -463,10 +463,23 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-lg rounded-2xl bg-[var(--card)] p-6 shadow-2xl">
             <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--foreground)]">Write a Review</h3>
-                {/* <p className="text-sm text-[color:var(--text-muted)]">{modal.item.name}</p>
-                <p className="text-sm text-[color:var(--text-muted)]">{modal.item.product_image}</p> */}
+              <div className="flex flex-1 items-center gap-3 rounded-xl border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={getPrimaryProductImage(modal.item)}
+                  alt={modal.item.name ?? "Product image"}
+                  className="h-12 w-12 rounded-lg object-cover"
+                />
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold text-[var(--foreground)]">{modal.item.name}</p>
+                  <p className="text-xs text-[var(--foreground)]/70">Qty: {modal.item.quantity}</p>
+                  {(modal.item.product_type === "variant" || modal.item.product_variant_id) && (
+                    <p className="text-xs text-[var(--foreground)]/60">
+                      Variant: {modal.item.variant_name ?? "—"}
+                      {modal.item.variant_sku ? ` (${modal.item.variant_sku})` : ""}
+                    </p>
+                  )}
+                </div>
               </div>
               <button
                 type="button"
