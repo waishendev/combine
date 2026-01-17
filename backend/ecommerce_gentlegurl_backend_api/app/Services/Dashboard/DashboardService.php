@@ -174,15 +174,26 @@ class DashboardService
         $rows = DB::table('orders as o')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
+            ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
             ->leftJoinSub($refundsSubquery, 'order_refunds', 'o.id', '=', 'order_refunds.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
-            ->groupBy('p.id', 'p.name', 'p.sku')
+            ->groupBy(
+                'p.id',
+                'p.name',
+                'p.sku',
+                'oi.product_variant_id',
+                DB::raw('COALESCE(oi.variant_name_snapshot, pv.title)'),
+                DB::raw('COALESCE(oi.variant_sku_snapshot, pv.sku)')
+            )
             ->select(
                 'p.id as product_id',
                 'p.name as product_name',
-                'p.sku',
+                'p.sku as product_sku',
+                'oi.product_variant_id as variant_id',
+                DB::raw('COALESCE(oi.variant_name_snapshot, pv.title) as variant_name'),
+                DB::raw('COALESCE(oi.variant_sku_snapshot, pv.sku) as variant_sku'),
                 DB::raw('SUM(oi.quantity) as qty'),
                 DB::raw('SUM(oi.line_total) as revenue'),
                 DB::raw(
@@ -198,11 +209,19 @@ class DashboardService
                 $revenue = (float) $row->revenue;
                 $netRevenue = (float) $row->net_revenue;
                 $refundAmount = max($revenue - $netRevenue, 0);
+                $variantName = $row->variant_name ?? null;
+                $displayName = $variantName ? "{$row->product_name} ({$variantName})" : $row->product_name;
+                $resolvedSku = $row->variant_sku ?: $row->product_sku;
 
                 return [
                     'product_id' => (int) $row->product_id,
                     'product_name' => $row->product_name,
-                    'sku' => $row->sku,
+                    'product_sku' => $row->product_sku,
+                    'variant_id' => $row->variant_id ? (int) $row->variant_id : null,
+                    'variant_name' => $variantName,
+                    'variant_sku' => $row->variant_sku,
+                    'display_name' => $displayName,
+                    'sku' => $resolvedSku,
                     'qty' => (int) $row->qty,
                     'revenue' => $revenue,
                     'net_revenue' => $netRevenue,
