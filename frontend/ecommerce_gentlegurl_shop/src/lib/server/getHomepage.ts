@@ -237,19 +237,56 @@ export async function getHomepage(): Promise<HomepageData | null> {
       return null;
     }
 
-    const normalizeProduct = (product: HomepageProduct): HomepageProduct => ({
-      ...product,
-      promotion_active:
-        product.promotion_active ??
-        (product.is_on_sale ?? false),
-      sale_price:
+    const normalizeProduct = (product: HomepageProduct): HomepageProduct => {
+      const originalPrice =
+        product.original_price ??
+        product.price;
+      const salePrice =
         product.sale_price ??
         product.effective_price ??
-        null,
-      original_price:
-        product.original_price ??
-        product.price,
-    });
+        null;
+      const parsedOriginal =
+        typeof originalPrice === "number"
+          ? originalPrice
+          : typeof originalPrice === "string"
+            ? Number.parseFloat(originalPrice)
+            : typeof originalPrice === "object"
+              ? originalPrice.min
+              : NaN;
+      const parsedSale =
+        typeof salePrice === "number"
+          ? salePrice
+          : typeof salePrice === "string"
+            ? Number.parseFloat(salePrice)
+            : NaN;
+      const derivedDiscountPercent =
+        Number.isFinite(parsedOriginal) &&
+        Number.isFinite(parsedSale) &&
+        parsedOriginal > 0 &&
+        parsedSale < parsedOriginal
+          ? Math.round((1 - parsedSale / parsedOriginal) * 100)
+          : null;
+      const discountPercent =
+        typeof product.discount_percent === "number"
+          ? product.discount_percent
+          : derivedDiscountPercent;
+      const basePromotion =
+        product.promotion_active ??
+        product.is_on_sale ??
+        (discountPercent ?? 0) >= 1;
+      const promotionActive =
+        basePromotion &&
+        (discountPercent ?? 0) >= 1 &&
+        salePrice !== null;
+
+      return {
+        ...product,
+        promotion_active: promotionActive,
+        sale_price: salePrice,
+        original_price: originalPrice,
+        discount_percent: discountPercent,
+      };
+    };
 
     return {
       ...payload,
