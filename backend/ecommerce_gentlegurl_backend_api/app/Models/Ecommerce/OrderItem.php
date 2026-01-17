@@ -72,4 +72,9 @@ class OrderItem extends Model
     {
         return $this->belongsTo(LoyaltyRedemption::class, 'reward_redemption_id');
     }
+
+    public function review()
+    {
+        return $this->hasOne(ProductReview::class);
+    }
 }

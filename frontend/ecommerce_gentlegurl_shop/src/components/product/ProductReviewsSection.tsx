@@ -70,7 +70,13 @@ export function ProductReviewsSection({
       setSubmitting(true);
 
       try {
+        if (!eligibility?.eligible_order_item_id) {
+          setError("Please review this product from a completed order.");
+          return;
+        }
+
         const payload = {
+          order_item_id: eligibility.eligible_order_item_id,
           rating,
           title: title?.trim() || null,
           body: body.trim(),
@@ -105,7 +111,7 @@ export function ProductReviewsSection({
         setSubmitting(false);
       }
     },
-    [body, rating, refreshEligibility, refreshReviews, slug, title],
+    [body, eligibility, rating, refreshEligibility, refreshReviews, slug, title],
   );
 
   const eligibilityMessage = useMemo(() => {
@@ -258,6 +264,13 @@ export function ProductReviewsSection({
                 <div>
                   <RatingStars value={review.rating} size="sm" />
                   {review.title && <p className="text-sm font-semibold text-[var(--foreground)]">{review.title}</p>}
+                  {review.variant && (review.variant.name || review.variant.sku) && (
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--muted)] bg-[var(--muted)]/40 px-2.5 py-1 text-xs font-semibold text-[var(--foreground)]/80">
+                      <span>Variant:</span>
+                      <span>{review.variant.name ?? "—"}</span>
+                      {review.variant.sku && <span className="text-[var(--foreground)]/60">(SKU: {review.variant.sku})</span>}
+                    </div>
+                  )}
                 </div>
                 <p className="text-xs text-[var(--foreground)]/60">{formatDate(review.created_at)}</p>
               </div>

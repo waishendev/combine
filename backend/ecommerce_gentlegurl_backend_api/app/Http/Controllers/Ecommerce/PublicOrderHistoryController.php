@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
+use App\Services\Ecommerce\ProductReviewService;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -22,6 +23,7 @@ class PublicOrderHistoryController extends Controller
         protected OrderReserveService $orderReserveService,
         protected BillplzService $billplzService,
         protected InvoiceService $invoiceService,
+        protected ProductReviewService $reviewService,
     )
     {
     }
@@ -32,9 +34,13 @@ class PublicOrderHistoryController extends Controller
         $perPage = $request->integer('per_page', 10);
 
         $orders = Order::where('customer_id', $customer->id)
-            ->with(['items.product.images'])
+            ->with(['items.product.images', 'items.review'])
             ->orderByDesc('created_at')
             ->paginate($perPage);
+
+        $reviewSettings = $this->reviewService->settings();
+        $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
+        $reviewWindowDays = (int) ($reviewSettings['review_window_days'] ?? 30);
 
         $data = [
             'orders' => collect($orders->items())->map(fn(Order $order) => [
@@ -46,9 +52,17 @@ class PublicOrderHistoryController extends Controller
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
-                'items' => $order->items->map(function ($item) {
+                'items' => $order->items->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
                     $thumbnail = $item->product?->cover_image_url;
                     $productType = $item->product?->type;
+                    $review = $item->review;
+                    $reviewedAt = $review?->created_at?->toDateTimeString();
+                    $completedAt = $this->reviewService->resolveCompletionDate($order);
+                    $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
+                    $canReview = $reviewsEnabled
+                        && ! $review
+                        && $order->status === 'completed'
+                        && (! $deadlineAt || Carbon::now()->lessThanOrEqualTo($deadlineAt));
 
                     return [
                         'id' => $item->id,
@@ -66,6 +80,9 @@ class PublicOrderHistoryController extends Controller
                         'line_total' => $item->line_total,
                         'product_image' => $thumbnail,
                         'cover_image_url' => $thumbnail,
+                        'review_id' => $review?->id,
+                        'reviewed_at' => $reviewedAt,
+                        'can_review' => $canReview,
                     ];
                 })->values(),
             ])->all(),
@@ -88,6 +105,7 @@ class PublicOrderHistoryController extends Controller
 
         $order = Order::with([
             'items.product.images',
+            'items.review',
             'voucher',
             'uploads',
             'returns',
@@ -98,9 +116,21 @@ class PublicOrderHistoryController extends Controller
             ->where('customer_id', $customer->id)
             ->firstOrFail();
 
-        $items = $order->items->map(function ($item) {
+        $reviewSettings = $this->reviewService->settings();
+        $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
+        $reviewWindowDays = (int) ($reviewSettings['review_window_days'] ?? 30);
+
+        $items = $order->items->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
             $thumbnail = $item->product?->cover_image_url;
             $productType = $item->product?->type;
+            $review = $item->review;
+            $reviewedAt = $review?->created_at?->toDateTimeString();
+            $completedAt = $this->reviewService->resolveCompletionDate($order);
+            $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
+            $canReview = $reviewsEnabled
+                && ! $review
+                && $order->status === 'completed'
+                && (! $deadlineAt || Carbon::now()->lessThanOrEqualTo($deadlineAt));
 
             return [
                 'id' => $item->id,
@@ -118,6 +148,9 @@ class PublicOrderHistoryController extends Controller
                 'line_total' => $item->line_total,
                 'product_image' => $thumbnail,
                 'cover_image_url' => $thumbnail,
+                'review_id' => $review?->id,
+                'reviewed_at' => $reviewedAt,
+                'can_review' => $canReview,
             ];
         })->values();
 

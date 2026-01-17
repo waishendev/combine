@@ -11,6 +11,11 @@ export type ReviewItem = {
   body: string;
   customer_name: string;
   created_at?: string | null;
+  variant?: {
+    id: number;
+    name?: string | null;
+    sku?: string | null;
+  } | null;
 };
 
 export type ReviewSettings = {
@@ -26,6 +31,7 @@ export type ReviewEligibility = {
   review_window_days: number;
   completed_at?: string | null;
   deadline_at?: string | null;
+  eligible_order_item_id?: number | null;
 };
 
 export type ProductReviewsData = {

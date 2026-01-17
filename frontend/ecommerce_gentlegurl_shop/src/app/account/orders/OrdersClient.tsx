@@ -4,10 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { OrderItemSummary, OrderSummary } from "@/lib/server/getOrders";
-import {
-  fetchProductReviewEligibility,
-  submitProductReview,
-} from "@/lib/api/productReviews";
+import { submitProductReview } from "@/lib/api/productReviews";
 import { RatingStars } from "@/components/reviews/RatingStars";
 import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
 import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
@@ -32,25 +29,14 @@ type CompleteModalState = {
   orderId: number;
 };
 
-const reasonMessages: Record<string, string> = {
-  NOT_AUTHENTICATED: "Please sign in to write a review.",
-  NOT_PURCHASED: "Only customers who purchased this product can review.",
-  ORDER_NOT_COMPLETED: "You can review after the order is completed.",
-  REVIEW_WINDOW_EXPIRED: "Review period expired.",
-  ALREADY_REVIEWED: "You have already reviewed this product.",
-  REVIEWS_DISABLED: "Reviews are disabled.",
-};
-
 export function OrdersClient({ orders }: OrdersClientProps) {
   const router = useRouter();
   const [modal, setModal] = useState<ModalState | null>(null);
   const [rating, setRating] = useState<number>(5);
   const [title, setTitle] = useState<string>("");
   const [body, setBody] = useState<string>("");
-  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
-  const [eligibilityLoading, setEligibilityLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [reviewedItems, setReviewedItems] = useState<Record<number, boolean>>({});
   const [orderOverrides, setOrderOverrides] = useState<Record<number, { status?: string; payment_status?: string }>>({});
@@ -82,44 +68,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   };
 
   async function handleOpenReview(orderId: number, item: OrderItemSummary) {
-    if (!item.product_slug) {
-      setEligibilityError("Product slug not available for review.");
-      return;
-    }
+    if (!item.product_slug) return;
 
-    setEligibilityError(null);
     setSubmitError(null);
     setSubmitSuccess(null);
-    setEligibilityLoading(true);
 
-    try {
-      const eligibility = await fetchProductReviewEligibility(item.product_slug);
-
-      if (!eligibility) {
-        setEligibilityError("Unable to check review eligibility. Please try again.");
-        return;
-      }
-
-      if (!eligibility.enabled || !eligibility.can_review) {
-        const reasonKey = eligibility.reason ?? "NOT_PURCHASED";
-        const message = reasonMessages[reasonKey] ?? "You are not eligible to review this product.";
-
-        if (reasonKey === "ALREADY_REVIEWED") {
-          setReviewedItems((prev) => ({ ...prev, [item.id]: true }));
-        }
-
-        setEligibilityError(message);
-        return;
-      }
-
-      setModal({
-        orderId,
-        item,
-        slug: item.product_slug,
-      });
-    } finally {
-      setEligibilityLoading(false);
-    }
+    setModal({
+      orderId,
+      item,
+      slug: item.product_slug,
+    });
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -131,6 +89,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
 
     try {
       await submitProductReview(modal.slug, {
+        order_item_id: modal.item.id,
         rating,
         title: title?.trim() || null,
         body: body.trim(),
@@ -238,11 +197,6 @@ export function OrdersClient({ orders }: OrdersClientProps) {
 
   return (
     <div className="space-y-4">
-      {eligibilityError && (
-        <div className="rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[color:var(--status-warning)]">
-          {eligibilityError}
-        </div>
-      )}
       {cancelError && (
         <div className="rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[color:var(--status-error)]">
           {cancelError}
@@ -449,9 +403,9 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Items</p>
                   <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
                     {order.items.map((item) => {
-                      const isReviewed = reviewedItemIds[item.id] === true;
-                      const disabled = isReviewed || !item.product_slug;
-                      const canReview = statusKey === "completed";
+                      const isReviewed = item.review_id != null || reviewedItemIds[item.id] === true;
+                      const canReview = item.can_review === true;
+                      const disabled = isReviewed || !item.product_slug || !canReview;
                       const shouldShowVariant = item.product_type === "variant" || !!item.product_variant_id;
                       const variantName = item.variant_name ?? "—";
                       const variantSkuSuffix = item.variant_sku ? ` (${item.variant_sku})` : "";
@@ -478,15 +432,19 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                               )}
                             </div>
                           </div>
-                          {canReview && (
+                          {(canReview || isReviewed) && (
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleOpenReview(order.id, item)}
-                                disabled={disabled || eligibilityLoading}
-                                className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={disabled}
+                                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                                  isReviewed
+                                    ? "border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[color:var(--status-success)]"
+                                    : "border-[var(--accent)] text-[var(--accent)] hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                                } disabled:cursor-not-allowed disabled:opacity-60`}
                               >
-                                {isReviewed ? "Reviewed" : "Write Review"}
+                                {isReviewed ? "Reviewed" : "Write a Review"}
                               </button>
                             </div>
                           )}
@@ -505,10 +463,23 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-lg rounded-2xl bg-[var(--card)] p-6 shadow-2xl">
             <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--foreground)]">Write a Review</h3>
-                {/* <p className="text-sm text-[color:var(--text-muted)]">{modal.item.name}</p>
-                <p className="text-sm text-[color:var(--text-muted)]">{modal.item.product_image}</p> */}
+              <div className="flex flex-1 items-center gap-3 rounded-xl border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={getPrimaryProductImage(modal.item)}
+                  alt={modal.item.name ?? "Product image"}
+                  className="h-12 w-12 rounded-lg object-cover"
+                />
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold text-[var(--foreground)]">{modal.item.name}</p>
+                  <p className="text-xs text-[var(--foreground)]/70">Qty: {modal.item.quantity}</p>
+                  {(modal.item.product_type === "variant" || modal.item.product_variant_id) && (
+                    <p className="text-xs text-[var(--foreground)]/60">
+                      Variant: {modal.item.variant_name ?? "—"}
+                      {modal.item.variant_sku ? ` (${modal.item.variant_sku})` : ""}
+                    </p>
+                  )}
+                </div>
               </div>
               <button
                 type="button"
