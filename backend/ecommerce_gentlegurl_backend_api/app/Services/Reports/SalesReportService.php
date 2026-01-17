@@ -222,11 +222,17 @@ class SalesReportService
         Carbon $end,
         int $perPage = 15,
         int $page = 1,
-        int $top = 5
+        int $top = 5,
+        string $groupBy = 'variant'
     ): array
     {
         $profitSupported = $this->profitSupported();
-        [$rowsQuery, $transformRow] = $this->buildByProductsQuery($start, $end, $profitSupported);
+        [$rowsQuery, $transformRow] = $this->buildByProductsQuery(
+            $start,
+            $end,
+            $profitSupported,
+            $this->normalizeProductGroupBy($groupBy)
+        );
 
         $tops = (clone $rowsQuery)
             ->limit(max(1, $top))
@@ -331,10 +337,15 @@ class SalesReportService
         return $rowsQuery->cursor()->map($transformRow);
     }
 
-    public function getByProductsRows(Carbon $start, Carbon $end)
+    public function getByProductsRows(Carbon $start, Carbon $end, string $groupBy = 'variant')
     {
         $profitSupported = $this->profitSupported();
-        [$rowsQuery, $transformRow] = $this->buildByProductsQuery($start, $end, $profitSupported);
+        [$rowsQuery, $transformRow] = $this->buildByProductsQuery(
+            $start,
+            $end,
+            $profitSupported,
+            $this->normalizeProductGroupBy($groupBy)
+        );
 
         return $rowsQuery->cursor()->map($transformRow);
     }
@@ -571,21 +582,41 @@ class SalesReportService
             ->orderBy('date_bucket');
     }
 
-    private function buildByProductsQuery(Carbon $start, Carbon $end, bool $profitSupported): array
+    private function buildByProductsQuery(
+        Carbon $start,
+        Carbon $end,
+        bool $profitSupported,
+        string $groupBy
+    ): array
     {
         $refundsSubquery = $this->refundsByOrderSubquery($start, $end);
         $rowsQuery = DB::table('orders as o')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
+            ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
             ->leftJoinSub($refundsSubquery, 'order_refunds', 'o.id', '=', 'order_refunds.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
-            ->groupBy('p.id', 'p.name', 'p.sku')
             ->select(
                 'p.id as product_id',
                 'p.name as product_name',
-                'p.sku',
+                'p.sku as product_sku',
+                DB::raw(
+                    $groupBy === 'product'
+                        ? 'NULL as variant_id'
+                        : 'oi.product_variant_id as variant_id'
+                ),
+                DB::raw(
+                    $groupBy === 'product'
+                        ? 'NULL as variant_name'
+                        : 'COALESCE(oi.variant_name_snapshot, pv.title) as variant_name'
+                ),
+                DB::raw(
+                    $groupBy === 'product'
+                        ? 'NULL as variant_sku'
+                        : 'COALESCE(oi.variant_sku_snapshot, pv.sku) as variant_sku'
+                ),
                 DB::raw('COUNT(DISTINCT o.id) as orders_count'),
                 DB::raw('SUM(oi.quantity) as items_count'),
                 DB::raw('SUM(oi.line_total) as revenue'),
@@ -594,6 +625,19 @@ class SalesReportService
                 )
             )
             ->orderByDesc('revenue');
+
+        if ($groupBy === 'product') {
+            $rowsQuery = $rowsQuery->groupBy('p.id', 'p.name', 'p.sku');
+        } else {
+            $rowsQuery = $rowsQuery->groupBy(
+                'p.id',
+                'p.name',
+                'p.sku',
+                'oi.product_variant_id',
+                DB::raw('COALESCE(oi.variant_name_snapshot, pv.title)'),
+                DB::raw('COALESCE(oi.variant_sku_snapshot, pv.sku)')
+            );
+        }
 
         if ($profitSupported) {
             $rowsQuery = $rowsQuery->addSelect(DB::raw('SUM(oi.quantity * COALESCE(p.cost_price, 0)) as cogs'));
@@ -605,11 +649,19 @@ class SalesReportService
             $revenue = (float) $row->revenue;
             $netRevenue = (float) $row->net_revenue;
             $cogs = (float) $row->cogs;
+            $variantName = $row->variant_name ?? null;
+            $displayName = $variantName ? "{$row->product_name} ({$variantName})" : $row->product_name;
+            $resolvedSku = $row->variant_sku ?: $row->product_sku;
 
             return [
                 'product_id' => (int) $row->product_id,
                 'product_name' => $row->product_name,
-                'sku' => $row->sku,
+                'product_sku' => $row->product_sku,
+                'variant_id' => $row->variant_id ? (int) $row->variant_id : null,
+                'variant_name' => $variantName,
+                'variant_sku' => $row->variant_sku,
+                'display_name' => $displayName,
+                'sku' => $resolvedSku,
                 'orders_count' => (int) $row->orders_count,
                 'items_count' => (int) $row->items_count,
                 'revenue' => $revenue,
@@ -621,6 +673,11 @@ class SalesReportService
         };
 
         return [$rowsQuery, $transformRow];
+    }
+
+    private function normalizeProductGroupBy(string $groupBy): string
+    {
+        return $groupBy === 'product' ? 'product' : 'variant';
     }
 
     private function buildByCustomersQuery(Carbon $start, Carbon $end, bool $profitSupported): array

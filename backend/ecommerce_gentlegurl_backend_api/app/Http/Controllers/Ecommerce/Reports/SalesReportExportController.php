@@ -166,7 +166,8 @@ class SalesReportExportController extends Controller
     {
         $this->ensureCsvFormat($request);
         [$start, $end, $displayStart, $displayEnd] = $this->resolveDateRange($request, 'by-products');
-        $rows = $this->service->getByProductsRows($start, $end);
+        $groupBy = $request->query('group_by', 'variant');
+        $rows = $this->service->getByProductsRows($start, $end, $groupBy);
 
         $headers = [
             'product_id',

@@ -26,6 +26,11 @@ type KpiComparison = {
 type TopProduct = {
   product_id: number
   product_name: string
+  product_sku?: string | null
+  variant_id?: number | null
+  variant_name?: string | null
+  variant_sku?: string | null
+  display_name?: string | null
   sku: string | null
   qty: number
   revenue: number
@@ -67,6 +72,18 @@ const formatCurrency = (value: number) => currencyFormatter.format(value)
 const formatNumber = (value: number) => numberFormatter.format(value)
 
 const formatPercent = (value: number) => `${value.toFixed(2)}%`
+
+const resolveTopProductDisplay = (product: TopProduct) => {
+  const variantName = product.variant_name ?? ''
+  const hasVariant = Boolean(product.variant_id || variantName)
+  const baseName = product.product_name
+  const displayName = variantName ? `${baseName} (${variantName})` : baseName
+  return {
+    displayName,
+    baseName: hasVariant ? baseName : null,
+    sku: product.sku ?? product.variant_sku ?? product.product_sku ?? null,
+  }
+}
 
 const buildBadgeText = (comparison: KpiComparison) => {
   if (comparison.previous === 0 && comparison.current > 0) {
@@ -340,27 +357,37 @@ export default function DashboardPage() {
                         </tr>
                       ))
                     ) : data?.top_products.length ? (
-                      data.top_products.map((product) => (
-                        <tr key={product.product_id}>
-                          <td className="px-3 sm:px-4 py-3 font-medium text-slate-900">
-                            <div className="flex flex-col">
-                              <span>{product.product_name}</span>
-                              {/* {product.sku && (
-                                <span className="text-xs text-slate-500">{product.sku}</span>
-                              )} */}
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-right text-slate-700">
-                            {formatNumber(product.qty)}
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-right font-medium text-slate-900">
-                            {formatCurrency(product.net_revenue)}
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-right text-slate-700">
-                            {formatPercent(product.refund_percent || 0)}
-                          </td>
-                        </tr>
-                      ))
+                      data.top_products.map((product) => {
+                        const display = resolveTopProductDisplay(product)
+                        return (
+                          <tr key={`${product.product_id}-${product.variant_id ?? 'base'}`}>
+                            <td className="px-3 sm:px-4 py-3 font-medium text-slate-900">
+                              <div className="flex flex-col">
+                                <span>{display.displayName}</span>
+                                {display.baseName ? (
+                                  <span className="text-xs text-slate-500">
+                                    Base: {display.baseName}
+                                  </span>
+                                ) : null}
+                                {display.sku ? (
+                                  <span className="text-xs text-slate-500">
+                                    SKU: {display.sku}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-right text-slate-700">
+                              {formatNumber(product.qty)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-right font-medium text-slate-900">
+                              {formatCurrency(product.net_revenue)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-right text-slate-700">
+                              {formatPercent(product.refund_percent || 0)}
+                            </td>
+                          </tr>
+                        )
+                      })
                     ) : (
                       <tr>
                         <td colSpan={4} className="px-3 sm:px-4 py-6 text-center text-sm text-slate-500">

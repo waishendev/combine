@@ -45,6 +45,11 @@ type CategoryRow = {
 type ProductRow = {
   product_id: number
   product_name: string
+  product_sku?: string | null
+  variant_id?: number | null
+  variant_name?: string | null
+  variant_sku?: string | null
+  display_name?: string | null
   sku: string | null
   orders_count: number
   items_count: number
@@ -125,6 +130,18 @@ const formatAmount = (amount: number) =>
 
 const formatMargin = (value: number) => `${value.toFixed(2)}%`
 
+const resolveProductDisplay = (row: ProductRow) => {
+  const variantName = row.variant_name ?? ''
+  const hasVariant = Boolean(row.variant_id || variantName)
+  const baseName = row.product_name
+  const displayName = variantName ? `${baseName} (${variantName})` : baseName
+  return {
+    displayName,
+    baseName: hasVariant ? baseName : null,
+    sku: row.sku ?? row.variant_sku ?? row.product_sku ?? null,
+  }
+}
+
 export default function SalesReportPage({
   reportType,
   canExport = false,
@@ -144,12 +161,14 @@ export default function SalesReportPage({
     const hasValidPerPage = Number.isFinite(parsedPerPage) && parsedPerPage > 0
     const parsedTop = Number(searchParams.get('top'))
     const hasValidTop = Number.isFinite(parsedTop) && parsedTop > 0
+    const groupBy = searchParams.get('group_by') === 'product' ? 'product' : 'variant'
     return {
       dateFrom: searchParams.get('date_from') ?? defaultRange.from,
       dateTo: searchParams.get('date_to') ?? defaultRange.to,
       page: hasValidPage ? parsedPage : DEFAULT_PAGE,
       perPage: hasValidPerPage ? parsedPerPage : DEFAULT_PAGE_SIZE,
       top: hasValidTop ? parsedTop : DEFAULT_TOP_COUNT,
+      groupBy,
       hasValidPage,
       hasValidPerPage,
       hasValidTop,
@@ -192,7 +211,8 @@ export default function SalesReportPage({
       !resolvedParams.hasDateTo ||
       !resolvedParams.hasValidPage ||
       !resolvedParams.hasValidPerPage ||
-      !resolvedParams.hasValidTop
+      !resolvedParams.hasValidTop ||
+      (reportType === 'by-products' && !searchParams.has('group_by'))
 
     if (!needsDefaults) return
 
@@ -212,6 +232,9 @@ export default function SalesReportPage({
     if (!resolvedParams.hasValidTop) {
       nextParams.set('top', String(DEFAULT_TOP_COUNT))
     }
+    if (reportType === 'by-products' && !searchParams.has('group_by')) {
+      nextParams.set('group_by', resolvedParams.groupBy)
+    }
 
     router.replace(`${pathname}?${nextParams.toString()}`)
   }, [
@@ -223,8 +246,10 @@ export default function SalesReportPage({
     resolvedParams.hasValidPage,
     resolvedParams.hasValidPerPage,
     resolvedParams.hasValidTop,
+    resolvedParams.groupBy,
     router,
     searchParams,
+    reportType,
   ])
 
   useEffect(() => {
@@ -237,6 +262,9 @@ export default function SalesReportPage({
       qs.set('page', String(resolvedParams.page))
       qs.set('per_page', String(resolvedParams.perPage))
       qs.set('top', String(resolvedParams.top))
+      if (reportType === 'by-products') {
+        qs.set('group_by', resolvedParams.groupBy)
+      }
 
       try {
         const response = await fetch(
@@ -300,6 +328,7 @@ export default function SalesReportPage({
     resolvedParams.page,
     resolvedParams.perPage,
     resolvedParams.top,
+    resolvedParams.groupBy,
   ])
 
   const updateQuery = (next: Record<string, string>) => {
@@ -342,8 +371,11 @@ export default function SalesReportPage({
     qs.set('date_from', resolvedParams.dateFrom)
     qs.set('date_to', resolvedParams.dateTo)
     qs.set('format', 'csv')
+    if (reportType === 'by-products') {
+      qs.set('group_by', resolvedParams.groupBy)
+    }
     return `/api/proxy/ecommerce/reports/sales/export/${reportType}?${qs.toString()}`
-  }, [canExport, reportType, resolvedParams.dateFrom, resolvedParams.dateTo])
+  }, [canExport, reportType, resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.groupBy])
 
   const activeFilters = useMemo(() => {
     const filters: Array<{ key: string; label: string; value: string }> = []
@@ -361,8 +393,22 @@ export default function SalesReportPage({
         value: String(resolvedParams.top),
       })
     }
+    if (reportType === 'by-products') {
+      filters.push({
+        key: 'group_by',
+        label: 'Group By',
+        value: resolvedParams.groupBy === 'product' ? 'Product' : 'Variant',
+      })
+    }
     return filters
-  }, [resolvedParams.hasDateFrom, resolvedParams.hasDateTo, resolvedParams.top, showingRange])
+  }, [
+    reportType,
+    resolvedParams.hasDateFrom,
+    resolvedParams.hasDateTo,
+    resolvedParams.top,
+    resolvedParams.groupBy,
+    showingRange,
+  ])
 
   const columns = useMemo(() => {
     const baseColumns =
@@ -547,6 +593,24 @@ export default function SalesReportPage({
                     ))}
                   </select>
                 </div>
+                {reportType === 'by-products' ? (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-slate-500">Group By</label>
+                    <select
+                      className="h-10 rounded border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm"
+                      value={resolvedParams.groupBy}
+                      onChange={(event) => {
+                        updateQuery({
+                          group_by: event.target.value,
+                          page: String(DEFAULT_PAGE),
+                        })
+                      }}
+                    >
+                      <option value="variant">Variant</option>
+                      <option value="product">Product</option>
+                    </select>
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
@@ -636,6 +700,11 @@ export default function SalesReportPage({
                     updateQuery({
                       top: String(DEFAULT_TOP_COUNT),
                     })
+                  } else if (filter.key === 'group_by') {
+                    updateQuery({
+                      group_by: 'variant',
+                      page: String(DEFAULT_PAGE),
+                    })
                   }
                 }}
                 aria-label={`Remove ${filter.label} filter`}
@@ -660,21 +729,35 @@ export default function SalesReportPage({
             <div className="col-span-full text-sm text-slate-400">No top results found.</div>
           ) : (
             tops.map((row) => {
+              const productDisplay =
+                'product_name' in row ? resolveProductDisplay(row as ProductRow) : null
               const name =
                 'category_name' in row
                   ? row.category_name
-                  : 'product_name' in row
-                  ? row.product_name
+                  : productDisplay
+                  ? productDisplay.displayName
                   : row.customer_name
+              const baseName = productDisplay?.baseName ?? null
+              const sku = productDisplay?.sku ?? null
               return (
                 <div
                   key={
-                    'category_id' in row ? row.category_id : 'product_id' in row ? row.product_id : row.customer_id
+                    'category_id' in row
+                      ? row.category_id
+                      : 'product_id' in row
+                      ? `${row.product_id}-${(row as ProductRow).variant_id ?? 'base'}`
+                      : row.customer_id
                   }
                   className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
                 >
                   <p className="text-xs font-semibold uppercase text-slate-400">{topLabel}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-700">{name}</p>
+                  {baseName ? (
+                    <p className="text-xs text-slate-500">Base: {baseName}</p>
+                  ) : null}
+                  {sku ? (
+                    <p className="text-xs text-slate-500">SKU: {sku}</p>
+                  ) : null}
                   <p className="text-xs font-semibold uppercase text-slate-400 mt-2">Net Revenue</p>
                   <p className="text-lg font-semibold text-slate-700">
                     RM {formatAmount(row.net_revenue ?? row.revenue)}
@@ -765,20 +848,32 @@ export default function SalesReportPage({
                   </tr>
                 ))
               ) : reportType === 'by-products' ? (
-                (sortedRows as ProductRow[]).map((row) => (
-                  <tr key={row.product_id}>
-                    <td className="px-4 py-2 border border-gray-200 font-medium">
-                      {row.product_name}
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">{row.sku ?? '—'}</td>
-                    <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
-                    <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      RM {formatAmount(row.net_revenue ?? row.revenue)}
-                    </td>
-                    {renderProfitCells(row)}
-                  </tr>
-                ))
+                (sortedRows as ProductRow[]).map((row) => {
+                  const display = resolveProductDisplay(row)
+                  return (
+                    <tr key={`${row.product_id}-${row.variant_id ?? 'base'}`}>
+                      <td className="px-4 py-2 border border-gray-200 font-medium">
+                        <div className="flex flex-col">
+                          <span>{display.displayName}</span>
+                          {display.baseName ? (
+                            <span className="text-xs text-slate-500">
+                              Base: {display.baseName}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 border border-gray-200">
+                        {display.sku ?? '—'}
+                      </td>
+                      <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
+                      <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
+                      <td className="px-4 py-2 border border-gray-200">
+                        RM {formatAmount(row.net_revenue ?? row.revenue)}
+                      </td>
+                      {renderProfitCells(row)}
+                    </tr>
+                  )
+                })
               ) : (
                 (sortedRows as CustomerRow[]).map((row) => (
                   <tr key={row.customer_id}>
