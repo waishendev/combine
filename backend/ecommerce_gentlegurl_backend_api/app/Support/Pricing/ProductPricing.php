@@ -30,6 +30,7 @@ class ProductPricing
         $discountPercent = $isOnSale && $salePrice !== null && $originalPrice > 0
             ? (int) round((1 - ($salePrice / $originalPrice)) * 100)
             : null;
+        $promotionActive = $discountPercent !== null && $discountPercent > 0 && $isOnSale;
 
         return [
             'original_price' => $originalPrice,
@@ -37,6 +38,8 @@ class ProductPricing
             'sale_price_start_at' => $startAt?->toDateTimeString(),
             'sale_price_end_at' => $endAt?->toDateTimeString(),
             'is_on_sale' => $isOnSale,
+            'promotion_active' => $promotionActive,
+            'promotion_end_at' => $endAt?->toDateTimeString(),
             'effective_price' => $effectivePrice,
             'discount_percent' => $discountPercent,
         ];

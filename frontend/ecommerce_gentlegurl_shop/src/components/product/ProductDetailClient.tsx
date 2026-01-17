@@ -22,6 +22,8 @@ export type VariantItem = {
   original_price?: number | string | null;
   effective_price?: number | string | null;
   is_on_sale?: boolean | null;
+  promotion_active?: boolean | null;
+  promotion_end_at?: string | null;
   discount_percent?: number | null;
   stock?: number | null;
   track_stock?: boolean | null;
@@ -43,6 +45,8 @@ type ProductDetailClientProps = {
     original_price?: number | string | null;
     effective_price?: number | string | null;
     is_on_sale?: boolean | null;
+    promotion_active?: boolean | null;
+    promotion_end_at?: string | null;
     discount_percent?: number | null;
     stock?: number | null;
     is_reward_only?: boolean;

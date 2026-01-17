@@ -251,9 +251,8 @@ class PublicShopController extends Controller
                         ];
                     });
 
-                [$minPrice, $maxPrice, $priceDisplay] = $this->resolvePriceRange($product);
-                $price = $product->type === 'variant' && $minPrice !== null ? $minPrice : $product->price;
-                $productPricing = ProductPricing::build($product);
+                $pricingSummary = $this->buildProductPricingSummary($product);
+                $price = $pricingSummary['price_base'];
 
                 return [
                     'id' => $product->id,
@@ -262,16 +261,18 @@ class PublicShopController extends Controller
                     'sku' => $product->sku,
                     'type' => $product->type,
                     'price' => $price,
-                    'sale_price' => $product->sale_price,
-                    'sale_price_start_at' => $productPricing['sale_price_start_at'],
-                    'sale_price_end_at' => $productPricing['sale_price_end_at'],
-                    'original_price' => $productPricing['original_price'],
-                    'is_on_sale' => $productPricing['is_on_sale'],
-                    'effective_price' => $productPricing['effective_price'],
-                    'discount_percent' => $productPricing['discount_percent'],
-                    'min_price' => $minPrice,
-                    'max_price' => $maxPrice,
-                    'price_display' => $priceDisplay,
+                    'sale_price' => $pricingSummary['sale_price'],
+                    'sale_price_start_at' => $pricingSummary['sale_price_start_at'],
+                    'sale_price_end_at' => $pricingSummary['sale_price_end_at'],
+                    'original_price' => $pricingSummary['original_price'],
+                    'sale_price_display' => $pricingSummary['sale_price_display'],
+                    'price_display' => $pricingSummary['price_display'],
+                    'promotion_active' => $pricingSummary['promotion_active'],
+                    'promotion_end_at' => $pricingSummary['promotion_end_at'],
+                    'is_on_sale' => $pricingSummary['promotion_active'],
+                    'discount_percent' => $pricingSummary['discount_percent'],
+                    'min_price' => $pricingSummary['min_price'],
+                    'max_price' => $pricingSummary['max_price'],
                     'is_in_wishlist' => isset($wishlistLookup[$product->id]),
                     'dummy_sold_count' => $dummySoldCount,
                     'extra_sold' => $dummySoldCount,
@@ -291,10 +292,14 @@ class PublicShopController extends Controller
                             return [
                                 'id' => $variant->id,
                                 'price' => $variant->price ?? $product->price,
-                                'sale_price' => $variant->sale_price,
+                                'sale_price' => $variantPricing['promotion_active']
+                                    ? $variantPricing['effective_price']
+                                    : null,
                                 'sale_price_start_at' => $variantPricing['sale_price_start_at'],
                                 'sale_price_end_at' => $variantPricing['sale_price_end_at'],
                                 'original_price' => $variantPricing['original_price'],
+                                'promotion_active' => $variantPricing['promotion_active'],
+                                'promotion_end_at' => $variantPricing['promotion_end_at'],
                                 'is_on_sale' => $variantPricing['is_on_sale'],
                                 'effective_price' => $variantPricing['effective_price'],
                                 'discount_percent' => $variantPricing['discount_percent'],
@@ -421,7 +426,7 @@ class PublicShopController extends Controller
         $gallery = $product->images->pluck('url')->values();
 
         $isInStock = $product->track_stock ? $product->stock > 0 : true;
-        $productPricing = ProductPricing::build($product);
+        $pricingSummary = $this->buildProductPricingSummary($product);
 
         $relatedProducts = [];
         if (!$product->is_reward_only) {
@@ -485,13 +490,17 @@ class PublicShopController extends Controller
             'type' => $product->type,
             'description' => $product->description,
             'price' => $product->price,
-            'sale_price' => $product->sale_price,
-            'sale_price_start_at' => $productPricing['sale_price_start_at'],
-            'sale_price_end_at' => $productPricing['sale_price_end_at'],
-            'original_price' => $productPricing['original_price'],
-            'is_on_sale' => $productPricing['is_on_sale'],
-            'effective_price' => $productPricing['effective_price'],
-            'discount_percent' => $productPricing['discount_percent'],
+            'sale_price' => $pricingSummary['sale_price'],
+            'sale_price_start_at' => $pricingSummary['sale_price_start_at'],
+            'sale_price_end_at' => $pricingSummary['sale_price_end_at'],
+            'original_price' => $pricingSummary['original_price'],
+            'sale_price_display' => $pricingSummary['sale_price_display'],
+            'price_display' => $pricingSummary['price_display'],
+            'promotion_active' => $pricingSummary['promotion_active'],
+            'promotion_end_at' => $pricingSummary['promotion_end_at'],
+            'is_on_sale' => $pricingSummary['promotion_active'],
+            'effective_price' => $pricingSummary['effective_price'],
+            'discount_percent' => $pricingSummary['discount_percent'],
             'stock' => $product->stock,
             'track_stock' => $product->track_stock,
             'is_in_stock' => $isInStock,
@@ -520,10 +529,14 @@ class PublicShopController extends Controller
                         'name' => $variant->title,
                         'sku' => $variant->sku,
                         'price' => $variant->price ?? $product->price,
-                        'sale_price' => $variant->sale_price,
+                        'sale_price' => $variantPricing['promotion_active']
+                            ? $variantPricing['effective_price']
+                            : null,
                         'sale_price_start_at' => $variantPricing['sale_price_start_at'],
                         'sale_price_end_at' => $variantPricing['sale_price_end_at'],
                         'original_price' => $variantPricing['original_price'],
+                        'promotion_active' => $variantPricing['promotion_active'],
+                        'promotion_end_at' => $variantPricing['promotion_end_at'],
                         'is_on_sale' => $variantPricing['is_on_sale'],
                         'effective_price' => $variantPricing['effective_price'],
                         'discount_percent' => $variantPricing['discount_percent'],
@@ -649,11 +662,175 @@ class PublicShopController extends Controller
 
         $minPrice = $prices->min();
         $maxPrice = $prices->max();
-        $display = $minPrice === $maxPrice
-            ? number_format($minPrice, 2)
-            : sprintf('%s - %s', number_format($minPrice, 2), number_format($maxPrice, 2));
+        $display = $this->formatPriceRange($minPrice, $maxPrice);
 
         return [$minPrice, $maxPrice, $display];
+    }
+
+    protected function buildProductPricingSummary(Product $product): array
+    {
+        if ($product->type !== 'variant') {
+            $pricing = ProductPricing::build($product);
+            $price = $pricing['original_price'];
+            $priceDisplay = $price !== null ? number_format($price, 2) : null;
+            $saleDisplay = $pricing['promotion_active'] && $pricing['effective_price'] !== null
+                ? number_format((float) $pricing['effective_price'], 2)
+                : null;
+
+            return [
+                'price_base' => $price,
+                'min_price' => $price,
+                'max_price' => $price,
+                'original_price' => $price,
+                'sale_price' => $pricing['promotion_active'] ? $pricing['effective_price'] : null,
+                'price_display' => $priceDisplay,
+                'sale_price_display' => $saleDisplay,
+                'promotion_active' => $pricing['promotion_active'],
+                'promotion_end_at' => $pricing['promotion_end_at'],
+                'discount_percent' => $pricing['discount_percent'],
+                'sale_price_start_at' => $pricing['sale_price_start_at'],
+                'sale_price_end_at' => $pricing['sale_price_end_at'],
+                'effective_price' => $pricing['effective_price'],
+            ];
+        }
+
+        $variants = $product->relationLoaded('variants') ? $product->variants : $product->variants()->get();
+        $activeVariants = $variants->where('is_active', true);
+        $variantPricing = $activeVariants->map(fn($variant) => [
+            'variant' => $variant,
+            'pricing' => ProductPricing::build($product, $variant),
+        ]);
+
+        $originalPrices = $variantPricing
+            ->map(fn($entry) => $entry['pricing']['original_price'])
+            ->filter(fn($value) => $value !== null)
+            ->values();
+
+        $minOriginal = $originalPrices->min();
+        $maxOriginal = $originalPrices->max();
+        $priceDisplay = $minOriginal !== null ? $this->formatPriceRange($minOriginal, $maxOriginal) : null;
+
+        $promotionVariants = $variantPricing->filter(
+            fn($entry) => ($entry['pricing']['promotion_active'] ?? false) === true
+        );
+        $promotionActive = $promotionVariants->isNotEmpty();
+        $salePrices = $promotionVariants
+            ->map(fn($entry) => $entry['pricing']['effective_price'])
+            ->filter(fn($value) => $value !== null)
+            ->values();
+
+        $minSale = $salePrices->min();
+        $maxSale = $salePrices->max();
+        $saleDisplay = $promotionActive && $minSale !== null
+            ? $this->formatPriceRange($minSale, $maxSale)
+            : null;
+
+        $discountPercent = $promotionVariants
+            ->map(fn($entry) => $entry['pricing']['discount_percent'])
+            ->filter(fn($value) => $value !== null)
+            ->max();
+
+        $promotionEndAt = $promotionVariants
+            ->map(fn($entry) => $entry['pricing']['promotion_end_at'])
+            ->filter()
+            ->sort()
+            ->first();
+
+        $saleStartAt = $promotionVariants
+            ->map(fn($entry) => $entry['pricing']['sale_price_start_at'])
+            ->filter()
+            ->sort()
+            ->first();
+
+        $saleEndAt = $promotionVariants
+            ->map(fn($entry) => $entry['pricing']['sale_price_end_at'])
+            ->filter()
+            ->sort()
+            ->first();
+
+        return [
+            'price_base' => $minOriginal,
+            'min_price' => $minOriginal,
+            'max_price' => $maxOriginal,
+            'original_price' => $minOriginal !== null ? ['min' => $minOriginal, 'max' => $maxOriginal] : null,
+            'sale_price' => $promotionActive && $minSale !== null ? ['min' => $minSale, 'max' => $maxSale] : null,
+            'price_display' => $priceDisplay,
+            'sale_price_display' => $saleDisplay,
+            'promotion_active' => $promotionActive,
+            'promotion_end_at' => $promotionEndAt,
+            'discount_percent' => $discountPercent,
+            'sale_price_start_at' => $saleStartAt,
+            'sale_price_end_at' => $saleEndAt,
+            'effective_price' => $minSale,
+        ];
+    }
+
+    protected function mapProductForListing(Product $product): array
+    {
+        $pricingSummary = $this->buildProductPricingSummary($product);
+
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'sku' => $product->sku,
+            'type' => $product->type,
+            'price' => $pricingSummary['price_base'],
+            'sale_price' => $pricingSummary['sale_price'],
+            'sale_price_start_at' => $pricingSummary['sale_price_start_at'],
+            'sale_price_end_at' => $pricingSummary['sale_price_end_at'],
+            'original_price' => $pricingSummary['original_price'],
+            'sale_price_display' => $pricingSummary['sale_price_display'],
+            'price_display' => $pricingSummary['price_display'],
+            'promotion_active' => $pricingSummary['promotion_active'],
+            'promotion_end_at' => $pricingSummary['promotion_end_at'],
+            'is_on_sale' => $pricingSummary['promotion_active'],
+            'discount_percent' => $pricingSummary['discount_percent'],
+            'min_price' => $pricingSummary['min_price'],
+            'max_price' => $pricingSummary['max_price'],
+            'description' => $product->description,
+            'stock' => $product->stock,
+            'low_stock_threshold' => $product->low_stock_threshold,
+            'is_featured' => $product->is_featured,
+            'cover_image_url' => $product->cover_image_url,
+            'images' => $product->images,
+            'variants' => $product->variants
+                ->where('is_active', true)
+                ->values()
+                ->map(function ($variant) use ($product) {
+                    $variantPricing = ProductPricing::build($product, $variant);
+
+                    return [
+                        'id' => $variant->id,
+                        'price' => $variant->price ?? $product->price,
+                        'sale_price' => $variantPricing['promotion_active']
+                            ? $variantPricing['effective_price']
+                            : null,
+                        'sale_price_start_at' => $variantPricing['sale_price_start_at'],
+                        'sale_price_end_at' => $variantPricing['sale_price_end_at'],
+                        'original_price' => $variantPricing['original_price'],
+                        'promotion_active' => $variantPricing['promotion_active'],
+                        'promotion_end_at' => $variantPricing['promotion_end_at'],
+                        'is_on_sale' => $variantPricing['promotion_active'],
+                        'effective_price' => $variantPricing['effective_price'],
+                        'discount_percent' => $variantPricing['discount_percent'],
+                        'is_active' => $variant->is_active,
+                    ];
+                }),
+        ];
+    }
+
+    protected function formatPriceRange(?float $minPrice, ?float $maxPrice): ?string
+    {
+        if ($minPrice === null || $maxPrice === null) {
+            return null;
+        }
+
+        if ($minPrice === $maxPrice) {
+            return number_format($minPrice, 2);
+        }
+
+        return sprintf('%s - %s', number_format($minPrice, 2), number_format($maxPrice, 2));
     }
 
     protected function resolveWishlistProductIds(Request $request): array
@@ -715,6 +892,14 @@ class PublicShopController extends Controller
             ->orderByDesc('created_at')
             ->limit(20)
             ->get();
+
+        $newProducts->loadMissing(['images', 'variants']);
+        $bestSellers->loadMissing(['images', 'variants']);
+        $featuredProducts->loadMissing(['images', 'variants']);
+
+        $newProducts = $newProducts->map(fn(Product $product) => $this->mapProductForListing($product));
+        $bestSellers = $bestSellers->map(fn(Product $product) => $this->mapProductForListing($product));
+        $featuredProducts = $featuredProducts->map(fn(Product $product) => $this->mapProductForListing($product));
 
         $sliders = HomeSlider::query()
             ->where('is_active', true)
