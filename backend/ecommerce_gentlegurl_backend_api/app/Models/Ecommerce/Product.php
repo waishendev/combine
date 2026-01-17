@@ -25,6 +25,7 @@ class Product extends Model
         'type',
         'description',
         'price',
+        'sale_price',
         'cost_price',
         'stock',
         'low_stock_threshold',
@@ -43,6 +44,7 @@ class Product extends Model
     {
         return [
             'price' => 'decimal:2',
+            'sale_price' => 'decimal:2',
             'cost_price' => 'decimal:2',
             'stock' => 'integer',
             'low_stock_threshold' => 'integer',

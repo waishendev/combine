@@ -81,6 +81,7 @@ class CartService
                         'name' => $productVariant->title,
                         'sku' => $productVariant->sku,
                         'price' => $productVariant->price,
+                        'sale_price' => $productVariant->sale_price,
                         'stock' => $productVariant->stock,
                         'track_stock' => $productVariant->track_stock,
                         'is_active' => $productVariant->is_active,

@@ -1048,9 +1048,20 @@ class PublicCheckoutController extends Controller
     protected function resolveVariantPrice(Product $product, ?ProductVariant $variant): float
     {
         if ($variant) {
-            return (float) ($variant->price ?? $product->price);
+            $price = (float) ($variant->price ?? $product->price);
+            $salePrice = $variant->sale_price;
+            if ($salePrice !== null && (float) $salePrice < $price) {
+                return (float) $salePrice;
+            }
+            return $price;
         }
 
-        return (float) $product->price;
+        $price = (float) $product->price;
+        $salePrice = $product->sale_price;
+        if ($salePrice !== null && (float) $salePrice < $price) {
+            return (float) $salePrice;
+        }
+
+        return $price;
     }
 }
