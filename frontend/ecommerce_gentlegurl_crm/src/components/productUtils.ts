@@ -38,6 +38,7 @@ export type ProductApiItem = {
   type?: string | null
   description?: string | null
   price?: string | number | null
+  sale_price?: string | number | null
   min_variant_price?: string | number | null
   max_variant_price?: string | number | null
   variants_count?: number | string | null
@@ -64,6 +65,7 @@ export type ProductApiItem = {
     title?: string | null
     sku?: string | null
     price?: string | number | null
+    sale_price?: string | number | null
     cost_price?: string | number | null
     stock?: number | string | null
     low_stock_threshold?: number | string | null
@@ -154,6 +156,16 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
           : typeof variant.price === 'string'
             ? Number.parseFloat(variant.price)
             : null,
+      salePrice:
+        (() => {
+          const saleValue =
+            typeof variant.sale_price === 'number'
+              ? variant.sale_price
+              : typeof variant.sale_price === 'string'
+                ? Number.parseFloat(variant.sale_price)
+                : NaN
+          return Number.isFinite(saleValue) ? saleValue : null
+        })(),
       costPrice:
         typeof variant.cost_price === 'number'
           ? variant.cost_price
@@ -199,6 +211,15 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     type: item.type ?? '-',
     description: item.description ?? '-',
     price: Number.isFinite(priceValue) ? priceValue : 0,
+    salePrice: (() => {
+      const saleValue =
+        typeof item.sale_price === 'number'
+          ? item.sale_price
+          : typeof item.sale_price === 'string'
+            ? Number.parseFloat(item.sale_price)
+            : NaN
+      return Number.isFinite(saleValue) ? saleValue : null
+    })(),
     minVariantPrice: Number.isFinite(minVariantValue ?? NaN) ? minVariantValue : derivedMinPrice,
     maxVariantPrice: Number.isFinite(maxVariantValue ?? NaN) ? maxVariantValue : derivedMaxPrice,
     variantsCount: Number.isFinite(variantsCountValue ?? NaN) ? variantsCountValue : normalizedVariants.length,

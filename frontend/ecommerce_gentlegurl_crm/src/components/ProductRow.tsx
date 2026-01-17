@@ -27,6 +27,7 @@ export interface ProductVariant {
   name: string
   sku: string
   price?: number | null
+  salePrice?: number | null
   costPrice?: number | null
   stock?: number | null
   lowStockThreshold?: number | null
@@ -44,6 +45,7 @@ export interface ProductRowData {
   type: string
   description: string
   price: number
+  salePrice?: number | null
   minVariantPrice?: number | null
   maxVariantPrice?: number | null
   variantsCount?: number

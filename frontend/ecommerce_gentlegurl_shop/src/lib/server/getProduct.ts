@@ -27,6 +27,7 @@ export type ProductDetail = {
   slug: string;
   type?: string | null;
   price: string | number;
+  sale_price?: string | number | null;
   image_url?: string | null;
   cover_image_url?: string | null;
   description?: string | null;
@@ -52,6 +53,7 @@ export type ProductDetail = {
     name: string;
     sku?: string | null;
     price?: string | number | null;
+    sale_price?: string | number | null;
     stock?: number | null;
     track_stock?: boolean | null;
     is_active?: boolean | null;

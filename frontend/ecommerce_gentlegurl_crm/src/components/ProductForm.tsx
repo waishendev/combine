@@ -36,6 +36,7 @@ type VariantFormValue = {
   name: string
   sku: string
   price: string
+  salePrice: string
   costPrice: string
   stock: string
   lowStockThreshold: string
@@ -55,6 +56,7 @@ type ProductFormValues = {
   type: string
   description: string
   price: string
+  salePrice: string
   costPrice: string
   stock: string
   lowStockThreshold: string
@@ -76,6 +78,7 @@ const emptyForm: ProductFormValues = {
   type: 'single',
   description: '',
   price: '',
+  salePrice: '',
   costPrice: '',
   stock: '',
   lowStockThreshold: '',
@@ -94,6 +97,7 @@ const emptyVariant = (sortOrder = 0): VariantFormValue => ({
   name: '',
   sku: '',
   price: '',
+  salePrice: '',
   costPrice: '',
   stock: '',
   lowStockThreshold: '',
@@ -118,6 +122,27 @@ const emptyRewardForm: RewardFormValues = {
   description: '',
   pointsRequired: '',
   status: 'active',
+}
+
+const parsePriceValue = (value: string) => {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const formatPriceValue = (value: number) => value.toFixed(2)
+
+const getDiscountPercent = (price: number | null, salePrice: number | null) => {
+  if (!price || !salePrice) return null
+  if (salePrice >= price) return null
+  return Math.round((1 - salePrice / price) * 100)
+}
+
+const getNormalizedSalePrice = (priceValue: string, saleValue: string) => {
+  const price = parsePriceValue(priceValue)
+  const salePrice = parsePriceValue(saleValue)
+  if (!price || !salePrice) return ''
+  if (salePrice >= price) return ''
+  return formatPriceValue(salePrice)
 }
 
 interface ProductFormProps {
@@ -152,6 +177,10 @@ export default function ProductForm({
         type: product.type || 'single',
         description: product.description,
         price: product.price ? String(product.price) : '',
+        salePrice:
+          product.salePrice !== null && product.salePrice !== undefined
+            ? String(product.salePrice)
+            : '',
         costPrice: product.costPrice ? String(product.costPrice) : '',
         stock: product.stock ? String(product.stock) : '',
         lowStockThreshold: product.lowStockThreshold
@@ -176,6 +205,8 @@ export default function ProductForm({
       categoryIds: showCategories ? emptyForm.categoryIds : [],
     }
   })
+  const [discountPercentInput, setDiscountPercentInput] = useState('')
+  const [variantDiscountPercentInput, setVariantDiscountPercentInput] = useState('')
   const [rewardForm, setRewardForm] = useState<RewardFormValues>({ ...emptyRewardForm })
   const [rewardId, setRewardId] = useState<number | null>(null)
   const [existingImages, setExistingImages] = useState<ProductImage[]>(
@@ -193,6 +224,10 @@ export default function ProductForm({
         name: variant.name ?? '',
         sku: variant.sku ?? '',
         price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
+        salePrice:
+          variant.salePrice !== null && variant.salePrice !== undefined
+            ? String(variant.salePrice)
+            : '',
         costPrice:
           variant.costPrice !== null && variant.costPrice !== undefined
             ? String(variant.costPrice)
@@ -1094,6 +1129,8 @@ export default function ProductForm({
       isFeatured: showFeatured ? emptyForm.isFeatured : false,
       categoryIds: showCategories ? emptyForm.categoryIds : [],
     })
+    setDiscountPercentInput('')
+    setVariantDiscountPercentInput('')
     setRewardForm({ ...emptyRewardForm })
     setRewardId(null)
     setError(null)
@@ -1148,6 +1185,46 @@ export default function ProductForm({
             }
           : variant,
       ),
+    )
+  }
+
+  const handleDiscountPercentChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
+    setDiscountPercentInput(value)
+
+    const priceValue = parsePriceValue(form.price)
+    const percentValue = parsePriceValue(value)
+    if (!priceValue || percentValue === null) {
+      return
+    }
+    const clampedPercent = Math.min(Math.max(percentValue, 0), 100)
+    const nextSalePrice = priceValue * (1 - clampedPercent / 100)
+    setForm((prev) => ({
+      ...prev,
+      salePrice: formatPriceValue(Math.max(nextSalePrice, 0)),
+    }))
+  }
+
+  const handleApplyVariantDiscount = () => {
+    const percentValue = parsePriceValue(variantDiscountPercentInput)
+    if (percentValue === null) return
+
+    const clampedPercent = Math.min(Math.max(percentValue, 0), 100)
+    setVariants((prev) =>
+      prev.map((variant) => {
+        const priceValue = parsePriceValue(variant.price)
+        if (!priceValue) {
+          return {
+            ...variant,
+            salePrice: '',
+          }
+        }
+        const nextSalePrice = priceValue * (1 - clampedPercent / 100)
+        return {
+          ...variant,
+          salePrice: formatPriceValue(Math.max(nextSalePrice, 0)),
+        }
+      }),
     )
   }
 
@@ -1249,6 +1326,7 @@ export default function ProductForm({
     formData.append('type', form.type)
     formData.append('description', form.description.trim())
     formData.append('price', form.price || '0')
+    formData.append('sale_price', getNormalizedSalePrice(form.price, form.salePrice))
     formData.append('cost_price', form.costPrice || '0')
     formData.append('stock', form.stock || '0')
     formData.append('low_stock_threshold', form.lowStockThreshold || '0')
@@ -1280,6 +1358,10 @@ export default function ProductForm({
         formData.append(`variants[${index}][title]`, variant.name.trim())
         formData.append(`variants[${index}][sku]`, variant.sku.trim())
         formData.append(`variants[${index}][price]`, variant.price || '0')
+        formData.append(
+          `variants[${index}][sale_price]`,
+          getNormalizedSalePrice(variant.price, variant.salePrice),
+        )
         formData.append(`variants[${index}][cost_price]`, variant.costPrice || '0')
         formData.append(`variants[${index}][stock]`, variant.stock || '0')
         formData.append(`variants[${index}][low_stock_threshold]`, variant.lowStockThreshold || '0')
@@ -1380,6 +1462,7 @@ export default function ProductForm({
             type: form.type,
             description: form.description,
             price: Number.parseFloat(form.price || '0'),
+            salePrice: parsePriceValue(form.salePrice),
             costPrice: Number.parseFloat(form.costPrice || '0'),
             stock: Number.parseInt(form.stock || '0', 10),
             lowStockThreshold: Number.parseInt(form.lowStockThreshold || '0', 10),
@@ -1484,6 +1567,11 @@ export default function ProductForm({
       .map((cat) => cat.name)
       .join(', ')
   }, [categories, form.categoryIds])
+
+  const simpleDiscountPercent = useMemo(
+    () => getDiscountPercent(parsePriceValue(form.price), parsePriceValue(form.salePrice)),
+    [form.price, form.salePrice],
+  )
 
   return (
     <form className="p-6 space-y-6" onSubmit={handleSubmit}>
@@ -2400,6 +2488,46 @@ export default function ProductForm({
                 </div>
               </div>
               <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="salePrice">
+                  Sale Price
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                  <input
+                    id="salePrice"
+                    name="salePrice"
+                    type="number"
+                    step="0.01"
+                    value={form.salePrice}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Discount %</label>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  {simpleDiscountPercent !== null ? `${simpleDiscountPercent}%` : '—'}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="discountPercent">
+                  Quick Discount %
+                </label>
+                <input
+                  id="discountPercent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={discountPercentInput}
+                  onChange={handleDiscountPercentChange}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="costPrice">
                   {t('product.costPrice')}
                 </label>
@@ -2521,7 +2649,42 @@ export default function ProductForm({
               No variants yet. Add your first variant.
             </div>
           )}
-          {variants.map((variant, index) => (
+          {variants.length > 0 && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[200px] flex-1 space-y-1">
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="variantDiscountPercent">
+                    Apply discount % to all variants
+                  </label>
+                  <input
+                    id="variantDiscountPercent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={variantDiscountPercentInput}
+                    onChange={(event) => setVariantDiscountPercentInput(event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="0"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleApplyVariantDiscount}
+                  className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          )}
+          {variants.map((variant, index) => {
+            const discountPercent = getDiscountPercent(
+              parsePriceValue(variant.price),
+              parsePriceValue(variant.salePrice),
+            )
+
+            return (
             <div key={variant.id ?? index} className="rounded-lg border border-gray-200 p-4 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -2586,6 +2749,26 @@ export default function ProductForm({
                       className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                       placeholder="0.00"
                     />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Sale Price</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={variant.salePrice}
+                      onChange={(event) => handleVariantChange(index, 'salePrice', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Discount %</label>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    {discountPercent !== null ? `${discountPercent}%` : '—'}
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -2686,7 +2869,8 @@ export default function ProductForm({
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
