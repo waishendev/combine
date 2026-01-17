@@ -11,11 +11,23 @@ interface ProductGridProps {
     name: string;
     price: number | string;
     sale_price?: number | string | null;
+    sale_price_start_at?: string | null;
+    sale_price_end_at?: string | null;
+    original_price?: number | string | null;
+    effective_price?: number | string | null;
+    is_on_sale?: boolean | null;
+    discount_percent?: number | null;
     type?: string | null;
     variants?: Array<{
       id?: number | string;
       price?: number | string | null;
       sale_price?: number | string | null;
+      sale_price_start_at?: string | null;
+      sale_price_end_at?: string | null;
+      original_price?: number | string | null;
+      effective_price?: number | string | null;
+      is_on_sale?: boolean | null;
+      discount_percent?: number | null;
       is_active?: boolean | null;
     }>;
     slug?: string;
@@ -71,8 +83,12 @@ export default function ProductGrid({ items }: ProductGridProps) {
         const isVariantProduct =
           product.type === "variant" ||
           (Array.isArray(product.variants) && product.variants.length > 0);
-        const basePrice = parseAmount(product.price);
-        const baseSalePrice = parseAmount(product.sale_price ?? null);
+        const baseOriginalPrice = parseAmount(product.original_price ?? product.price);
+        const baseEffectivePrice = parseAmount(
+          product.effective_price ?? product.sale_price ?? product.price,
+        );
+        const baseIsOnSale = product.is_on_sale === true;
+        const basePrice = baseOriginalPrice ?? baseEffectivePrice;
         const image = getPrimaryProductImage(product);
         const soldCountValue = Number(
           product.sold_total ?? (Number(product.sold_count ?? 0) + Number(product.extra_sold ?? 0)),
@@ -81,33 +97,39 @@ export default function ProductGrid({ items }: ProductGridProps) {
         const variantItems = Array.isArray(product.variants) ? product.variants : [];
         const activeVariants = variantItems.filter((variant) => variant.is_active !== false);
         const priceValues = (isVariantProduct ? activeVariants : [])
-          .map((variant) => parseAmount(variant.price))
+          .map((variant) => parseAmount(variant.original_price ?? variant.price))
           .filter((value): value is number => value !== null);
         const saleValues = (isVariantProduct ? activeVariants : [])
-          .map((variant) => {
-            const price = parseAmount(variant.price);
-            const sale = parseAmount(variant.sale_price ?? null);
-            return price && sale && sale < price ? sale : null;
-          })
+          .map((variant) =>
+            variant.is_on_sale === true
+              ? parseAmount(variant.effective_price ?? variant.sale_price ?? null)
+              : null,
+          )
           .filter((value): value is number => value !== null);
         const minPrice = priceValues.length > 0 ? Math.min(...priceValues) : basePrice;
         const maxPrice = priceValues.length > 0 ? Math.max(...priceValues) : basePrice;
         const minSale = saleValues.length > 0 ? Math.min(...saleValues) : null;
         const maxSale = saleValues.length > 0 ? Math.max(...saleValues) : null;
         const rangeDiscounts = activeVariants
-          .map((variant) =>
-            getDiscountPercent(
-              parseAmount(variant.price),
-              parseAmount(variant.sale_price ?? null),
-            ),
-          )
+          .map((variant) => {
+            if (typeof variant.discount_percent === "number") {
+              return variant.discount_percent;
+            }
+            return getDiscountPercent(
+              parseAmount(variant.original_price ?? variant.price),
+              parseAmount(variant.effective_price ?? variant.sale_price ?? null),
+            );
+          })
           .filter((value): value is number => value !== null);
         const rangeDiscountPercent =
           saleValues.length > 0 && rangeDiscounts.length > 0
             ? Math.max(...rangeDiscounts)
             : null;
-        const simpleDiscountPercent = getDiscountPercent(basePrice, baseSalePrice);
-        const showSalePrice = simpleDiscountPercent !== null;
+        const simpleDiscountPercent =
+          typeof product.discount_percent === "number"
+            ? product.discount_percent
+            : getDiscountPercent(baseOriginalPrice, baseEffectivePrice);
+        const showSalePrice = baseIsOnSale && baseEffectivePrice !== null;
         const priceLabel =
           minPrice !== null && maxPrice !== null
             ? formatRange(minPrice, maxPrice)
@@ -174,14 +196,14 @@ export default function ProductGrid({ items }: ProductGridProps) {
                         RM {priceLabel}
                       </span>
                     )
-                  ) : showSalePrice && baseSalePrice !== null ? (
+                  ) : showSalePrice && baseEffectivePrice !== null ? (
                     <>
                       <span className="text-xs font-medium text-[color:var(--text-muted)] line-through">
-                        RM {formatAmount(basePrice ?? 0)}
+                        RM {formatAmount(baseOriginalPrice ?? 0)}
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-[var(--accent-strong)]">
-                          RM {formatAmount(baseSalePrice)}
+                          RM {formatAmount(baseEffectivePrice)}
                         </span>
                         {simpleDiscountPercent !== null && (
                           <span className="rounded-full bg-[var(--status-warning-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-warning)]">

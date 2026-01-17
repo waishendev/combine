@@ -26,6 +26,8 @@ class Product extends Model
         'description',
         'price',
         'sale_price',
+        'sale_price_start_at',
+        'sale_price_end_at',
         'cost_price',
         'stock',
         'low_stock_threshold',
@@ -45,6 +47,8 @@ class Product extends Model
         return [
             'price' => 'decimal:2',
             'sale_price' => 'decimal:2',
+            'sale_price_start_at' => 'datetime',
+            'sale_price_end_at' => 'datetime',
             'cost_price' => 'decimal:2',
             'stock' => 'integer',
             'low_stock_threshold' => 'integer',

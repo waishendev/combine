@@ -8,6 +8,7 @@ use App\Models\Ecommerce\CartItem;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Services\Ecommerce\CartService;
+use App\Support\Pricing\ProductPricing;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -339,22 +340,9 @@ class PublicCartController extends Controller
 
     protected function resolvePrice(Product $product, ?ProductVariant $variant): float
     {
-        if ($variant) {
-            $price = (float) ($variant->price ?? $product->price);
-            $salePrice = $variant->sale_price;
-            if ($salePrice !== null && (float) $salePrice < $price) {
-                return (float) $salePrice;
-            }
-            return $price;
-        }
+        $pricing = ProductPricing::build($product, $variant);
 
-        $price = (float) $product->price;
-        $salePrice = $product->sale_price;
-        if ($salePrice !== null && (float) $salePrice < $price) {
-            return (float) $salePrice;
-        }
-
-        return $price;
+        return (float) $pricing['effective_price'];
     }
 
     protected function resolveStock(Product $product, ?ProductVariant $variant): ?int

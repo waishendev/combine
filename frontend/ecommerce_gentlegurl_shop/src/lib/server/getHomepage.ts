@@ -56,12 +56,24 @@ export type HomepageProduct = {
   slug: string;
   price: string;
   sale_price?: string | number | null;
+  sale_price_start_at?: string | null;
+  sale_price_end_at?: string | null;
+  original_price?: string | number | null;
+  effective_price?: string | number | null;
+  is_on_sale?: boolean;
+  discount_percent?: number | null;
   type?: string | null;
   variants?: Array<{
     id: number;
     name: string;
     price?: string | number | null;
     sale_price?: string | number | null;
+    sale_price_start_at?: string | null;
+    sale_price_end_at?: string | null;
+    original_price?: string | number | null;
+    effective_price?: string | number | null;
+    is_on_sale?: boolean | null;
+    discount_percent?: number | null;
     is_active?: boolean | null;
   }>;
   is_featured: boolean;

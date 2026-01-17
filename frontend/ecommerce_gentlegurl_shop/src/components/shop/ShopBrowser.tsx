@@ -18,11 +18,23 @@ type Product = {
   name: string;
   price: number | string;
   sale_price?: number | string | null;
+  sale_price_start_at?: string | null;
+  sale_price_end_at?: string | null;
+  original_price?: number | string | null;
+  effective_price?: number | string | null;
+  is_on_sale?: boolean | null;
+  discount_percent?: number | null;
   type?: string | null;
   variants?: Array<{
     id?: number | string;
     price?: number | string | null;
     sale_price?: number | string | null;
+    sale_price_start_at?: string | null;
+    sale_price_end_at?: string | null;
+    original_price?: number | string | null;
+    effective_price?: number | string | null;
+    is_on_sale?: boolean | null;
+    discount_percent?: number | null;
     is_active?: boolean | null;
   }>;
   slug?: string;

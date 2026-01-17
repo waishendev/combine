@@ -13,6 +13,7 @@ use App\Models\HomeSlider;
 use App\Models\Marquee;
 use App\Models\Promotion;
 use App\Services\Ecommerce\ProductReviewService;
+use App\Support\Pricing\ProductPricing;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -252,6 +253,7 @@ class PublicShopController extends Controller
 
                 [$minPrice, $maxPrice, $priceDisplay] = $this->resolvePriceRange($product);
                 $price = $product->type === 'variant' && $minPrice !== null ? $minPrice : $product->price;
+                $productPricing = ProductPricing::build($product);
 
                 return [
                     'id' => $product->id,
@@ -261,6 +263,12 @@ class PublicShopController extends Controller
                     'type' => $product->type,
                     'price' => $price,
                     'sale_price' => $product->sale_price,
+                    'sale_price_start_at' => $productPricing['sale_price_start_at'],
+                    'sale_price_end_at' => $productPricing['sale_price_end_at'],
+                    'original_price' => $productPricing['original_price'],
+                    'is_on_sale' => $productPricing['is_on_sale'],
+                    'effective_price' => $productPricing['effective_price'],
+                    'discount_percent' => $productPricing['discount_percent'],
                     'min_price' => $minPrice,
                     'max_price' => $maxPrice,
                     'price_display' => $priceDisplay,
@@ -277,12 +285,22 @@ class PublicShopController extends Controller
                         ->sortBy('sort_order')
                         ->sortBy('id')
                         ->values()
-                        ->map(fn($variant) => [
-                            'id' => $variant->id,
-                            'price' => $variant->price ?? $product->price,
-                            'sale_price' => $variant->sale_price,
-                            'is_active' => $variant->is_active,
-                        ]),
+                        ->map(function ($variant) use ($product) {
+                            $variantPricing = ProductPricing::build($product, $variant);
+
+                            return [
+                                'id' => $variant->id,
+                                'price' => $variant->price ?? $product->price,
+                                'sale_price' => $variant->sale_price,
+                                'sale_price_start_at' => $variantPricing['sale_price_start_at'],
+                                'sale_price_end_at' => $variantPricing['sale_price_end_at'],
+                                'original_price' => $variantPricing['original_price'],
+                                'is_on_sale' => $variantPricing['is_on_sale'],
+                                'effective_price' => $variantPricing['effective_price'],
+                                'discount_percent' => $variantPricing['discount_percent'],
+                                'is_active' => $variant->is_active,
+                            ];
+                        }),
                 ];
             })
         );
@@ -403,6 +421,7 @@ class PublicShopController extends Controller
         $gallery = $product->images->pluck('url')->values();
 
         $isInStock = $product->track_stock ? $product->stock > 0 : true;
+        $productPricing = ProductPricing::build($product);
 
         $relatedProducts = [];
         if (!$product->is_reward_only) {
@@ -467,6 +486,12 @@ class PublicShopController extends Controller
             'description' => $product->description,
             'price' => $product->price,
             'sale_price' => $product->sale_price,
+            'sale_price_start_at' => $productPricing['sale_price_start_at'],
+            'sale_price_end_at' => $productPricing['sale_price_end_at'],
+            'original_price' => $productPricing['original_price'],
+            'is_on_sale' => $productPricing['is_on_sale'],
+            'effective_price' => $productPricing['effective_price'],
+            'discount_percent' => $productPricing['discount_percent'],
             'stock' => $product->stock,
             'track_stock' => $product->track_stock,
             'is_in_stock' => $isInStock,
@@ -487,19 +512,29 @@ class PublicShopController extends Controller
                 ->sortBy('sort_order')
                 ->sortBy('id')
                 ->values()
-                ->map(fn($variant) => [
-                    'id' => $variant->id,
-                    'name' => $variant->title,
-                    'sku' => $variant->sku,
-                    'price' => $variant->price ?? $product->price,
-                    'sale_price' => $variant->sale_price,
-                    'stock' => $variant->stock,
-                    'low_stock_threshold' => $variant->low_stock_threshold,
-                    'track_stock' => $variant->track_stock,
-                    'is_active' => $variant->is_active,
-                    'sort_order' => $variant->sort_order,
-                    'image_url' => $variant->image_url,
-                ]),
+                ->map(function ($variant) use ($product) {
+                    $variantPricing = ProductPricing::build($product, $variant);
+
+                    return [
+                        'id' => $variant->id,
+                        'name' => $variant->title,
+                        'sku' => $variant->sku,
+                        'price' => $variant->price ?? $product->price,
+                        'sale_price' => $variant->sale_price,
+                        'sale_price_start_at' => $variantPricing['sale_price_start_at'],
+                        'sale_price_end_at' => $variantPricing['sale_price_end_at'],
+                        'original_price' => $variantPricing['original_price'],
+                        'is_on_sale' => $variantPricing['is_on_sale'],
+                        'effective_price' => $variantPricing['effective_price'],
+                        'discount_percent' => $variantPricing['discount_percent'],
+                        'stock' => $variant->stock,
+                        'low_stock_threshold' => $variant->low_stock_threshold,
+                        'track_stock' => $variant->track_stock,
+                        'is_active' => $variant->is_active,
+                        'sort_order' => $variant->sort_order,
+                        'image_url' => $variant->image_url,
+                    ];
+                }),
             'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),
             'related_products' => $relatedProducts,
             'is_reward_only' => $product->is_reward_only,

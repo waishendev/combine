@@ -5,6 +5,7 @@ namespace App\Services\Ecommerce;
 use App\Models\Ecommerce\Cart;
 use App\Models\Ecommerce\CartItem;
 use App\Models\Ecommerce\Customer;
+use App\Support\Pricing\ProductPricing;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -52,10 +53,17 @@ class CartService
         $cart->load(['items.product.images', 'items.product.variants', 'items.productVariant']);
 
         $items = $cart->items->map(function ($item) {
-            $lineTotal = (float) $item->unit_price_snapshot * (int) $item->quantity;
-
             $product = $item->product;
             $variant = $item->productVariant;
+            $pricing = (!$item->is_reward && $product)
+                ? ProductPricing::build($product, $variant)
+                : null;
+            $effectivePrice = $pricing ? (float) $pricing['effective_price'] : (float) $item->unit_price_snapshot;
+            $lineTotal = $effectivePrice * (int) $item->quantity;
+            $priceChangeReason = $pricing
+                ? ProductPricing::resolvePriceChangeReason((float) $item->unit_price_snapshot, $pricing)
+                : null;
+
             $thumbnail = $variant?->image_url ?? $product?->cover_image_url;
             if (!$thumbnail) {
                 $legacyImage = $product?->image_url ?? $product?->image_path ?? null;
@@ -76,21 +84,40 @@ class CartService
                     ? ($variant->track_stock ? $variant->stock : null)
                     : ($product?->track_stock ? $product?->stock : null),
                 'available_variants' => $product && $product->type === 'variant'
-                    ? $product->variants->map(fn($productVariant) => [
-                        'id' => $productVariant->id,
-                        'name' => $productVariant->title,
-                        'sku' => $productVariant->sku,
-                        'price' => $productVariant->price,
-                        'sale_price' => $productVariant->sale_price,
-                        'stock' => $productVariant->stock,
-                        'track_stock' => $productVariant->track_stock,
-                        'is_active' => $productVariant->is_active,
-                        'image_url' => $productVariant->image_url,
-                    ])->values()
+                    ? $product->variants->map(function ($productVariant) use ($product) {
+                        $variantPricing = ProductPricing::build($product, $productVariant);
+
+                        return [
+                            'id' => $productVariant->id,
+                            'name' => $productVariant->title,
+                            'sku' => $productVariant->sku,
+                            'price' => $productVariant->price,
+                            'sale_price' => $productVariant->sale_price,
+                            'sale_price_start_at' => $variantPricing['sale_price_start_at'],
+                            'sale_price_end_at' => $variantPricing['sale_price_end_at'],
+                            'original_price' => $variantPricing['original_price'],
+                            'is_on_sale' => $variantPricing['is_on_sale'],
+                            'effective_price' => $variantPricing['effective_price'],
+                            'discount_percent' => $variantPricing['discount_percent'],
+                            'stock' => $productVariant->stock,
+                            'track_stock' => $productVariant->track_stock,
+                            'is_active' => $productVariant->is_active,
+                            'image_url' => $productVariant->image_url,
+                        ];
+                    })->values()
                     : [],
                 'quantity' => $item->quantity,
-                'unit_price' => (float) $item->unit_price_snapshot,
+                'unit_price' => $effectivePrice,
                 'line_total' => $lineTotal,
+                'original_price' => $pricing['original_price'] ?? (float) $item->unit_price_snapshot,
+                'sale_price' => $pricing['sale_price'] ?? null,
+                'sale_price_start_at' => $pricing['sale_price_start_at'] ?? null,
+                'sale_price_end_at' => $pricing['sale_price_end_at'] ?? null,
+                'is_on_sale' => $pricing['is_on_sale'] ?? false,
+                'effective_price' => $pricing['effective_price'] ?? (float) $item->unit_price_snapshot,
+                'discount_percent' => $pricing['discount_percent'] ?? null,
+                'price_changed' => $priceChangeReason !== null,
+                'price_change_reason' => $priceChangeReason,
                 'is_reward' => (bool) $item->is_reward,
                 'reward_redemption_id' => $item->reward_redemption_id,
                 'locked' => (bool) $item->locked,

@@ -6,6 +6,7 @@ use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductMedia;
 use App\Models\Ecommerce\ProductVariant;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -78,6 +79,8 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
             'price' => ['required', 'numeric', 'gt:0'],
             'sale_price' => ['nullable', 'numeric', 'gte:0'],
+            'sale_price_start_at' => ['nullable', 'date'],
+            'sale_price_end_at' => ['nullable', 'date'],
             'cost_price' => ['nullable', 'numeric'],
             'stock' => ['sometimes', 'integer'],
             'low_stock_threshold' => ['sometimes', 'integer'],
@@ -100,6 +103,8 @@ class ProductController extends Controller
             'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
             'variants.*.price' => ['nullable', 'numeric', 'gt:0'],
             'variants.*.sale_price' => ['nullable', 'numeric', 'gte:0'],
+            'variants.*.sale_price_start_at' => ['nullable', 'date'],
+            'variants.*.sale_price_end_at' => ['nullable', 'date'],
             'variants.*.cost_price' => ['nullable', 'numeric'],
             'variants.*.stock' => ['nullable', 'integer'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer'],
@@ -165,6 +170,8 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
             'price' => ['sometimes', 'numeric', 'gt:0'],
             'sale_price' => ['nullable', 'numeric', 'gte:0'],
+            'sale_price_start_at' => ['nullable', 'date'],
+            'sale_price_end_at' => ['nullable', 'date'],
             'cost_price' => ['nullable', 'numeric'],
             'stock' => ['sometimes', 'integer'],
             'low_stock_threshold' => ['sometimes', 'integer'],
@@ -190,6 +197,8 @@ class ProductController extends Controller
             'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
             'variants.*.price' => ['nullable', 'numeric', 'gt:0'],
             'variants.*.sale_price' => ['nullable', 'numeric', 'gte:0'],
+            'variants.*.sale_price_start_at' => ['nullable', 'date'],
+            'variants.*.sale_price_end_at' => ['nullable', 'date'],
             'variants.*.cost_price' => ['nullable', 'numeric'],
             'variants.*.stock' => ['nullable', 'integer'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer'],
@@ -335,6 +344,8 @@ class ProductController extends Controller
                 'title' => $variantData['title'] ?? $variant->title,
                 'price' => $variantData['price'] ?? null,
                 'sale_price' => $variantData['sale_price'] ?? null,
+                'sale_price_start_at' => $variantData['sale_price_start_at'] ?? null,
+                'sale_price_end_at' => $variantData['sale_price_end_at'] ?? null,
                 'cost_price' => $variantData['cost_price'] ?? null,
                 'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
                 'low_stock_threshold' => isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0,
@@ -483,6 +494,17 @@ class ProductController extends Controller
             }
         }
 
+        if (array_key_exists('sale_price_start_at', $validated) || array_key_exists('sale_price_end_at', $validated)) {
+            $startAt = $validated['sale_price_start_at'] ?? $product?->sale_price_start_at;
+            $endAt = $validated['sale_price_end_at'] ?? $product?->sale_price_end_at;
+
+            if ($startAt && $endAt && Carbon::parse($startAt)->gt(Carbon::parse($endAt))) {
+                throw ValidationException::withMessages([
+                    'sale_price_start_at' => __('Sale price start must be before end time.'),
+                ])->status(422);
+            }
+        }
+
         if (! $request->has('variants')) {
             return;
         }
@@ -491,6 +513,15 @@ class ProductController extends Controller
         foreach ($variants as $index => $variantData) {
             if (! is_array($variantData)) {
                 continue;
+            }
+
+            $variantStartAt = $variantData['sale_price_start_at'] ?? null;
+            $variantEndAt = $variantData['sale_price_end_at'] ?? null;
+
+            if ($variantStartAt && $variantEndAt && Carbon::parse($variantStartAt)->gt(Carbon::parse($variantEndAt))) {
+                throw ValidationException::withMessages([
+                    "variants.{$index}.sale_price_start_at" => __('Variant sale price start must be before end time.'),
+                ])->status(422);
             }
 
             if (! array_key_exists('sale_price', $variantData) || $variantData['sale_price'] === null) {

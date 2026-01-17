@@ -39,6 +39,8 @@ export type ProductApiItem = {
   description?: string | null
   price?: string | number | null
   sale_price?: string | number | null
+  sale_price_start_at?: string | null
+  sale_price_end_at?: string | null
   min_variant_price?: string | number | null
   max_variant_price?: string | number | null
   variants_count?: number | string | null
@@ -66,6 +68,8 @@ export type ProductApiItem = {
     sku?: string | null
     price?: string | number | null
     sale_price?: string | number | null
+    sale_price_start_at?: string | null
+    sale_price_end_at?: string | null
     cost_price?: string | number | null
     stock?: number | string | null
     low_stock_threshold?: number | string | null
@@ -166,6 +170,8 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
                 : NaN
           return Number.isFinite(saleValue) ? saleValue : null
         })(),
+      salePriceStartAt: variant.sale_price_start_at ?? null,
+      salePriceEndAt: variant.sale_price_end_at ?? null,
       costPrice:
         typeof variant.cost_price === 'number'
           ? variant.cost_price
@@ -220,6 +226,8 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
             : NaN
       return Number.isFinite(saleValue) ? saleValue : null
     })(),
+    salePriceStartAt: item.sale_price_start_at ?? null,
+    salePriceEndAt: item.sale_price_end_at ?? null,
     minVariantPrice: Number.isFinite(minVariantValue ?? NaN) ? minVariantValue : derivedMinPrice,
     maxVariantPrice: Number.isFinite(maxVariantValue ?? NaN) ? maxVariantValue : derivedMaxPrice,
     variantsCount: Number.isFinite(variantsCountValue ?? NaN) ? variantsCountValue : normalizedVariants.length,

@@ -28,6 +28,12 @@ export type ProductDetail = {
   type?: string | null;
   price: string | number;
   sale_price?: string | number | null;
+  sale_price_start_at?: string | null;
+  sale_price_end_at?: string | null;
+  original_price?: string | number | null;
+  effective_price?: string | number | null;
+  is_on_sale?: boolean;
+  discount_percent?: number | null;
   image_url?: string | null;
   cover_image_url?: string | null;
   description?: string | null;
@@ -54,6 +60,12 @@ export type ProductDetail = {
     sku?: string | null;
     price?: string | number | null;
     sale_price?: string | number | null;
+    sale_price_start_at?: string | null;
+    sale_price_end_at?: string | null;
+    original_price?: string | number | null;
+    effective_price?: string | number | null;
+    is_on_sale?: boolean | null;
+    discount_percent?: number | null;
     stock?: number | null;
     track_stock?: boolean | null;
     is_active?: boolean | null;
