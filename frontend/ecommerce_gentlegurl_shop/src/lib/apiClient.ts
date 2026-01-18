@@ -535,6 +535,44 @@ export async function registerCustomer(payload: {
   return post<{ success: boolean }>("/public/auth/register", payload);
 }
 
+export async function resendCustomerVerificationEmail(email: string) {
+  return post<{ success: boolean; message?: string }>(
+    "/public/shop/auth/email/resend-verification",
+    { email },
+  );
+}
+
+export async function verifyCustomerEmail(payload: {
+  id: string;
+  hash: string;
+  expires: string;
+  signature: string;
+}) {
+  const query = new URLSearchParams({
+    expires: payload.expires,
+    signature: payload.signature,
+  });
+
+  return get<{ success: boolean; message?: string }>(
+    `/public/shop/auth/email/verify/${payload.id}/${payload.hash}?${query.toString()}`,
+  );
+}
+
+export async function requestCustomerPasswordReset(email: string) {
+  return post<{ success: boolean; message?: string }>("/public/shop/auth/password/forgot", {
+    email,
+  });
+}
+
+export async function resetCustomerPassword(payload: {
+  email: string;
+  token: string;
+  password: string;
+  password_confirmation: string;
+}) {
+  return post<{ success: boolean; message?: string }>("/public/shop/auth/password/reset", payload);
+}
+
 export async function logoutCustomer() {
   return post<{ success: boolean }>("/public/auth/logout");
 }

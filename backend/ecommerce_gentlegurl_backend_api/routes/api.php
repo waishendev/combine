@@ -86,6 +86,18 @@ Route::prefix('/public/auth')->middleware('api.session')->group(function () {
 
 Route::post('/public/auth/login/token', [PublicCustomerAuthController::class, 'loginWithToken']);
 
+Route::prefix('/public/shop/auth')->middleware('api.session')->group(function () {
+    Route::post('/email/resend-verification', [PublicCustomerAuthController::class, 'resendVerificationEmail'])
+        ->middleware('throttle:6,1');
+    Route::get('/email/verify/{id}/{hash}', [PublicCustomerAuthController::class, 'verifyEmail'])
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('shop.auth.verify');
+    Route::post('/password/forgot', [PublicCustomerAuthController::class, 'forgotPassword'])
+        ->middleware('throttle:6,1');
+    Route::post('/password/reset', [PublicCustomerAuthController::class, 'resetPassword'])
+        ->middleware('throttle:6,1');
+});
+
 Route::post('/public/payments/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/public/payments/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
 // Backwards compatibility for previous callback URLs

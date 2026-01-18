@@ -10,9 +10,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Auth\Events\Verified;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class PublicCustomerAuthController extends Controller
@@ -40,8 +43,7 @@ class PublicCustomerAuthController extends Controller
             'is_active' => true,
         ]);
 
-        auth('customer')->login($customer);
-        $request->session()->regenerate();
+        $customer->sendEmailVerificationNotification();
 
         return $this->respond($this->transformCustomer($customer));
     }
@@ -63,6 +65,14 @@ class PublicCustomerAuthController extends Controller
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
+        }
+
+        if (!$customer->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'EMAIL_NOT_VERIFIED',
+                'message' => 'Please verify your email before logging in.',
+            ], 403);
         }
 
         auth('customer')->login($customer);
@@ -99,6 +109,14 @@ class PublicCustomerAuthController extends Controller
             ]);
         }
 
+        if (!$customer->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'EMAIL_NOT_VERIFIED',
+                'message' => 'Please verify your email before logging in.',
+            ], 403);
+        }
+
         auth('customer')->login($customer);
         $request->session()->regenerate();
 
@@ -124,6 +142,77 @@ class PublicCustomerAuthController extends Controller
         $request->session()->regenerateToken();
 
         return $this->respond(null, __('Logged out successfully.'));
+    }
+
+    public function resendVerificationEmail(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+        ]);
+
+        /** @var Customer|null $customer */
+        $customer = Customer::where('email', $data['email'])->first();
+
+        if ($customer && !$customer->hasVerifiedEmail()) {
+            $customer->sendEmailVerificationNotification();
+        }
+
+        return $this->respond(null, 'If the email exists, we sent a verification email.');
+    }
+
+    public function verifyEmail(Request $request, int $id, string $hash): JsonResponse
+    {
+        /** @var Customer|null $customer */
+        $customer = Customer::find($id);
+
+        if (!$customer || !hash_equals((string) $hash, sha1($customer->getEmailForVerification()))) {
+            return $this->respondError('Verification link is invalid or expired.', 400);
+        }
+
+        if (!$customer->hasVerifiedEmail()) {
+            $customer->markEmailAsVerified();
+            event(new Verified($customer));
+        }
+
+        return $this->respond(null, 'Email verified successfully.');
+    }
+
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+        ]);
+
+        Password::broker('customers')->sendResetLink(['email' => $data['email']]);
+
+        return $this->respond(null, 'If the email exists, we sent a reset link.');
+    }
+
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+            'token' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:6', 'confirmed'],
+        ]);
+
+        $status = Password::broker('customers')->reset(
+            $data,
+            function (Customer $customer, string $password) {
+                $customer->forceFill([
+                    'password' => $password,
+                    'remember_token' => Str::random(60),
+                ])->save();
+
+                event(new PasswordReset($customer));
+            }
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            return $this->respondError(__($status), 422);
+        }
+
+        return $this->respond(null, 'Password updated successfully.');
     }
 
     public function profile(Request $request): JsonResponse
