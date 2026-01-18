@@ -360,10 +360,10 @@ export function RewardsCenter() {
                       </div>
                       <div className="flex items-center justify-between text-xs text-[color:var(--text-muted)]">
                         <span>{remainingLabel}</span>
-                        {reward.voucher?.id && (
+                        {reward.voucher_id && (
                           <button
                             type="button"
-                            onClick={() => setDetailsVoucherId(reward.voucher?.id ?? null)}
+                            onClick={() => setDetailsVoucherId(reward.voucher_id ?? null)}
                             className="font-semibold text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
                           >
                             T&amp;C

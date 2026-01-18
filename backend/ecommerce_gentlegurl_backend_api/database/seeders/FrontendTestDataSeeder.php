@@ -13,8 +13,6 @@ use App\Models\Ecommerce\ShopMenuItem;
 use App\Models\Ecommerce\PageReview;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\StoreLocationImage;
-use App\Models\Ecommerce\Category;
-use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\Voucher;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\LoyaltySetting;

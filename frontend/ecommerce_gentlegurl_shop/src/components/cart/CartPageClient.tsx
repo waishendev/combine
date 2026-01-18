@@ -8,6 +8,7 @@ import { useCart } from "@/contexts/CartContext";
 import { CustomerVoucher, getCustomerVouchers } from "@/lib/apiClient";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
+import VoucherList from "@/components/vouchers/VoucherList";
 
 export default function CartPageClient() {
   const router = useRouter();
@@ -831,99 +832,13 @@ export default function CartPageClient() {
                 ) : visibleVouchers.length === 0 ? (
                   <p className="text-xs text-[var(--foreground)]/60">No vouchers available.</p>
                 ) : (
-                  <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                    {visibleVouchers.map((entry) => {
-                      const isSelected = selectedVoucherId === entry.voucher.id;
-                      const isDisabled = !entry.minSpendMet;
-                      const scopeType = entry.voucher.voucher?.scope_type ?? "all";
-                      const scopeLabel = scopeLabels[scopeType] ?? "Storewide";
-                      const detailVoucherId = entry.voucher.voucher?.id ?? null;
-                      const handleSelectVoucher = () => {
-                        if (isDisabled) return;
-                        if (isSelected) {
-                          setSelectedVoucherId(null);
-                        } else {
-                          setSelectedVoucherId(entry.voucher.id);
-                        }
-                        clearVoucherFeedback();
-                      };
-
-                      return (
-                        <div
-                          key={entry.voucher.id}
-                          role="radio"
-                          aria-checked={isSelected}
-                          aria-disabled={isDisabled}
-                          tabIndex={isDisabled ? -1 : 0}
-                          onClick={handleSelectVoucher}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              handleSelectVoucher();
-                            }
-                          }}
-                          className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition ${
-                            isSelected
-                              ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                              : "border-[var(--muted)]/70 bg-[var(--card)]"
-                          } ${isDisabled ? "cursor-not-allowed opacity-50 grayscale" : "hover:border-[var(--accent)]/60"}`}
-                        >
-                          <input
-                            type="radio"
-                            name="voucher_choice"
-                            className="mt-1 ios-input"
-                            checked={isSelected}
-                            disabled={isDisabled}
-                            onChange={handleSelectVoucher}
-                          />
-                          <div className="flex-1 text-xs">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm font-semibold">{entry.title}</div>
-                              <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--foreground)]/70">
-                                {scopeLabel}
-                              </span>
-                            </div>
-                            <div className="mt-2 grid gap-1 text-[11px] text-[var(--foreground)]/70 sm:grid-cols-2">
-                              <div>
-                                <span className="font-semibold text-[var(--foreground)]/80">Value:</span>{" "}
-                                {entry.valueLabel}
-                              </div>
-                              <div>
-                                <span className="font-semibold text-[var(--foreground)]/80">Min spend:</span>{" "}
-                                {formatCurrency(entry.minOrderAmount)}
-                              </div>
-                              <div className="sm:col-span-2">
-                                <span className="font-semibold text-[var(--foreground)]/80">Expiry:</span>{" "}
-                                {entry.expiryLabel}
-                              </div>
-                            </div>
-                            {detailVoucherId && (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  setDetailsVoucherId(detailVoucherId);
-                                }}
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                }}
-                                className="relative z-10 mt-2 pointer-events-auto text-[11px] font-semibold text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
-                              >
-                                T&amp;C
-                              </button>
-                            )}
-                            {!entry.minSpendMet && (
-                              <p className="mt-2 text-[11px] font-semibold text-[color:var(--status-warning)]">
-                                Min spend not met
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <VoucherList
+                    vouchers={visibleVouchers}
+                    selectedVoucherId={selectedVoucherId}
+                    onSelectVoucher={setSelectedVoucherId}
+                    onViewDetails={setDetailsVoucherId}
+                    clearVoucherFeedback={clearVoucherFeedback}
+                  />
                 )}
               </div>
 
