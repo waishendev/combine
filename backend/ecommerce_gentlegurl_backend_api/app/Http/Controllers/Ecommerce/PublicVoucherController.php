@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\CustomerVoucher;
+use App\Models\Ecommerce\Voucher;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -61,10 +62,40 @@ class PublicVoucherController extends Controller
                     'max_discount_amount' => $customerVoucher->voucher->max_discount_amount,
                     'start_at' => $customerVoucher->voucher->start_at,
                     'end_at' => $customerVoucher->voucher->end_at,
+                    'scope_type' => $customerVoucher->voucher->scope_type ?? 'all',
                 ] : null,
             ];
         });
 
         return $this->respond($data);
+    }
+
+    public function show(Voucher $voucher)
+    {
+        $voucher->load([
+            'products:id,name,sku',
+            'categories:id,name',
+        ]);
+
+        return $this->respond([
+            'id' => $voucher->id,
+            'code' => $voucher->code,
+            'type' => $voucher->type,
+            'value' => $voucher->value,
+            'min_order_amount' => $voucher->min_order_amount,
+            'max_discount_amount' => $voucher->max_discount_amount,
+            'start_at' => $voucher->start_at,
+            'end_at' => $voucher->end_at,
+            'scope_type' => $voucher->scope_type ?? 'all',
+            'products' => $voucher->products->map(fn($product) => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'sku' => $product->sku,
+            ])->values(),
+            'categories' => $voucher->categories->map(fn($category) => [
+                'id' => $category->id,
+                'name' => $category->name,
+            ])->values(),
+        ]);
     }
 }

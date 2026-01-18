@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
 import { CustomerVoucher, getCustomerVouchers } from "@/lib/apiClient";
 import { getPrimaryProductImage } from "@/lib/productMedia";
+import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 
 export default function CartPageClient() {
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function CartPageClient() {
   const [voucherCode, setVoucherCode] = useState("");
   const [showVoucherModal, setShowVoucherModal] = useState(false);
   const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
+  const [detailsVoucherId, setDetailsVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
   const [quantityNotices, setQuantityNotices] = useState<Record<number, string>>({});
@@ -116,6 +118,12 @@ export default function CartPageClient() {
   }, [totals]);
 
   const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
+
+  const scopeLabels: Record<string, string> = {
+    all: "Storewide",
+    products: "Specific Products",
+    categories: "Specific Categories",
+  };
 
   const formatExpiry = (dateValue?: string | null) => {
     if (!dateValue) return "No expiry";
@@ -827,6 +835,9 @@ export default function CartPageClient() {
                     {visibleVouchers.map((entry) => {
                       const isSelected = selectedVoucherId === entry.voucher.id;
                       const isDisabled = !entry.minSpendMet;
+                      const scopeType = entry.voucher.voucher?.scope_type ?? "all";
+                      const scopeLabel = scopeLabels[scopeType] ?? "Storewide";
+                      const detailVoucherId = entry.voucher.voucher?.id ?? null;
                       return (
                         <label
                           key={entry.voucher.id}
@@ -856,6 +867,9 @@ export default function CartPageClient() {
                           <div className="flex-1 text-xs">
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-sm font-semibold">{entry.title}</div>
+                              <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--foreground)]/70">
+                                {scopeLabel}
+                              </span>
                             </div>
                             <div className="mt-2 grid gap-1 text-[11px] text-[var(--foreground)]/70 sm:grid-cols-2">
                               <div>
@@ -871,6 +885,19 @@ export default function CartPageClient() {
                                 {entry.expiryLabel}
                               </div>
                             </div>
+                            {detailVoucherId && (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setDetailsVoucherId(detailVoucherId);
+                                }}
+                                className="mt-2 text-[11px] font-semibold text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
+                              >
+                                T&amp;C
+                              </button>
+                            )}
                             {!entry.minSpendMet && (
                               <p className="mt-2 text-[11px] font-semibold text-[color:var(--status-warning)]">
                                 Min spend not met
@@ -896,6 +923,12 @@ export default function CartPageClient() {
           </div>
         </div>
       )}
+
+      <VoucherDetailsModal
+        open={detailsVoucherId !== null}
+        voucherId={detailsVoucherId}
+        onClose={() => setDetailsVoucherId(null)}
+      />
 
     </main>
   );

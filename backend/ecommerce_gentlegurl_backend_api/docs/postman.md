@@ -181,6 +181,8 @@
 - `GET /public/shop/categories` — 返回 active 分类列表，字段：`id`, `name`, `slug`, `parent_id`, `sort_order`, `menu_ids[]`；Query：`menu_id?`, `menu_slug?`。
 - `GET /public/shop/products` — Query：`page`, `per_page`, `category_id?`, `keyword?`, `menu_id?`, `menu_slug?`；返回含 `data` + `meta` 分页结构。
 - `GET /public/shop/products/{slug}` — 根据 slug 返回单个产品，包含基础字段、`categories`、`images`、`packageChildren`。
+- `GET /public/shop/vouchers` — 需登录；返回当前用户可用/已领的券列表。
+- `GET /public/shop/vouchers/{voucher}` — 需登录；返回券详情（含 scope_type 与 eligible products/categories）。
 
 ### Loyalty
 - `GET /public/shop/loyalty/summary` — Query：`customer_id`。返回当前积分摘要（可用积分、累计、已用、即将过期）。

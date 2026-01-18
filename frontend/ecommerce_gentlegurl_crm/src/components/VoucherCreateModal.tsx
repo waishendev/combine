@@ -285,6 +285,7 @@ export default function VoucherCreateModal({
             maxUses: maxUsesNum != null ? String(maxUsesNum) : '-',
             maxUsesPerCustomer: maxUsesPerCustomerNum != null ? String(maxUsesPerCustomerNum) : '-',
             minOrderAmount: minOrderAmountNum.toFixed(2),
+            scopeType: form.scopeType,
             startAt: form.startAt,
             endAt: form.endAt,
             isActive: true,

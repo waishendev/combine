@@ -287,7 +287,22 @@ export type CustomerVoucher = {
     max_discount_amount?: number | string | null;
     start_at?: string | null;
     end_at?: string | null;
+    scope_type?: string | null;
   } | null;
+};
+
+export type PublicVoucherDetail = {
+  id: number;
+  code: string;
+  type: string;
+  value: number | string;
+  min_order_amount?: number | string | null;
+  max_discount_amount?: number | string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  scope_type?: string | null;
+  products?: Array<{ id: number; name?: string | null; sku?: string | null }>;
+  categories?: Array<{ id: number; name?: string | null }>;
 };
 
 export type PageReview = {
@@ -884,6 +899,15 @@ export async function getCustomerVouchers(params?: { status?: string }): Promise
   );
 
   return response.data ?? [];
+}
+
+export async function getPublicVoucherDetail(voucherId: number): Promise<PublicVoucherDetail> {
+  const response = await get<{ data: PublicVoucherDetail }>(
+    `/public/shop/vouchers/${voucherId}`,
+    { headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
 }
 
 export async function getPageReviewSettings(): Promise<PageReviewSetting> {

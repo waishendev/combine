@@ -179,6 +179,7 @@ Route::prefix('/public/shop')->group(function () {
         Route::post('/loyalty/redeem', [PublicLoyaltyController::class, 'redeem']);
 
         Route::get('/vouchers', [PublicVoucherController::class, 'index']);
+        Route::get('/vouchers/{voucher}', [PublicVoucherController::class, 'show']);
     });
 });
 

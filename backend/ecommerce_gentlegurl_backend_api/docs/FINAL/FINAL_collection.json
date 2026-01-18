@@ -5519,6 +5519,29 @@
                     }
                   },
                   "response": []
+                },
+                {
+                  "name": "Voucher Details (Auth)",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/public/shop/vouchers/{{voucher_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "public",
+                        "shop",
+                        "vouchers",
+                        "{{voucher_id}}"
+                      ]
+                    },
+                    "auth": {
+                      "type": "inherit"
+                    }
+                  },
+                  "response": []
                 }
               ]
             },

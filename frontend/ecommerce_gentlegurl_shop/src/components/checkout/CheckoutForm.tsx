@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import { getPrimaryProductImage } from "@/lib/productMedia";
+import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 import {
   AddressPayload,
   CheckoutPayload,
@@ -51,6 +52,12 @@ const MALAYSIA_STATES_WEST = [
 ];
 
 const MALAYSIA_STATES_EAST = ["Sabah", "Sarawak", "Labuan"];
+
+const scopeLabels: Record<string, string> = {
+  all: "Storewide",
+  products: "Specific Products",
+  categories: "Specific Categories",
+};
 
 const normalizeCountryValue = (country?: string | null) => {
   if (!country) return "";
@@ -99,6 +106,7 @@ export default function CheckoutForm() {
   const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [detailsVoucherId, setDetailsVoucherId] = useState<number | null>(null);
   const [paymentGateways, setPaymentGateways] = useState<PublicPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
@@ -1908,6 +1916,9 @@ export default function CheckoutForm() {
                     {visibleVouchers.map((entry) => {
                       const isSelected = selectedVoucherId === entry.voucher.id;
                       const isDisabled = !entry.minSpendMet;
+                      const scopeType = entry.voucher.voucher?.scope_type ?? "all";
+                      const scopeLabel = scopeLabels[scopeType] ?? "Storewide";
+                      const detailVoucherId = entry.voucher.voucher?.id ?? null;
                       return (
                         <label
                           key={entry.voucher.id}
@@ -1937,6 +1948,9 @@ export default function CheckoutForm() {
                           <div className="flex-1 text-xs">
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-sm font-semibold">{entry.title}</div>
+                              <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--foreground)]/70">
+                                {scopeLabel}
+                              </span>
                             </div>
                             <div className="mt-2 grid gap-1 text-[11px] text-[var(--foreground)]/70 sm:grid-cols-2">
                               <div>
@@ -1952,6 +1966,19 @@ export default function CheckoutForm() {
                                 {entry.expiryLabel}
                               </div>
                             </div>
+                            {detailVoucherId && (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setDetailsVoucherId(detailVoucherId);
+                                }}
+                                className="mt-2 text-[11px] font-semibold text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
+                              >
+                                T&amp;C
+                              </button>
+                            )}
                             {!entry.minSpendMet && (
                               <p className="mt-2 text-[11px] font-semibold text-[color:var(--status-warning)]">
                                 Min spend not met
@@ -1980,6 +2007,11 @@ export default function CheckoutForm() {
           </div>
         </div>
       )}
+      <VoucherDetailsModal
+        open={detailsVoucherId !== null}
+        voucherId={detailsVoucherId}
+        onClose={() => setDetailsVoucherId(null)}
+      />
     </main>
     </>
   );
