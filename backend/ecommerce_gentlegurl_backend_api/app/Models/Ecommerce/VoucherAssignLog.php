@@ -2,43 +2,32 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class CustomerVoucher extends Model
+class VoucherAssignLog extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'customer_id',
         'voucher_id',
-        'quantity_total',
-        'quantity_used',
-        'source_redemption_id',
         'assigned_by_admin_id',
-        'assigned_at',
-        'status',
-        'claimed_at',
-        'used_at',
+        'quantity',
         'start_at',
         'end_at',
-        'expires_at',
         'note',
-        'meta',
+        'assigned_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'quantity_total' => 'integer',
-            'quantity_used' => 'integer',
-            'assigned_at' => 'datetime',
-            'claimed_at' => 'datetime',
-            'used_at' => 'datetime',
+            'quantity' => 'integer',
             'start_at' => 'datetime',
             'end_at' => 'datetime',
-            'expires_at' => 'datetime',
-            'meta' => 'array',
+            'assigned_at' => 'datetime',
         ];
     }
 
@@ -52,8 +41,8 @@ class CustomerVoucher extends Model
         return $this->belongsTo(Voucher::class);
     }
 
-    public function redemption()
+    public function admin()
     {
-        return $this->belongsTo(LoyaltyRedemption::class, 'source_redemption_id');
+        return $this->belongsTo(User::class, 'assigned_by_admin_id');
     }
 }

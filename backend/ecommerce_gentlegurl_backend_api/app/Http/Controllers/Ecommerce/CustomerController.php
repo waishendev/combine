@@ -4,14 +4,19 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Customer;
+use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\LoyaltySetting;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\Ecommerce\PointsRedemptionItem;
+use App\Models\Ecommerce\VoucherAssignLog;
+use App\Models\Ecommerce\Voucher;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class CustomerController extends Controller
 {
@@ -91,6 +96,103 @@ class CustomerController extends Controller
         }
 
         return $this->respond(null, __('Customer deleted successfully.'));
+    }
+
+    public function assignVoucher(Request $request, Customer $customer)
+    {
+        $validated = $request->validate([
+            'voucher_id' => ['required', 'integer', 'exists:vouchers,id'],
+            'quantity' => ['nullable', 'integer', 'min:1'],
+            'note' => ['nullable', 'string', 'max:500'],
+            'start_at' => ['nullable', 'date'],
+            'end_at' => ['nullable', 'date', 'after_or_equal:start_at'],
+        ]);
+
+        $voucher = Voucher::findOrFail($validated['voucher_id']);
+        $now = Carbon::now();
+
+        if (!$voucher->is_active) {
+            throw ValidationException::withMessages([
+                'voucher_id' => __('Selected voucher is not active.'),
+            ]);
+        }
+
+        if ($voucher->end_at && $voucher->end_at->lt($now)) {
+            throw ValidationException::withMessages([
+                'voucher_id' => __('Selected voucher has expired.'),
+            ]);
+        }
+
+        $startAt = array_key_exists('start_at', $validated)
+            ? ($validated['start_at'] ? Carbon::parse($validated['start_at']) : null)
+            : $voucher->start_at;
+        $endAt = array_key_exists('end_at', $validated)
+            ? ($validated['end_at'] ? Carbon::parse($validated['end_at']) : null)
+            : $voucher->end_at;
+
+        if ($voucher->start_at && $startAt && $startAt->lt($voucher->start_at)) {
+            throw ValidationException::withMessages([
+                'start_at' => __('Start date cannot be before voucher start date.'),
+            ]);
+        }
+
+        if ($voucher->end_at && $endAt && $endAt->gt($voucher->end_at)) {
+            throw ValidationException::withMessages([
+                'end_at' => __('End date cannot be after voucher end date.'),
+            ]);
+        }
+
+        if ($endAt && $endAt->lt($now)) {
+            throw ValidationException::withMessages([
+                'end_at' => __('End date cannot be in the past.'),
+            ]);
+        }
+
+        $quantity = (int) ($validated['quantity'] ?? 1);
+
+        $customerVoucher = DB::transaction(function () use (
+            $customer,
+            $voucher,
+            $quantity,
+            $now,
+            $request,
+            $startAt,
+            $endAt,
+            $validated
+        ) {
+            $customerVoucher = CustomerVoucher::create([
+                'customer_id' => $customer->id,
+                'voucher_id' => $voucher->id,
+                'quantity_total' => $quantity,
+                'quantity_used' => 0,
+                'status' => 'active',
+                'claimed_at' => $now,
+                'assigned_by_admin_id' => $request->user()?->id,
+                'assigned_at' => $now,
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+                'expires_at' => $endAt,
+                'note' => $validated['note'] ?? null,
+            ]);
+
+            VoucherAssignLog::create([
+                'customer_id' => $customer->id,
+                'voucher_id' => $voucher->id,
+                'assigned_by_admin_id' => $request->user()?->id,
+                'quantity' => $quantity,
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+                'note' => $validated['note'] ?? null,
+                'assigned_at' => $now,
+            ]);
+
+            return $customerVoucher;
+        });
+
+        return $this->respond(
+            $customerVoucher->load('voucher'),
+            __('Voucher assigned successfully.')
+        );
     }
 
     protected function formatCustomerWithSummary(Customer $customer, ?LoyaltySetting $loyaltySetting, $tierRules, array $window)

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Voucher;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -27,6 +28,27 @@ class VoucherController extends Controller
     public function show(Voucher $voucher)
     {
         return $this->respond($voucher);
+    }
+
+    public function assignable(Request $request)
+    {
+        $now = Carbon::now();
+        $status = $request->string('status')->toString();
+        $search = $request->string('search')->toString();
+
+        $vouchers = Voucher::query()
+            ->when($search, fn($q) => $q->where('code', 'like', '%' . $search . '%'))
+            ->when($status === 'active' || $status === '', function ($q) use ($now) {
+                $q->where('is_active', true)
+                    ->where(function ($query) use ($now) {
+                        $query->whereNull('end_at')
+                            ->orWhere('end_at', '>=', $now);
+                    });
+            })
+            ->orderByDesc('created_at')
+            ->get();
+
+        return $this->respond($vouchers);
     }
 
     public function store(Request $request)

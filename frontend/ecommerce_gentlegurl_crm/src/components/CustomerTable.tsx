@@ -15,6 +15,7 @@ import CustomerCreateModal from './CustomerCreateModal'
 import CustomerEditModal from './CustomerEditModal'
 import CustomerDeleteModal from './CustomerDeleteModal'
 import CustomerViewPanel from './CustomerViewPanel'
+import CustomerAssignVoucherModal from './CustomerAssignVoucherModal'
 import {
   type CustomerApiItem,
   mapCustomerApiItemToRow,
@@ -64,12 +65,16 @@ export default function CustomerTable({
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CustomerRowData | null>(null)
   const [viewingCustomerId, setViewingCustomerId] = useState<number | null>(null)
+  const [assigningCustomer, setAssigningCustomer] = useState<CustomerRowData | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [refreshToken, setRefreshToken] = useState(0)
 
   const canCreate = permissions.includes('customers.create')
   const canUpdate = permissions.includes('customers.update')
   const canDelete = permissions.includes('customers.delete')
   const canView = permissions.includes('customers.view')
-  const showActions = canUpdate || canDelete || canView
+  const canAssignVoucher = permissions.includes('ecommerce.vouchers.assign')
+  const showActions = canUpdate || canDelete || canView || canAssignVoucher
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -198,7 +203,7 @@ export default function CustomerTable({
 
     fetchCustomers()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, refreshToken])
 
   const handleSort = (column: keyof CustomerRowData) => {
     if (sortColumn === column) {
@@ -361,6 +366,11 @@ export default function CustomerTable({
 
   return (
     <div>
+      {toastMessage && (
+        <div className="fixed right-6 top-6 z-50 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-lg">
+          {toastMessage}
+        </div>
+      )}
       {isFilterModalOpen && (
         <CustomerFiltersWrapper
           inputs={inputs}
@@ -494,9 +504,15 @@ export default function CustomerTable({
                   key={customer.id}
                   customer={customer}
                   showActions={showActions}
+                  canAssignVoucher={canAssignVoucher}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   canView={canView}
+                  onAssignVoucher={() => {
+                    if (canAssignVoucher) {
+                      setAssigningCustomer(customer)
+                    }
+                  }}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingCustomerId(customer.id)
@@ -547,6 +563,19 @@ export default function CustomerTable({
         <CustomerViewPanel
           customerId={viewingCustomerId}
           onClose={() => setViewingCustomerId(null)}
+        />
+      )}
+
+      {assigningCustomer && (
+        <CustomerAssignVoucherModal
+          customer={assigningCustomer}
+          onClose={() => setAssigningCustomer(null)}
+          onAssigned={() => {
+            setAssigningCustomer(null)
+            setToastMessage('Voucher assigned successfully.')
+            setRefreshToken((prev) => prev + 1)
+            setTimeout(() => setToastMessage(null), 2000)
+          }}
         />
       )}
 

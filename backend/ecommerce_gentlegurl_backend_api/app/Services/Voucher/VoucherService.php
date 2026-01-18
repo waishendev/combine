@@ -78,7 +78,9 @@ class VoucherService
                 return VoucherResult::invalid('Voucher not available for this customer.');
             }
 
-            if ($customerVoucher->status === 'used') {
+            $quantityTotal = $customerVoucher->quantity_total ?? 1;
+            $quantityUsed = $customerVoucher->quantity_used ?? 0;
+            if ($quantityUsed >= $quantityTotal) {
                 return VoucherResult::invalid('Voucher has already been used.');
             }
 
@@ -86,7 +88,13 @@ class VoucherService
                 return VoucherResult::invalid('Voucher is not active.');
             }
 
-            if ($customerVoucher->expires_at && $customerVoucher->expires_at->lt($now)) {
+            $startAt = $customerVoucher->start_at ?? $voucher->start_at;
+            $endAt = $customerVoucher->end_at ?? $customerVoucher->expires_at ?? $voucher->end_at;
+            if ($startAt && $startAt->gt($now)) {
+                return VoucherResult::invalid('Voucher is not started yet.');
+            }
+
+            if ($endAt && $endAt->lt($now)) {
                 return VoucherResult::invalid('Voucher has expired.');
             }
         }
@@ -107,8 +115,12 @@ class VoucherService
         }
 
         if ($customerVoucher && $markCustomerVoucherUsed && $customerVoucher->status === 'active') {
-            $customerVoucher->status = 'used';
-            $customerVoucher->used_at = Carbon::now();
+            $quantityTotal = $customerVoucher->quantity_total ?? 1;
+            $customerVoucher->quantity_used = (int) ($customerVoucher->quantity_used ?? 0) + 1;
+            if ($customerVoucher->quantity_used >= $quantityTotal) {
+                $customerVoucher->status = 'used';
+                $customerVoucher->used_at = Carbon::now();
+            }
             $customerVoucher->save();
         }
 
@@ -135,8 +147,12 @@ class VoucherService
         if ($customerVoucherId) {
             $customerVoucher = CustomerVoucher::find($customerVoucherId);
             if ($customerVoucher && $customerVoucher->status === 'active') {
-                $customerVoucher->status = 'used';
-                $customerVoucher->used_at = $usage->used_at;
+                $quantityTotal = $customerVoucher->quantity_total ?? 1;
+                $customerVoucher->quantity_used = (int) ($customerVoucher->quantity_used ?? 0) + 1;
+                if ($customerVoucher->quantity_used >= $quantityTotal) {
+                    $customerVoucher->status = 'used';
+                    $customerVoucher->used_at = $usage->used_at;
+                }
                 $customerVoucher->save();
             }
         }
