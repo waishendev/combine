@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/auth/redirect";
+import { resendCustomerVerificationEmail } from "@/lib/apiClient";
 
 function Field({
   label,
@@ -80,7 +81,10 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
 
   useEffect(() => {
     onSubmittingChange?.(submitting);
@@ -101,13 +105,25 @@ export function LoginForm({
     event.preventDefault();
     setSubmitting(true);
     setError(null);
+    setInfoMessage(null);
+    setNeedsVerification(false);
 
     try {
       await login(email, password);
       router.replace(redirectTarget ?? "/");
       router.refresh();
     } catch (err: unknown) {
-      setError(extractApiError(err));
+      const apiData =
+        typeof err === "object" && err !== null && "data" in err
+          ? (err as { data?: { code?: string; message?: string } }).data
+          : undefined;
+
+      if (apiData?.code === "EMAIL_NOT_VERIFIED") {
+        setNeedsVerification(true);
+        setInfoMessage(apiData.message ?? "Please verify your email before logging in.");
+      } else {
+        setError(extractApiError(err));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -115,6 +131,11 @@ export function LoginForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
+      {infoMessage && (
+        <div className="rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-2 text-sm text-[color:var(--status-info)]">
+          {infoMessage}
+        </div>
+      )}
       {error && (
         <div className="rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2 text-sm text-[color:var(--status-error)]">
           {error}
@@ -175,8 +196,40 @@ export function LoginForm({
         {submitting ? "Signing in..." : "Sign in"}
       </button>
 
+      {needsVerification ? (
+        <button
+          type="button"
+          onClick={async () => {
+            if (!email.trim()) {
+              setError("Please enter your email to resend the verification.");
+              return;
+            }
+            setResending(true);
+            setInfoMessage(null);
+            try {
+              await resendCustomerVerificationEmail(email.trim());
+              setInfoMessage("If the email exists, we sent a verification email.");
+            } catch (err: unknown) {
+              setError(extractApiError(err));
+            } finally {
+              setResending(false);
+            }
+          }}
+          disabled={resending}
+          className={[
+            "w-full rounded-xl border px-4 py-2 text-sm font-medium transition",
+            "border-[var(--input-border)] text-[var(--foreground)] hover:border-[var(--accent)]",
+            "disabled:cursor-not-allowed disabled:opacity-60",
+          ].join(" ")}
+        >
+          {resending ? "Resending..." : "Resend verification email"}
+        </button>
+      ) : null}
+
       <div className="flex items-center justify-between pt-1 text-xs text-[var(--foreground)]/60">
-        <span>New here?</span>
+        <Link href="/forgot-password" className="font-medium text-[var(--accent-strong)] hover:opacity-80">
+          Forgot password?
+        </Link>
         <Link href={registerHref} className="font-medium text-[var(--accent-strong)] hover:opacity-80">
           Create account
         </Link>

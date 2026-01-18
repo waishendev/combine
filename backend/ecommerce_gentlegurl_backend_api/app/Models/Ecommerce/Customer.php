@@ -3,17 +3,24 @@
 namespace App\Models\Ecommerce;
 
 use App\Models\CustomerAddress;
+use App\Notifications\Ecommerce\ResetCustomerPassword;
+use App\Notifications\Ecommerce\VerifyCustomerEmail;
+use Illuminate\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use DateTimeInterface;
 
-class Customer extends Authenticatable
+class Customer extends Authenticatable implements MustVerifyEmailContract
 {
     use HasApiTokens;
     use HasFactory;
+    use MustVerifyEmail;
+    use Notifiable;
 
     protected $fillable = [
         'name',
@@ -42,6 +49,7 @@ class Customer extends Authenticatable
             'password' => 'hashed',
             'tier_marked_pending_at' => 'datetime',
             'tier_effective_at' => 'datetime',
+            'email_verified_at' => 'datetime',
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
             'date_of_birth' => 'date',
@@ -94,6 +102,16 @@ class Customer extends Authenticatable
         return $this->hasOne(CustomerAddress::class)
             ->where('type', 'shipping')
             ->where('is_default', true);
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new VerifyCustomerEmail());
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new ResetCustomerPassword($token));
     }
 
     protected function serializeDate(DateTimeInterface $date)
