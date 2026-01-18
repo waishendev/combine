@@ -13,6 +13,8 @@ use App\Models\Ecommerce\ShopMenuItem;
 use App\Models\Ecommerce\PageReview;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\StoreLocationImage;
+use App\Models\Ecommerce\Category;
+use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\Voucher;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\LoyaltySetting;
@@ -934,6 +936,67 @@ class FrontendTestDataSeeder extends Seeder
                 $voucher
             );
         }
+
+        $storewideVoucher = Voucher::updateOrCreate(
+            ['code' => 'voucher_storewide_10off'],
+            [
+                'type' => 'percent',
+                'value' => 10.00,
+                'usage_limit_total' => 1000,
+                'usage_limit_per_customer' => 2,
+                'min_order_amount' => 0,
+                'max_discount_amount' => null,
+                'start_at' => now()->subDays(1),
+                'end_at' => now()->addDays(45),
+                'is_active' => true,
+                'scope_type' => 'all',
+            ]
+        );
+
+        $iphoneVoucher = Voucher::updateOrCreate(
+            ['code' => 'voucher_iphone_only'],
+            [
+                'type' => 'fixed',
+                'value' => 20.00,
+                'usage_limit_total' => 200,
+                'usage_limit_per_customer' => 1,
+                'min_order_amount' => 50.00,
+                'max_discount_amount' => null,
+                'start_at' => now()->subDays(1),
+                'end_at' => now()->addDays(30),
+                'is_active' => true,
+                'scope_type' => 'products',
+            ]
+        );
+
+        $smartphoneVoucher = Voucher::updateOrCreate(
+            ['code' => 'voucher_category_smartphone'],
+            [
+                'type' => 'percent',
+                'value' => 15.00,
+                'usage_limit_total' => 300,
+                'usage_limit_per_customer' => 2,
+                'min_order_amount' => 100.00,
+                'max_discount_amount' => 80.00,
+                'start_at' => now()->subDays(1),
+                'end_at' => now()->addDays(30),
+                'is_active' => true,
+                'scope_type' => 'categories',
+            ]
+        );
+
+        $iphoneProduct = Product::where('slug', 'iphone-15-pro-max')->first();
+        if ($iphoneProduct) {
+            $iphoneVoucher->products()->sync([$iphoneProduct->id]);
+        }
+
+        $smartphoneCategory = Category::where('slug', 'smartphones')->first();
+        if ($smartphoneCategory) {
+            $smartphoneVoucher->categories()->sync([$smartphoneCategory->id]);
+        }
+
+        $storewideVoucher->products()->sync([]);
+        $storewideVoucher->categories()->sync([]);
     }
 
     private function seedNotificationTemplates(): void

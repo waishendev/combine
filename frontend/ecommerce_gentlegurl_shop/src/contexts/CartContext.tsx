@@ -438,15 +438,13 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
 
         const hasVoucher = !!response.voucher_valid && !!response.voucher && !response.voucher_error;
         const discountAmount = hasVoucher ? Number(response.discount_total ?? 0) : 0;
+        const responseMessage =
+          response.voucher?.message ?? response.voucher_message ?? response.voucher_error ?? null;
 
         setVoucherDiscount(discountAmount);
-        setVoucherError(response.voucher_error ?? null);
+        setVoucherError(hasVoucher ? null : responseMessage);
         setAppliedVoucher(hasVoucher ? response.voucher : null);
-        setVoucherMessage(
-          hasVoucher
-            ? `Voucher ${response.voucher?.code} applied.`
-            : response.voucher_message ?? response.voucher_error ?? null,
-        );
+        setVoucherMessage(hasVoucher ? `Voucher ${response.voucher?.code} applied.` : responseMessage);
 
         return hasVoucher;
       } catch (error) {

@@ -157,11 +157,7 @@ export default function CartPageClient() {
 
   const selectedVoucher = visibleVouchers.find((entry) => entry.voucher.id === selectedVoucherId);
   const isSelectedVoucherEligible = selectedVoucher?.minSpendMet ?? false;
-  const voucherErrorMessage = voucherError
-    ? voucherError.toLowerCase().includes("select items")
-      ? "Select items to apply a voucher."
-      : "We couldn’t apply that voucher. Please check the code or try another."
-    : null;
+  const voucherErrorMessage = voucherError || voucherMessage || null;
 
   if (isLoading) {
     return (
@@ -645,6 +641,14 @@ export default function CartPageClient() {
                 <div className="text-xs">
                   <div className="font-semibold text-[var(--foreground)]/80">Applied Voucher</div>
                   <div className="text-[var(--foreground)]/60">{appliedVoucher.code}</div>
+                  {appliedVoucher.eligible_subtotal != null && (
+                    <div className="text-[var(--foreground)]/60">
+                      Voucher applies to RM {Number(appliedVoucher.eligible_subtotal).toFixed(2)} eligible items
+                    </div>
+                  )}
+                  {appliedVoucher.display_scope_text && (
+                    <div className="text-[var(--foreground)]/50">{appliedVoucher.display_scope_text}</div>
+                  )}
                 </div>
                 <button
                   type="button"

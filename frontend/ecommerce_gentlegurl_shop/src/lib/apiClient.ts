@@ -209,9 +209,13 @@ export type CheckoutPreviewVoucher = {
   id: number;
   code: string;
   discount_amount: number;
+  eligible_subtotal?: number | string | null;
   type: string;
   value: number;
   customer_voucher_id?: number | null;
+  applied?: boolean;
+  display_scope_text?: string | null;
+  message?: string | null;
 };
 
 export type CheckoutPreviewResponse = {

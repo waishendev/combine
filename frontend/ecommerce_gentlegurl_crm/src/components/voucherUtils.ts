@@ -8,9 +8,12 @@ export type VoucherApiItem = {
   max_uses?: number | string | null
   max_uses_per_customer?: number | string | null
   min_order_amount?: string | number | null
+  scope_type?: string | null
   start_at?: string | null
   end_at?: string | null
   is_active?: boolean | number | string | null
+  products?: Array<{ id: number; name?: string | null; sku?: string | null }> | null
+  categories?: Array<{ id: number; name?: string | null }> | null
 }
 
 export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => {

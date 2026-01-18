@@ -15,12 +15,14 @@ class OrderVoucher extends Model
         'customer_voucher_id',
         'code_snapshot',
         'discount_amount',
+        'scope_snapshot',
     ];
 
     protected function casts(): array
     {
         return [
             'discount_amount' => 'decimal:2',
+            'scope_snapshot' => 'array',
         ];
     }
 

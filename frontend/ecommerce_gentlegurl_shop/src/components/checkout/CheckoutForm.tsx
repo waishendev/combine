@@ -251,11 +251,7 @@ export default function CheckoutForm() {
 
   const selectedVoucher = visibleVouchers.find((entry) => entry.voucher.id === selectedVoucherId);
   const isSelectedVoucherEligible = selectedVoucher?.minSpendMet ?? false;
-  const voucherErrorMessage = voucherError
-    ? voucherError.toLowerCase().includes("select items")
-      ? "Select items to apply a voucher."
-      : "We couldn’t apply that voucher. Please check the code or try another."
-    : null;
+  const voucherErrorMessage = voucherError || voucherMessage || null;
 
   const fetchAddresses = useCallback(async () => {
     if (!isLoggedIn) {
@@ -1276,7 +1272,19 @@ export default function CheckoutForm() {
             <div>
               <p className="text-xs font-medium text-[var(--foreground)]/70">Voucher / Discount</p>
               {appliedVoucher && (
-                <p className="text-xs text-[var(--foreground)]/70">Applied: {appliedVoucher.code}</p>
+                <div className="space-y-1 text-xs text-[var(--foreground)]/70">
+                  <p>Applied: {appliedVoucher.code}</p>
+                  {appliedVoucher.eligible_subtotal != null && (
+                    <p>
+                      Voucher applies to RM {Number(appliedVoucher.eligible_subtotal).toFixed(2)} eligible items
+                    </p>
+                  )}
+                  {appliedVoucher.display_scope_text && (
+                    <p className="text-[10px] text-[var(--foreground)]/60">
+                      {appliedVoucher.display_scope_text}
+                    </p>
+                  )}
+                </div>
               )}
               {voucherMessage && !appliedVoucher && (
                 <p className="text-[11px] text-[var(--foreground)]/60">{voucherMessage}</p>
