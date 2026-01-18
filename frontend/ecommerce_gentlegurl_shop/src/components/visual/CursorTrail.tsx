@@ -35,12 +35,14 @@ const SPARKLE_COLORS = [
 
 export default function CursorTrail() {
   const [sparkles, setSparkles] = useState<Sparkle[]>([]);
+  const [isMounted, setIsMounted] = useState(false);
   const counter = useRef(0);
   const mountedRef = useRef(true);
   const lastPositionRef = useRef<{ x: number; y: number } | null>(null);
   const movementThreshold = 5; // 最小移动距离（像素）
 
   useEffect(() => {
+    setIsMounted(true);
     return () => {
       mountedRef.current = false;
     };
@@ -103,6 +105,10 @@ export default function CursorTrail() {
     window.addEventListener("pointermove", handlePointerMove);
     return () => window.removeEventListener("pointermove", handlePointerMove);
   }, [palette]);
+
+  if (!isMounted) {
+    return null;
+  }
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">

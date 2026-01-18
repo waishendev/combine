@@ -24,6 +24,7 @@ export default function CartPageClient() {
     removeVoucher,
     appliedVoucher,
     voucherError,
+    voucherMessage,
       clearVoucherFeedback,
       toggleSelectItem,
       selectAll,
