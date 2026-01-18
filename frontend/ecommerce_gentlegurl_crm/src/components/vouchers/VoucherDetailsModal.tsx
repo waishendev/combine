@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 type VoucherDetailsModalProps = {
   voucherId: number
+  title?: string | null
   onClose: () => void
 }
 
@@ -35,6 +36,7 @@ const formatAmount = (value?: string | number | null) => {
 
 export default function VoucherDetailsModal({
   voucherId,
+  title,
   onClose,
 }: VoucherDetailsModalProps) {
   const [voucher, setVoucher] = useState<VoucherDetail | null>(null)
@@ -129,6 +131,16 @@ export default function VoucherDetailsModal({
           ) : voucher ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                {title && (
+                  <div className="md:col-span-2">
+                    <p className="text-xs text-gray-500">Title</p>
+                    <p className="font-semibold">{title}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-gray-500">Code</p>
+                  <p className="font-semibold">{voucher.code ?? '-'}</p>
+                </div>
                 <div>
                   <p className="text-xs text-gray-500">Discount</p>
                   <p className="font-semibold">{discountLabel}</p>

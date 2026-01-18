@@ -838,9 +838,30 @@ export default function CartPageClient() {
                       const scopeType = entry.voucher.voucher?.scope_type ?? "all";
                       const scopeLabel = scopeLabels[scopeType] ?? "Storewide";
                       const detailVoucherId = entry.voucher.voucher?.id ?? null;
+                      const handleSelectVoucher = () => {
+                        if (isDisabled) return;
+                        if (isSelected) {
+                          setSelectedVoucherId(null);
+                        } else {
+                          setSelectedVoucherId(entry.voucher.id);
+                        }
+                        clearVoucherFeedback();
+                      };
+
                       return (
-                        <label
+                        <div
                           key={entry.voucher.id}
+                          role="radio"
+                          aria-checked={isSelected}
+                          aria-disabled={isDisabled}
+                          tabIndex={isDisabled ? -1 : 0}
+                          onClick={handleSelectVoucher}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              handleSelectVoucher();
+                            }
+                          }}
                           className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition ${
                             isSelected
                               ? "border-[var(--accent)] bg-[var(--accent)]/10"
@@ -853,16 +874,7 @@ export default function CartPageClient() {
                             className="mt-1 ios-input"
                             checked={isSelected}
                             disabled={isDisabled}
-                            onChange={() => {
-                              if (isDisabled) return;
-                              // Toggle: if already selected, unselect it
-                              if (isSelected) {
-                                setSelectedVoucherId(null);
-                              } else {
-                                setSelectedVoucherId(entry.voucher.id);
-                              }
-                              clearVoucherFeedback();
-                            }}
+                            onChange={handleSelectVoucher}
                           />
                           <div className="flex-1 text-xs">
                             <div className="flex items-center justify-between gap-2">
@@ -904,7 +916,7 @@ export default function CartPageClient() {
                               </p>
                             )}
                           </div>
-                        </label>
+                        </div>
                       );
                     })}
                   </div>

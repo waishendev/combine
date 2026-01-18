@@ -9,6 +9,7 @@ import RewardVoucherCreateModal from './RewardVoucherCreateModal'
 import RewardVoucherDeleteModal from './RewardVoucherDeleteModal'
 import RewardVoucherEditModal, { type RewardVoucherRow } from './RewardVoucherEditModal'
 import StatusBadge from './StatusBadge'
+import VoucherDetailsModal from './vouchers/VoucherDetailsModal'
 import { useI18n } from '@/lib/i18n'
 
 type Meta = {
@@ -73,6 +74,7 @@ const toBoolean = (value: unknown): boolean =>
 export default function RewardVoucherTable({ permissions }: RewardVoucherTableProps) {
   const { t } = useI18n()
   const [rows, setRows] = useState<RewardVoucherRow[]>([])
+  const [scopeTypesByVoucherId, setScopeTypesByVoucherId] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
   const [pageSize, setPageSize] = useState(15)
   const [currentPage, setCurrentPage] = useState(1)
@@ -85,11 +87,19 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingReward, setEditingReward] = useState<RewardVoucherRow | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RewardVoucherRow | null>(null)
+  const [viewingReward, setViewingReward] = useState<RewardVoucherRow | null>(null)
 
   const canCreate = permissions.includes('ecommerce.vouchers.create')
+  const canView = permissions.includes('ecommerce.vouchers.view')
   const canUpdate = permissions.includes('ecommerce.vouchers.update')
   const canDelete = permissions.includes('ecommerce.vouchers.delete')
-  const showActions = canUpdate || canDelete
+  const showActions = canView || canUpdate || canDelete
+
+  const scopeLabels: Record<string, string> = {
+    all: 'Storewide',
+    products: 'Specific Products',
+    categories: 'Specific Categories',
+  }
 
   const fetchRewards = async (signal?: AbortSignal) => {
     setLoading(true)
@@ -191,6 +201,60 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
     return () => controller.abort()
   }, [currentPage, pageSize])
 
+  useEffect(() => {
+    if (rows.length === 0) return
+    const controller = new AbortController()
+    const missingIds = rows
+      .map((row) => row.voucherId)
+      .filter((voucherId) => !scopeTypesByVoucherId[voucherId])
+
+    if (missingIds.length === 0) return
+
+    const fetchScopeTypes = async () => {
+      try {
+        const results = await Promise.all(
+          missingIds.map(async (voucherId) => {
+            const res = await fetch(`/api/proxy/ecommerce/vouchers/${voucherId}`, {
+              cache: 'no-store',
+              signal: controller.signal,
+              headers: {
+                Accept: 'application/json',
+              },
+            })
+            if (!res.ok) return null
+            const data = await res.json().catch(() => null)
+            if (data && typeof data === 'object') {
+              if (data?.success === false && data?.message === 'Unauthorized') {
+                window.location.replace('/dashboard')
+                return null
+              }
+            }
+            const payload =
+              data && typeof data === 'object' && 'data' in data
+                ? ((data as { data?: { scope_type?: string | null } }).data ?? null)
+                : null
+            return payload ? { voucherId, scopeType: payload.scope_type ?? 'all' } : null
+          }),
+        )
+
+        const nextMap: Record<number, string> = {}
+        results.forEach((item) => {
+          if (!item) return
+          nextMap[item.voucherId] = item.scopeType
+        })
+
+        if (Object.keys(nextMap).length > 0) {
+          setScopeTypesByVoucherId((prev) => ({ ...prev, ...nextMap }))
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+      }
+    }
+
+    fetchScopeTypes()
+    return () => controller.abort()
+  }, [rows, scopeTypesByVoucherId])
+
   const handleRefresh = () => {
     fetchRewards()
   }
@@ -200,12 +264,25 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
     setCurrentPage(1)
   }
 
-  const tableColumns = showActions ? 9 : 8
+  const tableColumns = showActions ? 10 : 9
 
   const renderQuota = (reward: RewardVoucherRow) => {
     if (reward.quotaTotal == null) return '-'
     const used = reward.quotaUsed ?? 0
     return `${used} / ${reward.quotaTotal}`
+  }
+
+  const renderScopeBadge = (voucherId: number) => {
+    const scopeType = scopeTypesByVoucherId[voucherId]
+    if (!scopeType) {
+      return <span className="text-xs text-gray-400">-</span>
+    }
+    const label = scopeLabels[scopeType] ?? 'Storewide'
+    return (
+      <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+        {label}
+      </span>
+    )
   }
 
   return (
@@ -228,6 +305,14 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
             setEditingReward(null)
             handleRefresh()
           }}
+        />
+      )}
+
+      {viewingReward && (
+        <VoucherDetailsModal
+          voucherId={viewingReward.voucherId}
+          title={viewingReward.title}
+          onClose={() => setViewingReward(null)}
         />
       )}
 
@@ -288,6 +373,7 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
                   { key: 'pointsRequired', label: 'Points' },
                   { key: 'value', label: 'Value' },
                   { key: 'minOrderAmount', label: 'Min Order Amount' },
+                  { key: 'scopeType', label: 'Scope Type' },
                   { key: 'quota', label: 'Quota' },
                   { key: 'startAt', label: 'Start Date' },
                   { key: 'endAt', label: 'End Date' },
@@ -329,6 +415,9 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
                   <td className="px-4 py-2 border border-gray-200">
                     {reward.minOrderAmount}
                   </td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    {renderScopeBadge(reward.voucherId)}
+                  </td>
                   <td className="px-4 py-2 border border-gray-200">{renderQuota(reward)}</td>
                   <td className="px-4 py-2 border border-gray-200">
                     {reward.startAt || '-'}
@@ -345,6 +434,17 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
                   {showActions && (
                     <td className="px-4 py-2 border border-gray-200">
                       <div className="flex items-center gap-2">
+                        {canView && (
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-600 text-white hover:bg-slate-700"
+                            onClick={() => setViewingReward(reward)}
+                            aria-label="View voucher"
+                            title="View"
+                          >
+                            <i className="fa-solid fa-eye" />
+                          </button>
+                        )}
                         {canUpdate && (
                           <button
                             type="button"
