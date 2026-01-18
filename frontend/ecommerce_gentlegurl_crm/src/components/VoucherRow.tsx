@@ -11,6 +11,7 @@ export interface VoucherRowData {
   maxUses: string
   maxUsesPerCustomer: string
   minOrderAmount: string
+  scopeType: string
   startAt: string
   endAt: string
   isActive: boolean
@@ -19,9 +20,11 @@ export interface VoucherRowData {
 interface VoucherRowProps {
   voucher: VoucherRowData
   showActions?: boolean
+  canView?: boolean
   canUpdate?: boolean
   canDelete?: boolean
   hideMaxUsesPerCustomer?: boolean
+  onView?: (voucher: VoucherRowData) => void
   onEdit?: (voucher: VoucherRowData) => void
   onDelete?: (voucher: VoucherRowData) => void
 }
@@ -29,18 +32,31 @@ interface VoucherRowProps {
 export default function VoucherRow({
   voucher,
   showActions = false,
+  canView = false,
   canUpdate = false,
   canDelete = false,
   hideMaxUsesPerCustomer = false,
+  onView,
   onEdit,
   onDelete,
 }: VoucherRowProps) {
   const { t } = useI18n()
+  const scopeLabels: Record<string, string> = {
+    all: 'Storewide',
+    products: 'Specific Products',
+    categories: 'Specific Categories',
+  }
+  const scopeLabel = scopeLabels[voucher.scopeType] ?? 'Storewide'
   return (
     <tr className="text-sm">
       <td className="px-4 py-2 border border-gray-200">{voucher.code}</td>
       <td className="px-4 py-2 border border-gray-200">{voucher.value}</td>
       <td className="px-4 py-2 border border-gray-200">{voucher.minOrderAmount}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+          {scopeLabel}
+        </span>
+      </td>
       <td className="px-4 py-2 border border-gray-200">{voucher.maxUses}</td>
       {!hideMaxUsesPerCustomer && (
         <td className="px-4 py-2 border border-gray-200">{voucher.maxUsesPerCustomer}</td>
@@ -56,6 +72,17 @@ export default function VoucherRow({
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
+            {canView && (
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-600 text-white hover:bg-slate-700"
+                onClick={() => onView?.(voucher)}
+                aria-label={t('common.view')}
+                title={t('common.view')}
+              >
+                <i className="fa-solid fa-eye" />
+              </button>
+            )}
             {canUpdate && (
               <button
                 type="button"

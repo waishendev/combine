@@ -11,7 +11,7 @@ return new class extends Migration {
             $table->bigIncrements('id');
             $table->string('name', 255);
             $table->string('slug', 255)->unique();
-            $table->string('sku', 100)->unique();
+            $table->string('sku', 100)->unique()->nullable();
             $table->string('type')->default('single');
             $table->text('description')->nullable();
             $table->decimal('price', 12, 2);

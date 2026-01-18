@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 
 import { useI18n } from '@/lib/i18n'
 
@@ -20,6 +20,9 @@ interface FormState {
   minOrderAmount: string
   startAt: string
   endAt: string
+  scopeType: 'all' | 'products' | 'categories'
+  productIds: number[]
+  categoryIds: number[]
 }
 
 const initialFormState: FormState = {
@@ -33,6 +36,9 @@ const initialFormState: FormState = {
   minOrderAmount: '',
   startAt: '',
   endAt: '',
+  scopeType: 'all',
+  productIds: [],
+  categoryIds: [],
 }
 
 const generateVoucherCode = () => {
@@ -51,12 +57,130 @@ export default function RewardVoucherCreateModal({
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [productOptions, setProductOptions] = useState<Array<{ id: number; name: string; sku?: string | null }>>([])
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ id: number; name: string }>>([])
+  const [productSearch, setProductSearch] = useState('')
+  const [categorySearch, setCategorySearch] = useState('')
+  const [loadingOptions, setLoadingOptions] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const fetchOptions = async () => {
+      setLoadingOptions(true)
+      try {
+        const [productsRes, categoriesRes] = await Promise.all([
+          fetch('/api/proxy/ecommerce/products?page=1&per_page=200', {
+            cache: 'no-store',
+            signal: controller.signal,
+          }),
+          fetch('/api/proxy/ecommerce/categories?page=1&per_page=200', {
+            cache: 'no-store',
+            signal: controller.signal,
+          }),
+        ])
+
+        if (!productsRes.ok || !categoriesRes.ok) {
+          return
+        }
+
+        const productsData = await productsRes.json().catch(() => ({}))
+        const categoriesData = await categoriesRes.json().catch(() => ({}))
+
+        if (productsData?.success === false && productsData?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+
+        const normalizeList = (payload: unknown) => {
+          if (Array.isArray(payload)) return payload
+          if (payload && typeof payload === 'object' && 'data' in payload) {
+            const nested = payload as { data?: unknown }
+            if (Array.isArray(nested.data)) return nested.data
+          }
+          return []
+        }
+
+        const productList = normalizeList(productsData?.data)
+        const categoryList = normalizeList(categoriesData?.data)
+
+        setProductOptions(
+          productList
+            .map((item: { id?: number | string | null; name?: string | null; sku?: string | null }) => ({
+              id:
+                typeof item.id === 'number'
+                  ? item.id
+                  : Number(item.id) || Number.parseInt(String(item.id), 10) || 0,
+              name: item.name ?? '',
+              sku: item.sku ?? null,
+            }))
+            .filter((item: { id: number; name: string }) => item.id > 0 && item.name)
+        )
+
+        setCategoryOptions(
+          categoryList
+            .map((item: { id?: number | string | null; name?: string | null }) => ({
+              id:
+                typeof item.id === 'number'
+                  ? item.id
+                  : Number(item.id) || Number.parseInt(String(item.id), 10) || 0,
+              name: item.name ?? '',
+            }))
+            .filter((item: { id: number; name: string }) => item.id > 0 && item.name)
+        )
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          console.error(err)
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingOptions(false)
+        }
+      }
+    }
+
+    fetchOptions()
+    return () => controller.abort()
+  }, [])
+
+  const filteredProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase()
+    if (!query) return productOptions
+    return productOptions.filter((item) => {
+      const nameMatch = item.name.toLowerCase().includes(query)
+      const skuMatch = item.sku ? item.sku.toLowerCase().includes(query) : false
+      return nameMatch || skuMatch
+    })
+  }, [productOptions, productSearch])
+
+  const filteredCategories = useMemo(() => {
+    const query = categorySearch.trim().toLowerCase()
+    if (!query) return categoryOptions
+    return categoryOptions.filter((item) => item.name.toLowerCase().includes(query))
+  }, [categoryOptions, categorySearch])
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const toggleProduct = (productId: number) => {
+    setForm((prev) => ({
+      ...prev,
+      productIds: prev.productIds.includes(productId)
+        ? prev.productIds.filter((id) => id !== productId)
+        : [...prev.productIds, productId],
+    }))
+  }
+
+  const toggleCategory = (categoryId: number) => {
+    setForm((prev) => ({
+      ...prev,
+      categoryIds: prev.categoryIds.includes(categoryId)
+        ? prev.categoryIds.filter((id) => id !== categoryId)
+        : [...prev.categoryIds, categoryId],
+    }))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -85,6 +209,14 @@ export default function RewardVoucherCreateModal({
       setError(t('common.allFieldsRequired'))
       return
     }
+    if (form.scopeType === 'products' && form.productIds.length === 0) {
+      setError('Please select at least one product.')
+      return
+    }
+    if (form.scopeType === 'categories' && form.categoryIds.length === 0) {
+      setError('Please select at least one category.')
+      return
+    }
 
     setSubmitting(true)
     setError(null)
@@ -101,6 +233,9 @@ export default function RewardVoucherCreateModal({
           type: 'fixed',
           value: valueNum,
           min_order_amount: minOrderAmountNum,
+          scope_type: form.scopeType,
+          ...(form.scopeType === 'products' ? { product_ids: form.productIds } : {}),
+          ...(form.scopeType === 'categories' ? { category_ids: form.categoryIds } : {}),
           start_at: form.startAt,
           end_at: form.endAt,
           is_active: form.status === 'active',
@@ -345,6 +480,7 @@ export default function RewardVoucherCreateModal({
               >
                 Minimum Order Amount <span className="text-red-500">*</span>
               </label>
+              <p className="text-xs text-gray-500">Min spend is checked on eligible subtotal only.</p>
               <input
                 id="minOrderAmount"
                 name="minOrderAmount"
@@ -358,6 +494,102 @@ export default function RewardVoucherCreateModal({
                 disabled={submitting}
               />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="scopeType">
+                Scope Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="scopeType"
+                name="scopeType"
+                value={form.scopeType}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                disabled={submitting}
+              >
+                <option value="all">Storewide</option>
+                <option value="products">Specific Products</option>
+                <option value="categories">Specific Categories</option>
+              </select>
+            </div>
+            {form.scopeType === 'products' && (
+              <div className="space-y-2 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Eligible Products <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-xs text-gray-500">{form.productIds.length} selected</span>
+                </div>
+                <input
+                  type="text"
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Search products by name or SKU"
+                  disabled={submitting}
+                />
+                <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 p-2 text-sm">
+                  {loadingOptions ? (
+                    <p className="text-gray-500">Loading products...</p>
+                  ) : filteredProducts.length === 0 ? (
+                    <p className="text-gray-500">No products found.</p>
+                  ) : (
+                    filteredProducts.map((product) => (
+                      <label key={product.id} className="flex items-center gap-2 py-1">
+                        <input
+                          type="checkbox"
+                          checked={form.productIds.includes(product.id)}
+                          onChange={() => toggleProduct(product.id)}
+                          disabled={submitting}
+                        />
+                        <span className="text-gray-800">
+                          {product.name}
+                          {product.sku ? (
+                            <span className="text-xs text-gray-500"> ({product.sku})</span>
+                          ) : null}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+            {form.scopeType === 'categories' && (
+              <div className="space-y-2 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Eligible Categories <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-xs text-gray-500">{form.categoryIds.length} selected</span>
+                </div>
+                <input
+                  type="text"
+                  value={categorySearch}
+                  onChange={(event) => setCategorySearch(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Search categories"
+                  disabled={submitting}
+                />
+                <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 p-2 text-sm">
+                  {loadingOptions ? (
+                    <p className="text-gray-500">Loading categories...</p>
+                  ) : filteredCategories.length === 0 ? (
+                    <p className="text-gray-500">No categories found.</p>
+                  ) : (
+                    filteredCategories.map((category) => (
+                      <label key={category.id} className="flex items-center gap-2 py-1">
+                        <input
+                          type="checkbox"
+                          checked={form.categoryIds.includes(category.id)}
+                          onChange={() => toggleCategory(category.id)}
+                          disabled={submitting}
+                        />
+                        <span className="text-gray-800">{category.name}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="startAt">
                 Start Date <span className="text-red-500">*</span>

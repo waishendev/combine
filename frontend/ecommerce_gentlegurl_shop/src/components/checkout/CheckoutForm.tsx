@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import { getPrimaryProductImage } from "@/lib/productMedia";
+import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
+import VoucherList from "@/components/vouchers/VoucherList";
 import {
   AddressPayload,
   CheckoutPayload,
@@ -51,6 +53,12 @@ const MALAYSIA_STATES_WEST = [
 ];
 
 const MALAYSIA_STATES_EAST = ["Sabah", "Sarawak", "Labuan"];
+
+const scopeLabels: Record<string, string> = {
+  all: "Storewide",
+  products: "Specific Products",
+  categories: "Specific Categories",
+};
 
 const normalizeCountryValue = (country?: string | null) => {
   if (!country) return "";
@@ -99,6 +107,7 @@ export default function CheckoutForm() {
   const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [detailsVoucherId, setDetailsVoucherId] = useState<number | null>(null);
   const [paymentGateways, setPaymentGateways] = useState<PublicPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
@@ -251,11 +260,7 @@ export default function CheckoutForm() {
 
   const selectedVoucher = visibleVouchers.find((entry) => entry.voucher.id === selectedVoucherId);
   const isSelectedVoucherEligible = selectedVoucher?.minSpendMet ?? false;
-  const voucherErrorMessage = voucherError
-    ? voucherError.toLowerCase().includes("select items")
-      ? "Select items to apply a voucher."
-      : "We couldn’t apply that voucher. Please check the code or try another."
-    : null;
+  const voucherErrorMessage = voucherError || voucherMessage || null;
 
   const fetchAddresses = useCallback(async () => {
     if (!isLoggedIn) {
@@ -1276,7 +1281,19 @@ export default function CheckoutForm() {
             <div>
               <p className="text-xs font-medium text-[var(--foreground)]/70">Voucher / Discount</p>
               {appliedVoucher && (
-                <p className="text-xs text-[var(--foreground)]/70">Applied: {appliedVoucher.code}</p>
+                <div className="space-y-1 text-xs text-[var(--foreground)]/70">
+                  <p>Applied: {appliedVoucher.code}</p>
+                  {appliedVoucher.eligible_subtotal != null && (
+                    <p>
+                      Voucher applies to RM {Number(appliedVoucher.eligible_subtotal).toFixed(2)} eligible items
+                    </p>
+                  )}
+                  {appliedVoucher.display_scope_text && (
+                    <p className="text-[10px] text-[var(--foreground)]/60">
+                      {appliedVoucher.display_scope_text}
+                    </p>
+                  )}
+                </div>
               )}
               {voucherMessage && !appliedVoucher && (
                 <p className="text-[11px] text-[var(--foreground)]/60">{voucherMessage}</p>
@@ -1896,64 +1913,13 @@ export default function CheckoutForm() {
                 ) : visibleVouchers.length === 0 ? (
                   <p className="text-xs text-[var(--foreground)]/60">No vouchers available.</p>
                 ) : (
-                  <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                    {visibleVouchers.map((entry) => {
-                      const isSelected = selectedVoucherId === entry.voucher.id;
-                      const isDisabled = !entry.minSpendMet;
-                      return (
-                        <label
-                          key={entry.voucher.id}
-                          className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition ${
-                            isSelected
-                              ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                              : "border-[var(--muted)]/70 bg-[var(--card)]"
-                          } ${isDisabled ? "cursor-not-allowed opacity-50 grayscale" : "hover:border-[var(--accent)]/60"}`}
-                        >
-                          <input
-                            type="radio"
-                            name="voucher_choice"
-                            className="mt-1 ios-input"
-                            checked={isSelected}
-                            disabled={isDisabled}
-                            onChange={() => {
-                              if (isDisabled) return;
-                              // Toggle: if already selected, unselect it
-                              if (isSelected) {
-                                setSelectedVoucherId(null);
-                              } else {
-                                setSelectedVoucherId(entry.voucher.id);
-                              }
-                              clearVoucherFeedback();
-                            }}
-                          />
-                          <div className="flex-1 text-xs">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm font-semibold">{entry.title}</div>
-                            </div>
-                            <div className="mt-2 grid gap-1 text-[11px] text-[var(--foreground)]/70 sm:grid-cols-2">
-                              <div>
-                                <span className="font-semibold text-[var(--foreground)]/80">Value:</span>{" "}
-                                {entry.valueLabel}
-                              </div>
-                              <div>
-                                <span className="font-semibold text-[var(--foreground)]/80">Min spend:</span>{" "}
-                                {formatCurrency(entry.minOrderAmount)}
-                              </div>
-                              <div className="sm:col-span-2">
-                                <span className="font-semibold text-[var(--foreground)]/80">Expiry:</span>{" "}
-                                {entry.expiryLabel}
-                              </div>
-                            </div>
-                            {!entry.minSpendMet && (
-                              <p className="mt-2 text-[11px] font-semibold text-[color:var(--status-warning)]">
-                                Min spend not met
-                              </p>
-                            )}
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <VoucherList
+                    vouchers={visibleVouchers}
+                    selectedVoucherId={selectedVoucherId}
+                    onSelectVoucher={setSelectedVoucherId}
+                    onViewDetails={setDetailsVoucherId}
+                    clearVoucherFeedback={clearVoucherFeedback}
+                  />
                 )}
               </div>
 
@@ -1972,6 +1938,11 @@ export default function CheckoutForm() {
           </div>
         </div>
       )}
+      <VoucherDetailsModal
+        open={detailsVoucherId !== null}
+        voucherId={detailsVoucherId}
+        onClose={() => setDetailsVoucherId(null)}
+      />
     </main>
     </>
   );

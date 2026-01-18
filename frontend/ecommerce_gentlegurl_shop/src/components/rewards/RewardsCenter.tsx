@@ -14,6 +14,7 @@ import {
 } from "@/lib/apiClient";
 import { RedeemModal, RedeemModalState } from "./RedeemModal";
 import { ProductImageCard } from "@/components/products/ProductImageCard";
+import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 
 const FILTERS = [
   { value: "product", label: "Products" },
@@ -36,6 +37,7 @@ export function RewardsCenter() {
   const [filter, setFilter] = useState<string>("product");
   const [redeemingId, setRedeemingId] = useState<number | null>(null);
   const [redeemModal, setRedeemModal] = useState<RedeemModalState | null>(null);
+  const [detailsVoucherId, setDetailsVoucherId] = useState<number | null>(null);
 
   const availablePoints = overview?.loyalty.points.available ?? 0;
 
@@ -356,7 +358,18 @@ export function RewardsCenter() {
                             : "None"}
                         </span>
                       </div>
-                      <div className="text-xs text-[color:var(--text-muted)]">{remainingLabel}</div>
+                      <div className="flex items-center justify-between text-xs text-[color:var(--text-muted)]">
+                        <span>{remainingLabel}</span>
+                        {reward.voucher_id && (
+                          <button
+                            type="button"
+                            onClick={() => setDetailsVoucherId(reward.voucher_id ?? null)}
+                            className="font-semibold text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
+                          >
+                            T&amp;C
+                          </button>
+                        )}
+                      </div>
                       {!isAvailable && (
                         <span className="text-xs font-semibold text-[color:var(--status-error)]">Fully redeemed</span>
                       )}
@@ -397,6 +410,12 @@ export function RewardsCenter() {
           }
         />
       )}
+
+      <VoucherDetailsModal
+        open={detailsVoucherId !== null}
+        voucherId={detailsVoucherId}
+        onClose={() => setDetailsVoucherId(null)}
+      />
     </main>
   );
 }

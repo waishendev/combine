@@ -32,7 +32,7 @@ class DatabaseSeeder extends Seeder
             PaymentGatewaySeeder::class,
 
             // FooterWidgetSeederTesting::class,
-            // FrontendTestDataSeeder::class,
+            FrontendTestDataSeeder::class,
             // LoyaltyRewardSeederTesting::class,
             // LoyaltyDemoCustomerSeederTesting::class,
             // SelfPickupCompletedOrderSeeder::class,

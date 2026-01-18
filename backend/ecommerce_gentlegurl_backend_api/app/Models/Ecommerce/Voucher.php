@@ -17,6 +17,7 @@ class Voucher extends Model
         'value',
         'amount',
         'min_order_amount',
+        'scope_type',
         'max_discount_amount',
         'start_at',
         'end_at',
@@ -54,6 +55,16 @@ class Voucher extends Model
     public function customerVouchers()
     {
         return $this->hasMany(CustomerVoucher::class);
+    }
+
+    public function products()
+    {
+        return $this->belongsToMany(Product::class, 'voucher_products');
+    }
+
+    public function categories()
+    {
+        return $this->belongsToMany(Category::class, 'voucher_categories');
     }
 
     /**

@@ -18,6 +18,7 @@ use App\Services\Ecommerce\ShippingService;
 use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
+use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
 use App\Services\Ecommerce\OrderReserveService;
 use Carbon\Carbon;
@@ -36,6 +37,7 @@ class PublicCheckoutController extends Controller
     use ResolvesCurrentCustomer;
 
     public function __construct(
+        protected VoucherEligibilityService $voucherEligibilityService,
         protected VoucherService $voucherService,
         protected BillplzService $billplzService,
         protected CartService $cartService,
@@ -82,7 +84,7 @@ class PublicCheckoutController extends Controller
             'voucher' => $calculation['voucher'],
             'voucher_error' => $calculation['voucher_error'],
             'voucher_valid' => $calculation['voucher_valid'],
-            'voucher_message' => $calculation['voucher_error'],
+            'voucher_message' => $calculation['voucher_message'],
             'shipping' => $calculation['shipping'] ?? null,
         ]);
     }
@@ -128,7 +130,7 @@ class PublicCheckoutController extends Controller
             $validated['shipping_state'] ?? null,
         );
 
-        if ((!empty($validated['voucher_code']) || !empty($validated['customer_voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']->valid)) {
+        if ((!empty($validated['voucher_code']) || !empty($validated['customer_voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']['is_valid'])) {
             return $this->respond(null, $calculation['voucher_error'] ?? __('Invalid voucher'), false, 422);
         }
 
@@ -274,12 +276,22 @@ class PublicCheckoutController extends Controller
 
                 if (!empty($calculation['voucher']) && $calculation['voucher']['discount_amount'] > 0) {
                     $voucher = $calculation['voucher'];
+                    $scopeSnapshot = null;
+                    if (!empty($calculation['voucher_result'])) {
+                        $scopeSnapshot = [
+                            'scope_type' => $calculation['voucher_result']['voucher']['scope_type'] ?? 'all',
+                            'eligible_subtotal' => $calculation['voucher_result']['eligible_subtotal'] ?? 0,
+                            'affected_items' => $calculation['voucher_result']['affected_items'] ?? [],
+                            'display_scope_text' => $calculation['voucher_result']['display_scope_text'] ?? null,
+                        ];
+                    }
                     OrderVoucher::create([
                         'order_id' => $order->id,
                         'voucher_id' => $voucher['id'] ?? null,
                         'customer_voucher_id' => $voucher['customer_voucher_id'] ?? null,
                         'code_snapshot' => $voucher['code'],
                         'discount_amount' => $voucher['discount_amount'],
+                        'scope_snapshot' => $scopeSnapshot,
                     ]);
 
                     if (!empty($voucher['id'])) {
@@ -377,7 +389,7 @@ class PublicCheckoutController extends Controller
                 'swift_code' => $bankAccount->swift_code,
                 'instructions' => $bankAccount->instructions,
             ] : null,
-            'voucher' => $calculation['voucher_result'] && $calculation['voucher_result']->valid ? [
+            'voucher' => $calculation['voucher_result'] && $calculation['voucher_result']['is_valid'] ? [
                 'code' => $calculation['voucher']['code'] ?? null,
                 'discount_amount' => $calculation['voucher']['discount_amount'] ?? 0,
             ] : null,
@@ -911,6 +923,7 @@ class PublicCheckoutController extends Controller
         $voucherData = null;
         $voucherError = null;
         $voucherResult = null;
+        $voucherMessage = null;
 
         $customerVoucher = null;
         if ($customerVoucherId) {
@@ -934,20 +947,43 @@ class PublicCheckoutController extends Controller
         }
 
         if ($voucherCode || $customerVoucher) {
-            $voucherResult = $this->voucherService->validateAndCalculateDiscount($voucherCode ?? '', $customer, $subtotal, $customerVoucher, false);
+            $voucherResult = $this->voucherEligibilityService->validateVoucherForCart(
+                $voucherCode ?? '',
+                $customer,
+                $items,
+                $subtotal,
+                $customerVoucher,
+            );
 
-            if ($voucherResult->valid) {
-                $discountTotal = $voucherResult->discountAmount ?? 0;
+            if ($voucherResult['is_valid']) {
+                $discountTotal = $voucherResult['discount_amount'] ?? 0;
                 $voucherData = [
-                    'id' => $voucherResult->voucherData['id'] ?? null,
-                    'code' => $voucherResult->voucherData['code'] ?? $voucherCode,
+                    'id' => $voucherResult['voucher']['id'] ?? null,
+                    'code' => $voucherResult['voucher']['code'] ?? $voucherCode,
                     'discount_amount' => $discountTotal,
-                    'type' => $voucherResult->voucherData['type'] ?? null,
-                    'value' => $voucherResult->voucherData['value'] ?? null,
-                    'customer_voucher_id' => $voucherResult->customerVoucherId,
+                    'eligible_subtotal' => $voucherResult['eligible_subtotal'] ?? $subtotal,
+                    'type' => $voucherResult['voucher']['type'] ?? null,
+                    'value' => $voucherResult['voucher']['value'] ?? null,
+                    'customer_voucher_id' => $voucherResult['customer_voucher_id'] ?? null,
+                    'applied' => true,
+                    'display_scope_text' => $voucherResult['display_scope_text'] ?? null,
+                    'message' => null,
                 ];
             } else {
-                $voucherError = $voucherResult->error;
+                $voucherError = $voucherResult['message'] ?? __('Invalid voucher');
+                $voucherMessage = $voucherError;
+                $voucherData = $voucherResult['voucher'] ? [
+                    'id' => $voucherResult['voucher']['id'] ?? null,
+                    'code' => $voucherResult['voucher']['code'] ?? $voucherCode,
+                    'discount_amount' => 0,
+                    'eligible_subtotal' => $voucherResult['eligible_subtotal'] ?? 0,
+                    'type' => $voucherResult['voucher']['type'] ?? null,
+                    'value' => $voucherResult['voucher']['value'] ?? null,
+                    'customer_voucher_id' => $voucherResult['customer_voucher_id'] ?? null,
+                    'applied' => false,
+                    'display_scope_text' => $voucherResult['display_scope_text'] ?? null,
+                    'message' => $voucherError,
+                ] : null;
             }
         }
 
@@ -963,7 +999,8 @@ class PublicCheckoutController extends Controller
             'voucher' => $voucherData,
             'voucher_error' => $voucherError,
             'voucher_result' => $voucherResult,
-            'voucher_valid' => $voucherResult?->valid ?? false,
+            'voucher_valid' => $voucherResult['is_valid'] ?? false,
+            'voucher_message' => $voucherMessage,
         ];
     }
 

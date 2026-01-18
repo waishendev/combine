@@ -14,6 +14,7 @@ import {
 import VoucherCreateModal from './VoucherCreateModal'
 import VoucherEditModal from './VoucherEditModal'
 import VoucherDeleteModal from './VoucherDeleteModal'
+import VoucherDetailsModal from './vouchers/VoucherDetailsModal'
 import {
   type VoucherApiItem,
   mapVoucherApiItemToRow,
@@ -63,12 +64,14 @@ export default function VoucherTable({
   const [sortColumn, setSortColumn] = useState<keyof VoucherRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingVoucherId, setEditingVoucherId] = useState<number | null>(null)
+  const [viewingVoucherId, setViewingVoucherId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<VoucherRowData | null>(null)
 
   const canCreate = permissions.includes('ecommerce.vouchers.create')
+  const canView = permissions.includes('ecommerce.vouchers.view')
   const canUpdate = permissions.includes('ecommerce.vouchers.update')
   const canDelete = permissions.includes('ecommerce.vouchers.delete')
-  const showActions = canUpdate || canDelete
+  const showActions = canView || canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -280,8 +283,8 @@ export default function VoucherTable({
 
   const hideMaxUsesPerCustomer = Boolean(isRewardOnly)
   const colCount = showActions
-    ? hideMaxUsesPerCustomer ? 8 : 9
-    : hideMaxUsesPerCustomer ? 7 : 8
+    ? hideMaxUsesPerCustomer ? 9 : 10
+    : hideMaxUsesPerCustomer ? 8 : 9
 
   const totalPages = meta.last_page || 1
 
@@ -457,6 +460,7 @@ export default function VoucherTable({
                   { key: 'code', label: 'Code' },
                   { key: 'value', label: 'Value' },
                   { key: 'minOrderAmount', label: 'Min Order Amount' },
+                  { key: 'scopeType', label: 'Scope Type' },
                   { key: 'maxUses', label: 'Max Uses' },
                   ...(!hideMaxUsesPerCustomer
                     ? [{ key: 'maxUsesPerCustomer', label: 'Max Uses Per Customer' } as const]
@@ -499,9 +503,15 @@ export default function VoucherTable({
                   key={voucher.id}
                   voucher={voucher}
                   showActions={showActions}
+                  canView={canView}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   hideMaxUsesPerCustomer={hideMaxUsesPerCustomer}
+                  onView={() => {
+                    if (canView) {
+                      setViewingVoucherId(voucher.id)
+                    }
+                  }}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingVoucherId(voucher.id)
@@ -531,6 +541,13 @@ export default function VoucherTable({
             setEditingVoucherId(null)
             handleVoucherUpdated(voucher)
           }}
+        />
+      )}
+
+      {viewingVoucherId !== null && (
+        <VoucherDetailsModal
+          voucherId={viewingVoucherId}
+          onClose={() => setViewingVoucherId(null)}
         />
       )}
 
