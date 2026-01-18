@@ -905,7 +905,11 @@ export default function CartPageClient() {
                                   event.stopPropagation();
                                   setDetailsVoucherId(detailVoucherId);
                                 }}
-                                className="mt-2 text-[11px] font-semibold text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                }}
+                                className="relative z-10 mt-2 pointer-events-auto text-[11px] font-semibold text-[var(--accent-strong)] hover:text-[var(--accent-stronger)]"
                               >
                                 T&amp;C
                               </button>
