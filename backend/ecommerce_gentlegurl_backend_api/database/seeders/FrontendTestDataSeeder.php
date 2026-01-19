@@ -9,6 +9,7 @@ use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductImage;
 use App\Models\Ecommerce\ProductVariant;
+use App\Models\Ecommerce\ProductVariantBundleItem;
 use App\Models\Ecommerce\ShopMenuItem;
 use App\Models\Ecommerce\PageReview;
 use App\Models\Ecommerce\StoreLocation;
@@ -509,6 +510,20 @@ class FrontendTestDataSeeder extends Seeder
                 'is_active' => true,
                 'is_featured' => false,
             ],
+            [
+                'name' => '草本风味饮品',
+                'slug' => 'herbal-drink',
+                'sku' => null,
+                'type' => 'variant',
+                'description' => '清爽草本风味，支持单瓶或组合选购。',
+                'price' => 12.00,
+                'cost_price' => 6.00,
+                'stock' => 0,
+                'low_stock_threshold' => 0,
+                'track_stock' => true,
+                'is_active' => true,
+                'is_featured' => true,
+            ],
         ];
 
         $created = [];
@@ -530,7 +545,8 @@ class FrontendTestDataSeeder extends Seeder
         }
 
         $hoodie = $productMap['sports-hoodie'] ?? null;
-        if (! $hoodie) {
+        $herbalDrink = $productMap['herbal-drink'] ?? null;
+        if (! $hoodie || ! $herbalDrink) {
             return;
         }
 
@@ -574,16 +590,82 @@ class FrontendTestDataSeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => 3,
             ],
+            [
+                'product_id' => $herbalDrink->id,
+                'sku' => 'HB-200ML',
+                'title' => '200ml',
+                'price' => 12.00,
+                'sale_price' => null,
+                'cost_price' => 6.00,
+                'stock' => 12,
+                'low_stock_threshold' => 3,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 1,
+                'is_bundle' => false,
+            ],
+            [
+                'product_id' => $herbalDrink->id,
+                'sku' => 'HB-300ML',
+                'title' => '300ml',
+                'price' => 16.00,
+                'sale_price' => null,
+                'cost_price' => 8.00,
+                'stock' => 10,
+                'low_stock_threshold' => 3,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 2,
+                'is_bundle' => false,
+            ],
+            [
+                'product_id' => $herbalDrink->id,
+                'sku' => 'HB-200-300-SET',
+                'title' => '200ml + 300ml Set',
+                'price' => 26.00,
+                'sale_price' => null,
+                'cost_price' => 14.00,
+                'stock' => 0,
+                'low_stock_threshold' => 0,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 3,
+                'is_bundle' => true,
+            ],
         ];
 
+        $createdVariants = [];
         foreach ($variants as $variant) {
-            ProductVariant::updateOrCreate(
+            $createdVariants[] = ProductVariant::updateOrCreate(
                 [
                     'product_id' => $variant['product_id'],
                     'sku' => $variant['sku'],
                 ],
                 $variant
             );
+        }
+
+        $variantMap = collect($createdVariants)->keyBy('sku');
+        $bundleVariant = $variantMap->get('HB-200-300-SET');
+        $component200 = $variantMap->get('HB-200ML');
+        $component300 = $variantMap->get('HB-300ML');
+
+        if ($bundleVariant && $component200 && $component300) {
+            ProductVariantBundleItem::where('bundle_variant_id', $bundleVariant->id)->delete();
+
+            ProductVariantBundleItem::create([
+                'bundle_variant_id' => $bundleVariant->id,
+                'component_variant_id' => $component200->id,
+                'quantity' => 1,
+                'sort_order' => 0,
+            ]);
+
+            ProductVariantBundleItem::create([
+                'bundle_variant_id' => $bundleVariant->id,
+                'component_variant_id' => $component300->id,
+                'quantity' => 1,
+                'sort_order' => 1,
+            ]);
         }
     }
 

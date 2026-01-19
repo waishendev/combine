@@ -81,11 +81,14 @@ class CartService
                 'product_slug' => $product?->slug,
                 'product_image' => $thumbnail,
                 'product_stock' => $variant
-                    ? ($variant->track_stock ? $variant->stock : null)
+                    ? ($variant->is_bundle ? $variant->derivedAvailableQty() : ($variant->track_stock ? $variant->stock : null))
                     : ($product?->track_stock ? $product?->stock : null),
                 'available_variants' => $product && $product->type === 'variant'
                     ? $product->variants->map(function ($productVariant) use ($product) {
                         $variantPricing = ProductPricing::build($product, $productVariant);
+                        $derivedAvailableQty = $productVariant->is_bundle
+                            ? $productVariant->derivedAvailableQty()
+                            : null;
 
                         return [
                             'id' => $productVariant->id,
@@ -99,9 +102,11 @@ class CartService
                             'is_on_sale' => $variantPricing['is_on_sale'],
                             'effective_price' => $variantPricing['effective_price'],
                             'discount_percent' => $variantPricing['discount_percent'],
-                            'stock' => $productVariant->stock,
+                            'stock' => $productVariant->is_bundle ? $derivedAvailableQty : $productVariant->stock,
+                            'derived_available_qty' => $derivedAvailableQty,
                             'track_stock' => $productVariant->track_stock,
                             'is_active' => $productVariant->is_active,
+                            'is_bundle' => $productVariant->is_bundle,
                             'image_url' => $productVariant->image_url,
                         ];
                     })->values()

@@ -347,7 +347,9 @@ export default function CartPageClient() {
                                   {item.available_variants?.map((variant) => {
                                     const isActive = variant.is_active !== false;
                                     const outOfStock =
-                                      (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
+                                      (variant.track_stock ?? true) &&
+                                      ((variant.is_bundle ? variant.derived_available_qty ?? 0 : variant.stock ?? 0) <=
+                                        0);
                                     const isSelectable = isActive && !outOfStock;
                                     const suffix = !isSelectable
                                       ? " (Out of stock)"
@@ -530,7 +532,8 @@ export default function CartPageClient() {
                               {item.available_variants?.map((variant) => {
                                 const isActive = variant.is_active !== false;
                                 const outOfStock =
-                                  (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
+                                  (variant.track_stock ?? true) &&
+                                  ((variant.is_bundle ? variant.derived_available_qty ?? 0 : variant.stock ?? 0) <= 0);
                                 const isSelectable = isActive && !outOfStock;
                                 const suffix = !isSelectable ? " (Out of stock)" : "";
                                 return (

@@ -37,6 +37,15 @@ export interface ProductVariant {
   isActive?: boolean
   sortOrder?: number
   imageUrl?: string | null
+  isBundle?: boolean
+  derivedAvailableQty?: number | null
+  bundleItems?: Array<{
+    componentVariantId: number
+    componentVariantName?: string | null
+    componentVariantSku?: string | null
+    quantity: number
+    sortOrder?: number | null
+  }>
 }
 
 export interface ProductRowData {

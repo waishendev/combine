@@ -397,7 +397,7 @@ class PublicShopController extends Controller
     {
         $allowRewardOnly = $request->boolean('reward', false);
 
-        $productQuery = Product::with(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct']);
+        $productQuery = Product::with(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']);
 
         if (preg_match('/^\d+$/', $slug) === 1) {
             $productQuery->where('id', $slug);
@@ -523,6 +523,20 @@ class PublicShopController extends Controller
                 ->values()
                 ->map(function ($variant) use ($product) {
                     $variantPricing = ProductPricing::build($product, $variant);
+                    $derivedAvailableQty = $variant->is_bundle ? $variant->derivedAvailableQty() : null;
+                    $bundleItems = $variant->is_bundle
+                        ? $variant->bundleItems->map(function ($bundleItem) {
+                            $component = $bundleItem->componentVariant;
+
+                            return [
+                                'variant_id' => $bundleItem->component_variant_id,
+                                'variant_name' => $component?->title,
+                                'variant_sku' => $component?->sku,
+                                'quantity' => $bundleItem->quantity,
+                                'sort_order' => $bundleItem->sort_order,
+                            ];
+                        })->values()
+                        : collect();
 
                     return [
                         'id' => $variant->id,
@@ -540,12 +554,15 @@ class PublicShopController extends Controller
                         'is_on_sale' => $variantPricing['is_on_sale'],
                         'effective_price' => $variantPricing['effective_price'],
                         'discount_percent' => $variantPricing['discount_percent'],
-                        'stock' => $variant->stock,
+                        'stock' => $variant->is_bundle ? null : $variant->stock,
                         'low_stock_threshold' => $variant->low_stock_threshold,
                         'track_stock' => $variant->track_stock,
                         'is_active' => $variant->is_active,
                         'sort_order' => $variant->sort_order,
                         'image_url' => $variant->image_url,
+                        'is_bundle' => $variant->is_bundle,
+                        'bundle_items' => $bundleItems,
+                        'derived_available_qty' => $derivedAvailableQty,
                     ];
                 }),
             'is_in_wishlist' => in_array($product->id, $this->resolveWishlistProductIds($request)),
