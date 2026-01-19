@@ -524,6 +524,20 @@ class FrontendTestDataSeeder extends Seeder
                 'is_active' => true,
                 'is_featured' => true,
             ],
+            [
+                'name' => '柔润护肤套装',
+                'slug' => 'soothing-skincare-set',
+                'sku' => null,
+                'type' => 'variant',
+                'description' => '清爽修护系列，可单瓶或组合购买。',
+                'price' => 79.00,
+                'cost_price' => 38.00,
+                'stock' => 0,
+                'low_stock_threshold' => 0,
+                'track_stock' => true,
+                'is_active' => true,
+                'is_featured' => false,
+            ],
         ];
 
         $created = [];
@@ -546,7 +560,8 @@ class FrontendTestDataSeeder extends Seeder
 
         $hoodie = $productMap['sports-hoodie'] ?? null;
         $herbalDrink = $productMap['herbal-drink'] ?? null;
-        if (! $hoodie || ! $herbalDrink) {
+        $soothingSet = $productMap['soothing-skincare-set'] ?? null;
+        if (! $hoodie || ! $herbalDrink || ! $soothingSet) {
             return;
         }
 
@@ -632,6 +647,48 @@ class FrontendTestDataSeeder extends Seeder
                 'sort_order' => 3,
                 'is_bundle' => true,
             ],
+            [
+                'product_id' => $soothingSet->id,
+                'sku' => 'SS-TONER-120',
+                'title' => 'Hydrating Toner 120ml',
+                'price' => 79.00,
+                'sale_price' => null,
+                'cost_price' => 38.00,
+                'stock' => 20,
+                'low_stock_threshold' => 5,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 1,
+                'is_bundle' => false,
+            ],
+            [
+                'product_id' => $soothingSet->id,
+                'sku' => 'SS-SERUM-30',
+                'title' => 'Repair Serum 30ml',
+                'price' => 99.00,
+                'sale_price' => null,
+                'cost_price' => 45.00,
+                'stock' => 16,
+                'low_stock_threshold' => 4,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 2,
+                'is_bundle' => false,
+            ],
+            [
+                'product_id' => $soothingSet->id,
+                'sku' => 'SS-TONER-SERUM-SET',
+                'title' => 'Toner + Serum Duo',
+                'price' => 159.00,
+                'sale_price' => null,
+                'cost_price' => 75.00,
+                'stock' => 0,
+                'low_stock_threshold' => 0,
+                'track_stock' => true,
+                'is_active' => true,
+                'sort_order' => 3,
+                'is_bundle' => true,
+            ],
         ];
 
         $createdVariants = [];
@@ -667,6 +724,28 @@ class FrontendTestDataSeeder extends Seeder
                 'sort_order' => 1,
             ]);
         }
+
+        $soothingBundle = $variantMap->get('SS-TONER-SERUM-SET');
+        $soothingToner = $variantMap->get('SS-TONER-120');
+        $soothingSerum = $variantMap->get('SS-SERUM-30');
+
+        if ($soothingBundle && $soothingToner && $soothingSerum) {
+            ProductVariantBundleItem::where('bundle_variant_id', $soothingBundle->id)->delete();
+
+            ProductVariantBundleItem::create([
+                'bundle_variant_id' => $soothingBundle->id,
+                'component_variant_id' => $soothingToner->id,
+                'quantity' => 1,
+                'sort_order' => 0,
+            ]);
+
+            ProductVariantBundleItem::create([
+                'bundle_variant_id' => $soothingBundle->id,
+                'component_variant_id' => $soothingSerum->id,
+                'quantity' => 1,
+                'sort_order' => 1,
+            ]);
+        }
     }
 
     private function linkProductsToCategories(array $products, array $categories): void
@@ -697,6 +776,8 @@ class FrontendTestDataSeeder extends Seeder
             'nordic-sofa' => ['furniture'],
             'modern-dining-set' => ['furniture'],
             'wall-art-set' => ['decor'],
+            'herbal-drink' => ['beauty'],
+            'soothing-skincare-set' => ['beauty'],
         ];
 
         foreach ($links as $productSlug => $categorySlugs) {
