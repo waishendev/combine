@@ -480,7 +480,7 @@ export default function RewardVoucherCreateModal({
               >
                 Minimum Order Amount <span className="text-red-500">*</span>
               </label>
-              <p className="text-xs text-gray-500">Min spend is checked on eligible subtotal only.</p>
+              {/* <p className="text-xs text-gray-500">Min spend is checked on eligible subtotal only.</p> */}
               <input
                 id="minOrderAmount"
                 name="minOrderAmount"
@@ -503,7 +503,7 @@ export default function RewardVoucherCreateModal({
                 name="scopeType"
                 value={form.scopeType}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                 disabled={submitting}
               >
                 <option value="all">Storewide</option>

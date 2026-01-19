@@ -271,7 +271,7 @@ export default function RewardProductTable({ permissions }: RewardProductTablePr
               <TableEmptyState
                 colSpan={tableColumns}
                 message="No reward products found."
-                actionLabel={canCreate ? 'Create Reward Product' : undefined}
+                actionLabel={undefined}
                 onAction={canCreate ? () => router.push('/rewards/products/create') : undefined}
               />
             )}
