@@ -77,9 +77,11 @@ const resolveTopProductDisplay = (product: TopProduct) => {
   const variantName = product.variant_name ?? ''
   const hasVariant = Boolean(product.variant_id || variantName)
   const baseName = product.product_name
-  const displayName = variantName ? `${baseName} (${variantName})` : baseName
+  const displayName =  baseName
+  // const displayName = variantName ? `${baseName} (${variantName})` : baseName
   return {
     displayName,
+    variantName,
     baseName: hasVariant ? baseName : null,
     sku: product.sku ?? product.variant_sku ?? product.product_sku ?? null,
   }
@@ -364,9 +366,14 @@ export default function DashboardPage() {
                             <td className="px-3 sm:px-4 py-3 font-medium text-slate-900">
                               <div className="flex flex-col">
                                 <span>{display.displayName}</span>
-                                {display.baseName ? (
+                                {/* {display.baseName ? (
                                   <span className="text-xs text-slate-500">
                                     Base: {display.baseName}
+                                  </span>
+                                ) : null} */}
+                                {display.variantName ? (
+                                  <span className="text-xs text-slate-500">
+                                    Varaint: {display.variantName}
                                   </span>
                                 ) : null}
                                 {display.sku ? (

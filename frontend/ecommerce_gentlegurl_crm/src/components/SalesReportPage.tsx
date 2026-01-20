@@ -134,9 +134,11 @@ const resolveProductDisplay = (row: ProductRow) => {
   const variantName = row.variant_name ?? ''
   const hasVariant = Boolean(row.variant_id || variantName)
   const baseName = row.product_name
-  const displayName = variantName ? `${baseName} (${variantName})` : baseName
+  // const displayName = variantName ? `${baseName} (${variantName})` : baseName
+  const displayName =  baseName
   return {
     displayName,
+    variantName,
     baseName: hasVariant ? baseName : null,
     sku: row.sku ?? row.variant_sku ?? row.product_sku ?? null,
   }
@@ -739,6 +741,7 @@ export default function SalesReportPage({
                   : row.customer_name
               const baseName = productDisplay?.baseName ?? null
               const sku = productDisplay?.sku ?? null
+              const variantName = productDisplay?.variantName ?? null
               return (
                 <div
                   key={
@@ -752,8 +755,11 @@ export default function SalesReportPage({
                 >
                   <p className="text-xs font-semibold uppercase text-slate-400">{topLabel}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-700">{name}</p>
-                  {baseName ? (
+                  {/* {baseName ? (
                     <p className="text-xs text-slate-500">Base: {baseName}</p>
+                  ) : null} */}
+                  {variantName ? (
+                    <p className="text-xs text-slate-500">Variant: {variantName}</p>
                   ) : null}
                   {sku ? (
                     <p className="text-xs text-slate-500">SKU: {sku}</p>
@@ -855,9 +861,14 @@ export default function SalesReportPage({
                       <td className="px-4 py-2 border border-gray-200 font-medium">
                         <div className="flex flex-col">
                           <span>{display.displayName}</span>
-                          {display.baseName ? (
+                          {/* {display.baseName ? (
                             <span className="text-xs text-slate-500">
                               Base: {display.baseName}
+                            </span>
+                          ) : null} */}
+                          {display.variantName ? (
+                            <span className="text-xs text-slate-500">
+                              Variant: {display.variantName}
                             </span>
                           ) : null}
                         </div>
