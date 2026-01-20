@@ -3248,6 +3248,12 @@ export default function ProductForm({
               parsePriceValue(variant.salePrice),
             )
 
+            const variantImageInputId = `variant-image-${index}`
+            const triggerVariantImageUpload = () => {
+              const input = document.getElementById(variantImageInputId) as HTMLInputElement | null
+              input?.click()
+            }
+
             return (
             <div key={variant.id ?? index} className="rounded-lg border border-gray-200 p-4 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3282,41 +3288,84 @@ export default function ProductForm({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_1fr]">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Variant Image</label>
-                  <div className="flex flex-col items-start gap-4">
-                    {variant.imagePreview || variant.imageUrl ? (
-                      <img
-                        src={variant.imagePreview ?? variant.imageUrl ?? ''}
-                        alt={variant.name || 'Variant image'}
-                        className="h-32 w-32 rounded border border-gray-200 object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-32 w-32 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
-                        No image
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <label className="cursor-pointer rounded border border-gray-300 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(event) =>
-                            handleVariantImageChange(index, event.target.files?.[0] ?? null)
-                          }
-                        />
-                        Upload Image
-                      </label>
-                      {(variant.imagePreview || variant.imageUrl) && (
-                        <button
-                          type="button"
-                          onClick={() => handleVariantImageRemove(index)}
-                          className="rounded border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-700">Variant Image</label>
+                  </div>
+                  <p className="text-xs text-red-500 mb-2">Suggested size: 800 x 800</p>
+                  <input
+                    id={variantImageInputId}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) =>
+                      handleVariantImageChange(index, event.target.files?.[0] ?? null)
+                    }
+                  />
+                  <div className="w-full max-w-sm">
+                    <div
+                      className={`relative aspect-square rounded-xl border-2 border-dashed overflow-hidden transition-all duration-200 ${
+                        variant.imagePreview || variant.imageUrl
+                          ? 'border-gray-200 bg-white shadow-md hover:shadow-lg'
+                          : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md cursor-pointer'
+                      }`}
+                      onClick={() => {
+                        if (!variant.imagePreview && !variant.imageUrl) {
+                          triggerVariantImageUpload()
+                        }
+                      }}
+                    >
+                      {variant.imagePreview || variant.imageUrl ? (
+                        <div
+                          className="w-full h-full cursor-pointer group relative"
+                          onClick={() => {
+                            setPreviewImage({
+                              type: 'existing',
+                              src: variant.imagePreview ?? variant.imageUrl ?? '',
+                              index,
+                            })
+                          }}
                         >
-                          Remove
-                        </button>
+                          <img
+                            src={variant.imagePreview ?? variant.imageUrl ?? ''}
+                            alt={variant.name || 'Variant image'}
+                            className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-200"
+                          />
+                          <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                triggerVariantImageUpload()
+                              }}
+                              className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                              aria-label={t('product.replaceImage')}
+                            >
+                              <i className="fa-solid fa-image text-xs" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleVariantImageRemove(index)
+                              }}
+                              className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                              aria-label={t('product.removeImage')}
+                            >
+                              <i className="fa-solid fa-trash-can text-xs" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-2 group">
+                          <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-2 transition-all duration-200 group-hover:scale-110">
+                            <i className="fa-solid fa-cloud-arrow-up text-gray-400 group-hover:text-blue-500 text-lg transition-colors duration-200" />
+                          </div>
+                          <span className="text-xs text-gray-500 group-hover:text-blue-600 text-center font-medium transition-colors duration-200">
+                            {t('product.clickToUpload')}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
