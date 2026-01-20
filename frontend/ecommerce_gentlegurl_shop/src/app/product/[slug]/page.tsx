@@ -104,6 +104,9 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
     getProductReviews(productSlug),
     getProductReviewEligibility(productSlug),
   ]);
+  const showGalleryArrows = ["1", "true", "yes"].includes(
+    (process.env.NEXT_PUBLIC_PRODUCT_DETAILS_VIEW_ARROWS || "").toLowerCase(),
+  );
 
   return (
     <ProductDetailClient
@@ -124,6 +127,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
       eligibility={eligibility}
       isRewardContext={isRewardContext}
       rewardPoints={rewardPoints}
+      showGalleryArrows={showGalleryArrows}
     />
   );
 }
