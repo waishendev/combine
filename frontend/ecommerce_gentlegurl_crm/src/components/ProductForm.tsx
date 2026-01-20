@@ -386,6 +386,9 @@ export default function ProductForm({
     }
     return []
   })
+  const [bundleDiscountPercentInputs, setBundleDiscountPercentInputs] = useState<string[]>(() =>
+    Array.from({ length: bundles.length }, () => ''),
+  )
   const [collapsedBundles, setCollapsedBundles] = useState<boolean[]>(
     () => Array.from({ length: bundles.length }, () => false),
   )
@@ -480,6 +483,16 @@ export default function ProductForm({
       const next = [...prev]
       while (next.length < bundles.length) {
         next.push(false)
+      }
+      return next.slice(0, bundles.length)
+    })
+  }, [bundles.length])
+  useEffect(() => {
+    setBundleDiscountPercentInputs((prev) => {
+      if (prev.length === bundles.length) return prev
+      const next = [...prev]
+      while (next.length < bundles.length) {
+        next.push('')
       }
       return next.slice(0, bundles.length)
     })
@@ -1319,6 +1332,7 @@ export default function ProductForm({
     setBundles([])
     setCollapsedVariants([])
     setCollapsedBundles([])
+    setBundleDiscountPercentInputs([])
   }
 
   const handleCancel = () => {
@@ -1523,11 +1537,13 @@ export default function ProductForm({
   const handleAddBundle = () => {
     setBundles((prev) => [...prev, createEmptyBundle(prev.length)])
     setCollapsedBundles((prev) => [...prev, false])
+    setBundleDiscountPercentInputs((prev) => [...prev, ''])
   }
 
   const handleRemoveBundle = (index: number) => {
     setBundles((prev) => prev.filter((_, idx) => idx !== index))
     setCollapsedBundles((prev) => prev.filter((_, idx) => idx !== index))
+    setBundleDiscountPercentInputs((prev) => prev.filter((_, idx) => idx !== index))
   }
 
   const handleBundleChange = (
@@ -1642,6 +1658,30 @@ export default function ProductForm({
             ...item,
             sortOrder: itemIdx,
           })),
+        }
+      }),
+    )
+  }
+
+  const handleApplyBundleDiscount = (index: number) => {
+    const percentValue = parsePriceValue(bundleDiscountPercentInputs[index] ?? '')
+    if (percentValue === null) return
+
+    const clampedPercent = Math.min(Math.max(percentValue, 0), 100)
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== index) return bundle
+        const priceValue = parsePriceValue(bundle.price)
+        if (!priceValue) {
+          return {
+            ...bundle,
+            salePrice: '',
+          }
+        }
+        const nextSalePrice = priceValue * (1 - clampedPercent / 100)
+        return {
+          ...bundle,
+          salePrice: formatPriceValue(Math.max(nextSalePrice, 0)),
         }
       }),
     )
@@ -3512,10 +3552,6 @@ export default function ProductForm({
                 return next
               })
             }
-            const discountPercent = getDiscountPercent(
-              parsePriceValue(bundle.price),
-              parsePriceValue(bundle.salePrice),
-            )
             const derivedQty = calculateBundleDerivedQty(bundle, variants)
 
             return (
@@ -3711,9 +3747,33 @@ export default function ProductForm({
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700">Discount %</label>
-                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                            {discountPercent ?? '—'}
+                          <label className="block text-sm font-medium text-gray-700">
+                            Apply Discount
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={bundleDiscountPercentInputs[index] ?? ''}
+                              onChange={(event) =>
+                                setBundleDiscountPercentInputs((prev) => {
+                                  const next = [...prev]
+                                  next[index] = event.target.value
+                                  return next
+                                })
+                              }
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              placeholder="%"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleApplyBundleDiscount(index)}
+                              className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+                            >
+                              Apply
+                            </button>
                           </div>
                         </div>
                         <div className="space-y-2">
@@ -3793,7 +3853,7 @@ export default function ProductForm({
                           return (
                             <div
                               key={`bundle-item-${index}-${itemIndex}`}
-                              className="grid grid-cols-1 gap-3 md:grid-cols-4 md:items-end"
+                              className="grid grid-cols-1 gap-3 md:grid-cols-3 md:items-end"
                             >
                               <div className="space-y-1 md:col-span-2">
                                 <label className="block text-xs font-medium text-gray-600">
@@ -3832,29 +3892,30 @@ export default function ProductForm({
                               </div>
                               <div className="space-y-1">
                                 <label className="block text-xs font-medium text-gray-600">Qty</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={item.quantity}
-                                  onChange={(event) =>
-                                    handleBundleItemChange(
-                                      index,
-                                      itemIndex,
-                                      'quantity',
-                                      event.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                />
-                              </div>
-                              <div className="flex items-center gap-2 md:justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveBundleItem(index, itemIndex)}
-                                  className="rounded border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                                >
-                                  Remove
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.quantity}
+                                    onChange={(event) =>
+                                      handleBundleItemChange(
+                                        index,
+                                        itemIndex,
+                                        'quantity',
+                                        event.target.value,
+                                      )
+                                    }
+                                    className="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveBundleItem(index, itemIndex)}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50"
+                                    aria-label="Remove component"
+                                  >
+                                    <i className="fa-solid fa-trash" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           )
