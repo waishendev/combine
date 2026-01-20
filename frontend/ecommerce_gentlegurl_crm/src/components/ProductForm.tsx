@@ -437,8 +437,13 @@ export default function ProductForm({
           URL.revokeObjectURL(variant.imagePreview)
         }
       })
+      bundles.forEach((bundle) => {
+        if (bundle.imagePreview) {
+          URL.revokeObjectURL(bundle.imagePreview)
+        }
+      })
     }
-  }, [variants])
+  }, [bundles, variants])
 
   useEffect(() => {
     if (form.type === 'variant' && variants.length === 0) {
@@ -1401,6 +1406,41 @@ export default function ProductForm({
     )
   }
 
+  const handleBundleImageChange = (index: number, file: File | null) => {
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== index) return bundle
+        if (bundle.imagePreview) {
+          URL.revokeObjectURL(bundle.imagePreview)
+        }
+        return {
+          ...bundle,
+          imageFile: file,
+          imagePreview: file ? URL.createObjectURL(file) : null,
+          removeImage: false,
+        }
+      }),
+    )
+  }
+
+  const handleBundleImageRemove = (index: number) => {
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== index) return bundle
+        if (bundle.imagePreview) {
+          URL.revokeObjectURL(bundle.imagePreview)
+        }
+        return {
+          ...bundle,
+          imageFile: null,
+          imagePreview: null,
+          removeImage: true,
+          imageUrl: null,
+        }
+      }),
+    )
+  }
+
   const handleVariantReorder = (index: number, direction: 'up' | 'down') => {
     setVariants((prev) => {
       const next = [...prev]
@@ -1437,6 +1477,9 @@ export default function ProductForm({
   }
 
   const closeBundleModal = () => {
+    if (bundleDraft?.imagePreview) {
+      URL.revokeObjectURL(bundleDraft.imagePreview)
+    }
     setBundleModalOpen(false)
     setBundleDraft(null)
     setBundleEditIndex(null)
@@ -1512,6 +1555,37 @@ export default function ProductForm({
       return {
         ...prev,
         bundleItems,
+      }
+    })
+  }
+
+  const handleBundleDraftImageChange = (file: File | null) => {
+    setBundleDraft((prev) => {
+      if (!prev) return prev
+      if (prev.imagePreview) {
+        URL.revokeObjectURL(prev.imagePreview)
+      }
+      return {
+        ...prev,
+        imageFile: file,
+        imagePreview: file ? URL.createObjectURL(file) : null,
+        removeImage: false,
+      }
+    })
+  }
+
+  const handleBundleDraftImageRemove = () => {
+    setBundleDraft((prev) => {
+      if (!prev) return prev
+      if (prev.imagePreview) {
+        URL.revokeObjectURL(prev.imagePreview)
+      }
+      return {
+        ...prev,
+        imageFile: null,
+        imagePreview: null,
+        removeImage: true,
+        imageUrl: null,
       }
     })
   }
@@ -3417,6 +3491,7 @@ export default function ProductForm({
                     <th className="px-4 py-3 text-left">Start At</th>
                     <th className="px-4 py-3 text-left">End At</th>
                     <th className="px-4 py-3 text-left">Cost Price</th>
+                    <th className="px-4 py-3 text-left">Image</th>
                     <th className="px-4 py-3 text-left">Derived Stock</th>
                     <th className="px-4 py-3 text-left">Active</th>
                     <th className="px-4 py-3 text-left">Actions</th>
@@ -3448,6 +3523,43 @@ export default function ProductForm({
                         </td>
                         <td className="px-4 py-3 text-gray-700">
                           {bundle.costPrice ? `RM ${bundle.costPrice}` : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            {bundle.imagePreview || bundle.imageUrl ? (
+                              <img
+                                src={bundle.imagePreview ?? bundle.imageUrl ?? ''}
+                                alt={bundle.name}
+                                className="h-10 w-10 rounded border border-gray-200 object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 items-center justify-center rounded border border-dashed border-gray-300 text-[10px] text-gray-400">
+                                No image
+                              </div>
+                            )}
+                            <div className="flex flex-col gap-2">
+                              <label className="cursor-pointer rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(event) =>
+                                    handleBundleImageChange(index, event.target.files?.[0] ?? null)
+                                  }
+                                />
+                                Upload
+                              </label>
+                              {(bundle.imagePreview || bundle.imageUrl) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleBundleImageRemove(index)}
+                                  className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-gray-700">
                           {derivedQty ?? '∞'}
@@ -3617,6 +3729,47 @@ export default function ProductForm({
             </div>
 
             <div className="mt-6 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-dashed border-gray-200 bg-white p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-gray-900">Bundle Image</p>
+                  <p className="text-xs text-gray-500">Optional image for this bundle option.</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  {bundleDraft.imagePreview || bundleDraft.imageUrl ? (
+                    <img
+                      src={bundleDraft.imagePreview ?? bundleDraft.imageUrl ?? ''}
+                      alt={bundleDraft.name || 'Bundle image'}
+                      className="h-20 w-20 rounded border border-gray-200 object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-20 w-20 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
+                      No image
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <label className="cursor-pointer rounded border border-gray-300 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) =>
+                          handleBundleDraftImageChange(event.target.files?.[0] ?? null)
+                        }
+                      />
+                      Upload Image
+                    </label>
+                    {(bundleDraft.imagePreview || bundleDraft.imageUrl) && (
+                      <button
+                        type="button"
+                        onClick={handleBundleDraftImageRemove}
+                        className="rounded border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Bundle Components</p>
