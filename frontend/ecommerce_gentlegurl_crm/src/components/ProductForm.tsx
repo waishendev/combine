@@ -3219,7 +3219,7 @@ export default function ProductForm({
 
       {form.type === 'variant' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between pb-2 border-b border-gray-100">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Variants</h3>
               <p className="text-sm text-gray-500 mt-1">Manage variant options, pricing, and stock.</p>
@@ -3227,7 +3227,7 @@ export default function ProductForm({
             <button
               type="button"
               onClick={handleAddVariant}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 md:w-auto w-full"
             >
               <i className="fa-solid fa-plus" />
               Add Variant
@@ -3540,7 +3540,7 @@ export default function ProductForm({
 
       {form.type === 'variant' && showBundles && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between pb-2 border-b border-gray-100">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Bundles</h3>
               <p className="text-sm text-gray-500 mt-1">
@@ -3550,7 +3550,7 @@ export default function ProductForm({
             <button
               type="button"
               onClick={handleAddBundle}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 md:w-auto w-full"
             >
               <i className="fa-solid fa-plus" />
               Add Bundle
@@ -3839,7 +3839,7 @@ export default function ProductForm({
                     </div>
 
                     <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                           <p className="text-sm font-semibold text-gray-900">Bundle Components</p>
                           <p className="text-xs text-gray-500">
@@ -3849,7 +3849,7 @@ export default function ProductForm({
                         <button
                           type="button"
                           onClick={() => handleAddBundleItem(index)}
-                          className="inline-flex items-center gap-2 rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                          className="inline-flex items-center justify-center gap-2 rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 md:w-auto w-full"
                         >
                           <i className="fa-solid fa-plus" />
                           Add component

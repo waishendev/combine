@@ -480,7 +480,7 @@ export default function RewardVoucherCreateModal({
               >
                 Minimum Order Amount <span className="text-red-500">*</span>
               </label>
-              <p className="text-xs text-gray-500">Min spend is checked on eligible subtotal only.</p>
+              {/* <p className="text-xs text-gray-500">Min spend is checked on eligible subtotal only.</p> */}
               <input
                 id="minOrderAmount"
                 name="minOrderAmount"
