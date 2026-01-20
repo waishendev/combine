@@ -128,13 +128,13 @@ export function RewardRedeemPanel({ productId, slug, fallbackPoints, isRewardOnl
             <p className="mt-1 text-xs text-[color:var(--text-muted)]">Stock left: {stock}</p>
           )}
         </div>
-        {loadingReward ? (
+        {/* {loadingReward ? (
           <div className="h-10 w-24 animate-pulse rounded-full bg-[var(--card)]/70" />
         ) : (
           <span className="rounded-full bg-[var(--card)] px-3 py-1 text-xs font-semibold text-[var(--accent-strong)]">
             {requiredPoints != null ? `${requiredPoints.toLocaleString()} pts needed` : "Reward available"}
           </span>
-        )}
+        )} */}
       </div>
 
       {claimed && (
