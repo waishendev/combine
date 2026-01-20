@@ -382,18 +382,21 @@ export default function ProductDetailClient({
           <div className="space-y-3">
             <h1 className="text-2xl font-semibold">{product.name}</h1>
 
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <div className="flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-white px-3 py-1">
+            <div className="flex flex-wrap items-center gap-3 text-sm text-[color:var(--text-muted)]">
+              <div className="flex items-center gap-2">
                 <span className="font-semibold text-[var(--foreground)]">
                   {avgRating.toFixed(1)}
                 </span>
                 <RatingStars value={avgRating} size="sm" />
-                <span className="text-xs text-[color:var(--text-muted)]">{ratingLabel}</span>
+                <span className="text-xs">{ratingLabel}</span>
               </div>
               {!isRewardOnly && (
-                <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-                  Sold {soldCount}
-                </span>
+                <>
+                  <span className="h-5 w-px bg-[var(--card-border)]" aria-hidden="true" />
+                  <span className="text-xs font-semibold text-[var(--accent-strong)]">
+                    Sold {soldCount}
+                  </span>
+                </>
               )}
               {isRewardOnly && (
                 <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
@@ -413,8 +416,7 @@ export default function ProductDetailClient({
                   {formatPromoEndAt(saleEndAt)}
                 </p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
-                <span>ENDS IN</span>
+              <div className="inline-flex items-center rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
                 <span className="font-mono text-sm text-[var(--foreground)]">
                   {countdownLabel}
                 </span>
@@ -424,7 +426,7 @@ export default function ProductDetailClient({
 
           {!isRewardOnly && (
             <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[color:var(--text-muted)]">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
                 {pricePresentation.label}
               </p>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
