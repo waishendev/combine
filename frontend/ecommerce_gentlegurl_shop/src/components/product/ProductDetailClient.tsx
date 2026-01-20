@@ -7,6 +7,7 @@ import { WishlistToggleButton } from "@/components/wishlist/WishlistToggleButton
 import { ProductReviewsSection } from "@/components/product/ProductReviewsSection";
 import { RewardRedeemPanel } from "@/components/product/RewardRedeemPanel";
 import { ProductGallery } from "@/components/product/ProductGallery";
+import { RatingStars } from "@/components/reviews/RatingStars";
 import { buildProductGalleryMedia, getVideoPoster, type ProductMediaItem } from "@/lib/productMedia";
 import { normalizeImageUrl } from "@/lib/imageUrl";
 import type { ReviewSettings } from "@/lib/types/reviews";
@@ -312,6 +313,47 @@ export default function ProductDetailClient({
   );
   const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
 
+  const reviewSummary =
+    reviewsData && typeof reviewsData === "object" && "summary" in (reviewsData as Record<string, unknown>)
+      ? (reviewsData as { summary?: { avg_rating?: number; count?: number } }).summary ?? null
+      : null;
+  const avgRating = typeof reviewSummary?.avg_rating === "number" ? reviewSummary.avg_rating : 0;
+  const ratingCount = typeof reviewSummary?.count === "number" ? reviewSummary.count : 0;
+  const ratingLabel = ratingCount > 0 ? `${ratingCount} Ratings` : "No ratings yet";
+
+  const pricePresentation = (() => {
+    if (variantPriceRange && !selectedVariant) {
+      if (variantSaleRange) {
+        return {
+          label: "Discount price",
+          primary: `RM ${variantSaleRange}`,
+          secondary: `RM ${variantPriceRange}`,
+          badge: variantDiscountPercent !== null ? `UP TO -${variantDiscountPercent}%` : null,
+        };
+      }
+      return {
+        label: "Price",
+        primary: `RM ${variantPriceRange}`,
+        secondary: null,
+        badge: null,
+      };
+    }
+    if (displaySalePrice) {
+      return {
+        label: "Discount price",
+        primary: `RM ${displaySalePrice}`,
+        secondary: `RM ${displayPrice}`,
+        badge: selectedDiscountPercent !== null ? `-${selectedDiscountPercent}%` : null,
+      };
+    }
+    return {
+      label: "Price",
+      primary: `RM ${displayPrice}`,
+      secondary: null,
+      badge: null,
+    };
+  })();
+
   const relatedProducts = Array.isArray(product.related_products)
     ? product.related_products
     : [];
@@ -336,73 +378,72 @@ export default function ProductDetailClient({
           </div>
         </div>
 
-        <div className="space-y-4">
-          <h1 className="text-2xl font-semibold">{product.name}</h1>
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <h1 className="text-2xl font-semibold">{product.name}</h1>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {!isRewardOnly && (
-              <div className="flex flex-wrap items-center gap-3">
-                {variantPriceRange && !selectedVariant ? (
-                  variantSaleRange ? (
-                    <>
-                      <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
-                        RM {variantPriceRange}
-                      </span>
-                      <span className="text-xl font-bold text-[var(--accent-strong)]">
-                        RM {variantSaleRange}
-                      </span>
-                      {variantDiscountPercent !== null && (
-                        <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
-                          UP TO -{variantDiscountPercent}%
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-xl font-bold text-[var(--accent-strong)]">
-                      RM {variantPriceRange}
-                    </span>
-                  )
-                ) : displaySalePrice ? (
-                  <>
-                    <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
-                      RM {displayPrice}
-                    </span>
-                    <span className="text-xl font-bold text-[var(--accent-strong)]">
-                      RM {displaySalePrice}
-                    </span>
-                    {selectedDiscountPercent !== null && (
-                      <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
-                        -{selectedDiscountPercent}%
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-xl font-bold text-[var(--accent-strong)]">
-                    RM {displayPrice}
-                  </span>
-                )}
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <div className="flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-white px-3 py-1">
+                <span className="font-semibold text-[var(--foreground)]">
+                  {avgRating.toFixed(1)}
+                </span>
+                <RatingStars value={avgRating} size="sm" />
+                <span className="text-xs text-[color:var(--text-muted)]">{ratingLabel}</span>
               </div>
-            )}
-            {!isRewardOnly && !isVariantProduct && (
-              <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-                Sold {soldCount}
-              </span>
-            )}
-            {isRewardOnly && (
-              <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
-                Reward Item
-              </span>
-            )}
+              {!isRewardOnly && (
+                <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
+                  Sold {soldCount}
+                </span>
+              )}
+              {isRewardOnly && (
+                <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
+                  Reward Item
+                </span>
+              )}
+            </div>
           </div>
 
           {displayIsOnSale && saleEndAt && countdownLabel && (
-            <div className="rounded-lg border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/40 px-4 py-2 text-sm">
-              <p className="font-semibold text-[color:var(--status-warning)]">
-                Promotion ends at {formatPromoEndAt(saleEndAt)}
+            <div className="grid gap-3 rounded-xl border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/40 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--status-warning)]">
+                  Promotion ends at
+                </p>
+                <p className="mt-1 font-semibold text-[var(--foreground)]">
+                  {formatPromoEndAt(saleEndAt)}
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
+                <span>ENDS IN</span>
+                <span className="font-mono text-sm text-[var(--foreground)]">
+                  {countdownLabel}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {!isRewardOnly && (
+            <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[color:var(--text-muted)]">
+                {pricePresentation.label}
               </p>
-              <p className="text-xs text-[color:var(--text-muted)]">
-                Ends in {countdownLabel}
-              </p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-baseline gap-3">
+                  <span className="text-3xl font-bold text-[var(--accent-strong)]">
+                    {pricePresentation.primary}
+                  </span>
+                  {pricePresentation.secondary && (
+                    <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
+                      {pricePresentation.secondary}
+                    </span>
+                  )}
+                </div>
+                {pricePresentation.badge && (
+                  <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
+                    {pricePresentation.badge}
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
@@ -452,27 +493,22 @@ export default function ProductDetailClient({
             </div>
           )}
 
-          {showStock && stockValue !== null && (
-            <div className="text-sm text-[color:var(--text-muted)]">
-              <p>Stock left: {stockValue}</p>
-              {stockValue <= 0 && (
-                <p className="mt-1 font-semibold text-[color:var(--status-error)]">Out of stock</p>
-              )}
+          {product.description && (
+            <div className="prose max-w-none text-sm text-[color:var(--text-muted)]">
+              {product.description}
             </div>
           )}
 
           {isRewardOnly && product.stock != null && (
             <div className="text-sm text-[color:var(--text-muted)]">
-              <p>Stock left: {product.stock}</p>
+              <p className="font-semibold text-[var(--foreground)]">
+                Pieces available: {product.stock}
+              </p>
               {product.stock <= 0 && (
-                <p className="mt-1 font-semibold text-[color:var(--status-error)]">Out of stock</p>
+                <p className="mt-1 font-semibold text-[color:var(--status-error)]">
+                  Out of stock
+                </p>
               )}
-            </div>
-          )}
-
-          {product.description && (
-            <div className="prose max-w-none text-sm text-[color:var(--text-muted)]">
-              {product.description}
             </div>
           )}
 
@@ -488,7 +524,7 @@ export default function ProductDetailClient({
             <div className="flex flex-wrap items-center gap-3">
               <AddToCartButton
                 productId={product.id}
-                stock={stockForCart}
+                stock={showStock ? stockForCart : null}
                 productVariantId={selectedVariantId}
                 requiresVariant={product.type === "variant"}
               />

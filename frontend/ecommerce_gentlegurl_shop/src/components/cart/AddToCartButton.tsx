@@ -58,9 +58,9 @@ export default function AddToCartButton({
   };
 
   return (
-    <div className="mt-6 flex flex-col gap-2">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center rounded border">
+    <div className="mt-6 flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center rounded border bg-white">
           <button
             type="button"
             className="px-3 py-2 text-sm"
@@ -105,20 +105,31 @@ export default function AddToCartButton({
             +
           </button>
         </div>
-
-        <button
-          type="button"
-          onClick={handleAdd}
-          disabled={
-            isSubmitting ||
-            (requiresVariant && !productVariantId) ||
-            (maxStock !== null && maxStock <= 0)
-          }
-          className="rounded bg-[var(--accent)] px-6 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isSubmitting ? "Adding..." : "Add to Cart"}
-        </button>
+        {maxStock !== null && (
+          <div className="text-xs text-[color:var(--text-muted)]">
+            <p className="font-semibold text-[var(--foreground)]">
+              Pieces available: {maxStock}
+            </p>
+            {maxStock <= 0 && (
+              <p className="mt-1 font-semibold text-[color:var(--status-error)]">
+                Out of stock
+              </p>
+            )}
+          </div>
+        )}
       </div>
+      <button
+        type="button"
+        onClick={handleAdd}
+        disabled={
+          isSubmitting ||
+          (requiresVariant && !productVariantId) ||
+          (maxStock !== null && maxStock <= 0)
+        }
+        className="w-full rounded bg-[var(--accent)] px-6 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-fit"
+      >
+        {isSubmitting ? "Adding..." : "Add to Cart"}
+      </button>
       {notice && <p className="text-xs font-medium text-[color:var(--status-warning)]">{notice}</p>}
     </div>
   );
