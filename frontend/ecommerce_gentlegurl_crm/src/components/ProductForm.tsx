@@ -3259,7 +3259,6 @@ export default function ProductForm({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Variant #{index + 1}</p>
-                  <p className="text-xs text-gray-500">Sort order: {index + 1}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -3288,7 +3287,7 @@ export default function ProductForm({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-gray-700">Variant Image</label>
@@ -3370,7 +3369,7 @@ export default function ProductForm({
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:col-span-2">
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">Name</label>
                     <input
