@@ -168,28 +168,43 @@ export function ProductReviewsSection({
         </div>
       )}
 
-      {reviewsEnabled && items.length > 0 && (
-        <div className="space-y-3">
-          {items.map((review) => (
-            <div key={review.id} className="rounded-xl border border-[var(--muted)] bg-[var(--review-background)] p-4 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <RatingStars value={review.rating} size="sm" />
-                  {review.title && <p className="text-sm font-semibold text-[var(--foreground)]">{review.title}</p>}
-                  {review.variant && (review.variant.name || review.variant.sku) && (
-                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--muted)] bg-[var(--muted)]/40 px-2.5 py-1 text-xs font-semibold text-[var(--foreground)]/80">
-                      <span>Variant:</span>
-                      <span>{review.variant.name ?? "—"}</span>
-                      {review.variant.sku && <span className="text-[var(--foreground)]/60">(SKU: {review.variant.sku})</span>}
+      {reviewsEnabled && (
+        <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+          {items.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {items.map((review) => (
+                <div
+                  key={review.id}
+                  className="flex flex-col justify-between gap-3 rounded-xl border border-[var(--muted)] bg-[var(--review-background)] p-4 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex-1 space-y-1">
+                      <RatingStars value={review.rating} size="sm" />
+                      {review.title && <p className="text-sm font-semibold text-[var(--foreground)]">{review.title}</p>}
+                      <p className="text-sm text-[var(--foreground)]/80">{review.body}</p>
+                      <p className="text-xs font-semibold text-[var(--foreground)]/70">— {review.customer_name}</p>
                     </div>
-                  )}
+                    <div className="space-y-2 text-right text-xs text-[var(--foreground)]/60">
+                      {review.variant && (review.variant.name || review.variant.sku) && (
+                        <div className="rounded-lg border border-[var(--muted)] bg-[var(--muted)]/40 px-2 py-1 text-[var(--foreground)]/80">
+                          <span className="font-semibold">Variant:</span>{" "}
+                          <span>{review.variant.name ?? "—"}</span>
+                          {review.variant.sku && (
+                            <span className="block text-[var(--foreground)]/60">(SKU: {review.variant.sku})</span>
+                          )}
+                        </div>
+                      )}
+                      <p>{formatDate(review.created_at)}</p>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs text-[var(--foreground)]/60">{formatDate(review.created_at)}</p>
-              </div>
-              <p className="mt-2 text-sm text-[var(--foreground)]/80">{review.body}</p>
-              <p className="mt-1 text-xs font-semibold text-[var(--foreground)]/70">— {review.customer_name}</p>
+              ))}
             </div>
-          ))}
+          ) : (
+            <div className="rounded-xl border border-dashed border-[var(--muted)] bg-[var(--review-background)] p-4 text-sm text-[var(--foreground)]/70">
+              No reviews yet.
+            </div>
+          )}
         </div>
       )}
 
@@ -201,7 +216,7 @@ export function ProductReviewsSection({
               You submitted a review on {formatDate(eligibility.my_review.created_at)}.
             </p>
           )}
-          {eligibilityMessage && (
+          {eligibilityMessage && !eligibility?.can_review && (
             <p className="mt-2 text-sm text-[var(--foreground)]/70">
               {eligibilityMessage}{" "}
               {eligibility?.reason === "NOT_AUTHENTICATED" && (
