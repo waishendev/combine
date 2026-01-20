@@ -8,9 +8,9 @@ import { ProductReviewsSection } from "@/components/product/ProductReviewsSectio
 import { RewardRedeemPanel } from "@/components/product/RewardRedeemPanel";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { RatingStars } from "@/components/reviews/RatingStars";
-import { buildProductGalleryMedia, getVideoPoster, type ProductMediaItem } from "@/lib/productMedia";
+import { buildProductGalleryMedia, getVideoPoster, type ProductMediaItem, type ProductMediaSource } from "@/lib/productMedia";
 import { normalizeImageUrl } from "@/lib/imageUrl";
-import type { ReviewSettings } from "@/lib/types/reviews";
+import type { ProductReviewsData, ReviewEligibility, ReviewSettings } from "@/lib/types/reviews";
 
 export type VariantItem = {
   id: number;
@@ -100,6 +100,10 @@ export default function ProductDetailClient({
     return Number.isFinite(parsed) ? parsed : null;
   };
 
+  const normalizedRewardPoints = typeof rewardPoints === "string" 
+    ? (Number.isFinite(Number(rewardPoints)) ? Number(rewardPoints) : null)
+    : rewardPoints ?? null;
+
   const formatAmount = (value: number) => value.toFixed(2);
 
   const parseDateTime = (value: string | null | undefined) => {
@@ -150,7 +154,7 @@ export default function ProductDetailClient({
     ? normalizeImageUrl(selectedVariant.image_url)
     : null;
 
-  const baseGalleryMedia = useMemo(() => buildProductGalleryMedia(product), [product]);
+  const baseGalleryMedia = useMemo(() => buildProductGalleryMedia(product as ProductMediaSource), [product]);
   const galleryMedia = useMemo(() => {
     const variantImageItems = variants
       .map((variant) => {
@@ -167,7 +171,7 @@ export default function ProductDetailClient({
             } satisfies ProductMediaItem)
           : null;
       })
-      .filter((item): item is ProductMediaItem => Boolean(item?.url));
+      .filter((item): item is NonNullable<typeof item> => item !== null && Boolean(item.url)) as ProductMediaItem[];
 
     const seen = new Set(baseGalleryMedia.map((item) => item.url));
     const merged = [...baseGalleryMedia];
@@ -195,7 +199,7 @@ export default function ProductDetailClient({
     return [variantMedia, ...merged];
   }, [activeImageUrl, baseGalleryMedia, selectedVariant?.id, variants]);
   const videoItem = galleryMedia.find((item) => item.type === "video");
-  const videoPoster = videoItem ? getVideoPoster(product, videoItem) : null;
+  const videoPoster = videoItem ? getVideoPoster(product as ProductMediaSource, videoItem) : null;
   const initialIndex = galleryMedia.findIndex((item) => item.type === "video");
 
   const baseOriginalPrice = parseAmount(
@@ -373,7 +377,7 @@ export default function ProductDetailClient({
           <div className="absolute right-3 top-3 z-10">
             <WishlistToggleButton
               productId={product.id}
-              initialIsWishlisted={product.is_in_wishlist ?? false}
+              initialIsWishlisted={Boolean(product.is_in_wishlist)}
             />
           </div>
         </div>
@@ -516,7 +520,7 @@ export default function ProductDetailClient({
             <RewardRedeemPanel
               productId={product.id}
               slug={slug}
-              fallbackPoints={rewardPoints}
+              fallbackPoints={normalizedRewardPoints}
               isRewardOnly={isRewardOnly}
               stock={product.stock ?? null}
             />
@@ -535,8 +539,8 @@ export default function ProductDetailClient({
 
       <ProductReviewsSection
         slug={slug}
-        initialReviews={reviewsData}
-        initialEligibility={eligibility}
+        initialReviews={reviewsData as ProductReviewsData | null}
+        initialEligibility={eligibility as ReviewEligibility | null}
         settings={product.review_settings as ReviewSettings | undefined}
       />
 

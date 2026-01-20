@@ -108,11 +108,44 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
     (process.env.NEXT_PUBLIC_PRODUCT_DETAILS_VIEW_ARROWS || "").toLowerCase(),
   );
 
+  // Helper function to normalize original_price if it's a range object
+  const normalizeOriginalPrice = (
+    originalPrice: number | string | { min: number; max: number } | null | undefined
+  ): number | string | null => {
+    if (originalPrice === null || originalPrice === undefined) {
+      return null;
+    }
+    if (typeof originalPrice === "object" && "min" in originalPrice && "max" in originalPrice) {
+      // Convert range object to string representation
+      return originalPrice.min === originalPrice.max 
+        ? String(originalPrice.min) 
+        : `${originalPrice.min}-${originalPrice.max}`;
+    }
+    return originalPrice;
+  };
+
+  // Normalize product original_price
+  const normalizedOriginalPrice = normalizeOriginalPrice(
+    (product as { original_price?: number | string | { min: number; max: number } | null }).original_price
+  );
+
+  // Normalize variants original_price
+  const normalizedVariants = Array.isArray(product.variants)
+    ? product.variants.map((variant) => ({
+        ...variant,
+        original_price: normalizeOriginalPrice(
+          (variant as { original_price?: number | string | { min: number; max: number } | null }).original_price
+        ),
+      }))
+    : undefined;
+
   return (
     <ProductDetailClient
       slug={productSlug}
       product={{
         ...product,
+        original_price: normalizedOriginalPrice,
+        variants: normalizedVariants,
         related_products: Array.isArray(product.related_products)
           ? (product.related_products as Array<{
               id: number | string;

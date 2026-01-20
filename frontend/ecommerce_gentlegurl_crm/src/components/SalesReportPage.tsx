@@ -738,7 +738,9 @@ export default function SalesReportPage({
                   ? row.category_name
                   : productDisplay
                   ? productDisplay.displayName
-                  : row.customer_name
+                  : 'customer_name' in row
+                  ? row.customer_name
+                  : ''
               const baseName = productDisplay?.baseName ?? null
               const sku = productDisplay?.sku ?? null
               const variantName = productDisplay?.variantName ?? null
