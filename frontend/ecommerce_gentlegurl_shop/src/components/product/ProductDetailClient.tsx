@@ -388,7 +388,6 @@ export default function ProductDetailClient({
                   {avgRating.toFixed(1)}
                 </span>
                 <RatingStars value={avgRating} size="sm" />
-                <span className="text-xs">{ratingLabel}</span>
               </div>
               {!isRewardOnly && (
                 <>
@@ -406,46 +405,44 @@ export default function ProductDetailClient({
             </div>
           </div>
 
-          {displayIsOnSale && saleEndAt && countdownLabel && (
-            <div className="grid gap-3 rounded-2xl border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/50 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:items-center">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--status-warning)]">
-                  Promotion ends at
-                </p>
-                <p className="mt-1 text-base font-semibold text-[var(--foreground)]">
-                  {formatPromoEndAt(saleEndAt)}
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
-                <span>ENDS IN</span>
-                <span className="font-mono text-sm text-[var(--foreground)]">
-                  {countdownLabel}
-                </span>
-              </div>
-            </div>
-          )}
-
           {!isRewardOnly && (
-            <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
-                {pricePresentation.label}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-baseline gap-3">
-                  <span className="text-3xl font-bold text-[var(--accent-strong)]">
-                    {pricePresentation.primary}
-                  </span>
-                  {pricePresentation.secondary && (
-                    <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
-                      {pricePresentation.secondary}
+            <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]/70 overflow-hidden">
+              {displayIsOnSale && saleEndAt && countdownLabel && (
+                <div className="grid gap-3 border-b border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/40 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:items-center">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--status-warning)]">
+                      Promotion ends at
+                    </p>
+                    <p className="mt-1 font-semibold text-[var(--foreground)]">
+                      {formatPromoEndAt(saleEndAt)}
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
+                    <span>ENDS IN</span>
+                    <span className="font-mono text-sm text-[var(--foreground)]">
+                      {countdownLabel}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-baseline gap-3">
+                    <span className="text-3xl font-bold text-[var(--accent-strong)]">
+                      {pricePresentation.primary}
+                    </span>
+                    {pricePresentation.secondary && (
+                      <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
+                        {pricePresentation.secondary}
+                      </span>
+                    )}
+                  </div>
+                  {pricePresentation.badge && (
+                    <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
+                      {pricePresentation.badge}
                     </span>
                   )}
                 </div>
-                {pricePresentation.badge && (
-                  <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
-                    {pricePresentation.badge}
-                  </span>
-                )}
               </div>
             </div>
           )}
@@ -502,7 +499,7 @@ export default function ProductDetailClient({
             </div>
           )}
 
-          {isRewardOnly && product.stock != null && (
+          {/* {!isRewardOnly && product.stock != null && (
             <div className="text-sm text-[color:var(--text-muted)]">
               <p className="font-semibold text-[var(--foreground)]">
                 Pieces available: {product.stock}
@@ -513,7 +510,7 @@ export default function ProductDetailClient({
                 </p>
               )}
             </div>
-          )}
+          )} */}
 
           {isRewardOnly || isRewardContext ? (
             <RewardRedeemPanel

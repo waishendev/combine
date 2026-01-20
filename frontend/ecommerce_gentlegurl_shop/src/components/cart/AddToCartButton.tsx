@@ -58,7 +58,7 @@ export default function AddToCartButton({
   };
 
   return (
-    <div className="mt-6 flex flex-col gap-3">
+    <div className="mt-2 flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center rounded border bg-white">
           <button
