@@ -73,6 +73,7 @@ type ProductDetailClientProps = {
   eligibility: unknown;
   isRewardContext: boolean;
   rewardPoints: number | string | null;
+  showGalleryArrows: boolean;
 };
 
 export default function ProductDetailClient({
@@ -82,6 +83,7 @@ export default function ProductDetailClient({
   eligibility,
   isRewardContext,
   rewardPoints,
+  showGalleryArrows,
 }: ProductDetailClientProps) {
   const isRewardOnly = product.is_reward_only === true;
   const isVariantProduct = product.type === "variant";
@@ -323,6 +325,7 @@ export default function ProductDetailClient({
             videoPoster={videoPoster}
             alt={product.name}
             activeUrl={activeImageUrl}
+            showArrows={showGalleryArrows}
           />
           <div className="absolute right-3 top-3 z-10">
             <WishlistToggleButton

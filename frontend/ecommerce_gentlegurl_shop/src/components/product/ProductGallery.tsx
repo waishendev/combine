@@ -9,9 +9,17 @@ type ProductGalleryProps = {
   videoPoster?: string | null;
   alt: string;
   activeUrl?: string | null;
+  showArrows?: boolean;
 };
 
-export function ProductGallery({ media, initialIndex = 0, videoPoster, alt, activeUrl }: ProductGalleryProps) {
+export function ProductGallery({
+  media,
+  initialIndex = 0,
+  videoPoster,
+  alt,
+  activeUrl,
+  showArrows = false,
+}: ProductGalleryProps) {
   const safeMedia = media.filter((item) => item.url);
   const [activeIndex, setActiveIndex] = useState(
     initialIndex >= 0 && initialIndex < safeMedia.length ? initialIndex : 0,
@@ -45,6 +53,17 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt, acti
   const poster = activeMedia.thumbnail_url
     ? getImageSrc(activeMedia.thumbnail_url)
     : videoPoster || undefined;
+  const canNavigate = showArrows && safeMedia.length > 1;
+
+  const handlePrev = () => {
+    if (!safeMedia.length) return;
+    setActiveIndex((prev) => (prev - 1 + safeMedia.length) % safeMedia.length);
+  };
+
+  const handleNext = () => {
+    if (!safeMedia.length) return;
+    setActiveIndex((prev) => (prev + 1) % safeMedia.length);
+  };
 
   useEffect(() => {
     if (!activeUrl) return;
@@ -160,6 +179,26 @@ export function ProductGallery({ media, initialIndex = 0, videoPoster, alt, acti
             className="h-full w-full object-cover"
             onError={() => handleImageError(activeMedia.url ?? "")}
           />
+        )}
+        {canNavigate && (
+          <>
+            <button
+              type="button"
+              onClick={handlePrev}
+              aria-label="Previous media"
+              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full border border-white/40 bg-black/50 p-2 text-white transition hover:bg-black/70"
+            >
+              <i className="fa-solid fa-chevron-left" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              aria-label="Next media"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-white/40 bg-black/50 p-2 text-white transition hover:bg-black/70"
+            >
+              <i className="fa-solid fa-chevron-right" />
+            </button>
+          </>
         )}
       </div>
 
