@@ -25,7 +25,13 @@ const reasonMessages: Record<string, string> = {
 function formatDate(dateString?: string | null) {
   if (!dateString) return "";
   try {
-    return new Date(dateString).toLocaleDateString();
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
   } catch {
     return dateString;
   }
@@ -129,13 +135,13 @@ export function ProductReviewsSection({
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-[var(--foreground)]">Reviews</h2>
-          {reviewsEnabled ? (
+          {/* {reviewsEnabled ? (
             <p className="text-sm text-[var(--foreground)]/70">
               {summary?.count ? `${summary.avg_rating} average based on ${summary.count} review(s)` : "No reviews yet."}
             </p>
           ) : (
             <p className="text-sm text-[var(--foreground)]/70">Reviews are disabled.</p>
-          )}
+          )} */}
         </div>
         {reviewsEnabled && summary ? (
           <div className="flex items-center gap-2 rounded-xl border border-[var(--muted)] px-3 py-2">
@@ -166,120 +172,129 @@ export function ProductReviewsSection({
             </div>
           </div>
 
-          <div className="rounded-xl bg-[var(--muted)]/40 p-4">
-            <p className="text-sm font-semibold text-[var(--foreground)]">Write a Review</p>
-            {eligibility?.my_review && (
-              <p className="mt-1 text-xs text-[var(--foreground)]/70">
-                You submitted a review on {formatDate(eligibility.my_review.created_at)}.
-              </p>
-            )}
-            {eligibilityMessage && (
-              <p className="mt-2 text-sm text-[var(--foreground)]/70">
-                {eligibilityMessage}{" "}
-                {eligibility?.reason === "NOT_AUTHENTICATED" && (
-                  <Link href="/login" className="text-[var(--accent)] underline">
-                    Sign in
-                  </Link>
-                )}
-              </p>
-            )}
-
-            {reviewsEnabled && eligibility?.can_review && (
-              <form onSubmit={onSubmit} className="mt-4 space-y-3">
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                    Rating
-                  </label>
-                  <div className="mt-1 flex items-center gap-4">
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <button
-                          key={index}
-                          type="button"
-                          onClick={() => setRating(index + 1)}
-                          disabled={submitting}
-                          className={`text-3xl transition hover:scale-110 disabled:cursor-not-allowed disabled:opacity-70 ${
-                            index < rating ? "text-[color:var(--status-warning)]" : "text-[var(--muted)]"
-                          }`}
-                        >
-                          ★
-                        </button>
-                      ))}
+          <div className="rounded-xl bg-[var(--muted)]/40 p-4 max-h-[300px] overflow-y-auto">    
+          {reviewsEnabled && items.length > 0 && (
+            <div className="space-y-3">
+              {items.map((review) => (
+                <div key={review.id} className="rounded-xl border border-[var(--muted)] bg-[var(--review-background)] p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-[var(--foreground)]/70 mb-2">{review.customer_name}</p>
+                      <RatingStars value={review.rating} size="sm" />
+                      <p className="text-xs text-[var(--foreground)]/60 mt-2">
+                      {formatDate(review.created_at)}
+                      {review.variant && (review.variant.name || review.variant.sku) && (
+                        <span> | Variation: {review.variant.name ?? "—"}</span>
+                      )}
+                    </p>
+                      {/* {review.title && <p className="text-sm font-semibold text-[var(--foreground)]">{review.title}</p>} */}
                     </div>
-                    <span className="text-sm font-semibold text-[color:var(--text-muted)]">{rating} out of 5</span>
+
                   </div>
+                  <p className="mt-2 text-sm text-[var(--foreground)]/80">{review.body}</p>
+
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                    Title (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={title}
-                    maxLength={120}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
-                    placeholder="Summarize your review"
-                    disabled={submitting}
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                    Review
-                  </label>
-                  <textarea
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    className="h-28 w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
-                    placeholder="Share your experience with this product"
-                    maxLength={2000}
-                    required
-                    disabled={submitting}
-                  />
-                </div>
-
-                {error && <p className="text-sm text-[color:var(--status-error)]">{error}</p>}
-                {success && <p className="text-sm text-[color:var(--status-success)]">{success}</p>}
-
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
-                  disabled={submitting}
-                >
-                  {submitting ? "Submitting..." : "Submit Review"}
-                </button>
-              </form>
-            )}
+              ))}
+            </div>
+          )}
           </div>
         </div>
       )}
 
-      {reviewsEnabled && items.length > 0 && (
-        <div className="space-y-3">
-          {items.map((review) => (
-            <div key={review.id} className="rounded-xl border border-[var(--muted)] bg-[var(--review-background)] p-4 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <RatingStars value={review.rating} size="sm" />
-                  {review.title && <p className="text-sm font-semibold text-[var(--foreground)]">{review.title}</p>}
-                  {review.variant && (review.variant.name || review.variant.sku) && (
-                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--muted)] bg-[var(--muted)]/40 px-2.5 py-1 text-xs font-semibold text-[var(--foreground)]/80">
-                      <span>Variant:</span>
-                      <span>{review.variant.name ?? "—"}</span>
-                      {review.variant.sku && <span className="text-[var(--foreground)]/60">(SKU: {review.variant.sku})</span>}
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-[var(--foreground)]/60">{formatDate(review.created_at)}</p>
-              </div>
-              <p className="mt-2 text-sm text-[var(--foreground)]/80">{review.body}</p>
-              <p className="mt-1 text-xs font-semibold text-[var(--foreground)]/70">— {review.customer_name}</p>
-            </div>
-          ))}
-        </div>
+
+
+      {/* <div className="rounded-xl bg-[var(--muted)]/40 p-4">
+      <p className="text-sm font-semibold text-[var(--foreground)]">Write a Review</p>
+      {eligibility?.my_review && (
+      <p className="mt-1 text-xs text-[var(--foreground)]/70">
+      You submitted a review on {formatDate(eligibility.my_review.created_at)}.
+      </p>
       )}
+      {eligibilityMessage && (
+      <p className="mt-2 text-sm text-[var(--foreground)]/70">
+      {eligibilityMessage}{" "}
+      {eligibility?.reason === "NOT_AUTHENTICATED" && (
+      <Link href="/login" className="text-[var(--accent)] underline">
+      Sign in
+      </Link>
+      )}
+      </p>
+      )}
+
+      {reviewsEnabled && eligibility?.can_review && (
+      <form onSubmit={onSubmit} className="mt-4 space-y-3">
+      <div>
+      <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+      Rating
+      </label>
+      <div className="mt-1 flex items-center gap-4">
+      <div className="flex items-center gap-1">
+      {Array.from({ length: 5 }).map((_, index) => (
+      <button
+      key={index}
+      type="button"
+      onClick={() => setRating(index + 1)}
+      disabled={submitting}
+      className={`text-3xl transition hover:scale-110 disabled:cursor-not-allowed disabled:opacity-70 ${
+      index < rating ? "text-[color:var(--status-warning)]" : "text-[var(--muted)]"
+      }`}
+      >
+      ★
+      </button>
+      ))}
+      </div>
+      <span className="text-sm font-semibold text-[color:var(--text-muted)]">{rating} out of 5</span>
+      </div>
+      </div>
+
+      <div className="space-y-1">
+      <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+      Title (optional)
+      </label>
+      <input
+      type="text"
+      value={title}
+      maxLength={120}
+      onChange={(e) => setTitle(e.target.value)}
+      className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+      placeholder="Summarize your review"
+      disabled={submitting}
+      />
+      </div>
+
+      <div className="space-y-1">
+      <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+      Review
+      </label>
+      <textarea
+      value={body}
+      onChange={(e) => setBody(e.target.value)}
+      className="h-28 w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+      placeholder="Share your experience with this product"
+      maxLength={2000}
+      required
+      disabled={submitting}
+      />
+      </div>
+
+      {error && <p className="text-sm text-[color:var(--status-error)]">{error}</p>}
+      {success && <p className="text-sm text-[color:var(--status-success)]">{success}</p>}
+
+      <button
+      type="submit"
+      className="inline-flex items-center justify-center rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
+      disabled={submitting}
+      >
+      {submitting ? "Submitting..." : "Submit Review"}
+      </button>
+      </form>
+      )}
+      </div> */}
+
+
+
+
+
     </section>
   );
 }
