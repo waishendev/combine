@@ -190,12 +190,12 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/voucher',
             requiredPermission: 'ecommerce.vouchers.view',
           },
-          {
-            key: 'voucher-assign-logs',
-            label: 'Voucher Assign Logs',
-            href: '/vouchers/assign-logs',
-            requiredPermission: 'ecommerce.vouchers.assign.logs.view',
-          },
+          // {
+          //   key: 'voucher-assign-logs',
+          //   label: 'Voucher Assign Logs',
+          //   href: '/vouchers/assign-logs',
+          //   requiredPermission: 'ecommerce.vouchers.assign.logs.view',
+          // },
           {
             key: 'rewards',
             label: 'Rewards',
