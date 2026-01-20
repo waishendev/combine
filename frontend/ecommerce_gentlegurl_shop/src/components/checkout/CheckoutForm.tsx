@@ -1252,13 +1252,15 @@ export default function CheckoutForm() {
 
                     <div className="flex-1 space-y-1">
                       <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
-                      <p className="text-xs text-[var(--foreground)]/60">Qty: {item.quantity}</p>
+                      
+                      {item.sku && <p className="text-[11px] text-[var(--foreground)]/50">SKU: {item.sku}</p>}
                       {item.variant_name && (
                         <p className="text-[11px] text-[var(--foreground)]/50">
                           Variant: {item.variant_name}
                         </p>
                       )}
-                      {item.sku && <p className="text-[11px] text-[var(--foreground)]/50">SKU: {item.sku}</p>}
+                      <p className="text-xs text-[var(--foreground)]/60">Qty: {item.quantity}</p>
+
                     </div>
 
                     <div className="space-y-1 text-sm text-right sm:min-w-[140px]">

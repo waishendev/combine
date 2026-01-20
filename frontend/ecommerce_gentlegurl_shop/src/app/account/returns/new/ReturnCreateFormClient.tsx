@@ -187,13 +187,13 @@ export function ReturnCreateFormClient({ order }: ReturnCreateFormClientProps) {
             >
               <div>
                 <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
-                <p className="text-xs text-[var(--foreground)]/70">Ordered qty: {item.quantity}</p>
                 {(item.product_type === "variant" || item.product_variant_id) && (
                   <p className="text-xs text-[var(--foreground)]/60">
                     Variant: {item.variant_name ?? "—"}
                     {item.variant_sku ? ` (${item.variant_sku})` : ""}
                   </p>
                 )}
+                <p className="text-xs text-[var(--foreground)]/70">Ordered qty: {item.quantity}</p>
               </div>
               <div className="flex items-center gap-2 text-sm text-[var(--foreground)]/70">
                 <label htmlFor={`qty-${item.id}`} className="sr-only">

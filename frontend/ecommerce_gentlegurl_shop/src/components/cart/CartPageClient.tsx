@@ -42,6 +42,7 @@ export default function CartPageClient() {
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
   const [quantityNotices, setQuantityNotices] = useState<Record<number, string>>({});
+  const [updatingVariants, setUpdatingVariants] = useState<Set<number>>(new Set());
 
     useEffect(() => {
       // Sync selectedVoucherId with applied voucher, but don't show code in input field
@@ -80,6 +81,21 @@ export default function CartPageClient() {
     }
 
     updateItemQuantity(item.id, nextQty);
+  };
+
+  const handleVariantChange = async (itemId: number, variantId: number) => {
+    setUpdatingVariants((prev) => new Set(prev).add(itemId));
+    try {
+      await updateItemVariant(itemId, variantId);
+    } catch (error) {
+      console.error("Failed to update variant:", error);
+    } finally {
+      setUpdatingVariants((prev) => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
+    }
   };
 
   const handleApplyCodeVoucher = async () => {
@@ -324,11 +340,11 @@ export default function CartPageClient() {
 
                             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
                               {sku && <span>SKU: {sku}</span>}
-                              {item.product_type === "variant" && (
+                              {/* {item.product_type === "variant" && (
                                 <span className={variantLabel ? "" : "text-[color:var(--status-error)]"}>
                                   Variant: {variantLabel ?? "Please select variant"}
                                 </span>
-                              )}
+                              )} */}
                             </div>
                             {hasVariantSelection && (
                               <div className="mt-2">
@@ -337,12 +353,13 @@ export default function CartPageClient() {
                                   onChange={(event) => {
                                     const nextId = Number(event.target.value);
                                     if (!Number.isFinite(nextId)) return;
-                                    updateItemVariant(item.id, nextId);
+                                    handleVariantChange(item.id, nextId);
                                   }}
-                                  className="w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 px-2 py-1 text-xs outline-none"
+                                  disabled={updatingVariants.has(item.id)}
+                                  className="w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 px-2 py-1 text-xs outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                   <option value="" disabled>
-                                    Select variant
+                                    {updatingVariants.has(item.id) ? "Updating..." : "Select variant"}
                                   </option>
                                   {item.available_variants?.map((variant) => {
                                     const isActive = variant.is_active !== false;
@@ -522,12 +539,13 @@ export default function CartPageClient() {
                               onChange={(event) => {
                                 const nextId = Number(event.target.value);
                                 if (!Number.isFinite(nextId)) return;
-                                updateItemVariant(item.id, nextId);
+                                handleVariantChange(item.id, nextId);
                               }}
-                              className="w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 px-2 py-1 text-xs outline-none"
+                              disabled={updatingVariants.has(item.id)}
+                              className="w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 px-2 py-1 text-xs outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               <option value="" disabled>
-                                Select variant
+                                {updatingVariants.has(item.id) ? "Updating..." : "Select variant"}
                               </option>
                               {item.available_variants?.map((variant) => {
                                 const isActive = variant.is_active !== false;

@@ -423,13 +423,13 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                             />
                             <div>
                               <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
-                              <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
                               {shouldShowVariant && (
                                 <p className="text-xs text-[var(--foreground)]/60">
                                   Variant: {variantName}
                                   {variantSkuSuffix}
                                 </p>
                               )}
+                              <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>    
                             </div>
                           </div>
                           {(canReview || isReviewed) && (
@@ -472,13 +472,14 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 />
                 <div className="space-y-0.5">
                   <p className="text-sm font-semibold text-[var(--foreground)]">{modal.item.name}</p>
-                  <p className="text-xs text-[var(--foreground)]/70">Qty: {modal.item.quantity}</p>
                   {(modal.item.product_type === "variant" || modal.item.product_variant_id) && (
                     <p className="text-xs text-[var(--foreground)]/60">
                       Variant: {modal.item.variant_name ?? "—"}
                       {modal.item.variant_sku ? ` (${modal.item.variant_sku})` : ""}
                     </p>
                   )}
+                  <p className="text-xs text-[var(--foreground)]/70">Qty: {modal.item.quantity}</p>
+                  
                 </div>
               </div>
               <button

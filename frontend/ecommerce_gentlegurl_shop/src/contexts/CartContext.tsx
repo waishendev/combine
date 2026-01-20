@@ -263,17 +263,39 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
 
   const updateItemVariant = useCallback(
     async (itemId: number, productVariantId: number) => {
-      setIsLoading(true);
+      const targetItem = items.find((item) => item.id === itemId);
+      if (!targetItem) return;
+
+      // Optimistically update the variant in local state
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                product_variant_id: productVariantId,
+                // Update variant name if available
+                variant_name:
+                  item.available_variants?.find((v) => v.id === productVariantId)?.name ?? item.variant_name,
+              }
+            : item,
+        ),
+      );
+
       try {
+        // Sync with server in background (without showing loading state)
         const response = await updateCartItem(itemId, {
           product_variant_id: productVariantId,
+          quantity: targetItem.quantity,
         });
         applyCartResponse(response);
-      } finally {
-        setIsLoading(false);
+      } catch (error) {
+        // On error, reload cart to get correct state
+        const cart = await getCart();
+        applyCartResponse(cart);
+        throw error;
       }
     },
-    [applyCartResponse],
+    [applyCartResponse, items],
   );
 
   const removeItem = useCallback(
