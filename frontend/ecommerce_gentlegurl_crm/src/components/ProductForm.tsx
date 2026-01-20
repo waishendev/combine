@@ -290,7 +290,6 @@ export default function ProductForm({
     }
   })
   const [discountPercentInput, setDiscountPercentInput] = useState('')
-  const [variantDiscountPercentInput, setVariantDiscountPercentInput] = useState('')
   const [rewardForm, setRewardForm] = useState<RewardFormValues>({ ...emptyRewardForm })
   const [rewardId, setRewardId] = useState<number | null>(null)
   const [existingImages, setExistingImages] = useState<ProductImage[]>(
@@ -339,6 +338,12 @@ export default function ProductForm({
     }
     return []
   })
+  const [variantDiscountPercentInputs, setVariantDiscountPercentInputs] = useState<string[]>(
+    () => Array.from({ length: variants.length }, () => ''),
+  )
+  const [collapsedVariants, setCollapsedVariants] = useState<boolean[]>(
+    () => Array.from({ length: variants.length }, () => false),
+  )
   const [bundles, setBundles] = useState<BundleFormValue[]>(() => {
     if (mode === 'edit' && product?.variants?.length) {
       return product.variants
@@ -450,6 +455,25 @@ export default function ProductForm({
       setVariants([emptyVariant(0)])
     }
   }, [form.type, variants.length])
+
+  useEffect(() => {
+    setVariantDiscountPercentInputs((prev) => {
+      if (prev.length === variants.length) return prev
+      const next = [...prev]
+      while (next.length < variants.length) {
+        next.push('')
+      }
+      return next.slice(0, variants.length)
+    })
+    setCollapsedVariants((prev) => {
+      if (prev.length === variants.length) return prev
+      const next = [...prev]
+      while (next.length < variants.length) {
+        next.push(false)
+      }
+      return next.slice(0, variants.length)
+    })
+  }, [variants.length])
 
   useEffect(() => {
     if (!showCategories) {
@@ -1272,7 +1296,7 @@ export default function ProductForm({
       categoryIds: showCategories ? emptyForm.categoryIds : [],
     })
     setDiscountPercentInput('')
-    setVariantDiscountPercentInput('')
+    setVariantDiscountPercentInputs([])
     setRewardForm({ ...emptyRewardForm })
     setRewardId(null)
     setError(null)
@@ -1283,6 +1307,7 @@ export default function ProductForm({
     setCreatedProductId(null)
     setVariants([])
     setBundles([])
+    setCollapsedVariants([])
   }
 
   const handleCancel = () => {
@@ -1308,10 +1333,14 @@ export default function ProductForm({
 
   const handleAddVariant = () => {
     setVariants((prev) => [...prev, emptyVariant(prev.length)])
+    setVariantDiscountPercentInputs((prev) => [...prev, ''])
+    setCollapsedVariants((prev) => [...prev, false])
   }
 
   const handleRemoveVariant = (index: number) => {
     setVariants((prev) => prev.filter((_, idx) => idx !== index))
+    setVariantDiscountPercentInputs((prev) => prev.filter((_, idx) => idx !== index))
+    setCollapsedVariants((prev) => prev.filter((_, idx) => idx !== index))
   }
 
   const handleVariantChange = (
@@ -1348,13 +1377,16 @@ export default function ProductForm({
     }))
   }
 
-  const handleApplyVariantDiscount = () => {
-    const percentValue = parsePriceValue(variantDiscountPercentInput)
+  const handleApplyVariantDiscount = (index: number) => {
+    const percentValue = parsePriceValue(variantDiscountPercentInputs[index] ?? '')
     if (percentValue === null) return
 
     const clampedPercent = Math.min(Math.max(percentValue, 0), 100)
     setVariants((prev) =>
-      prev.map((variant) => {
+      prev.map((variant, idx) => {
+        if (idx !== index) {
+          return variant
+        }
         const priceValue = parsePriceValue(variant.price)
         if (!priceValue) {
           return {
@@ -1454,6 +1486,26 @@ export default function ProductForm({
         ...variant,
         sortOrder: idx,
       }))
+    })
+    setVariantDiscountPercentInputs((prev) => {
+      const next = [...prev]
+      const targetIndex = direction === 'up' ? index - 1 : index + 1
+      if (targetIndex < 0 || targetIndex >= next.length) {
+        return prev
+      }
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+    setCollapsedVariants((prev) => {
+      const next = [...prev]
+      const targetIndex = direction === 'up' ? index - 1 : index + 1
+      if (targetIndex < 0 || targetIndex >= next.length) {
+        return prev
+      }
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
     })
   }
 
@@ -3219,6 +3271,14 @@ export default function ProductForm({
               const input = document.getElementById(variantImageInputId) as HTMLInputElement | null
               input?.click()
             }
+            const isCollapsed = collapsedVariants[index] ?? false
+            const toggleVariantCollapsed = () => {
+              setCollapsedVariants((prev) => {
+                const next = [...prev]
+                next[index] = !isCollapsed
+                return next
+              })
+            }
 
             return (
             <div key={variant.id ?? index} className="rounded-lg border border-gray-200 p-4 space-y-4">
@@ -3245,6 +3305,14 @@ export default function ProductForm({
                   </button>
                   <button
                     type="button"
+                    onClick={toggleVariantCollapsed}
+                    className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                  >
+                    <i className={`fa-solid ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}`} />
+                    <span className="ml-1">{isCollapsed ? 'Show' : 'Hide'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleRemoveVariant(index)}
                     className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
                   >
@@ -3252,36 +3320,8 @@ export default function ProductForm({
                   </button>
                 </div>
               </div>
-              {index === 0 && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div className="min-w-[200px] flex-1 space-y-1">
-                      <label className="block text-sm font-medium text-gray-700" htmlFor="variantDiscountPercent">
-                        Apply discount % to all variants
-                      </label>
-                      <input
-                        id="variantDiscountPercent"
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        value={variantDiscountPercentInput}
-                        onChange={(event) => setVariantDiscountPercentInput(event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        placeholder="0"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleApplyVariantDiscount}
-                      className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                </div>
-              )}
 
+              {!isCollapsed && (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -3398,6 +3438,20 @@ export default function ProductForm({
                     </div>
                   </div>
                   <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Cost Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variant.costPrice}
+                        onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">Sale Price</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
@@ -3409,6 +3463,34 @@ export default function ProductForm({
                         className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         placeholder="0.00"
                       />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Apply Discount</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={variantDiscountPercentInputs[index] ?? ''}
+                        onChange={(event) =>
+                          setVariantDiscountPercentInputs((prev) => {
+                            const next = [...prev]
+                            next[index] = event.target.value
+                            return next
+                          })
+                        }
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="%"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyVariantDiscount(index)}
+                        className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+                      >
+                        Apply
+                      </button>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -3430,20 +3512,6 @@ export default function ProductForm({
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     />
                     <p className="text-xs text-gray-500">Leave empty to never expire</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">Cost Price</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={variant.costPrice}
-                        onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        placeholder="0.00"
-                      />
-                    </div>
                   </div>
                   {variant.trackStock && (
                     <>
@@ -3491,6 +3559,7 @@ export default function ProductForm({
                   </div>
                 </div>
               </div>
+              )}
             </div>
             )
           })}
