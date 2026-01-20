@@ -3282,148 +3282,18 @@ export default function ProductForm({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_1fr]">
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
-                  <input
-                    value={variant.name}
-                    onChange={(event) => handleVariantChange(index, 'name', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="200ml"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">SKU</label>
-                  <input
-                    value={variant.sku}
-                    onChange={(event) => handleVariantChange(index, 'sku', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="SKU-200ML"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Price</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={variant.price}
-                      onChange={(event) => handleVariantChange(index, 'price', event.target.value)}
-                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Sale Price</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={variant.salePrice}
-                      onChange={(event) => handleVariantChange(index, 'salePrice', event.target.value)}
-                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Start At</label>
-                  <input
-                    type="datetime-local"
-                    value={variant.salePriceStartAt}
-                    onChange={(event) => handleVariantChange(index, 'salePriceStartAt', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  />
-                  <p className="text-xs text-gray-500">Leave empty to start immediately</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">End At</label>
-                  <input
-                    type="datetime-local"
-                    value={variant.salePriceEndAt}
-                    onChange={(event) => handleVariantChange(index, 'salePriceEndAt', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  />
-                  <p className="text-xs text-gray-500">Leave empty to never expire</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Discount %</label>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                    {discountPercent !== null ? `${discountPercent}%` : '—'}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Cost Price</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={variant.costPrice}
-                      onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
-                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                {variant.trackStock && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Stock</label>
-                      <input
-                        type="number"
-                        value={variant.stock}
-                        onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Low Stock Threshold</label>
-                      <input
-                        type="number"
-                        value={variant.lowStockThreshold}
-                        onChange={(event) => handleVariantChange(index, 'lowStockThreshold', event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        placeholder="0"
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Track Stock</p>
-                    <p className="text-xs text-gray-500">Disable if inventory is not limited.</p>
-                  </div>
-                  <Switch
-                    checked={variant.trackStock}
-                    onCheckedChange={(checked) => handleVariantChange(index, 'trackStock', checked)}
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Active</p>
-                    <p className="text-xs text-gray-500">Hide variant from shop if disabled.</p>
-                  </div>
-                  <Switch
-                    checked={variant.isActive}
-                    onCheckedChange={(checked) => handleVariantChange(index, 'isActive', checked)}
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700">Variant Image</label>
-                  <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex flex-col items-start gap-4">
                     {variant.imagePreview || variant.imageUrl ? (
                       <img
                         src={variant.imagePreview ?? variant.imageUrl ?? ''}
                         alt={variant.name || 'Variant image'}
-                        className="h-20 w-20 rounded border border-gray-200 object-cover"
+                        className="h-32 w-32 rounded border border-gray-200 object-cover"
                       />
                     ) : (
-                      <div className="flex h-20 w-20 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
+                      <div className="flex h-32 w-32 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
                         No image
                       </div>
                     )}
@@ -3449,6 +3319,138 @@ export default function ProductForm({
                         </button>
                       )}
                     </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Name</label>
+                    <input
+                      value={variant.name}
+                      onChange={(event) => handleVariantChange(index, 'name', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="200ml"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">SKU</label>
+                    <input
+                      value={variant.sku}
+                      onChange={(event) => handleVariantChange(index, 'sku', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="SKU-200ML"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variant.price}
+                        onChange={(event) => handleVariantChange(index, 'price', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Sale Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variant.salePrice}
+                        onChange={(event) => handleVariantChange(index, 'salePrice', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Start At</label>
+                    <input
+                      type="datetime-local"
+                      value={variant.salePriceStartAt}
+                      onChange={(event) => handleVariantChange(index, 'salePriceStartAt', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <p className="text-xs text-gray-500">Leave empty to start immediately</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">End At</label>
+                    <input
+                      type="datetime-local"
+                      value={variant.salePriceEndAt}
+                      onChange={(event) => handleVariantChange(index, 'salePriceEndAt', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <p className="text-xs text-gray-500">Leave empty to never expire</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Discount %</label>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                      {discountPercent !== null ? `${discountPercent}%` : '—'}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Cost Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variant.costPrice}
+                        onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  {variant.trackStock && (
+                    <>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Stock</label>
+                        <input
+                          type="number"
+                          value={variant.stock}
+                          onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Low Stock Threshold</label>
+                        <input
+                          type="number"
+                          value={variant.lowStockThreshold}
+                          onChange={(event) => handleVariantChange(index, 'lowStockThreshold', event.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          placeholder="0"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Track Stock</p>
+                      <p className="text-xs text-gray-500">Disable if inventory is not limited.</p>
+                    </div>
+                    <Switch
+                      checked={variant.trackStock}
+                      onCheckedChange={(checked) => handleVariantChange(index, 'trackStock', checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Active</p>
+                      <p className="text-xs text-gray-500">Hide variant from shop if disabled.</p>
+                    </div>
+                    <Switch
+                      checked={variant.isActive}
+                      onCheckedChange={(checked) => handleVariantChange(index, 'isActive', checked)}
+                    />
                   </div>
                 </div>
               </div>
