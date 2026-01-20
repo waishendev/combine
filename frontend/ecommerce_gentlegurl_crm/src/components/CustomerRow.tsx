@@ -70,11 +70,10 @@ export default function CustomerRow({
             {canAssignVoucher && (
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2.5 py-1 text-xs text-white hover:bg-indigo-700"
+                 className="inline-flex h-8 w-8 items-center justify-center rounded bg-indigo-600 text-white hover:bg-indigo-700"
                 onClick={() => onAssignVoucher?.(customer)}
               >
                 <i className="fa-solid fa-ticket" />
-                Assign Voucher
               </button>
             )}
             {canUpdate && (

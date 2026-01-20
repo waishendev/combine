@@ -420,14 +420,14 @@ export default function VoucherEditModal({
   const disableForm = loading || submitting
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 sm:px-6">
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg">
+      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
           <h2 className="text-lg font-semibold">Edit Voucher</h2>
           <button
