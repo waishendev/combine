@@ -3213,41 +3213,7 @@ export default function ProductForm({
               No variants yet. Add your first variant.
             </div>
           )}
-          {variants.length > 0 && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-[200px] flex-1 space-y-1">
-                  <label className="block text-sm font-medium text-gray-700" htmlFor="variantDiscountPercent">
-                    Apply discount % to all variants
-                  </label>
-                  <input
-                    id="variantDiscountPercent"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={variantDiscountPercentInput}
-                    onChange={(event) => setVariantDiscountPercentInput(event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="0"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleApplyVariantDiscount}
-                  className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          )}
           {variants.map((variant, index) => {
-            const discountPercent = getDiscountPercent(
-              parsePriceValue(variant.price),
-              parsePriceValue(variant.salePrice),
-            )
-
             const variantImageInputId = `variant-image-${index}`
             const triggerVariantImageUpload = () => {
               const input = document.getElementById(variantImageInputId) as HTMLInputElement | null
@@ -3286,6 +3252,35 @@ export default function ProductForm({
                   </button>
                 </div>
               </div>
+              {index === 0 && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="min-w-[200px] flex-1 space-y-1">
+                      <label className="block text-sm font-medium text-gray-700" htmlFor="variantDiscountPercent">
+                        Apply discount % to all variants
+                      </label>
+                      <input
+                        id="variantDiscountPercent"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={variantDiscountPercentInput}
+                        onChange={(event) => setVariantDiscountPercentInput(event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleApplyVariantDiscount}
+                      className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-2">
@@ -3435,12 +3430,6 @@ export default function ProductForm({
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     />
                     <p className="text-xs text-gray-500">Leave empty to never expire</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">Discount %</label>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                      {discountPercent !== null ? `${discountPercent}%` : '—'}
-                    </div>
                   </div>
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">Cost Price</label>
