@@ -407,16 +407,17 @@ export default function ProductDetailClient({
           </div>
 
           {displayIsOnSale && saleEndAt && countdownLabel && (
-            <div className="grid gap-3 rounded-xl border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/40 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="grid gap-3 rounded-2xl border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/50 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--status-warning)]">
                   Promotion ends at
                 </p>
-                <p className="mt-1 font-semibold text-[var(--foreground)]">
+                <p className="mt-1 text-base font-semibold text-[var(--foreground)]">
                   {formatPromoEndAt(saleEndAt)}
                 </p>
               </div>
-              <div className="inline-flex items-center rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
+                <span>ENDS IN</span>
                 <span className="font-mono text-sm text-[var(--foreground)]">
                   {countdownLabel}
                 </span>
@@ -426,7 +427,7 @@ export default function ProductDetailClient({
 
           {!isRewardOnly && (
             <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]/70 p-4">
-              <p className="text-sm font-semibold text-[var(--foreground)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
                 {pricePresentation.label}
               </p>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
