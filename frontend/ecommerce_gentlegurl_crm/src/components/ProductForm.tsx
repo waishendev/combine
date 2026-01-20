@@ -3309,7 +3309,6 @@ export default function ProductForm({
                     className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
                   >
                     <i className={`fa-solid ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}`} />
-                    <span className="ml-1">{isCollapsed ? 'Show' : 'Hide'}</span>
                   </button>
                   <button
                     type="button"
@@ -3452,20 +3451,6 @@ export default function ProductForm({
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">Sale Price</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={variant.salePrice}
-                        onChange={(event) => handleVariantChange(index, 'salePrice', event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">Apply Discount</label>
                     <div className="flex items-center gap-2">
                       <input
@@ -3491,6 +3476,20 @@ export default function ProductForm({
                       >
                         Apply
                       </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Sale Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variant.salePrice}
+                        onChange={(event) => handleVariantChange(index, 'salePrice', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
