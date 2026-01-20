@@ -27,6 +27,7 @@ export function ProductGallery({
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [videoThumbnails, setVideoThumbnails] = useState<Map<string, string>>(new Map());
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const lastAppliedActiveUrl = useRef<string | null>(null);
 
   const handleImageError = (src: string) => {
     setImageErrors((prev) => new Set(prev).add(src));
@@ -67,9 +68,13 @@ export function ProductGallery({
 
   useEffect(() => {
     if (!activeUrl) return;
+    if (activeUrl === lastAppliedActiveUrl.current) return;
     const nextIndex = safeMedia.findIndex((item) => item.url === activeUrl);
     if (nextIndex >= 0 && nextIndex !== activeIndex) {
       setActiveIndex(nextIndex);
+    }
+    if (nextIndex >= 0) {
+      lastAppliedActiveUrl.current = activeUrl;
     }
   }, [activeUrl, activeIndex, safeMedia]);
 
