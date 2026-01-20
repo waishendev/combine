@@ -77,6 +77,16 @@ export type ProductApiItem = {
     is_active?: boolean | number | string | null
     sort_order?: number | string | null
     image_url?: string | null
+    is_bundle?: boolean | number | string | null
+    derived_available_qty?: number | string | null
+    bundle_items?: Array<{
+      id?: number | string | null
+      component_variant_id?: number | string | null
+      component_variant_name?: string | null
+      component_variant_sku?: string | null
+      quantity?: number | string | null
+      sort_order?: number | string | null
+    }> | null
   }> | null
 }
 
@@ -199,6 +209,37 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
             ? Number.parseInt(variant.sort_order, 10)
             : 0,
       imageUrl: variant.image_url ?? null,
+      isBundle: toBoolean(variant.is_bundle),
+      derivedAvailableQty:
+        typeof variant.derived_available_qty === 'number'
+          ? variant.derived_available_qty
+          : typeof variant.derived_available_qty === 'string'
+            ? Number.parseInt(variant.derived_available_qty, 10)
+            : null,
+      bundleItems: Array.isArray(variant.bundle_items)
+        ? variant.bundle_items
+            .map((item) => ({
+              componentVariantId:
+                typeof item.component_variant_id === 'number'
+                  ? item.component_variant_id
+                  : Number(item.component_variant_id) || 0,
+              componentVariantName: item.component_variant_name ?? null,
+              componentVariantSku: item.component_variant_sku ?? null,
+              quantity:
+                typeof item.quantity === 'number'
+                  ? item.quantity
+                  : typeof item.quantity === 'string'
+                    ? Number.parseInt(item.quantity, 10)
+                    : 1,
+              sortOrder:
+                typeof item.sort_order === 'number'
+                  ? item.sort_order
+                  : typeof item.sort_order === 'string'
+                    ? Number.parseInt(item.sort_order, 10)
+                    : 0,
+            }))
+            .filter((item) => item.componentVariantId > 0)
+        : [],
     }))
     : []
 

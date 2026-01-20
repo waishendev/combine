@@ -154,8 +154,10 @@ export type CartItem = {
     sku?: string | null;
     price?: number | string | null;
     stock?: number | null;
+    derived_available_qty?: number | null;
     track_stock?: boolean | null;
     is_active?: boolean | null;
+    is_bundle?: boolean | null;
     image_url?: string | null;
   }>;
   unit_price: string;

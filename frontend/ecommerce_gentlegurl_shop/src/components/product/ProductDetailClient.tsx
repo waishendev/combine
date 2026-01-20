@@ -26,8 +26,10 @@ export type VariantItem = {
   promotion_end_at?: string | null;
   discount_percent?: number | null;
   stock?: number | null;
+  derived_available_qty?: number | null;
   track_stock?: boolean | null;
   is_active?: boolean | null;
+  is_bundle?: boolean | null;
   image_url?: string | null;
 };
 
@@ -85,6 +87,8 @@ export default function ProductDetailClient({
   const isVariantProduct = product.type === "variant";
   const variants = Array.isArray(product.variants) ? product.variants : [];
   const hasVariants = product.type === "variant" && variants.length > 0;
+  const normalVariants = variants.filter((variant) => variant.is_bundle !== true);
+  const bundleVariants = variants.filter((variant) => variant.is_bundle === true);
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
 
   const parseAmount = (value: number | string | null | undefined) => {
@@ -144,12 +148,39 @@ export default function ProductDetailClient({
 
   const baseGalleryMedia = useMemo(() => buildProductGalleryMedia(product), [product]);
   const galleryMedia = useMemo(() => {
+    const variantImageItems = variants
+      .map((variant) => {
+        if (!variant.image_url) {
+          return null;
+        }
+        const normalized = normalizeImageUrl(variant.image_url);
+        return normalized
+          ? ({
+              id: `variant-${variant.id}`,
+              type: "image",
+              url: normalized,
+              sort_order: 1000 + variant.id,
+            } satisfies ProductMediaItem)
+          : null;
+      })
+      .filter((item): item is ProductMediaItem => Boolean(item?.url));
+
+    const seen = new Set(baseGalleryMedia.map((item) => item.url));
+    const merged = [...baseGalleryMedia];
+    variantImageItems.forEach((item) => {
+      if (!item.url || seen.has(item.url)) {
+        return;
+      }
+      seen.add(item.url);
+      merged.push(item);
+    });
+
     if (!activeImageUrl) {
-      return baseGalleryMedia;
+      return merged;
     }
-    const hasVariantImage = baseGalleryMedia.some((item) => item.url === activeImageUrl);
+    const hasVariantImage = merged.some((item) => item.url === activeImageUrl);
     if (hasVariantImage) {
-      return baseGalleryMedia;
+      return merged;
     }
     const variantMedia: ProductMediaItem = {
       id: `variant-${selectedVariant?.id ?? "image"}`,
@@ -157,8 +188,8 @@ export default function ProductDetailClient({
       url: activeImageUrl,
       sort_order: -1,
     };
-    return [variantMedia, ...baseGalleryMedia];
-  }, [activeImageUrl, baseGalleryMedia, selectedVariant?.id]);
+    return [variantMedia, ...merged];
+  }, [activeImageUrl, baseGalleryMedia, selectedVariant?.id, variants]);
   const videoItem = galleryMedia.find((item) => item.type === "video");
   const videoPoster = videoItem ? getVideoPoster(product, videoItem) : null;
   const initialIndex = galleryMedia.findIndex((item) => item.type === "video");
@@ -263,7 +294,9 @@ export default function ProductDetailClient({
 
   const productTrackStock = (product as { track_stock?: boolean | null }).track_stock ?? true;
   const stockValue = isVariantProduct
-    ? selectedVariant?.stock ?? null
+    ? selectedVariant?.is_bundle
+      ? selectedVariant?.derived_available_qty ?? null
+      : selectedVariant?.stock ?? null
     : product.stock ?? null;
   const trackStock = isVariantProduct
     ? (selectedVariant?.track_stock ?? true)
@@ -373,10 +406,11 @@ export default function ProductDetailClient({
             <div className="space-y-2">
               <p className="text-sm font-semibold text-[var(--foreground)]">Variants</p>
               <div className="flex flex-wrap gap-2">
-                {variants.map((variant) => {
+                {normalVariants.map((variant) => {
                   const isSelected = variant.id === selectedVariantId;
                   const isActive = variant.is_active !== false;
-                  const outOfStock = (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
+                  const outOfStock =
+                    (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
                   const isAvailable = isActive && !outOfStock;
                   const disabledLabel = !isActive ? "Unavailable" : "Out of stock";
                   return (
@@ -407,6 +441,49 @@ export default function ProductDetailClient({
                   );
                 })}
               </div>
+              {bundleVariants.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
+                    Bundle Deals
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {bundleVariants.map((variant) => {
+                      const isSelected = variant.id === selectedVariantId;
+                      const isActive = variant.is_active !== false;
+                      const availableQty = variant.derived_available_qty ?? 0;
+                      const outOfStock = (variant.track_stock ?? true) && availableQty <= 0;
+                      const isAvailable = isActive && !outOfStock;
+                      const disabledLabel = !isActive ? "Unavailable" : "Out of stock";
+                      return (
+                        <button
+                          key={variant.id}
+                          type="button"
+                          onClick={() => {
+                            if (!isAvailable) return;
+                            setSelectedVariantId(variant.id);
+                          }}
+                          disabled={!isAvailable}
+                          title={!isAvailable ? disabledLabel : undefined}
+                          className={`rounded border px-3 py-2 text-sm transition ${
+                            isSelected
+                              ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+                              : !isAvailable
+                                ? "border-[var(--card-border)] bg-[var(--background-soft)] text-[var(--text-muted)] opacity-70"
+                                : "border-[var(--card-border)] bg-white text-[var(--foreground)] hover:border-[var(--accent)]"
+                          }`}
+                        >
+                          <span className="block">{variant.name}</span>
+                          {!isAvailable && (
+                            <span className="block text-[10px] uppercase text-[color:var(--status-error)]">
+                              {disabledLabel}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

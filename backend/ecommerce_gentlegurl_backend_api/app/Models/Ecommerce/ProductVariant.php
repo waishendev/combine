@@ -23,6 +23,7 @@ class ProductVariant extends Model
         'stock',
         'low_stock_threshold',
         'track_stock',
+        'is_bundle',
         'is_active',
         'sort_order',
         'image_path',
@@ -43,6 +44,7 @@ class ProductVariant extends Model
             'stock' => 'integer',
             'low_stock_threshold' => 'integer',
             'track_stock' => 'boolean',
+            'is_bundle' => 'boolean',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
         ];
@@ -51,6 +53,47 @@ class ProductVariant extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function bundleItems()
+    {
+        return $this->hasMany(ProductVariantBundleItem::class, 'bundle_variant_id')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
+    public function componentOfBundles()
+    {
+        return $this->hasMany(ProductVariantBundleItem::class, 'component_variant_id');
+    }
+
+    public function derivedAvailableQty(): ?int
+    {
+        if (! $this->is_bundle) {
+            return $this->track_stock ? (int) ($this->stock ?? 0) : null;
+        }
+
+        $this->loadMissing('bundleItems.componentVariant');
+
+        $limits = [];
+        foreach ($this->bundleItems as $bundleItem) {
+            $component = $bundleItem->componentVariant;
+            if (! $component) {
+                continue;
+            }
+            if (! $component->track_stock) {
+                continue;
+            }
+            $stock = (int) ($component->stock ?? 0);
+            $required = max(1, (int) ($bundleItem->quantity ?? 1));
+            $limits[] = intdiv($stock, $required);
+        }
+
+        if (empty($limits)) {
+            return null;
+        }
+
+        return min($limits);
     }
 
     public function getImageUrlAttribute(): ?string

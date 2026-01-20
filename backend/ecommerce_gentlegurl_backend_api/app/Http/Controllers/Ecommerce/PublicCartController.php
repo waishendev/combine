@@ -348,6 +348,9 @@ class PublicCartController extends Controller
     protected function resolveStock(Product $product, ?ProductVariant $variant): ?int
     {
         if ($variant) {
+            if ($variant->is_bundle) {
+                return $variant->derivedAvailableQty();
+            }
             if (! $variant->track_stock) {
                 return null;
             }

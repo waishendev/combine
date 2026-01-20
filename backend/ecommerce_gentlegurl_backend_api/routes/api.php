@@ -33,6 +33,7 @@ use App\Http\Controllers\Ecommerce\PublicWishlistController;
 use App\Http\Controllers\Ecommerce\PublicStoreLocationController;
 use App\Http\Controllers\Ecommerce\PromotionController;
 use App\Http\Controllers\Ecommerce\PublicVoucherController;
+use App\Http\Controllers\Ecommerce\ProductVariantBundleItemController;
 use App\Http\Controllers\Ecommerce\ReturnRequestController;
 use App\Http\Controllers\Ecommerce\PublicAccountController;
 use App\Http\Controllers\Ecommerce\VoucherController;
@@ -336,6 +337,12 @@ $protectedRoutes = function () {
             ->scopeBindings();
 
         Route::put('/products/{product}/media/reorder', [ProductMediaController::class, 'reorder'])
+            ->middleware('permission:ecommerce.products.update');
+
+        Route::get('/product-variants/{variant}/bundle-items', [ProductVariantBundleItemController::class, 'index'])
+            ->middleware('permission:ecommerce.products.update');
+
+        Route::put('/product-variants/{variant}/bundle-items', [ProductVariantBundleItemController::class, 'update'])
             ->middleware('permission:ecommerce.products.update');
 
         // Shop Menu Items

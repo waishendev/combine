@@ -109,6 +109,7 @@ class ProductController extends Controller
             'variants.*.stock' => ['nullable', 'integer'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer'],
             'variants.*.track_stock' => ['nullable', 'boolean'],
+            'variants.*.is_bundle' => ['nullable', 'boolean'],
             'variants.*.is_active' => ['nullable', 'boolean'],
             'variants.*.sort_order' => ['nullable', 'integer'],
             'variants.*.remove_image' => ['nullable', 'boolean'],
@@ -143,12 +144,12 @@ class ProductController extends Controller
 
         $this->syncVariants($product, $request);
 
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants', 'packageChildren']), __('Product created successfully.'));
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren']), __('Product created successfully.'));
     }
 
     public function show(Product $product)
     {
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct']));
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']));
     }
 
     public function update(Request $request, Product $product)
@@ -203,6 +204,7 @@ class ProductController extends Controller
             'variants.*.stock' => ['nullable', 'integer'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer'],
             'variants.*.track_stock' => ['nullable', 'boolean'],
+            'variants.*.is_bundle' => ['nullable', 'boolean'],
             'variants.*.is_active' => ['nullable', 'boolean'],
             'variants.*.sort_order' => ['nullable', 'integer'],
             'variants.*.remove_image' => ['nullable', 'boolean'],
@@ -240,7 +242,7 @@ class ProductController extends Controller
 
         $this->syncVariants($product, $request);
 
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants', 'packageChildren.childProduct']), __('Product updated successfully.'));
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Product updated successfully.'));
     }
 
     public function destroy(Product $product)
@@ -350,9 +352,16 @@ class ProductController extends Controller
                 'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
                 'low_stock_threshold' => isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0,
                 'track_stock' => filter_var($variantData['track_stock'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                'is_bundle' => filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'is_active' => filter_var($variantData['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
                 'sort_order' => isset($variantData['sort_order']) ? (int) $variantData['sort_order'] : 0,
             ];
+
+            if (!empty($payload['is_bundle'])) {
+                $payload['stock'] = 0;
+                $payload['low_stock_threshold'] = 0;
+                $payload['track_stock'] = true;
+            }
 
             if (! empty($variantData['remove_image'])) {
                 $this->deleteVariantImage($variant);

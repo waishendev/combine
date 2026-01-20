@@ -49,7 +49,19 @@ type VariantFormValue = {
   imageFile?: File | null
   imagePreview?: string | null
   removeImage?: boolean
+  isBundle: boolean
+  derivedAvailableQty?: number | null
+  bundleItems: BundleItemFormValue[]
 }
+
+type BundleItemFormValue = {
+  componentVariantId: number | null
+  componentSku?: string
+  quantity: string
+  sortOrder: number
+}
+
+type BundleFormValue = VariantFormValue
 
 type ProductFormValues = {
   name: string
@@ -116,6 +128,21 @@ const emptyVariant = (sortOrder = 0): VariantFormValue => ({
   imageFile: null,
   imagePreview: null,
   removeImage: false,
+  isBundle: false,
+  derivedAvailableQty: null,
+  bundleItems: [],
+})
+
+const createEmptyBundle = (sortOrder = 0): BundleFormValue => ({
+  ...emptyVariant(sortOrder),
+  isBundle: true,
+  trackStock: true,
+  stock: '0',
+  lowStockThreshold: '0',
+  bundleItems: [
+    { componentVariantId: null, componentSku: undefined, quantity: '1', sortOrder: 0 },
+    { componentVariantId: null, componentSku: undefined, quantity: '1', sortOrder: 1 },
+  ],
 })
 
 type RewardFormValues = {
@@ -159,6 +186,45 @@ const getNormalizedSalePrice = (priceValue: string, saleValue: string) => {
   return formatPriceValue(salePrice)
 }
 
+const resolveComponentVariant = (
+  item: BundleItemFormValue,
+  variants: VariantFormValue[],
+) => {
+  if (item.componentVariantId) {
+    return variants.find((variant) => variant.id === item.componentVariantId) ?? null
+  }
+  if (item.componentSku) {
+    return variants.find((variant) => variant.sku === item.componentSku) ?? null
+  }
+  return null
+}
+
+const calculateBundleDerivedQty = (
+  bundle: VariantFormValue,
+  componentVariants: VariantFormValue[],
+) => {
+  const limits: number[] = []
+
+  bundle.bundleItems.forEach((item) => {
+    const component = resolveComponentVariant(item, componentVariants)
+    if (!component || !component.trackStock) {
+      return
+    }
+    const stock = Number.parseInt(component.stock || '0', 10)
+    const required = Math.max(1, Number.parseInt(item.quantity || '1', 10))
+    if (!Number.isFinite(stock)) {
+      return
+    }
+    limits.push(Math.floor(stock / required))
+  })
+
+  if (limits.length === 0) {
+    return null
+  }
+
+  return Math.min(...limits)
+}
+
 interface ProductFormProps {
   mode: ProductFormMode
   product?: ProductRowData | null
@@ -168,6 +234,7 @@ interface ProductFormProps {
   showCategories?: boolean
   showFeatured?: boolean
   rewardOnly?: boolean
+  showBundles?: boolean
 }
 
 export default function ProductForm({
@@ -179,6 +246,7 @@ export default function ProductForm({
   showCategories = true,
   showFeatured = true,
   rewardOnly = false,
+  showBundles = true,
 }: ProductFormProps) {
   const { t } = useI18n()
   const router = useRouter()
@@ -235,34 +303,81 @@ export default function ProductForm({
   )
   const [variants, setVariants] = useState<VariantFormValue[]>(() => {
     if (mode === 'edit' && product?.variants?.length) {
-      return product.variants.map((variant, index) => ({
-        id: variant.id,
-        name: variant.name ?? '',
-        sku: variant.sku ?? '',
-        price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
-        salePrice:
-          variant.salePrice !== null && variant.salePrice !== undefined
-            ? String(variant.salePrice)
-            : '',
-        salePriceStartAt: formatDateTimeInput(variant.salePriceStartAt),
-        salePriceEndAt: formatDateTimeInput(variant.salePriceEndAt),
-        costPrice:
-          variant.costPrice !== null && variant.costPrice !== undefined
-            ? String(variant.costPrice)
-            : '',
-        stock: variant.stock !== null && variant.stock !== undefined ? String(variant.stock) : '',
-        lowStockThreshold:
-          variant.lowStockThreshold !== null && variant.lowStockThreshold !== undefined
-            ? String(variant.lowStockThreshold)
-            : '',
-        trackStock: variant.trackStock ?? true,
-        isActive: variant.isActive ?? true,
-        sortOrder: variant.sortOrder ?? index,
-        imageUrl: variant.imageUrl ?? null,
-        imageFile: null,
-        imagePreview: null,
-        removeImage: false,
-      }))
+      return product.variants
+        .filter((variant) => variant.isBundle !== true)
+        .map((variant, index) => ({
+          id: variant.id,
+          name: variant.name ?? '',
+          sku: variant.sku ?? '',
+          price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
+          salePrice:
+            variant.salePrice !== null && variant.salePrice !== undefined
+              ? String(variant.salePrice)
+              : '',
+          salePriceStartAt: formatDateTimeInput(variant.salePriceStartAt),
+          salePriceEndAt: formatDateTimeInput(variant.salePriceEndAt),
+          costPrice:
+            variant.costPrice !== null && variant.costPrice !== undefined
+              ? String(variant.costPrice)
+              : '',
+          stock: variant.stock !== null && variant.stock !== undefined ? String(variant.stock) : '',
+          lowStockThreshold:
+            variant.lowStockThreshold !== null && variant.lowStockThreshold !== undefined
+              ? String(variant.lowStockThreshold)
+              : '',
+          trackStock: variant.trackStock ?? true,
+          isActive: variant.isActive ?? true,
+          sortOrder: variant.sortOrder ?? index,
+          imageUrl: variant.imageUrl ?? null,
+          imageFile: null,
+          imagePreview: null,
+          removeImage: false,
+          isBundle: false,
+          derivedAvailableQty: null,
+          bundleItems: [],
+        }))
+    }
+    return []
+  })
+  const [bundles, setBundles] = useState<BundleFormValue[]>(() => {
+    if (mode === 'edit' && product?.variants?.length) {
+      return product.variants
+        .filter((variant) => variant.isBundle === true)
+        .map((variant, index) => ({
+          id: variant.id,
+          name: variant.name ?? '',
+          sku: variant.sku ?? '',
+          price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
+          salePrice:
+            variant.salePrice !== null && variant.salePrice !== undefined
+              ? String(variant.salePrice)
+              : '',
+          salePriceStartAt: formatDateTimeInput(variant.salePriceStartAt),
+          salePriceEndAt: formatDateTimeInput(variant.salePriceEndAt),
+          costPrice:
+            variant.costPrice !== null && variant.costPrice !== undefined
+              ? String(variant.costPrice)
+              : '',
+          stock: '0',
+          lowStockThreshold: '0',
+          trackStock: true,
+          isActive: variant.isActive ?? true,
+          sortOrder: variant.sortOrder ?? index,
+          imageUrl: variant.imageUrl ?? null,
+          imageFile: null,
+          imagePreview: null,
+          removeImage: false,
+          isBundle: true,
+          derivedAvailableQty: variant.derivedAvailableQty ?? null,
+          bundleItems: Array.isArray(variant.bundleItems)
+            ? variant.bundleItems.map((item, itemIndex) => ({
+                componentVariantId: item.componentVariantId ?? null,
+                componentSku: item.componentVariantSku ?? undefined,
+                quantity: String(item.quantity ?? 1),
+                sortOrder: item.sortOrder ?? itemIndex,
+              }))
+            : [],
+        }))
     }
     return []
   })
@@ -289,6 +404,10 @@ export default function ProductForm({
     src: string
     index: number
   } | null>(null)
+  const [bundleModalOpen, setBundleModalOpen] = useState(false)
+  const [bundleDraft, setBundleDraft] = useState<BundleFormValue | null>(null)
+  const [bundleEditIndex, setBundleEditIndex] = useState<number | null>(null)
+  const [bundleModalError, setBundleModalError] = useState<string | null>(null)
 
   // Close category dropdown when clicking outside
   useEffect(() => {
@@ -318,8 +437,13 @@ export default function ProductForm({
           URL.revokeObjectURL(variant.imagePreview)
         }
       })
+      bundles.forEach((bundle) => {
+        if (bundle.imagePreview) {
+          URL.revokeObjectURL(bundle.imagePreview)
+        }
+      })
     }
-  }, [variants])
+  }, [bundles, variants])
 
   useEffect(() => {
     if (form.type === 'variant' && variants.length === 0) {
@@ -1158,6 +1282,7 @@ export default function ProductForm({
     setExistingVideo(null)
     setCreatedProductId(null)
     setVariants([])
+    setBundles([])
   }
 
   const handleCancel = () => {
@@ -1281,6 +1406,41 @@ export default function ProductForm({
     )
   }
 
+  const handleBundleImageChange = (index: number, file: File | null) => {
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== index) return bundle
+        if (bundle.imagePreview) {
+          URL.revokeObjectURL(bundle.imagePreview)
+        }
+        return {
+          ...bundle,
+          imageFile: file,
+          imagePreview: file ? URL.createObjectURL(file) : null,
+          removeImage: false,
+        }
+      }),
+    )
+  }
+
+  const handleBundleImageRemove = (index: number) => {
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== index) return bundle
+        if (bundle.imagePreview) {
+          URL.revokeObjectURL(bundle.imagePreview)
+        }
+        return {
+          ...bundle,
+          imageFile: null,
+          imagePreview: null,
+          removeImage: true,
+          imageUrl: null,
+        }
+      }),
+    )
+  }
+
   const handleVariantReorder = (index: number, direction: 'up' | 'down') => {
     setVariants((prev) => {
       const next = [...prev]
@@ -1295,6 +1455,297 @@ export default function ProductForm({
         sortOrder: idx,
       }))
     })
+  }
+
+  const openNewBundle = () => {
+    setBundleDraft(createEmptyBundle(bundles.length))
+    setBundleEditIndex(null)
+    setBundleModalError(null)
+    setBundleModalOpen(true)
+  }
+
+  const openEditBundle = (index: number) => {
+    const bundle = bundles[index]
+    if (!bundle) return
+    setBundleDraft({
+      ...bundle,
+      bundleItems: bundle.bundleItems.map((item) => ({ ...item })),
+    })
+    setBundleEditIndex(index)
+    setBundleModalError(null)
+    setBundleModalOpen(true)
+  }
+
+  const closeBundleModal = () => {
+    if (bundleDraft?.imagePreview) {
+      URL.revokeObjectURL(bundleDraft.imagePreview)
+    }
+    setBundleModalOpen(false)
+    setBundleDraft(null)
+    setBundleEditIndex(null)
+    setBundleModalError(null)
+  }
+
+  const handleBundleDraftChange = (
+    field: keyof BundleFormValue,
+    value: string | boolean,
+  ) => {
+    setBundleDraft((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        [field]: value,
+      }
+    })
+  }
+
+  const handleBundleDraftItemChange = (
+    itemIndex: number,
+    field: keyof BundleItemFormValue,
+    value: string,
+  ) => {
+    setBundleDraft((prev) => {
+      if (!prev) return prev
+      const bundleItems = prev.bundleItems.map((item, idx) => {
+        if (idx !== itemIndex) return item
+
+        if (field === 'componentVariantId') {
+          if (!value) {
+            return {
+              ...item,
+              componentVariantId: null,
+              componentSku: undefined,
+            }
+          }
+          const numericId = Number.parseInt(value, 10)
+          if (Number.isFinite(numericId) && String(numericId) === value) {
+            const selectedVariant = variants.find((opt) => opt.id === numericId) ?? null
+            return {
+              ...item,
+              componentVariantId: numericId,
+              componentSku: selectedVariant?.sku,
+            }
+          }
+          const selectedVariant = variants.find((opt) => opt.sku === value) ?? null
+          return {
+            ...item,
+            componentVariantId: selectedVariant?.id ?? null,
+            componentSku: value,
+          }
+        }
+
+        if (field === 'quantity') {
+          return {
+            ...item,
+            quantity: value,
+          }
+        }
+
+        if (field === 'sortOrder') {
+          const sortOrderValue = Number.parseInt(value, 10)
+          return {
+            ...item,
+            sortOrder: Number.isFinite(sortOrderValue) ? sortOrderValue : item.sortOrder,
+          }
+        }
+
+        return item
+      })
+
+      return {
+        ...prev,
+        bundleItems,
+      }
+    })
+  }
+
+  const handleBundleDraftImageChange = (file: File | null) => {
+    setBundleDraft((prev) => {
+      if (!prev) return prev
+      if (prev.imagePreview) {
+        URL.revokeObjectURL(prev.imagePreview)
+      }
+      return {
+        ...prev,
+        imageFile: file,
+        imagePreview: file ? URL.createObjectURL(file) : null,
+        removeImage: false,
+      }
+    })
+  }
+
+  const handleBundleDraftImageRemove = () => {
+    setBundleDraft((prev) => {
+      if (!prev) return prev
+      if (prev.imagePreview) {
+        URL.revokeObjectURL(prev.imagePreview)
+      }
+      return {
+        ...prev,
+        imageFile: null,
+        imagePreview: null,
+        removeImage: true,
+        imageUrl: null,
+      }
+    })
+  }
+
+  const handleAddBundleDraftItem = () => {
+    setBundleDraft((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        bundleItems: [
+          ...prev.bundleItems,
+          {
+            componentVariantId: null,
+            componentSku: undefined,
+            quantity: '1',
+            sortOrder: prev.bundleItems.length,
+          },
+        ],
+      }
+    })
+  }
+
+  const handleRemoveBundleDraftItem = (itemIndex: number) => {
+    setBundleDraft((prev) => {
+      if (!prev) return prev
+      const nextItems = prev.bundleItems.filter((_, idx) => idx !== itemIndex)
+      return {
+        ...prev,
+        bundleItems: nextItems.map((item, idx) => ({
+          ...item,
+          sortOrder: idx,
+        })),
+      }
+    })
+  }
+
+  const handleDeleteBundle = (index: number) => {
+    setBundles((prev) => prev.filter((_, idx) => idx !== index))
+  }
+
+  const handleSaveBundleDraft = () => {
+    if (!bundleDraft) return
+
+    if (!bundleDraft.name.trim() || !bundleDraft.sku.trim() || !bundleDraft.price) {
+      setBundleModalError('Please fill in required bundle fields.')
+      return
+    }
+
+    if (bundleDraft.bundleItems.length < 2) {
+      setBundleModalError('Bundle must include at least two components.')
+      return
+    }
+
+    const componentKeys = new Set<string>()
+    for (const item of bundleDraft.bundleItems) {
+      if (!item.componentVariantId && !item.componentSku) {
+        setBundleModalError('Please select component variants for all rows.')
+        return
+      }
+      const quantityValue = Number.parseInt(item.quantity || '0', 10)
+      if (!Number.isFinite(quantityValue) || quantityValue < 1) {
+        setBundleModalError('Component quantities must be at least 1.')
+        return
+      }
+      const component = resolveComponentVariant(item, variants)
+      if (!component) {
+        setBundleModalError('Selected component variant is invalid.')
+        return
+      }
+      const componentKey = component.id ? `id:${component.id}` : `sku:${component.sku}`
+      if (componentKeys.has(componentKey)) {
+        setBundleModalError('Bundle components must be unique.')
+        return
+      }
+      componentKeys.add(componentKey)
+      if (component.sku === bundleDraft.sku) {
+        setBundleModalError('Bundle cannot include itself.')
+        return
+      }
+    }
+
+    const nextBundle: BundleFormValue = {
+      ...bundleDraft,
+      isBundle: true,
+      trackStock: true,
+      stock: '0',
+      lowStockThreshold: '0',
+    }
+
+    setBundles((prev) => {
+      if (bundleEditIndex === null) {
+        return [...prev, { ...nextBundle, sortOrder: prev.length }]
+      }
+      return prev.map((bundle, idx) => (idx === bundleEditIndex ? nextBundle : bundle))
+    })
+
+    closeBundleModal()
+  }
+
+  const updateBundleItems = async (
+    productPayload: ProductApiItem | null,
+    bundleState: BundleFormValue[],
+  ) => {
+    if (!productPayload || !Array.isArray(productPayload.variants)) {
+      return
+    }
+
+    const variantIdBySku = new Map<string, number>()
+    productPayload.variants.forEach((variant) => {
+      const sku = variant?.sku ?? ''
+      const id =
+        typeof variant?.id === 'number'
+          ? variant.id
+          : Number(variant?.id) || Number.parseInt(String(variant?.id ?? ''), 10)
+      if (sku && Number.isFinite(id)) {
+        variantIdBySku.set(sku, id)
+      }
+    })
+
+    for (const bundle of bundleState) {
+      const variantId = bundle.id ?? variantIdBySku.get(bundle.sku)
+      if (!variantId) {
+        throw new Error('Unable to resolve bundle variant ID.')
+      }
+
+      const items = bundle.bundleItems.map((item, index) => {
+        const componentId =
+          item.componentVariantId ??
+          (item.componentSku ? variantIdBySku.get(item.componentSku) : undefined)
+        if (!componentId) {
+          throw new Error('Unable to resolve bundle component variant ID.')
+        }
+        return {
+          component_variant_id: componentId,
+          quantity: Number.parseInt(item.quantity || '1', 10) || 1,
+          sort_order: item.sortOrder ?? index,
+        }
+      })
+
+      const response = await fetch(
+        `/api/proxy/ecommerce/product-variants/${variantId}/bundle-items`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ items }),
+        },
+      )
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        const message =
+          typeof data?.message === 'string'
+            ? data.message
+            : 'Failed to save bundle components.'
+        throw new Error(message)
+      }
+    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1335,6 +1786,50 @@ export default function ProductForm({
         setSubmitting(false)
         return
       }
+
+      const invalidBundle = bundles.find((bundle) => {
+        if (!bundle.name.trim() || !bundle.sku.trim() || !bundle.price) {
+          return true
+        }
+        if (bundle.bundleItems.length < 2) {
+          return true
+        }
+        const componentKeys = new Set<string>()
+        for (const item of bundle.bundleItems) {
+          if (!item.componentVariantId && !item.componentSku) {
+            return true
+          }
+          const quantityValue = Number.parseInt(item.quantity || '0', 10)
+          if (!Number.isFinite(quantityValue) || quantityValue < 1) {
+            return true
+          }
+          const component = resolveComponentVariant(item, variants)
+          if (!component) {
+            return true
+          }
+          const componentKey = component.id
+            ? `id:${component.id}`
+            : component.sku
+              ? `sku:${component.sku}`
+              : null
+          if (componentKey) {
+            if (componentKeys.has(componentKey)) {
+              return true
+            }
+            componentKeys.add(componentKey)
+          }
+          if (component.sku === bundle.sku) {
+            return true
+          }
+        }
+        return false
+      })
+
+      if (invalidBundle) {
+        setError('Please complete all required bundle fields before saving.')
+        setSubmitting(false)
+        return
+      }
     }
 
     const formData = new FormData()
@@ -1371,7 +1866,8 @@ export default function ProductForm({
     }
 
     if (form.type === 'variant') {
-      variants.forEach((variant, index) => {
+      const combinedVariants = [...variants, ...bundles]
+      combinedVariants.forEach((variant, index) => {
         if (variant.id) {
           formData.append(`variants[${index}][id]`, String(variant.id))
         }
@@ -1385,9 +1881,19 @@ export default function ProductForm({
         formData.append(`variants[${index}][sale_price_start_at]`, variant.salePriceStartAt || '')
         formData.append(`variants[${index}][sale_price_end_at]`, variant.salePriceEndAt || '')
         formData.append(`variants[${index}][cost_price]`, variant.costPrice || '0')
-        formData.append(`variants[${index}][stock]`, variant.stock || '0')
-        formData.append(`variants[${index}][low_stock_threshold]`, variant.lowStockThreshold || '0')
-        formData.append(`variants[${index}][track_stock]`, variant.trackStock ? '1' : '0')
+        formData.append(`variants[${index}][is_bundle]`, variant.isBundle ? '1' : '0')
+        formData.append(
+          `variants[${index}][stock]`,
+          variant.isBundle ? '0' : variant.stock || '0',
+        )
+        formData.append(
+          `variants[${index}][low_stock_threshold]`,
+          variant.isBundle ? '0' : variant.lowStockThreshold || '0',
+        )
+        formData.append(
+          `variants[${index}][track_stock]`,
+          variant.isBundle ? '1' : variant.trackStock ? '1' : '0',
+        )
         formData.append(`variants[${index}][is_active]`, variant.isActive ? '1' : '0')
         formData.append(`variants[${index}][sort_order]`, String(index))
         if (variant.removeImage) {
@@ -1514,6 +2020,10 @@ export default function ProductForm({
         setCreatedProductId(productRow.id)
       }
 
+      if (form.type === 'variant' && bundles.length > 0) {
+        await updateBundleItems(payload, bundles)
+      }
+
       if (pendingImages.length > 0 || pendingVideo) {
         await uploadPendingMedia(productRow.id)
       }
@@ -1575,7 +2085,11 @@ export default function ProductForm({
       }
     } catch (err) {
       if (!(err instanceof DOMException && err.name === 'AbortError')) {
-        setError(t('product.networkError'))
+        if (err instanceof Error && err.message) {
+          setError(err.message)
+        } else {
+          setError(t('product.networkError'))
+        }
       }
     } finally {
       setSubmitting(false)
@@ -2941,6 +3455,434 @@ export default function ProductForm({
             </div>
             )
           })}
+        </div>
+      )}
+
+      {form.type === 'variant' && showBundles && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Bundles</h3>
+              <p className="text-sm text-gray-500 mt-1">Manage bundle options for this product.</p>
+            </div>
+            <button
+              type="button"
+              onClick={openNewBundle}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <i className="fa-solid fa-plus" />
+              Add Bundle
+            </button>
+          </div>
+          {bundles.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+              No bundles yet. Add your first bundle option.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Bundle Name</th>
+                    <th className="px-4 py-3 text-left">SKU</th>
+                    <th className="px-4 py-3 text-left">Price</th>
+                    <th className="px-4 py-3 text-left">Sale Price</th>
+                    <th className="px-4 py-3 text-left">Discount %</th>
+                    <th className="px-4 py-3 text-left">Start At</th>
+                    <th className="px-4 py-3 text-left">End At</th>
+                    <th className="px-4 py-3 text-left">Cost Price</th>
+                    <th className="px-4 py-3 text-left">Image</th>
+                    <th className="px-4 py-3 text-left">Derived Stock</th>
+                    <th className="px-4 py-3 text-left">Active</th>
+                    <th className="px-4 py-3 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bundles.map((bundle, index) => {
+                    const discountPercent = getDiscountPercent(
+                      parsePriceValue(bundle.price),
+                      parsePriceValue(bundle.salePrice),
+                    )
+                    const derivedQty = calculateBundleDerivedQty(bundle, variants)
+                    return (
+                      <tr key={bundle.id ?? index} className="border-t border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-900">{bundle.name}</td>
+                        <td className="px-4 py-3 text-gray-600">{bundle.sku}</td>
+                        <td className="px-4 py-3 text-gray-700">RM {bundle.price || '0.00'}</td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {bundle.salePrice ? `RM ${bundle.salePrice}` : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {discountPercent !== null ? `${discountPercent}%` : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {bundle.salePriceStartAt || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {bundle.salePriceEndAt || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {bundle.costPrice ? `RM ${bundle.costPrice}` : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            {bundle.imagePreview || bundle.imageUrl ? (
+                              <img
+                                src={bundle.imagePreview ?? bundle.imageUrl ?? ''}
+                                alt={bundle.name}
+                                className="h-10 w-10 rounded border border-gray-200 object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 items-center justify-center rounded border border-dashed border-gray-300 text-[10px] text-gray-400">
+                                No image
+                              </div>
+                            )}
+                            <div className="flex flex-col gap-2">
+                              <label className="cursor-pointer rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(event) =>
+                                    handleBundleImageChange(index, event.target.files?.[0] ?? null)
+                                  }
+                                />
+                                Upload
+                              </label>
+                              {(bundle.imagePreview || bundle.imageUrl) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleBundleImageRemove(index)}
+                                  className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {derivedQty ?? '∞'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
+                              bundle.isActive
+                                ? 'bg-green-50 text-green-700'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {bundle.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEditBundle(index)}
+                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBundle(index)}
+                              className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {bundleModalOpen && bundleDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {bundleEditIndex === null ? 'Add Bundle' : 'Edit Bundle'}
+                </h3>
+                <p className="text-sm text-gray-500">Configure bundle pricing and components.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeBundleModal}
+                className="rounded-full border border-gray-200 px-3 py-1 text-sm text-gray-500 hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+
+            {bundleModalError && (
+              <div className="mt-4 rounded border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                {bundleModalError}
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Bundle Name</label>
+                <input
+                  value={bundleDraft.name}
+                  onChange={(event) => handleBundleDraftChange('name', event.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="200ml + 300ml Set"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Bundle SKU</label>
+                <input
+                  value={bundleDraft.sku}
+                  onChange={(event) => handleBundleDraftChange('sku', event.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="SKU-BUNDLE-01"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Price</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={bundleDraft.price}
+                    onChange={(event) => handleBundleDraftChange('price', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Sale Price</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={bundleDraft.salePrice}
+                    onChange={(event) => handleBundleDraftChange('salePrice', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Discount %</label>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  {getDiscountPercent(
+                    parsePriceValue(bundleDraft.price),
+                    parsePriceValue(bundleDraft.salePrice),
+                  ) ?? '—'}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Start At</label>
+                <input
+                  type="datetime-local"
+                  value={bundleDraft.salePriceStartAt}
+                  onChange={(event) => handleBundleDraftChange('salePriceStartAt', event.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">End At</label>
+                <input
+                  type="datetime-local"
+                  value={bundleDraft.salePriceEndAt}
+                  onChange={(event) => handleBundleDraftChange('salePriceEndAt', event.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Cost Price</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={bundleDraft.costPrice}
+                    onChange={(event) => handleBundleDraftChange('costPrice', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Active</p>
+                  <p className="text-xs text-gray-500">Show bundle in shop if active.</p>
+                </div>
+                <Switch
+                  checked={bundleDraft.isActive}
+                  onCheckedChange={(checked) => handleBundleDraftChange('isActive', checked)}
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-dashed border-gray-200 bg-white p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-gray-900">Bundle Image</p>
+                  <p className="text-xs text-gray-500">Optional image for this bundle option.</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  {bundleDraft.imagePreview || bundleDraft.imageUrl ? (
+                    <img
+                      src={bundleDraft.imagePreview ?? bundleDraft.imageUrl ?? ''}
+                      alt={bundleDraft.name || 'Bundle image'}
+                      className="h-20 w-20 rounded border border-gray-200 object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-20 w-20 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
+                      No image
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <label className="cursor-pointer rounded border border-gray-300 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) =>
+                          handleBundleDraftImageChange(event.target.files?.[0] ?? null)
+                        }
+                      />
+                      Upload Image
+                    </label>
+                    {(bundleDraft.imagePreview || bundleDraft.imageUrl) && (
+                      <button
+                        type="button"
+                        onClick={handleBundleDraftImageRemove}
+                        className="rounded border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Bundle Components</p>
+                  <p className="text-xs text-gray-500">
+                    Select normal variants and quantities for this bundle.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddBundleDraftItem}
+                  className="inline-flex items-center gap-2 rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                >
+                  <i className="fa-solid fa-plus" />
+                  Add component
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {bundleDraft.bundleItems.map((item, itemIndex) => {
+                  const selectedKeys = new Set(
+                    bundleDraft.bundleItems
+                      .filter((_, idx) => idx !== itemIndex)
+                      .map((bundleItem) =>
+                        bundleItem.componentVariantId
+                          ? `id:${bundleItem.componentVariantId}`
+                          : bundleItem.componentSku
+                            ? `sku:${bundleItem.componentSku}`
+                            : '',
+                      )
+                      .filter(Boolean),
+                  )
+
+                  return (
+                    <div
+                      key={`bundle-item-${itemIndex}`}
+                      className="grid grid-cols-1 gap-3 md:grid-cols-4 md:items-end"
+                    >
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600">Component Variant</label>
+                        <select
+                          value={item.componentVariantId ?? item.componentSku ?? ''}
+                          onChange={(event) =>
+                            handleBundleDraftItemChange(itemIndex, 'componentVariantId', event.target.value)
+                          }
+                          className="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="">Select component</option>
+                          {variants.map((option) => {
+                            const optionKey = option.id ? `id:${option.id}` : `sku:${option.sku}`
+                            const stockLabel = option.trackStock ? option.stock || '0' : '∞'
+                            return (
+                              <option
+                                key={option.id ?? option.sku}
+                                value={option.id ? String(option.id) : option.sku}
+                                disabled={selectedKeys.has(optionKey)}
+                              >
+                                {option.name} {option.sku ? `(${option.sku})` : ''} - {stockLabel}
+                              </option>
+                            )
+                          })}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-xs font-medium text-gray-600">Qty</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(event) =>
+                            handleBundleDraftItemChange(itemIndex, 'quantity', event.target.value)
+                          }
+                          className="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 md:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBundleDraftItem(itemIndex)}
+                          className="rounded border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="rounded border border-dashed border-blue-200 bg-white px-4 py-3 text-sm text-blue-900">
+                <p className="font-medium">Derived stock preview</p>
+                <p className="text-xs text-blue-700 mt-1">
+                  {calculateBundleDerivedQty(bundleDraft, variants) ?? '∞'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeBundleModal}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveBundleDraft}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Save Bundle
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

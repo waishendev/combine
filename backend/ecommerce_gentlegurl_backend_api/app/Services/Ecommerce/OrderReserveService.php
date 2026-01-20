@@ -51,7 +51,8 @@ class OrderReserveService
         $products = Product::whereIn('id', $normalItems->pluck('product_id'))
             ->get()
             ->keyBy('id');
-        $variants = ProductVariant::whereIn('id', $normalItems->pluck('product_variant_id')->filter())
+        $variants = ProductVariant::with(['bundleItems.componentVariant'])
+            ->whereIn('id', $normalItems->pluck('product_variant_id')->filter())
             ->get()
             ->keyBy('id');
 
@@ -68,9 +69,32 @@ class OrderReserveService
 
             if ($variantId) {
                 $variant = $variants->get($variantId);
-                if (! $variant || ! $variant->track_stock) {
+                if (! $variant) {
                     continue;
                 }
+
+                if ($variant->is_bundle) {
+                    $variant->loadMissing('bundleItems.componentVariant');
+                    foreach ($variant->bundleItems as $bundleItem) {
+                        $component = $bundleItem->componentVariant;
+                        if (! $component || ! $component->track_stock) {
+                            continue;
+                        }
+                        $required = (int) ($bundleItem->quantity ?? 1) * $requested;
+                        $available = (int) ($component->stock ?? 0);
+                        if ($required > $available) {
+                            $errors[] = __('Bundle option is out of stock (component insufficient): :variant_name', [
+                                'variant_name' => $component->title ?? 'variant',
+                            ]);
+                        }
+                    }
+                    continue;
+                }
+
+                if (! $variant->track_stock) {
+                    continue;
+                }
+
                 $available = (int) ($variant->stock ?? 0);
                 if ($requested > $available) {
                     $errors[] = sprintf(
@@ -123,13 +147,48 @@ class OrderReserveService
 
             $variantId = (int) ($item['product_variant_id'] ?? 0);
             if ($variantId) {
-                $variant = ProductVariant::where('id', $variantId)->lockForUpdate()->first();
-                if (! $variant || ! $variant->track_stock) {
+                $variant = ProductVariant::with('bundleItems.componentVariant')
+                    ->where('id', $variantId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $variant) {
+                    continue;
+                }
+
+                $requested = (int) ($item['quantity'] ?? 0);
+
+                if ($variant->is_bundle) {
+                    foreach ($variant->bundleItems as $bundleItem) {
+                        $component = $bundleItem->componentVariant;
+                        if (! $component || ! $component->track_stock) {
+                            continue;
+                        }
+                        $required = (int) ($bundleItem->quantity ?? 1) * $requested;
+                        $componentVariant = ProductVariant::where('id', $component->id)->lockForUpdate()->first();
+                        if (! $componentVariant) {
+                            continue;
+                        }
+                        $available = (int) ($componentVariant->stock ?? 0);
+                        if ($required > $available) {
+                            throw ValidationException::withMessages([
+                                'items' => [
+                                    __('Bundle option is out of stock (component insufficient): :variant_name', [
+                                        'variant_name' => $componentVariant->title ?? 'variant',
+                                    ]),
+                                ],
+                            ])->status(422);
+                        }
+                        $componentVariant->stock = $available - $required;
+                        $componentVariant->save();
+                    }
+                    continue;
+                }
+
+                if (! $variant->track_stock) {
                     continue;
                 }
 
                 $available = (int) ($variant->stock ?? 0);
-                $requested = (int) ($item['quantity'] ?? 0);
 
                 if ($requested > $available) {
                     throw ValidationException::withMessages([
@@ -185,8 +244,32 @@ class OrderReserveService
             }
 
             if ($item->product_variant_id) {
-                $variant = ProductVariant::where('id', $item->product_variant_id)->lockForUpdate()->first();
-                if ($variant && $variant->track_stock) {
+                $variant = ProductVariant::with('bundleItems.componentVariant')
+                    ->where('id', $item->product_variant_id)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $variant) {
+                    continue;
+                }
+
+                if ($variant->is_bundle) {
+                    foreach ($variant->bundleItems as $bundleItem) {
+                        $component = $bundleItem->componentVariant;
+                        if (! $component || ! $component->track_stock) {
+                            continue;
+                        }
+                        $componentVariant = ProductVariant::where('id', $component->id)->lockForUpdate()->first();
+                        if (! $componentVariant) {
+                            continue;
+                        }
+                        $restock = (int) ($bundleItem->quantity ?? 1) * (int) $item->quantity;
+                        $componentVariant->stock = (int) ($componentVariant->stock ?? 0) + $restock;
+                        $componentVariant->save();
+                    }
+                    continue;
+                }
+
+                if ($variant->track_stock) {
                     $variant->stock = (int) ($variant->stock ?? 0) + (int) $item->quantity;
                     $variant->save();
                 }
