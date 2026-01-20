@@ -45,6 +45,7 @@ export function ProductReviewsSection({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
 
   const reviewsEnabled = (settings?.enabled ?? eligibility?.enabled ?? true) === true;
 
@@ -123,9 +124,85 @@ export function ProductReviewsSection({
 
   const summary = reviewsData?.summary;
   const items = reviewsData?.items ?? [];
+  const hasReviews = items.length > 0;
+  const showCompactEmptyState = reviewsEnabled && !hasReviews;
+
+  const reviewForm = reviewsEnabled && eligibility?.can_review && (
+    <form onSubmit={onSubmit} className="mt-4 space-y-3">
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+          Rating
+        </label>
+        <div className="mt-1 flex items-center gap-4">
+          <div className="flex items-center gap-1">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => setRating(index + 1)}
+                disabled={submitting}
+                className={`text-3xl transition hover:scale-110 disabled:cursor-not-allowed disabled:opacity-70 ${
+                  index < rating ? "text-[color:var(--status-warning)]" : "text-[var(--muted)]"
+                }`}
+              >
+                ★
+              </button>
+            ))}
+          </div>
+          <span className="text-sm font-semibold text-[color:var(--text-muted)]">{rating} out of 5</span>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+          Title (optional)
+        </label>
+        <input
+          type="text"
+          value={title}
+          maxLength={120}
+          onChange={(e) => setTitle(e.target.value)}
+          className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          placeholder="Summarize your review"
+          disabled={submitting}
+        />
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+          Review
+        </label>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          className="h-28 w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          placeholder="Share your experience with this product"
+          maxLength={2000}
+          required
+          disabled={submitting}
+        />
+      </div>
+
+      {error && <p className="text-sm text-[color:var(--status-error)]">{error}</p>}
+      {success && <p className="text-sm text-[color:var(--status-success)]">{success}</p>}
+
+      <button
+        type="submit"
+        className="inline-flex items-center justify-center rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
+        disabled={submitting}
+      >
+        {submitting ? "Submitting..." : "Submit Review"}
+      </button>
+    </form>
+  );
 
   return (
-    <section id="reviews" className="mt-12 rounded-2xl border border-[var(--muted)] bg-[var(--review-background)] p-6 shadow-sm">
+    <section
+      id="reviews"
+      className={`mt-12 rounded-2xl border border-[var(--muted)] bg-[var(--review-background)] shadow-sm ${
+        showCompactEmptyState ? "p-4" : "p-6"
+      }`}
+    >
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-[var(--foreground)]">Reviews</h2>
@@ -137,7 +214,7 @@ export function ProductReviewsSection({
             <p className="text-sm text-[var(--foreground)]/70">Reviews are disabled.</p>
           )}
         </div>
-        {reviewsEnabled && summary ? (
+        {reviewsEnabled && summary && summary.count > 0 ? (
           <div className="flex items-center gap-2 rounded-xl border border-[var(--muted)] px-3 py-2">
             <div className="text-2xl font-semibold text-[var(--foreground)]">{summary.avg_rating.toFixed(1)}</div>
             <RatingStars value={summary.avg_rating} />
@@ -145,118 +222,79 @@ export function ProductReviewsSection({
         ) : null}
       </div>
 
-      {reviewsEnabled && summary && (
-        <div className="mb-6 grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl bg-[var(--muted)]/40 p-4">
-            <p className="text-sm font-semibold text-[var(--foreground)]">Ratings Breakdown</p>
-            <div className="mt-3 space-y-2">
-              {[5, 4, 3, 2, 1].map((ratingValue) => {
-                const count = summary.distribution?.[ratingValue.toString()] ?? 0;
-                const percent = summary.count ? Math.round((count / summary.count) * 100) : 0;
-                return (
-                  <div key={ratingValue} className="flex items-center gap-2 text-sm text-[var(--foreground)]/80">
-                    <div className="w-5 font-semibold">{ratingValue}</div>
-                    <div className="h-2 flex-1 rounded-full bg-[var(--muted)]/70">
-                      <div className="h-2 rounded-full bg-[var(--status-warning)]" style={{ width: `${percent}%` }} />
+      {showCompactEmptyState ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-dashed border-[var(--muted)] bg-[var(--muted)]/30 p-4">
+          <p className="text-sm font-semibold text-[var(--foreground)]">
+            No reviews yet — be the first to review.
+          </p>
+          {eligibilityMessage && (
+            <p className="text-xs text-[var(--foreground)]/70">
+              {eligibilityMessage}{" "}
+              {eligibility?.reason === "NOT_AUTHENTICATED" && (
+                <Link href="/login" className="text-[var(--accent)] underline">
+                  Sign in
+                </Link>
+              )}
+            </p>
+          )}
+          {reviewsEnabled && eligibility?.can_review && (
+            <button
+              type="button"
+              onClick={() => setShowReviewModal(true)}
+              className="w-fit rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+            >
+              Write a review
+            </button>
+          )}
+        </div>
+      ) : (
+        reviewsEnabled &&
+        summary && (
+          <div className="mb-6 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl bg-[var(--muted)]/40 p-4">
+              <p className="text-sm font-semibold text-[var(--foreground)]">Ratings Breakdown</p>
+              <div className="mt-3 space-y-2">
+                {[5, 4, 3, 2, 1].map((ratingValue) => {
+                  const count = summary.distribution?.[ratingValue.toString()] ?? 0;
+                  const percent = summary.count ? Math.round((count / summary.count) * 100) : 0;
+                  return (
+                    <div key={ratingValue} className="flex items-center gap-2 text-sm text-[var(--foreground)]/80">
+                      <div className="w-5 font-semibold">{ratingValue}</div>
+                      <div className="h-2 flex-1 rounded-full bg-[var(--muted)]/70">
+                        <div className="h-2 rounded-full bg-[var(--status-warning)]" style={{ width: `${percent}%` }} />
+                      </div>
+                      <div className="w-12 text-right text-xs text-[var(--foreground)]/70">{count} review(s)</div>
                     </div>
-                    <div className="w-12 text-right text-xs text-[var(--foreground)]/70">{count} review(s)</div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-[var(--muted)]/40 p-4">
+              <p className="text-sm font-semibold text-[var(--foreground)]">Write a Review</p>
+              {eligibility?.my_review && (
+                <p className="mt-1 text-xs text-[var(--foreground)]/70">
+                  You submitted a review on {formatDate(eligibility.my_review.created_at)}.
+                </p>
+              )}
+              {eligibilityMessage && (
+                <p className="mt-2 text-sm text-[var(--foreground)]/70">
+                  {eligibilityMessage}{" "}
+                  {eligibility?.reason === "NOT_AUTHENTICATED" && (
+                    <Link href="/login" className="text-[var(--accent)] underline">
+                      Sign in
+                    </Link>
+                  )}
+                </p>
+              )}
+
+              {reviewForm}
             </div>
           </div>
-
-          <div className="rounded-xl bg-[var(--muted)]/40 p-4">
-            <p className="text-sm font-semibold text-[var(--foreground)]">Write a Review</p>
-            {eligibility?.my_review && (
-              <p className="mt-1 text-xs text-[var(--foreground)]/70">
-                You submitted a review on {formatDate(eligibility.my_review.created_at)}.
-              </p>
-            )}
-            {eligibilityMessage && (
-              <p className="mt-2 text-sm text-[var(--foreground)]/70">
-                {eligibilityMessage}{" "}
-                {eligibility?.reason === "NOT_AUTHENTICATED" && (
-                  <Link href="/login" className="text-[var(--accent)] underline">
-                    Sign in
-                  </Link>
-                )}
-              </p>
-            )}
-
-            {reviewsEnabled && eligibility?.can_review && (
-              <form onSubmit={onSubmit} className="mt-4 space-y-3">
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                    Rating
-                  </label>
-                  <div className="mt-1 flex items-center gap-4">
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <button
-                          key={index}
-                          type="button"
-                          onClick={() => setRating(index + 1)}
-                          disabled={submitting}
-                          className={`text-3xl transition hover:scale-110 disabled:cursor-not-allowed disabled:opacity-70 ${
-                            index < rating ? "text-[color:var(--status-warning)]" : "text-[var(--muted)]"
-                          }`}
-                        >
-                          ★
-                        </button>
-                      ))}
-                    </div>
-                    <span className="text-sm font-semibold text-[color:var(--text-muted)]">{rating} out of 5</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                    Title (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={title}
-                    maxLength={120}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
-                    placeholder="Summarize your review"
-                    disabled={submitting}
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                    Review
-                  </label>
-                  <textarea
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    className="h-28 w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
-                    placeholder="Share your experience with this product"
-                    maxLength={2000}
-                    required
-                    disabled={submitting}
-                  />
-                </div>
-
-                {error && <p className="text-sm text-[color:var(--status-error)]">{error}</p>}
-                {success && <p className="text-sm text-[color:var(--status-success)]">{success}</p>}
-
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
-                  disabled={submitting}
-                >
-                  {submitting ? "Submitting..." : "Submit Review"}
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
+        )
       )}
 
-      {reviewsEnabled && items.length > 0 && (
+      {reviewsEnabled && hasReviews && (
         <div className="space-y-3">
           {items.map((review) => (
             <div key={review.id} className="rounded-xl border border-[var(--muted)] bg-[var(--review-background)] p-4 shadow-sm">
@@ -278,6 +316,42 @@ export function ProductReviewsSection({
               <p className="mt-1 text-xs font-semibold text-[var(--foreground)]/70">— {review.customer_name}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {showReviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-[var(--card)] p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-lg font-semibold text-[var(--foreground)]">Write a Review</p>
+                {eligibility?.my_review && (
+                  <p className="mt-1 text-xs text-[var(--foreground)]/70">
+                    You submitted a review on {formatDate(eligibility.my_review.created_at)}.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReviewModal(false)}
+                className="text-[color:var(--text-muted)] hover:text-[color:var(--foreground)]"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            {eligibilityMessage && (
+              <p className="mt-3 text-sm text-[var(--foreground)]/70">
+                {eligibilityMessage}{" "}
+                {eligibility?.reason === "NOT_AUTHENTICATED" && (
+                  <Link href="/login" className="text-[var(--accent)] underline">
+                    Sign in
+                  </Link>
+                )}
+              </p>
+            )}
+            {reviewForm}
+          </div>
         </div>
       )}
     </section>
