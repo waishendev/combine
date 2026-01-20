@@ -91,6 +91,7 @@ export default function ProductDetailClient({
   const hasVariants = product.type === "variant" && variants.length > 0;
   const normalVariants = variants.filter((variant) => variant.is_bundle !== true);
   const bundleVariants = variants.filter((variant) => variant.is_bundle === true);
+  const combinedVariants = [...normalVariants, ...bundleVariants];
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
 
   const parseAmount = (value: number | string | null | undefined) => {
@@ -407,13 +408,15 @@ export default function ProductDetailClient({
 
           {hasVariants && (
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-[var(--foreground)]">Variants</p>
+              <p className="text-sm font-semibold text-[var(--foreground)]">Options</p>
               <div className="flex flex-wrap gap-2">
-                {normalVariants.map((variant) => {
+                {combinedVariants.map((variant) => {
                   const isSelected = variant.id === selectedVariantId;
                   const isActive = variant.is_active !== false;
-                  const outOfStock =
-                    (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0;
+                  const availableQty = variant.is_bundle
+                    ? variant.derived_available_qty ?? 0
+                    : variant.stock ?? 0;
+                  const outOfStock = (variant.track_stock ?? true) && availableQty <= 0;
                   const isAvailable = isActive && !outOfStock;
                   const disabledLabel = !isActive ? "Unavailable" : "Out of stock";
                   return (
@@ -422,7 +425,9 @@ export default function ProductDetailClient({
                       type="button"
                       onClick={() => {
                         if (!isAvailable) return;
-                        setSelectedVariantId(variant.id);
+                        setSelectedVariantId((current) =>
+                          current === variant.id ? null : variant.id,
+                        );
                       }}
                       disabled={!isAvailable}
                       title={!isAvailable ? disabledLabel : undefined}
@@ -444,49 +449,6 @@ export default function ProductDetailClient({
                   );
                 })}
               </div>
-              {bundleVariants.length > 0 && (
-                <div className="space-y-2 pt-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-                    Bundle Deals
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {bundleVariants.map((variant) => {
-                      const isSelected = variant.id === selectedVariantId;
-                      const isActive = variant.is_active !== false;
-                      const availableQty = variant.derived_available_qty ?? 0;
-                      const outOfStock = (variant.track_stock ?? true) && availableQty <= 0;
-                      const isAvailable = isActive && !outOfStock;
-                      const disabledLabel = !isActive ? "Unavailable" : "Out of stock";
-                      return (
-                        <button
-                          key={variant.id}
-                          type="button"
-                          onClick={() => {
-                            if (!isAvailable) return;
-                            setSelectedVariantId(variant.id);
-                          }}
-                          disabled={!isAvailable}
-                          title={!isAvailable ? disabledLabel : undefined}
-                          className={`rounded border px-3 py-2 text-sm transition ${
-                            isSelected
-                              ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-                              : !isAvailable
-                                ? "border-[var(--card-border)] bg-[var(--background-soft)] text-[var(--text-muted)] opacity-70"
-                                : "border-[var(--card-border)] bg-white text-[var(--foreground)] hover:border-[var(--accent)]"
-                          }`}
-                        >
-                          <span className="block">{variant.name}</span>
-                          {!isAvailable && (
-                            <span className="block text-[10px] uppercase text-[color:var(--status-error)]">
-                              {disabledLabel}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
