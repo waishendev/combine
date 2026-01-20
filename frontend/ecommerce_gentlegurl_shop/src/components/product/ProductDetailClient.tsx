@@ -148,12 +148,39 @@ export default function ProductDetailClient({
 
   const baseGalleryMedia = useMemo(() => buildProductGalleryMedia(product), [product]);
   const galleryMedia = useMemo(() => {
+    const variantImageItems = variants
+      .map((variant) => {
+        if (!variant.image_url) {
+          return null;
+        }
+        const normalized = normalizeImageUrl(variant.image_url);
+        return normalized
+          ? ({
+              id: `variant-${variant.id}`,
+              type: "image",
+              url: normalized,
+              sort_order: 1000 + variant.id,
+            } satisfies ProductMediaItem)
+          : null;
+      })
+      .filter((item): item is ProductMediaItem => Boolean(item?.url));
+
+    const seen = new Set(baseGalleryMedia.map((item) => item.url));
+    const merged = [...baseGalleryMedia];
+    variantImageItems.forEach((item) => {
+      if (!item.url || seen.has(item.url)) {
+        return;
+      }
+      seen.add(item.url);
+      merged.push(item);
+    });
+
     if (!activeImageUrl) {
-      return baseGalleryMedia;
+      return merged;
     }
-    const hasVariantImage = baseGalleryMedia.some((item) => item.url === activeImageUrl);
+    const hasVariantImage = merged.some((item) => item.url === activeImageUrl);
     if (hasVariantImage) {
-      return baseGalleryMedia;
+      return merged;
     }
     const variantMedia: ProductMediaItem = {
       id: `variant-${selectedVariant?.id ?? "image"}`,
@@ -161,8 +188,8 @@ export default function ProductDetailClient({
       url: activeImageUrl,
       sort_order: -1,
     };
-    return [variantMedia, ...baseGalleryMedia];
-  }, [activeImageUrl, baseGalleryMedia, selectedVariant?.id]);
+    return [variantMedia, ...merged];
+  }, [activeImageUrl, baseGalleryMedia, selectedVariant?.id, variants]);
   const videoItem = galleryMedia.find((item) => item.type === "video");
   const videoPoster = videoItem ? getVideoPoster(product, videoItem) : null;
   const initialIndex = galleryMedia.findIndex((item) => item.type === "video");
