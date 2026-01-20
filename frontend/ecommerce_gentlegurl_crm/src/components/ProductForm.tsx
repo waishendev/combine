@@ -2745,7 +2745,7 @@ export default function ProductForm({
                 >
                   <option value="single">{t('product.typeSingle')}</option>
                   <option value="variant">Variant</option>
-                  <option value="package">{t('product.typeBundle')}</option>
+                  {/* <option value="package">{t('product.typeBundle')}</option> */}
                 </select>
               </div>
 
@@ -3271,7 +3271,7 @@ export default function ProductForm({
               </div>
 
               {!isCollapsed && (
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-gray-700">Variant Image</label>
@@ -3355,7 +3355,7 @@ export default function ProductForm({
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:col-span-2">
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">Name</label>
+                    <label className="block text-sm font-medium text-gray-700">Name <span className="text-red-500">*</span></label>
                     <input
                       value={variant.name}
                       onChange={(event) => handleVariantChange(index, 'name', event.target.value)}
@@ -3364,7 +3364,7 @@ export default function ProductForm({
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">SKU</label>
+                    <label className="block text-sm font-medium text-gray-700">SKU <span className="text-red-500">*</span></label>
                     <input
                       value={variant.sku}
                       onChange={(event) => handleVariantChange(index, 'sku', event.target.value)}
@@ -3373,7 +3373,7 @@ export default function ProductForm({
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">Price</label>
+                    <label className="block text-sm font-medium text-gray-700">Price <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
                       <input
@@ -3465,7 +3465,7 @@ export default function ProductForm({
                   {variant.trackStock && (
                     <>
                       <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">Stock</label>
+                        <label className="block text-sm font-medium text-gray-700">Stock <span className="text-red-500">*</span></label>
                         <input
                           type="number"
                           value={variant.stock}
@@ -3475,7 +3475,7 @@ export default function ProductForm({
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">Low Stock Threshold</label>
+                        <label className="block text-sm font-medium text-gray-700">Low Stock Threshold  <span className="text-red-500">*</span> </label>
                         <input
                           type="number"
                           value={variant.lowStockThreshold}
@@ -3486,7 +3486,7 @@ export default function ProductForm({
                       </div>
                     </>
                   )}
-                  <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                  {/* <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
                     <div>
                       <p className="text-sm font-medium text-gray-900">Track Stock</p>
                       <p className="text-xs text-gray-500">Disable if inventory is not limited.</p>
@@ -3505,7 +3505,7 @@ export default function ProductForm({
                       checked={variant.isActive}
                       onCheckedChange={(checked) => handleVariantChange(index, 'isActive', checked)}
                     />
-                  </div>
+                  </div> */}
                 </div>
               </div>
               )}
@@ -3559,9 +3559,6 @@ export default function ProductForm({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-gray-900">Bundle #{index + 1}</p>
-                    {bundle.name && (
-                      <p className="text-xs text-gray-500 mt-1">{bundle.name}</p>
-                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -3585,7 +3582,7 @@ export default function ProductForm({
 
                 {!isCollapsed && (
                   <>
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="block text-sm font-medium text-gray-700">
@@ -3671,7 +3668,7 @@ export default function ProductForm({
                       </div>
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:col-span-2">
                         <div className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700">Name</label>
+                          <label className="block text-sm font-medium text-gray-700">Name <span className="text-red-500">*</span></label>
                           <input
                             value={bundle.name}
                             onChange={(event) =>
@@ -3682,7 +3679,7 @@ export default function ProductForm({
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700">SKU</label>
+                          <label className="block text-sm font-medium text-gray-700">SKU <span className="text-red-500">*</span></label>
                           <input
                             value={bundle.sku}
                             onChange={(event) =>
@@ -3693,7 +3690,7 @@ export default function ProductForm({
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700">Price</label>
+                          <label className="block text-sm font-medium text-gray-700">Price <span className="text-red-500">*</span></label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
                               RM
@@ -3722,24 +3719,6 @@ export default function ProductForm({
                               value={bundle.costPrice}
                               onChange={(event) =>
                                 handleBundleChange(index, 'costPrice', event.target.value)
-                              }
-                              className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                              placeholder="0.00"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700">Sale Price</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-                              RM
-                            </span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={bundle.salePrice}
-                              onChange={(event) =>
-                                handleBundleChange(index, 'salePrice', event.target.value)
                               }
                               className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                               placeholder="0.00"
@@ -3777,6 +3756,25 @@ export default function ProductForm({
                           </div>
                         </div>
                         <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">Sale Price</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+                              RM
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={bundle.salePrice}
+                              onChange={(event) =>
+                                handleBundleChange(index, 'salePrice', event.target.value)
+                              }
+                              className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
                           <label className="block text-sm font-medium text-gray-700">Start At</label>
                           <input
                             type="datetime-local"
@@ -3800,7 +3798,7 @@ export default function ProductForm({
                           />
                           <p className="text-xs text-gray-500">Leave empty to never expire</p>
                         </div>
-                        <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                        {/* <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
                           <div>
                             <p className="text-sm font-medium text-gray-900">Active</p>
                             <p className="text-xs text-gray-500">
@@ -3813,7 +3811,7 @@ export default function ProductForm({
                               handleBundleChange(index, 'isActive', checked)
                             }
                           />
-                        </div>
+                        </div> */}
                       </div>
                     </div>
 
@@ -3857,7 +3855,7 @@ export default function ProductForm({
                             >
                               <div className="space-y-1 md:col-span-2">
                                 <label className="block text-xs font-medium text-gray-600">
-                                  Component Variant
+                                  Component Variant <span className="text-red-500">*</span>
                                 </label>
                                 <select
                                   value={item.componentVariantId ?? item.componentSku ?? ''}
@@ -3883,8 +3881,9 @@ export default function ProductForm({
                                         value={option.id ? String(option.id) : option.sku}
                                         disabled={selectedKeys.has(optionKey)}
                                       >
-                                        {option.name} {option.sku ? `(${option.sku})` : ''} -{' '}
-                                        {stockLabel}
+                                        {option.name} {option.sku ? `(${option.sku})` : ''} 
+                                        {/* -{' '}
+                                        {stockLabel} */}
                                       </option>
                                     )
                                   })}
@@ -3920,11 +3919,6 @@ export default function ProductForm({
                             </div>
                           )
                         })}
-                      </div>
-
-                      <div className="rounded border border-dashed border-blue-200 bg-white px-4 py-3 text-sm text-blue-900">
-                        <p className="font-medium">Derived stock preview</p>
-                        <p className="text-xs text-blue-700 mt-1">{derivedQty ?? '∞'}</p>
                       </div>
                     </div>
                   </>
