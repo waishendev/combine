@@ -58,12 +58,12 @@ export default function AddToCartButton({
   };
 
   return (
-    <div className="mt-6 flex flex-col gap-2">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center rounded border">
+    <div className="mt-4 flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center overflow-hidden rounded-xl border border-[var(--card-border)] bg-white shadow-sm">
           <button
             type="button"
-            className="px-3 py-2 text-sm"
+            className="px-3 py-2 text-base font-semibold text-[var(--foreground)]"
             onClick={() => {
               const next = clampQuantity(qty - 1);
               setQty(next);
@@ -87,11 +87,11 @@ export default function AddToCartButton({
                 setNotice(null);
               }
             }}
-            className="w-14 border-x px-2 py-1 text-center text-sm outline-none"
+            className="w-16 border-x border-[var(--card-border)] bg-white px-2 py-2 text-center text-sm font-semibold text-[var(--foreground)] outline-none"
           />
           <button
             type="button"
-            className="px-3 py-2 text-sm"
+            className="px-3 py-2 text-base font-semibold text-[var(--foreground)]"
             onClick={() => {
               if (maxStock !== null && qty >= maxStock) {
                 setNotice(`Only ${maxStock} available in stock.`);
@@ -114,12 +114,15 @@ export default function AddToCartButton({
             (requiresVariant && !productVariantId) ||
             (maxStock !== null && maxStock <= 0)
           }
-          className="rounded bg-[var(--accent)] px-6 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-w-[200px] flex-1 rounded-xl bg-[var(--accent)] px-6 py-3 text-base font-semibold text-white shadow-md transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? "Adding..." : "Add to Cart"}
         </button>
       </div>
       {notice && <p className="text-xs font-medium text-[color:var(--status-warning)]">{notice}</p>}
+      <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+        Ships in 24h
+      </p>
     </div>
   );
 }

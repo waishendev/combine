@@ -9,7 +9,7 @@ import { RewardRedeemPanel } from "@/components/product/RewardRedeemPanel";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { buildProductGalleryMedia, getVideoPoster, type ProductMediaItem } from "@/lib/productMedia";
 import { normalizeImageUrl } from "@/lib/imageUrl";
-import type { ReviewSettings } from "@/lib/types/reviews";
+import type { ReviewSettings, ReviewSummary } from "@/lib/types/reviews";
 
 export type VariantItem = {
   id: number;
@@ -311,10 +311,34 @@ export default function ProductDetailClient({
     product.sold_total ?? (Number(product.sold_count ?? 0) + Number(product.extra_sold ?? 0)),
   );
   const soldCount = Number.isFinite(soldCountValue) ? soldCountValue : 0;
+  const reviewSummary = product.review_summary as ReviewSummary | undefined;
+  const ratingLabel =
+    reviewSummary && reviewSummary.count > 0
+      ? `${reviewSummary.avg_rating.toFixed(1)} (${reviewSummary.count})`
+      : null;
 
   const relatedProducts = Array.isArray(product.related_products)
     ? product.related_products
     : [];
+
+  const baseReferencePrice = parseAmount(
+    product.effective_price ?? product.sale_price ?? product.price ?? null,
+  );
+
+  const getVariantPriceLabel = (variant: VariantItem) => {
+    const variantPrice = parseAmount(
+      variant.effective_price ?? variant.sale_price ?? variant.price ?? null,
+    );
+    if (variantPrice === null || baseReferencePrice === null) {
+      return "Price updates";
+    }
+    const diff = variantPrice - baseReferencePrice;
+    if (diff === 0) {
+      return null;
+    }
+    const prefix = diff > 0 ? "+" : "-";
+    return `${prefix}RM${formatAmount(Math.abs(diff))}`;
+  };
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -336,29 +360,51 @@ export default function ProductDetailClient({
           </div>
         </div>
 
-        <div className="space-y-4">
-          <h1 className="text-2xl font-semibold">{product.name}</h1>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold">{product.name}</h1>
+            {(ratingLabel || (!isRewardOnly && soldCount > 0)) && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-muted)]">
+                {ratingLabel && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-2.5 py-1 text-[color:var(--foreground)]">
+                    <span className="text-[color:var(--status-warning)]">★</span>
+                    <span className="font-semibold">{ratingLabel}</span>
+                  </span>
+                )}
+                {!isRewardOnly && soldCount > 0 && (
+                  <span className="inline-flex items-center rounded-full border border-[var(--card-border)] bg-[var(--background-soft)] px-2.5 py-1 font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
+                    Sold {soldCount}
+                  </span>
+                )}
+              </div>
+            )}
+            {isRewardOnly && (
+              <span className="inline-flex items-center rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
+                Reward Item
+              </span>
+            )}
+          </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {!isRewardOnly && (
-              <div className="flex flex-wrap items-center gap-3">
+          {!isRewardOnly && (
+            <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm">
+              <div className="flex flex-wrap items-end gap-2">
                 {variantPriceRange && !selectedVariant ? (
                   variantSaleRange ? (
                     <>
                       <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
                         RM {variantPriceRange}
                       </span>
-                      <span className="text-xl font-bold text-[var(--accent-strong)]">
+                      <span className="text-3xl font-semibold text-[var(--accent-strong)]">
                         RM {variantSaleRange}
                       </span>
                       {variantDiscountPercent !== null && (
-                        <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
+                        <span className="rounded-full bg-[var(--status-warning-bg)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--status-warning)]">
                           UP TO -{variantDiscountPercent}%
                         </span>
                       )}
                     </>
                   ) : (
-                    <span className="text-xl font-bold text-[var(--accent-strong)]">
+                    <span className="text-3xl font-semibold text-[var(--accent-strong)]">
                       RM {variantPriceRange}
                     </span>
                   )
@@ -367,49 +413,55 @@ export default function ProductDetailClient({
                     <span className="text-sm font-semibold text-[color:var(--text-muted)] line-through">
                       RM {displayPrice}
                     </span>
-                    <span className="text-xl font-bold text-[var(--accent-strong)]">
+                    <span className="text-3xl font-semibold text-[var(--accent-strong)]">
                       RM {displaySalePrice}
                     </span>
                     {selectedDiscountPercent !== null && (
-                      <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
+                      <span className="rounded-full bg-[var(--status-warning-bg)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--status-warning)]">
                         -{selectedDiscountPercent}%
                       </span>
                     )}
                   </>
                 ) : (
-                  <span className="text-xl font-bold text-[var(--accent-strong)]">
+                  <span className="text-3xl font-semibold text-[var(--accent-strong)]">
                     RM {displayPrice}
                   </span>
                 )}
               </div>
-            )}
-            {!isRewardOnly && !isVariantProduct && (
-              <span className="rounded-full bg-[var(--background-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-                Sold {soldCount}
-              </span>
-            )}
-            {isRewardOnly && (
-              <span className="rounded-full bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--status-warning)]">
-                Reward Item
-              </span>
-            )}
-          </div>
+              {selectedVariant ? (
+                <p className="mt-2 text-xs text-[color:var(--text-muted)]">
+                  Selected: <span className="font-semibold text-[var(--foreground)]">{selectedVariant.name}</span>
+                </p>
+              ) : hasVariants ? (
+                <p className="mt-2 text-xs text-[color:var(--text-muted)]">
+                  Select an option to see the exact price.
+                </p>
+              ) : null}
+            </div>
+          )}
 
           {displayIsOnSale && saleEndAt && countdownLabel && (
-            <div className="rounded-lg border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/40 px-4 py-2 text-sm">
-              <p className="font-semibold text-[color:var(--status-warning)]">
-                Promotion ends at {formatPromoEndAt(saleEndAt)}
-              </p>
-              <p className="text-xs text-[color:var(--text-muted)]">
-                Ends in {countdownLabel}
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-full border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)]/40 px-4 py-2 text-xs">
+              <span className="font-semibold text-[color:var(--status-warning)]">
+                Promo ends in {countdownLabel}
+              </span>
+              <span className="text-[color:var(--text-muted)]">
+                Ends at {formatPromoEndAt(saleEndAt)}
+              </span>
             </div>
           )}
 
           {hasVariants && (
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-[var(--foreground)]">Options</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-[var(--foreground)]">Options</p>
+                {selectedVariant && (
+                  <span className="text-xs font-medium text-[color:var(--text-muted)]">
+                    {selectedVariant.name} selected
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-3">
                 {combinedVariants.map((variant) => {
                   const isSelected = variant.id === selectedVariantId;
                   const isActive = variant.is_active !== false;
@@ -419,6 +471,7 @@ export default function ProductDetailClient({
                   const outOfStock = (variant.track_stock ?? true) && availableQty <= 0;
                   const isAvailable = isActive && !outOfStock;
                   const disabledLabel = !isActive ? "Unavailable" : "Out of stock";
+                  const priceLabel = getVariantPriceLabel(variant);
                   return (
                     <button
                       key={variant.id}
@@ -431,17 +484,31 @@ export default function ProductDetailClient({
                       }}
                       disabled={!isAvailable}
                       title={!isAvailable ? disabledLabel : undefined}
-                      className={`rounded border px-3 py-2 text-sm transition ${
+                      className={`group relative flex min-w-[9.5rem] items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm transition ${
                         isSelected
-                          ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+                          ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)] shadow-sm"
                           : !isAvailable
                             ? "border-[var(--card-border)] bg-[var(--background-soft)] text-[var(--text-muted)] opacity-70"
                             : "border-[var(--card-border)] bg-white text-[var(--foreground)] hover:border-[var(--accent)]"
                       }`}
                     >
-                      <span className="block">{variant.name}</span>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border text-[10px] ${
+                            isSelected
+                              ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white"
+                              : "border-[var(--card-border)] text-transparent"
+                          }`}
+                        >
+                          ✓
+                        </span>
+                        <span className="font-medium">{variant.name}</span>
+                      </span>
+                      <span className="text-xs text-[color:var(--text-muted)]">
+                        {priceLabel ?? ""}
+                      </span>
                       {!isAvailable && (
-                        <span className="block text-[10px] uppercase text-[color:var(--status-error)]">
+                        <span className="absolute right-2 top-1.5 rounded-full bg-[var(--status-error-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-error)]">
                           {disabledLabel}
                         </span>
                       )}
@@ -470,12 +537,6 @@ export default function ProductDetailClient({
             </div>
           )}
 
-          {product.description && (
-            <div className="prose max-w-none text-sm text-[color:var(--text-muted)]">
-              {product.description}
-            </div>
-          )}
-
           {isRewardOnly || isRewardContext ? (
             <RewardRedeemPanel
               productId={product.id}
@@ -492,6 +553,12 @@ export default function ProductDetailClient({
                 productVariantId={selectedVariantId}
                 requiresVariant={product.type === "variant"}
               />
+            </div>
+          )}
+
+          {product.description && (
+            <div className="prose max-w-none text-sm text-[color:var(--text-muted)]">
+              {product.description}
             </div>
           )}
         </div>
