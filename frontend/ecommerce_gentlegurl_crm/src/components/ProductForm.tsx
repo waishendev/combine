@@ -566,6 +566,15 @@ export default function ProductForm({
 
   useEffect(() => {
     if (!rewardOnly) {
+      return
+    }
+    if (form.type !== 'single') {
+      setForm((prev) => ({ ...prev, type: 'single' }))
+    }
+  }, [form.type, rewardOnly])
+
+  useEffect(() => {
+    if (!rewardOnly) {
       return undefined
     }
 
@@ -1766,13 +1775,15 @@ export default function ProductForm({
       }
     }
 
-    if (form.type === 'variant' && variants.length === 0) {
+    const resolvedType = rewardOnly ? 'single' : form.type
+
+    if (resolvedType === 'variant' && variants.length === 0) {
       setError('Please add at least one variant.')
       setSubmitting(false)
       return
     }
 
-    if (form.type === 'variant') {
+    if (resolvedType === 'variant') {
       const invalidVariant = variants.find((variant) => {
         if (!variant.name.trim() || !variant.sku.trim() || !variant.price) {
           return true
@@ -1835,19 +1846,23 @@ export default function ProductForm({
     }
 
     const formData = new FormData()
+    const resolvedPrice = rewardOnly ? '1' : form.price || '0'
     formData.append('name', form.name.trim())
     formData.append('slug', form.slug.trim())
     formData.append('sku', form.sku.trim())
-    formData.append('type', form.type)
+    formData.append('type', resolvedType)
     formData.append('description', form.description.trim())
-    formData.append('price', form.price || '0')
-    formData.append('sale_price', getNormalizedSalePrice(form.price, form.salePrice))
+    formData.append('price', resolvedPrice)
+    formData.append(
+      'sale_price',
+      getNormalizedSalePrice(resolvedPrice, rewardOnly ? '' : form.salePrice),
+    )
     formData.append('sale_price_start_at', form.salePriceStartAt || '')
     formData.append('sale_price_end_at', form.salePriceEndAt || '')
     formData.append('cost_price', form.costPrice || '0')
     formData.append('stock', form.stock || '0')
     formData.append('low_stock_threshold', form.lowStockThreshold || '0')
-    formData.append('dummy_sold_count', form.dummySoldCount || '0')
+    formData.append('dummy_sold_count', rewardOnly ? '0' : form.dummySoldCount || '0')
     if (showFeatured) {
       formData.append('is_featured', form.isFeatured ? '1' : '0')
     } else {
@@ -1867,7 +1882,7 @@ export default function ProductForm({
       })
     }
 
-    if (form.type === 'variant') {
+    if (resolvedType === 'variant') {
       const combinedVariants = [...variants, ...bundles]
       combinedVariants.forEach((variant, index) => {
         if (variant.id) {
@@ -1989,10 +2004,10 @@ export default function ProductForm({
             name: form.name,
             slug: form.slug,
             sku: form.sku,
-            type: form.type,
+            type: resolvedType,
             description: form.description,
-            price: Number.parseFloat(form.price || '0'),
-            salePrice: parsePriceValue(form.salePrice),
+            price: Number.parseFloat(resolvedPrice),
+            salePrice: rewardOnly ? null : parsePriceValue(form.salePrice),
             costPrice: Number.parseFloat(form.costPrice || '0'),
             stock: Number.parseInt(form.stock || '0', 10),
             lowStockThreshold: Number.parseInt(form.lowStockThreshold || '0', 10),
@@ -2022,7 +2037,7 @@ export default function ProductForm({
         setCreatedProductId(productRow.id)
       }
 
-      if (form.type === 'variant' && bundles.length > 0) {
+      if (resolvedType === 'variant' && bundles.length > 0) {
         await updateBundleItems(payload, bundles)
       }
 
@@ -2732,22 +2747,24 @@ export default function ProductForm({
                   placeholder={t('product.skuPlaceholder')}
                 />
               </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="type">
-                  {t('product.type')}
-                </label>
-                <select
-                  id="type"
-                  name="type"
-                  value={form.type}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                >
-                  <option value="single">{t('product.typeSingle')}</option>
-                  <option value="variant">Variant</option>
-                  {/* <option value="package">{t('product.typeBundle')}</option> */}
-                </select>
-              </div>
+              {!rewardOnly && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="type">
+                    {t('product.type')}
+                  </label>
+                  <select
+                    id="type"
+                    name="type"
+                    value={form.type}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  >
+                    <option value="single">{t('product.typeSingle')}</option>
+                    <option value="variant">Variant</option>
+                    {/* <option value="package">{t('product.typeBundle')}</option> */}
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-2 md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="description">
@@ -3007,92 +3024,96 @@ export default function ProductForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {form.type !== 'variant' && (
             <>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="price">
-                  {t('product.price')} <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                  <input
-                    id="price"
-                    name="price"
-                    type="number"
-                    step="0.01"
-                    value={form.price}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="salePrice">
-                  Sale Price
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                  <input
-                    id="salePrice"
-                    name="salePrice"
-                    type="number"
-                    step="0.01"
-                    value={form.salePrice}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="salePriceStartAt">
-                  Start At
-                </label>
-                <input
-                  id="salePriceStartAt"
-                  name="salePriceStartAt"
-                  type="datetime-local"
-                  value={form.salePriceStartAt}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-                <p className="text-xs text-gray-500">Leave empty to start immediately</p>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="salePriceEndAt">
-                  End At
-                </label>
-                <input
-                  id="salePriceEndAt"
-                  name="salePriceEndAt"
-                  type="datetime-local"
-                  value={form.salePriceEndAt}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-                <p className="text-xs text-gray-500">Leave empty to never expire</p>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Discount %</label>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                  {simpleDiscountPercent !== null ? `${simpleDiscountPercent}%` : '—'}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="discountPercent">
-                  Quick Discount %
-                </label>
-                <input
-                  id="discountPercent"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={discountPercentInput}
-                  onChange={handleDiscountPercentChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="0"
-                />
-              </div>
+              {!rewardOnly && (
+                <>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="price">
+                      {t('product.price')} <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        id="price"
+                        name="price"
+                        type="number"
+                        step="0.01"
+                        value={form.price}
+                        onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="salePrice">
+                      Sale Price
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        id="salePrice"
+                        name="salePrice"
+                        type="number"
+                        step="0.01"
+                        value={form.salePrice}
+                        onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="salePriceStartAt">
+                      Start At
+                    </label>
+                    <input
+                      id="salePriceStartAt"
+                      name="salePriceStartAt"
+                      type="datetime-local"
+                      value={form.salePriceStartAt}
+                      onChange={handleChange}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <p className="text-xs text-gray-500">Leave empty to start immediately</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="salePriceEndAt">
+                      End At
+                    </label>
+                    <input
+                      id="salePriceEndAt"
+                      name="salePriceEndAt"
+                      type="datetime-local"
+                      value={form.salePriceEndAt}
+                      onChange={handleChange}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <p className="text-xs text-gray-500">Leave empty to never expire</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Discount %</label>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                      {simpleDiscountPercent !== null ? `${simpleDiscountPercent}%` : '—'}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="discountPercent">
+                      Quick Discount %
+                    </label>
+                    <input
+                      id="discountPercent"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={discountPercentInput}
+                      onChange={handleDiscountPercentChange}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="0"
+                    />
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="costPrice">
                   {t('product.costPrice')}
@@ -3141,21 +3162,23 @@ export default function ProductForm({
               </div>
             </>
           )}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="dummySoldCount">
-              Extra Sold (Display Only)
-            </label>
-            <input
-              id="dummySoldCount"
-              name="dummySoldCount"
-              type="number"
-              min="0"
-              value={form.dummySoldCount}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder="0"
-            />
-          </div>
+          {!rewardOnly && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="dummySoldCount">
+                Extra Sold (Display Only)
+              </label>
+              <input
+                id="dummySoldCount"
+                name="dummySoldCount"
+                type="number"
+                min="0"
+                value={form.dummySoldCount}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                placeholder="0"
+              />
+            </div>
+          )}
           {mode === 'edit' && !rewardOnly && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="status">
