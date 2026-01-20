@@ -220,15 +220,6 @@ export default function CustomerAssignVoucherModal({
             <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="voucher-search">
               Voucher
             </label>
-            <input
-              id="voucher-search"
-              type="text"
-              value={search}
-              onChange={(event: ChangeEvent<HTMLInputElement>) => setSearch(event.target.value)}
-              className="w-full mb-3 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Search voucher code"
-              disabled={loading || submitting}
-            />
             <select
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
               value={selectedVoucherId ?? ''}

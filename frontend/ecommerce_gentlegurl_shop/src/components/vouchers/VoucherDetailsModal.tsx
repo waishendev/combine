@@ -92,7 +92,7 @@ export default function VoucherDetailsModal({
         <div className="flex items-start justify-between gap-4 border-b border-[var(--card-border)] pb-3">
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">Voucher Details</p>
-            <h2 className="text-lg font-semibold">{voucher?.code ?? "Voucher"}</h2>
+            {/* <h2 className="text-lg font-semibold">{voucher?.code ?? "Voucher"}</h2> */}
           </div>
           <button
             type="button"

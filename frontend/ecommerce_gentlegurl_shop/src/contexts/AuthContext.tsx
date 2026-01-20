@@ -99,18 +99,11 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
       setIsLoading(true);
       try {
         await registerCustomer(payload);
-        await loginCustomer({ email: payload.email, password: payload.password });
-        await refreshProfile();
-        await mergeWishlistAfterLogin();
-        setAuthFlag(true);
-        if (onLoginSuccess) {
-          await onLoginSuccess();
-        }
       } finally {
         setIsLoading(false);
       }
     },
-    [mergeWishlistAfterLogin, onLoginSuccess, refreshProfile],
+    [],
   );
 
   const logout = useCallback(async () => {

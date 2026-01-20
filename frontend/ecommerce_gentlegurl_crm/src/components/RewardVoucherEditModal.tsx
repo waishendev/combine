@@ -550,7 +550,7 @@ export default function RewardVoucherEditModal({
                 name="scopeType"
                 value={form.scopeType}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                 disabled={submitting}
               >
                 <option value="all">Storewide</option>

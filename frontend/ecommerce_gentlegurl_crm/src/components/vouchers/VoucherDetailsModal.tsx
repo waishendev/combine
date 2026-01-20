@@ -111,7 +111,7 @@ export default function VoucherDetailsModal({
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold">Voucher Details</h2>
-            <p className="text-xs text-gray-500">{voucher?.code ?? 'Voucher'}</p>
+            {/* <p className="text-xs text-gray-500">{voucher?.code ?? 'Voucher'}</p> */}
           </div>
           <button
             onClick={onClose}
@@ -167,34 +167,70 @@ export default function VoucherDetailsModal({
 
               {voucher.scope_type === 'products' && (
                 <div>
-                  <p className="text-sm font-semibold text-gray-700">Eligible Products</p>
-                  <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                    {voucher.products && voucher.products.length > 0 ? (
-                      voucher.products.map((product) => (
-                        <li key={product.id} className="flex items-center justify-between gap-3">
-                          <span>{product.name ?? 'Unnamed product'}</span>
-                          <span className="text-xs text-gray-400">{product.sku ?? '-'}</span>
-                        </li>
-                      ))
-                    ) : (
-                      <li>No products assigned.</li>
-                    )}
-                  </ul>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Eligible Products</p>
+                  {voucher.products && voucher.products.length > 0 ? (
+                    <div className="max-w-full overflow-x-auto max-h-64 overflow-y-auto">
+                      <table className="w-full border border-gray-200 rounded-md text-sm">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 border-b border-gray-200">
+                              Product
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {voucher.products.map((product) => (
+                            <tr key={product.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <div className="flex flex-col">
+                                  <span className="text-gray-800 font-medium">
+                                    {product.name ?? 'Unnamed product'}
+                                  </span>
+                                  <span className="text-xs text-gray-400 mt-1">
+                                    {product.sku ?? '-'}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No products assigned.</p>
+                  )}
                 </div>
               )}
 
               {voucher.scope_type === 'categories' && (
                 <div>
-                  <p className="text-sm font-semibold text-gray-700">Eligible Categories</p>
-                  <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                    {voucher.categories && voucher.categories.length > 0 ? (
-                      voucher.categories.map((category) => (
-                        <li key={category.id}>{category.name ?? 'Unnamed category'}</li>
-                      ))
-                    ) : (
-                      <li>No categories assigned.</li>
-                    )}
-                  </ul>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Eligible Categories</p>
+                  {voucher.categories && voucher.categories.length > 0 ? (
+                    <div className="max-w-full overflow-x-auto max-h-64 overflow-y-auto">
+                      <table className="w-full border border-gray-200 rounded-md text-sm">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 border-b border-gray-200">
+                              Category
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {voucher.categories.map((category) => (
+                            <tr key={category.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <span className="text-gray-800 font-medium">
+                                  {category.name ?? 'Unnamed category'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No categories assigned.</p>
+                  )}
                 </div>
               )}
             </>

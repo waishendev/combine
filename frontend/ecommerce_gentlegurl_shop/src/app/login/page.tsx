@@ -14,6 +14,10 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const registered = searchParams.get("registered");
+  const reset = searchParams.get("reset");
+  const showRegisteredBanner = registered === "1";
+  const showResetBanner = reset === "1";
 
   const redirectTarget = useMemo(() => {
     const target = getSafeRedirect(searchParams.get("redirect"));
@@ -50,6 +54,16 @@ export default function LoginPage() {
 
           {/* Card */}
         <div className="rounded-3xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-7 shadow-[0_12px_40px_-24px_rgba(var(--accent-rgb),0.25)] backdrop-blur-sm md:p-8">
+            {showRegisteredBanner ? (
+              <div className="mb-4 rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-2 text-sm text-[color:var(--status-info)]">
+                Account created. Please verify your email before logging in.
+              </div>
+            ) : null}
+            {showResetBanner ? (
+              <div className="mb-4 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2 text-sm text-[color:var(--status-success)]">
+                Password updated. Please login.
+              </div>
+            ) : null}
             <LoginForm redirectTarget={redirectTarget} onSubmittingChange={setIsSubmitting} />
           </div>
 

@@ -400,7 +400,7 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
               <TableEmptyState
                 colSpan={tableColumns}
                 message="No reward vouchers found."
-                actionLabel={canCreate ? 'Create Reward Voucher' : undefined}
+                actionLabel={undefined}
                 onAction={canCreate ? () => setIsCreateOpen(true) : undefined}
               />
             )}

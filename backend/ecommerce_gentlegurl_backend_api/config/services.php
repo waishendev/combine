@@ -46,6 +46,8 @@ return [
         'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
     ],
 
+    'frontend_url' => env('FRONTEND_URL'),
+
     'billplz' => [
         'api_key' => env('BILPLZ_API_KEY', env('BILLPLZ_API_KEY')),
         'collection_id' => env('BILPLZ_COLLECTION_ID', env('BILLPLZ_COLLECTION_ID')),

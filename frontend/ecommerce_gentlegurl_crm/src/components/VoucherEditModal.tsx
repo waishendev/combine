@@ -280,6 +280,51 @@ export default function VoucherEditModal({
     }))
   }
 
+  const selectAllProducts = () => {
+    const filteredIds = filteredProducts.map((p) => p.id)
+    const allSelected = filteredIds.every((id) => form.productIds.includes(id))
+    if (allSelected) {
+      // Deselect all filtered products
+      setForm((prev) => ({
+        ...prev,
+        productIds: prev.productIds.filter((id) => !filteredIds.includes(id)),
+      }))
+    } else {
+      // Select all filtered products
+      setForm((prev) => ({
+        ...prev,
+        productIds: [...new Set([...prev.productIds, ...filteredIds])],
+      }))
+    }
+  }
+
+  const selectAllCategories = () => {
+    const filteredIds = filteredCategories.map((c) => c.id)
+    const allSelected = filteredIds.every((id) => form.categoryIds.includes(id))
+    if (allSelected) {
+      // Deselect all filtered categories
+      setForm((prev) => ({
+        ...prev,
+        categoryIds: prev.categoryIds.filter((id) => !filteredIds.includes(id)),
+      }))
+    } else {
+      // Select all filtered categories
+      setForm((prev) => ({
+        ...prev,
+        categoryIds: [...new Set([...prev.categoryIds, ...filteredIds])],
+      }))
+    }
+  }
+
+  const generateCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    let code = ''
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    setForm((prev) => ({ ...prev, code }))
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -427,7 +472,7 @@ export default function VoucherEditModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg">
+      <div className="relative w-full max-w-2xl mx-auto bg-white rounded-lg shadow-lg">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
           <h2 className="text-lg font-semibold">Edit Voucher</h2>
           <button
@@ -442,288 +487,300 @@ export default function VoucherEditModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+        <form onSubmit={handleSubmit} className="px-5 py-4">
           {loading ? (
             <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
           ) : (
             <>
-              <div>
-                <label
-                  htmlFor="edit-code"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Code <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-code"
-                  name="code"
-                  type="text"
-                  value={form.code}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Voucher code"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-value"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Value <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-value"
-                  name="value"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.value}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0.00"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-minOrderAmount"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Minimum Order Amount <span className="text-red-500">*</span>
-                </label>
-                <p className="text-xs text-gray-500 mb-2">
-                  Eligible subtotal rule: min spend checks only on eligible items.
-                </p>
-                <input
-                  id="edit-minOrderAmount"
-                  name="minOrderAmount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.minOrderAmount}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0.00"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-scopeType"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Scope Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-scopeType"
-                  name="scopeType"
-                  value={form.scopeType}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="all">All Products (Storewide)</option>
-                  <option value="products">Specific Products</option>
-                  <option value="categories">Specific Categories</option>
-                </select>
-              </div>
-
-              {form.scopeType === 'products' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Eligible Products <span className="text-red-500">*</span>
-                    </label>
-                    <span className="text-xs text-gray-500">
-                      {form.productIds.length} selected
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    value={productSearch}
-                    onChange={(event) => setProductSearch(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Search products by name or SKU"
-                    disabled={disableForm}
-                  />
-                  <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 p-2 text-sm">
-                    {loadingOptions ? (
-                      <p className="text-gray-500">Loading products...</p>
-                    ) : filteredProducts.length === 0 ? (
-                      <p className="text-gray-500">No products found.</p>
-                    ) : (
-                      filteredProducts.map((product) => (
-                        <label key={product.id} className="flex items-center gap-2 py-1">
-                          <input
-                            type="checkbox"
-                            checked={form.productIds.includes(product.id)}
-                            onChange={() => toggleProduct(product.id)}
-                            disabled={disableForm}
-                          />
-                          <span className="text-gray-800">
-                            {product.name}
-                            {product.sku ? (
-                              <span className="text-xs text-gray-500"> ({product.sku})</span>
-                            ) : null}
-                          </span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {form.scopeType === 'categories' && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Eligible Categories <span className="text-red-500">*</span>
-                    </label>
-                    <span className="text-xs text-gray-500">
-                      {form.categoryIds.length} selected
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    value={categorySearch}
-                    onChange={(event) => setCategorySearch(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Search categories"
-                    disabled={disableForm}
-                  />
-                  <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 p-2 text-sm">
-                    {loadingOptions ? (
-                      <p className="text-gray-500">Loading categories...</p>
-                    ) : filteredCategories.length === 0 ? (
-                      <p className="text-gray-500">No categories found.</p>
-                    ) : (
-                      filteredCategories.map((category) => (
-                        <label key={category.id} className="flex items-center gap-2 py-1">
-                          <input
-                            type="checkbox"
-                            checked={form.categoryIds.includes(category.id)}
-                            onChange={() => toggleCategory(category.id)}
-                            disabled={disableForm}
-                          />
-                          <span className="text-gray-800">{category.name}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label
-                  htmlFor="edit-maxUses"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Max Uses
-                </label>
-                <input
-                  id="edit-maxUses"
-                  name="maxUses"
-                  type="number"
-                  min="1"
-                  value={form.maxUses}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="100"
-                  disabled={disableForm}
-                />
-              </div>
-
-              {!hideMaxUsesPerCustomer && (
-                <div>
-                  <label
-                    htmlFor="edit-maxUsesPerCustomer"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Max Uses Per Customer
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="edit-code">
+                    Code <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    id="edit-maxUsesPerCustomer"
-                    name="maxUsesPerCustomer"
-                    type="number"
-                    min="1"
-                    value={form.maxUsesPerCustomer}
+                  <div className="flex gap-2">
+                    <input
+                      id="edit-code"
+                      name="code"
+                      type="text"
+                      value={form.code}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Voucher code"
+                      disabled={disableForm}
+                    />
+                    <button
+                      type="button"
+                      className="whitespace-nowrap px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+                      onClick={generateCode}
+                      disabled={disableForm}
+                    >
+                      Auto-generate
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="edit-isActive">
+                    Status <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="edit-isActive"
+                    name="isActive"
+                    value={form.isActive}
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="1"
+                    disabled={disableForm}
+                  >
+                    <option value="active">{t('common.active')}</option>
+                    <option value="inactive">{t('common.inactive')}</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="edit-value">
+                    Value <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-value"
+                    name="value"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.value}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
                     disabled={disableForm}
                   />
                 </div>
-              )}
 
-              <div>
-                <label
-                  htmlFor="edit-startAt"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Start Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-startAt"
-                  name="startAt"
-                  type="date"
-                  value={form.startAt}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                />
-              </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="edit-maxUses">
+                    Max Uses
+                  </label>
+                  <input
+                    id="edit-maxUses"
+                    name="maxUses"
+                    type="number"
+                    min="1"
+                    value={form.maxUses}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="100"
+                    disabled={disableForm}
+                  />
+                </div>
 
-              <div>
-                <label
-                  htmlFor="edit-endAt"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  End Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-endAt"
-                  name="endAt"
-                  type="date"
-                  value={form.endAt}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                />
-              </div>
+                {!hideMaxUsesPerCustomer ? (
+                  <div className="space-y-2">
+                    <label
+                      className="block text-sm font-medium text-gray-700"
+                      htmlFor="edit-maxUsesPerCustomer"
+                    >
+                      Max Uses Per Customer
+                    </label>
+                    <input
+                      id="edit-maxUsesPerCustomer"
+                      name="maxUsesPerCustomer"
+                      type="number"
+                      min="1"
+                      value={form.maxUsesPerCustomer}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="1"
+                      disabled={disableForm}
+                    />
+                  </div>
+                ) : null}
 
-              <div>
-                <label
-                  htmlFor="edit-isActive"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Status <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-isActive"
-                  name="isActive"
-                  value={form.isActive}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="active">{t('common.active')}</option>
-                  <option value="inactive">{t('common.inactive')}</option>
-                </select>
+                <div className={`space-y-2 ${hideMaxUsesPerCustomer ? 'md:col-span-2' : ''}`}>
+                  <label
+                    className="block text-sm font-medium text-gray-700"
+                    htmlFor="edit-minOrderAmount"
+                  >
+                    Minimum Order Amount <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-minOrderAmount"
+                    name="minOrderAmount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.minOrderAmount}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="edit-scopeType">
+                    Scope Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="edit-scopeType"
+                    name="scopeType"
+                    value={form.scopeType}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={disableForm}
+                  >
+                    <option value="all">All Products (Storewide)</option>
+                    <option value="products">Specific Products</option>
+                    <option value="categories">Specific Categories</option>
+                  </select>
+                </div>
+
+                {form.scopeType === 'products' && (
+                  <div className="space-y-2 md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Eligible Products <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-xs text-gray-500">{form.productIds.length} selected</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={productSearch}
+                        onChange={(event) => setProductSearch(event.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Search products by name or SKU"
+                        disabled={disableForm}
+                      />
+                      {filteredProducts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={selectAllProducts}
+                          disabled={disableForm}
+                          className="px-3 py-2 text-xs text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {filteredProducts.every((p) => form.productIds.includes(p.id))
+                            ? 'Deselect All'
+                            : 'Select All'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 p-2 text-sm">
+                      {loadingOptions ? (
+                        <p className="text-gray-500">Loading products...</p>
+                      ) : filteredProducts.length === 0 ? (
+                        <p className="text-gray-500">No products found.</p>
+                      ) : (
+                        filteredProducts.map((product) => (
+                          <label key={product.id} className="flex items-center gap-2 py-1">
+                            <input
+                              type="checkbox"
+                              checked={form.productIds.includes(product.id)}
+                              onChange={() => toggleProduct(product.id)}
+                              disabled={disableForm}
+                            />
+                            <span className="text-gray-800">
+                              {product.name}
+                              {product.sku ? (
+                                <span className="text-xs text-gray-500"> ({product.sku})</span>
+                              ) : null}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {form.scopeType === 'categories' && (
+                  <div className="space-y-2 md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Eligible Categories <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-xs text-gray-500">{form.categoryIds.length} selected</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={categorySearch}
+                        onChange={(event) => setCategorySearch(event.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Search categories"
+                        disabled={disableForm}
+                      />
+                      {filteredCategories.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={selectAllCategories}
+                          disabled={disableForm}
+                          className="px-3 py-2 text-xs text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {filteredCategories.every((c) => form.categoryIds.includes(c.id))
+                            ? 'Deselect All'
+                            : 'Select All'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 p-2 text-sm">
+                      {loadingOptions ? (
+                        <p className="text-gray-500">Loading categories...</p>
+                      ) : filteredCategories.length === 0 ? (
+                        <p className="text-gray-500">No categories found.</p>
+                      ) : (
+                        filteredCategories.map((category) => (
+                          <label key={category.id} className="flex items-center gap-2 py-1">
+                            <input
+                              type="checkbox"
+                              checked={form.categoryIds.includes(category.id)}
+                              onChange={() => toggleCategory(category.id)}
+                              disabled={disableForm}
+                            />
+                            <span className="text-gray-800">{category.name}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="edit-startAt">
+                    Start Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-startAt"
+                    name="startAt"
+                    type="date"
+                    value={form.startAt}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700" htmlFor="edit-endAt">
+                    End Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-endAt"
+                    name="endAt"
+                    type="date"
+                    value={form.endAt}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={disableForm}
+                  />
+                </div>
               </div>
             </>
           )}
 
           {error && (
-            <div className="text-sm text-red-600" role="alert">
+            <div className="text-sm text-red-600 mt-4" role="alert">
               {error}
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-3 pt-4 mt-4">
             <button
               type="button"
               className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
