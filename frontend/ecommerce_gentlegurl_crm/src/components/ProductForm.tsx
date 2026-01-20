@@ -3248,12 +3248,17 @@ export default function ProductForm({
               parsePriceValue(variant.salePrice),
             )
 
+            const variantImageInputId = `variant-image-${index}`
+            const triggerVariantImageUpload = () => {
+              const input = document.getElementById(variantImageInputId) as HTMLInputElement | null
+              input?.click()
+            }
+
             return (
             <div key={variant.id ?? index} className="rounded-lg border border-gray-200 p-4 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Variant #{index + 1}</p>
-                  <p className="text-xs text-gray-500">Sort order: {index + 1}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -3282,173 +3287,218 @@ export default function ProductForm({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-700">Variant Image</label>
+                  </div>
+                  <p className="text-xs text-red-500 mb-2">Suggested size: 800 x 800</p>
                   <input
-                    value={variant.name}
-                    onChange={(event) => handleVariantChange(index, 'name', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="200ml"
+                    id={variantImageInputId}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) =>
+                      handleVariantImageChange(index, event.target.files?.[0] ?? null)
+                    }
                   />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">SKU</label>
-                  <input
-                    value={variant.sku}
-                    onChange={(event) => handleVariantChange(index, 'sku', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="SKU-200ML"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Price</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={variant.price}
-                      onChange={(event) => handleVariantChange(index, 'price', event.target.value)}
-                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Sale Price</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={variant.salePrice}
-                      onChange={(event) => handleVariantChange(index, 'salePrice', event.target.value)}
-                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Start At</label>
-                  <input
-                    type="datetime-local"
-                    value={variant.salePriceStartAt}
-                    onChange={(event) => handleVariantChange(index, 'salePriceStartAt', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  />
-                  <p className="text-xs text-gray-500">Leave empty to start immediately</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">End At</label>
-                  <input
-                    type="datetime-local"
-                    value={variant.salePriceEndAt}
-                    onChange={(event) => handleVariantChange(index, 'salePriceEndAt', event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  />
-                  <p className="text-xs text-gray-500">Leave empty to never expire</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Discount %</label>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                    {discountPercent !== null ? `${discountPercent}%` : '—'}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Cost Price</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={variant.costPrice}
-                      onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
-                      className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                {variant.trackStock && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Stock</label>
-                      <input
-                        type="number"
-                        value={variant.stock}
-                        onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Low Stock Threshold</label>
-                      <input
-                        type="number"
-                        value={variant.lowStockThreshold}
-                        onChange={(event) => handleVariantChange(index, 'lowStockThreshold', event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                        placeholder="0"
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Track Stock</p>
-                    <p className="text-xs text-gray-500">Disable if inventory is not limited.</p>
-                  </div>
-                  <Switch
-                    checked={variant.trackStock}
-                    onCheckedChange={(checked) => handleVariantChange(index, 'trackStock', checked)}
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Active</p>
-                    <p className="text-xs text-gray-500">Hide variant from shop if disabled.</p>
-                  </div>
-                  <Switch
-                    checked={variant.isActive}
-                    onCheckedChange={(checked) => handleVariantChange(index, 'isActive', checked)}
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700">Variant Image</label>
-                  <div className="flex flex-wrap items-center gap-4">
-                    {variant.imagePreview || variant.imageUrl ? (
-                      <img
-                        src={variant.imagePreview ?? variant.imageUrl ?? ''}
-                        alt={variant.name || 'Variant image'}
-                        className="h-20 w-20 rounded border border-gray-200 object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-20 w-20 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">
-                        No image
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <label className="cursor-pointer rounded border border-gray-300 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(event) =>
-                            handleVariantImageChange(index, event.target.files?.[0] ?? null)
-                          }
-                        />
-                        Upload Image
-                      </label>
-                      {(variant.imagePreview || variant.imageUrl) && (
-                        <button
-                          type="button"
-                          onClick={() => handleVariantImageRemove(index)}
-                          className="rounded border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                  <div className="w-full max-w-sm">
+                    <div
+                      className={`relative aspect-square rounded-xl border-2 border-dashed overflow-hidden transition-all duration-200 ${
+                        variant.imagePreview || variant.imageUrl
+                          ? 'border-gray-200 bg-white shadow-md hover:shadow-lg'
+                          : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-md cursor-pointer'
+                      }`}
+                      onClick={() => {
+                        if (!variant.imagePreview && !variant.imageUrl) {
+                          triggerVariantImageUpload()
+                        }
+                      }}
+                    >
+                      {variant.imagePreview || variant.imageUrl ? (
+                        <div
+                          className="w-full h-full cursor-pointer group relative"
+                          onClick={() => {
+                            setPreviewImage({
+                              type: 'existing',
+                              src: variant.imagePreview ?? variant.imageUrl ?? '',
+                              index,
+                            })
+                          }}
                         >
-                          Remove
-                        </button>
+                          <img
+                            src={variant.imagePreview ?? variant.imageUrl ?? ''}
+                            alt={variant.name || 'Variant image'}
+                            className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-200"
+                          />
+                          <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                triggerVariantImageUpload()
+                              }}
+                              className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                              aria-label={t('product.replaceImage')}
+                            >
+                              <i className="fa-solid fa-image text-xs" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleVariantImageRemove(index)
+                              }}
+                              className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                              aria-label={t('product.removeImage')}
+                            >
+                              <i className="fa-solid fa-trash-can text-xs" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-2 group">
+                          <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-2 transition-all duration-200 group-hover:scale-110">
+                            <i className="fa-solid fa-cloud-arrow-up text-gray-400 group-hover:text-blue-500 text-lg transition-colors duration-200" />
+                          </div>
+                          <span className="text-xs text-gray-500 group-hover:text-blue-600 text-center font-medium transition-colors duration-200">
+                            {t('product.clickToUpload')}
+                          </span>
+                        </div>
                       )}
                     </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:col-span-2">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Name</label>
+                    <input
+                      value={variant.name}
+                      onChange={(event) => handleVariantChange(index, 'name', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="200ml"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">SKU</label>
+                    <input
+                      value={variant.sku}
+                      onChange={(event) => handleVariantChange(index, 'sku', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="SKU-200ML"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variant.price}
+                        onChange={(event) => handleVariantChange(index, 'price', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Sale Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variant.salePrice}
+                        onChange={(event) => handleVariantChange(index, 'salePrice', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Start At</label>
+                    <input
+                      type="datetime-local"
+                      value={variant.salePriceStartAt}
+                      onChange={(event) => handleVariantChange(index, 'salePriceStartAt', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <p className="text-xs text-gray-500">Leave empty to start immediately</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">End At</label>
+                    <input
+                      type="datetime-local"
+                      value={variant.salePriceEndAt}
+                      onChange={(event) => handleVariantChange(index, 'salePriceEndAt', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <p className="text-xs text-gray-500">Leave empty to never expire</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Discount %</label>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                      {discountPercent !== null ? `${discountPercent}%` : '—'}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Cost Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variant.costPrice}
+                        onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  {variant.trackStock && (
+                    <>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Stock</label>
+                        <input
+                          type="number"
+                          value={variant.stock}
+                          onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Low Stock Threshold</label>
+                        <input
+                          type="number"
+                          value={variant.lowStockThreshold}
+                          onChange={(event) => handleVariantChange(index, 'lowStockThreshold', event.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          placeholder="0"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Track Stock</p>
+                      <p className="text-xs text-gray-500">Disable if inventory is not limited.</p>
+                    </div>
+                    <Switch
+                      checked={variant.trackStock}
+                      onCheckedChange={(checked) => handleVariantChange(index, 'trackStock', checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Active</p>
+                      <p className="text-xs text-gray-500">Hide variant from shop if disabled.</p>
+                    </div>
+                    <Switch
+                      checked={variant.isActive}
+                      onCheckedChange={(checked) => handleVariantChange(index, 'isActive', checked)}
+                    />
                   </div>
                 </div>
               </div>

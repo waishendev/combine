@@ -199,7 +199,7 @@ export function ProductGallery({
               type="button"
               onClick={handleNext}
               aria-label="Next media"
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-white/40 bg-black/50 p-2 text-white transition hover:bg-black/70"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-black/40 bg-black/50 p-2 text-white transition hover:bg-black/70"
             >
               <i className="fa-solid fa-chevron-right" />
             </button>
