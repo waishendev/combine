@@ -37,6 +37,7 @@ class AdminSeeder extends Seeder
             'customers.create',
             'customers.update',
             'customers.delete',
+            'customers.verify',
             'ecommerce.categories.view',
             'ecommerce.categories.create',
             'ecommerce.categories.update',

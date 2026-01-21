@@ -15,12 +15,14 @@ interface FormState {
   name: string
   email: string
   phone: string
+  password: string
 }
 
 const initialFormState: FormState = {
   name: '',
   email: '',
   phone: '',
+  password: '',
 }
 
 export default function CustomerCreateModal({
@@ -45,8 +47,9 @@ export default function CustomerCreateModal({
     const trimmedName = form.name.trim()
     const trimmedEmail = form.email.trim()
     const trimmedPhone = form.phone.trim()
+    const trimmedPassword = form.password.trim()
 
-    if (!trimmedName || !trimmedEmail || !trimmedPhone) {
+    if (!trimmedName || !trimmedEmail || !trimmedPhone || !trimmedPassword) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -65,6 +68,7 @@ export default function CustomerCreateModal({
           name: trimmedName,
           email: trimmedEmail,
           phone: trimmedPhone,
+          password: trimmedPassword,
           is_active: true,
         }),
       })
@@ -202,6 +206,25 @@ export default function CustomerCreateModal({
             />
           </div>
 
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              {t('common.password')} <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              value={form.password}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              placeholder={t('common.passwordPlaceholder')}
+              disabled={submitting}
+            />
+          </div>
+
           {error && (
             <div className="text-sm text-red-600" role="alert">
               {error}
@@ -232,4 +255,3 @@ export default function CustomerCreateModal({
     </div>
   )
 }
-

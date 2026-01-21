@@ -74,7 +74,7 @@ class RbacSeeder extends Seeder
             'roles' => ['view', 'create', 'update', 'delete'],
             'permissions' => ['view', 'create', 'update', 'delete'],
             'permission-groups' => ['view', 'create', 'update', 'delete'],
-            'customers' => ['view', 'create', 'update', 'delete'],
+            'customers' => ['view', 'create', 'update', 'delete', 'verify'],
             'ecommerce.categories' => ['view', 'create', 'update', 'delete'],
             'ecommerce.products' => ['view', 'create', 'update', 'delete'],
             'ecommerce.shop-menu' => ['view', 'create', 'update', 'delete'],

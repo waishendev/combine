@@ -16,6 +16,7 @@ interface FormState {
   name: string
   email: string
   phone: string
+  password: string
   isActive: 'true' | 'false'
 }
 
@@ -23,6 +24,7 @@ const initialFormState: FormState = {
   name: '',
   email: '',
   phone: '',
+  password: '',
   isActive: 'true',
 }
 
@@ -87,6 +89,7 @@ export default function CustomerEditModal({
           name: typeof customer.name === 'string' ? customer.name : '',
           email: typeof customer.email === 'string' ? customer.email : '',
           phone: typeof customer.phone === 'string' ? customer.phone : '',
+          password: '',
           isActive:
             customer.is_active === true || customer.is_active === 'true' || customer.is_active === 1
               ? 'true'
@@ -122,6 +125,7 @@ export default function CustomerEditModal({
     const trimmedName = form.name.trim()
     const trimmedEmail = form.email.trim()
     const trimmedPhone = form.phone.trim()
+    const trimmedPassword = form.password.trim()
 
     if (!trimmedName || !trimmedEmail || !trimmedPhone) {
       setError(t('common.allFieldsRequired'))
@@ -132,6 +136,14 @@ export default function CustomerEditModal({
     setError(null)
 
     try {
+      const payload = {
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+        is_active: form.isActive === 'true',
+        ...(trimmedPassword ? { password: trimmedPassword } : {}),
+      }
+
       const res = await fetch(`/api/proxy/customers/${customerId}`, {
         method: 'PUT',
         headers: {
@@ -139,12 +151,7 @@ export default function CustomerEditModal({
           Accept: 'application/json',
           'Accept-Language': 'en',
         },
-        body: JSON.stringify({
-          name: trimmedName,
-          email: trimmedEmail,
-          phone: trimmedPhone,
-          is_active: form.isActive === 'true',
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json().catch(() => null)
@@ -273,7 +280,7 @@ export default function CustomerEditModal({
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   placeholder={t('common.emailPlaceholder')}
-                  disabled={disableForm}
+                  disabled
                 />
               </div>
 
@@ -292,6 +299,25 @@ export default function CustomerEditModal({
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter phone"
+                  disabled={disableForm}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-password"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('common.passwordKeepBlank')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="edit-password"
+                  name="password"
+                  type="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder={t('common.newPasswordPlaceholder')}
                   disabled={disableForm}
                 />
               </div>
@@ -348,4 +374,3 @@ export default function CustomerEditModal({
     </div>
   )
 }
-

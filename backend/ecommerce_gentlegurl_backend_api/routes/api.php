@@ -305,6 +305,9 @@ $protectedRoutes = function () {
     Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])
         ->middleware('permission:customers.delete');
 
+    Route::post('/customers/{customer}/verify-email', [CustomerController::class, 'verifyEmail'])
+        ->middleware('permission:customers.verify');
+
     // Ecommerce Admin APIs
     Route::prefix('ecommerce')->group(function () {
         // Categories
