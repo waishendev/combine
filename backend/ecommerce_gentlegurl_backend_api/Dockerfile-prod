@@ -47,9 +47,6 @@ COPY composer.json composer.lock ./
 # 复制项目所有代码
 COPY . .
 
-# 配置上传文件大小
-COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
-
 # 保证 storage / cache 可写
 RUN mkdir -p bootstrap/cache storage/logs \
     && chown -R www-data:www-data bootstrap/cache storage
@@ -60,6 +57,9 @@ RUN composer install --no-dev --prefer-dist --no-interaction --no-progress --opt
 # ---------- Stage 3: 运行镜像 ----------
 FROM php-extensions AS app
 WORKDIR /var/www
+
+# 配置上传文件大小
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 # 带上 composer
 COPY --from=deps /usr/bin/composer /usr/bin/composer
