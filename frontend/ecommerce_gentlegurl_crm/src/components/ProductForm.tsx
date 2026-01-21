@@ -769,8 +769,33 @@ export default function ProductForm({
   const MAX_IMAGES = 6
   const IMAGE_MAX_MB = 10
   const VIDEO_MAX_MB = 50
-  const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-  const VIDEO_TYPES = ['video/mp4', 'video/quicktime']
+  const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+  const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp']
+  const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-m4v', 'video/m4v']
+  const VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v']
+
+  const getFileExtension = (filename: string) => {
+    const parts = filename.toLowerCase().split('.')
+    if (parts.length < 2) return ''
+    return parts[parts.length - 1] ?? ''
+  }
+
+  const isAllowedFileType = (
+    file: File,
+    allowedTypes: string[],
+    allowedExtensions: string[],
+  ) => {
+    if (allowedTypes.includes(file.type)) {
+      return true
+    }
+    const extension = getFileExtension(file.name)
+    return extension ? allowedExtensions.includes(extension) : false
+  }
+
+  const buildAcceptList = (types: string[], extensions: string[]) => [
+    ...types,
+    ...extensions.map((ext) => `.${ext}`),
+  ]
 
   const activeProductId = product?.id ?? createdProductId
 
@@ -945,7 +970,7 @@ export default function ProductForm({
     }
 
     const validFiles = filesToAdd.filter((file) => {
-      const isValidType = IMAGE_TYPES.includes(file.type)
+      const isValidType = isAllowedFileType(file, IMAGE_TYPES, IMAGE_EXTENSIONS)
       const isValidSize = file.size <= IMAGE_MAX_MB * 1024 * 1024
       return isValidType && isValidSize
     })
@@ -1139,12 +1164,15 @@ export default function ProductForm({
   ) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = IMAGE_TYPES.join(',')
+    input.accept = buildAcceptList(IMAGE_TYPES, IMAGE_EXTENSIONS).join(',')
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
 
-      if (!IMAGE_TYPES.includes(file.type) || file.size > IMAGE_MAX_MB * 1024 * 1024) {
+      if (
+        !isAllowedFileType(file, IMAGE_TYPES, IMAGE_EXTENSIONS) ||
+        file.size > IMAGE_MAX_MB * 1024 * 1024
+      ) {
         setError(t('product.invalidImage'))
         return
       }
@@ -1275,7 +1303,10 @@ export default function ProductForm({
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (!VIDEO_TYPES.includes(file.type) || file.size > VIDEO_MAX_MB * 1024 * 1024) {
+    if (
+      !isAllowedFileType(file, VIDEO_TYPES, VIDEO_EXTENSIONS) ||
+      file.size > VIDEO_MAX_MB * 1024 * 1024
+    ) {
       setError(t('product.invalidVideo'))
       if (videoInputRef.current) {
         videoInputRef.current.value = ''
@@ -2243,7 +2274,7 @@ export default function ProductForm({
                 id="galleryFiles"
                 name="galleryFiles"
                 type="file"
-                accept={IMAGE_TYPES.join(',')}
+                accept={buildAcceptList(IMAGE_TYPES, IMAGE_EXTENSIONS).join(',')}
                 multiple
                 onChange={handleGalleryChange}
                 className="hidden"
@@ -2569,7 +2600,7 @@ export default function ProductForm({
                 id="productVideo"
                 name="productVideo"
                 type="file"
-                accept={VIDEO_TYPES.join(',')}
+                accept={buildAcceptList(VIDEO_TYPES, VIDEO_EXTENSIONS).join(',')}
                 onChange={handleVideoChange}
                 className="hidden"
               />
@@ -3303,7 +3334,7 @@ export default function ProductForm({
                   <input
                     id={variantImageInputId}
                     type="file"
-                    accept="image/*"
+                    accept={buildAcceptList(IMAGE_TYPES, IMAGE_EXTENSIONS).join(',')}
                     className="hidden"
                     onChange={(event) =>
                       handleVariantImageChange(index, event.target.files?.[0] ?? null)
@@ -3616,7 +3647,7 @@ export default function ProductForm({
                         <input
                           id={bundleImageInputId}
                           type="file"
-                          accept="image/*"
+                          accept={buildAcceptList(IMAGE_TYPES, IMAGE_EXTENSIONS).join(',')}
                           className="hidden"
                           onChange={(event) =>
                             handleBundleImageChange(index, event.target.files?.[0] ?? null)
@@ -3983,7 +4014,7 @@ export default function ProductForm({
               id="metaOgImageFile"
               name="metaOgImageFile"
               type="file"
-              accept="image/*"
+              accept={buildAcceptList(IMAGE_TYPES, IMAGE_EXTENSIONS).join(',')}
               onChange={handleMetaFileChange}
               className="hidden"
             />

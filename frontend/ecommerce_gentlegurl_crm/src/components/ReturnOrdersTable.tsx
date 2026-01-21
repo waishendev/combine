@@ -8,6 +8,7 @@ import TableLoadingRow from './TableLoadingRow'
 import PaginationControls from './PaginationControls'
 import ReturnViewPanel from './ReturnViewPanel'
 import { useI18n } from '@/lib/i18n'
+import { IMAGE_PDF_ACCEPT } from './mediaAccept'
 
 type ReturnItem = {
   order_item_id: number
@@ -884,7 +885,7 @@ function ReturnRefundModal({
             <input
               id="refundProof"
               type="file"
-              accept="image/*,application/pdf"
+              accept={IMAGE_PDF_ACCEPT}
               onChange={(event) => setRefundProof(event.target.files?.[0] || null)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
             />
