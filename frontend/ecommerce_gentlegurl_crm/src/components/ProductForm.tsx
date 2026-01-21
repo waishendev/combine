@@ -2648,12 +2648,12 @@ export default function ProductForm({
                             ? t('product.videoPending')
                             : ''}
                       </div>
-                      {existingVideo?.status === 'processing' && (
+                      {/* {existingVideo?.status === 'processing' && (
                         <div className="flex items-center text-xs text-blue-600">
                           <i className="fa-solid fa-spinner mr-1 animate-spin" />
                           {t('product.videoProcessing')}
                         </div>
-                      )}
+                      )} */}
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
