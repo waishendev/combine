@@ -47,6 +47,9 @@ COPY composer.json composer.lock ./
 # 复制项目所有代码
 COPY . .
 
+# 配置上传文件大小
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
 # 保证 storage / cache 可写
 RUN mkdir -p bootstrap/cache storage/logs \
     && chown -R www-data:www-data bootstrap/cache storage
