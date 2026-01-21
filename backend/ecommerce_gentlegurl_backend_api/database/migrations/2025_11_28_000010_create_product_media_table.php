@@ -24,8 +24,8 @@ return new class extends Migration {
         
             $table->unsignedInteger('width')->nullable();
             $table->unsignedInteger('height')->nullable();
-            $table->unsignedInteger('duration_seconds')->nullable(); // video only
-        
+            $table->decimal('duration_seconds', 10, 3)->nullable();
+            
             $table->string('status', 30)->default('ready'); // ready | processing | failed
             $table->timestamps();
         
