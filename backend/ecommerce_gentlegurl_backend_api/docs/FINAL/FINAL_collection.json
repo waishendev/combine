@@ -4779,7 +4779,7 @@
                     "register"
                   ]
                 },
-                "description": "Register a new customer. Session login automatically after registration."
+                "description": "Register a new customer. Sends email verification and does not auto-login."
               },
               "response": []
             },
@@ -4953,6 +4953,145 @@
                     }
                   }
                 }
+              },
+              "response": []
+            },
+            {
+              "name": "Resend Verification Email",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"customer@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/shop/auth/email/resend-verification",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "auth",
+                    "email",
+                    "resend-verification"
+                  ]
+                },
+                "description": "Resend a verification email (generic response)."
+              },
+              "response": []
+            },
+            {
+              "name": "Verify Email",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/public/shop/auth/email/verify/{{customer_id}}/{{verification_hash}}?expires={{verification_expires}}&signature={{verification_signature}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "auth",
+                    "email",
+                    "verify",
+                    "{{customer_id}}",
+                    "{{verification_hash}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "expires",
+                      "value": "{{verification_expires}}"
+                    },
+                    {
+                      "key": "signature",
+                      "value": "{{verification_signature}}"
+                    }
+                  ]
+                },
+                "description": "Verify email using signed URL parameters."
+              },
+              "response": []
+            },
+            {
+              "name": "Forgot Password",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"customer@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/shop/auth/password/forgot",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "auth",
+                    "password",
+                    "forgot"
+                  ]
+                },
+                "description": "Request a password reset link (generic response)."
+              },
+              "response": []
+            },
+            {
+              "name": "Reset Password",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"customer@example.com\",\n  \"token\": \"{{reset_token}}\",\n  \"password\": \"newpassword\",\n  \"password_confirmation\": \"newpassword\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/public/shop/auth/password/reset",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "shop",
+                    "auth",
+                    "password",
+                    "reset"
+                  ]
+                },
+                "description": "Reset password using token."
               },
               "response": []
             },

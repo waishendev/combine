@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiError } from "@/lib/auth/redirect";
@@ -65,15 +64,14 @@ function Field({
   );
 }
 
-export function RegisterForm({ 
-  redirectTarget,
+export function RegisterForm({
   onSubmittingChange,
-}: { 
-  redirectTarget?: string | null;
+  onSuccess,
+}: {
   onSubmittingChange?: (isSubmitting: boolean) => void;
+  onSuccess?: (email: string) => void;
 }) {
   const { register } = useAuth();
-  const router = useRouter();
 
   const [formState, setFormState] = useState({
     name: "",
@@ -120,8 +118,7 @@ export function RegisterForm({
 
     try {
       await register(formState);
-      router.replace(redirectTarget ?? "/");
-      router.refresh();
+      onSuccess?.(formState.email);
     } catch (err: unknown) {
       setError(extractApiError(err));
     } finally {

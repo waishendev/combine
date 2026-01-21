@@ -541,6 +541,39 @@ export async function logoutCustomer() {
   return post<{ success: boolean }>("/public/auth/logout");
 }
 
+export async function resendCustomerVerification(payload: { email: string }) {
+  return post<{ success: boolean; message?: string }>("/public/shop/auth/email/resend-verification", payload);
+}
+
+export async function verifyCustomerEmail(payload: {
+  id: string;
+  hash: string;
+  expires?: string | null;
+  signature?: string | null;
+}) {
+  const query = new URLSearchParams();
+  if (payload.expires) query.set("expires", payload.expires);
+  if (payload.signature) query.set("signature", payload.signature);
+
+  const queryString = query.toString();
+  const url = `/public/shop/auth/email/verify/${payload.id}/${payload.hash}${queryString ? `?${queryString}` : ""}`;
+
+  return get<{ success: boolean; message?: string }>(url);
+}
+
+export async function forgotCustomerPassword(payload: { email: string }) {
+  return post<{ success: boolean; message?: string }>("/public/shop/auth/password/forgot", payload);
+}
+
+export async function resetCustomerPassword(payload: {
+  email: string;
+  token: string;
+  password: string;
+  password_confirmation: string;
+}) {
+  return post<{ success: boolean; message?: string }>("/public/shop/auth/password/reset", payload);
+}
+
 export async function getCart(): Promise<CartResponse> {
   const response = await get<{ data: CartResponse }>("/public/shop/cart", {
     includeSessionToken: true,
