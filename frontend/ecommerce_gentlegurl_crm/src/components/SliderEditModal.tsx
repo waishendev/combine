@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import type { SliderRowData } from './SliderRow'
 import { mapSliderApiItemToRow, type SliderApiItem } from './sliderUtils'
 import { useI18n } from '@/lib/i18n'
+import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface SliderEditModalProps {
   sliderId: number
@@ -369,7 +370,7 @@ export default function SliderEditModal({
                       <input
                         ref={imageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept={IMAGE_ACCEPT}
                         onChange={handleImageChange}
                         className="hidden"
                         disabled={disableForm}
@@ -431,7 +432,7 @@ export default function SliderEditModal({
                       <input
                         ref={mobileImageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept={IMAGE_ACCEPT}
                         onChange={handleMobileImageChange}
                         className="hidden"
                         disabled={disableForm}

@@ -2,6 +2,8 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
+import { IMAGE_ACCEPT } from './mediaAccept'
+
 type SeoSettings = {
   default_title: string
   default_description: string
@@ -309,7 +311,7 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
                   id="ogImageFile"
                   name="ogImageFile"
                   type="file"
-                  accept="image/*"
+                  accept={IMAGE_ACCEPT}
                   onChange={handleImageChange}
                   className="hidden"
                   disabled={inputDisabled}

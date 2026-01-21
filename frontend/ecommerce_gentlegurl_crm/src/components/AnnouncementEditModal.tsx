@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import type { AnnouncementRowData } from './AnnouncementRow'
 import { mapAnnouncementApiItemToRow, type AnnouncementApiItem } from './announcementUtils'
 import { useI18n } from '@/lib/i18n'
+import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface AnnouncementEditModalProps {
   announcementId: number
@@ -338,7 +339,7 @@ export default function AnnouncementEditModal({
                     id="edit-imageFile"
                     name="imageFile"
                     type="file"
-                    accept="image/*"
+                    accept={IMAGE_ACCEPT}
                     onChange={handleImageChange}
                     className="hidden"
                     disabled={disableForm}

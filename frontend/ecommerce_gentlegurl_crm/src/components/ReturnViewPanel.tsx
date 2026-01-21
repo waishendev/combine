@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, FormEvent } from 'react'
 
+import { IMAGE_PDF_ACCEPT } from './mediaAccept'
+
 type ReturnItem = {
   product_id?: number
   product_name?: string | null
@@ -972,7 +974,7 @@ function ReturnRefundModal({
               ref={refundProofInputRef}
               id="refundProof"
               type="file"
-              accept="image/*,application/pdf"
+              accept={IMAGE_PDF_ACCEPT}
               onChange={(event) => setRefundProof(event.target.files?.[0] || null)}
               className="hidden"
             />

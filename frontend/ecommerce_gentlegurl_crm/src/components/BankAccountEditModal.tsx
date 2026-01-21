@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import type { BankAccountRowData } from './BankAccountRow'
 import { mapBankAccountApiItemToRow, type BankAccountApiItem } from './bankAccountUtils'
 import { useI18n } from '@/lib/i18n'
+import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface BankAccountEditModalProps {
   bankAccountId: number
@@ -367,7 +368,7 @@ export default function BankAccountEditModal({
                       <input
                         ref={logoInputRef}
                         type="file"
-                        accept="image/*"
+                        accept={IMAGE_ACCEPT}
                         onChange={handleLogoChange}
                         className="hidden"
                         disabled={disableForm}
@@ -428,7 +429,7 @@ export default function BankAccountEditModal({
                       <input
                         ref={qrImageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept={IMAGE_ACCEPT}
                         onChange={handleQrImageChange}
                         className="hidden"
                         disabled={disableForm}

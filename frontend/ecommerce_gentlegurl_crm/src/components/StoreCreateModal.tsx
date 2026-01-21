@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useRef, useState } from 'react'
 import type { StoreRowData } from './StoreRow'
 import { mapStoreApiItemToRow, type StoreApiItem } from './storeUtils'
 import { useI18n } from '@/lib/i18n'
+import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface StoreCreateModalProps {
   onClose: () => void
@@ -334,7 +335,7 @@ export default function StoreCreateModal({
                 id="imageFile"
                 name="imageFile"
                 type="file"
-                accept="image/*"
+                accept={IMAGE_ACCEPT}
                 multiple
                 onChange={handleImageChange}
                 className="hidden"

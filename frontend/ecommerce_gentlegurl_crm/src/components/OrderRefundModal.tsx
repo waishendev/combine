@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
+import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface OrderRefundModalProps {
   orderId: number
@@ -180,7 +181,7 @@ export default function OrderRefundModal({
             <input
               id="refundProof"
               type="file"
-              accept="image/*"
+              accept={IMAGE_ACCEPT}
               onChange={(e) => setRefundProof(e.target.files?.[0] || null)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
             />
