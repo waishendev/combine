@@ -1343,10 +1343,6 @@ export default function ProductForm({
       URL.revokeObjectURL(pendingVideo.preview)
     }
 
-    if (existingVideo) {
-      setExistingVideo(null)
-    }
-
     const newVideo: PendingVideoUpload = {
       file,
       preview: URL.createObjectURL(file),
@@ -1367,9 +1363,9 @@ export default function ProductForm({
     if (pendingVideo?.preview) {
       URL.revokeObjectURL(pendingVideo.preview)
     }
-    setPendingVideo(null)
-
-    if (existingVideo && activeProductId) {
+    if (pendingVideo) {
+      setPendingVideo(null)
+    } else if (existingVideo && activeProductId) {
       void fetch(`/api/proxy/ecommerce/products/${activeProductId}/media/${existingVideo.id}`, {
         method: 'DELETE',
       })
@@ -2642,20 +2638,20 @@ export default function ProductForm({
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="h-30 w-38 overflow-hidden rounded-md bg-gray-100">
-                      {existingVideo ? (
-                        <video
-                          src={existingVideo.url}
-                          className="h-full w-full object-cover"
-                          controls
-                          preload="metadata"
-                        />
-                      ) : pendingVideo ? (
+                      {pendingVideo ? (
                         <video
                           src={pendingVideo.preview}
                           className="h-full w-full object-cover"
                           controls
                           preload="metadata"
                           muted
+                        />
+                      ) : existingVideo ? (
+                        <video
+                          src={existingVideo.url}
+                          className="h-full w-full object-cover"
+                          controls
+                          preload="metadata"
                         />
                       ) : null}
                     </div>
