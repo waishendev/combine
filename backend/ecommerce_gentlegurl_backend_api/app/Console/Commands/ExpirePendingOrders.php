@@ -22,9 +22,7 @@ class ExpirePendingOrders extends Command
     public function handle(): int
     {
         $reserveMinutes = $this->orderReserveService->getReserveMinutes();
-        $cutoff = $reserveMinutes > 0
-            ? Carbon::now()->subMinutes($reserveMinutes)
-            : Carbon::now()->subDays($reserveMinutes);
+        $cutoff = carbon::now()->subMinutes($reserveMinutes);
 
         Order::where('status', 'pending')
             ->where('payment_status', 'unpaid')
