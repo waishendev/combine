@@ -24,17 +24,13 @@ class ExpirePendingOrders extends Command
         $reserveMinutes = $this->orderReserveService->getReserveMinutes();
         $cutoff = Carbon::now()->subMinutes($reserveMinutes);
 
-        $this->info("Checking for pending orders older than {$reserveMinutes} minutes (cutoff: {$cutoff->toDateTimeString()})");
-
-        $expiredCount = 0;
-
         Order::where('status', 'pending')
             ->where('payment_status', 'unpaid')
-            ->where('created_at', '<', $cutoff)
+            ->whereRaw('COALESCE(placed_at, created_at) < ?', [$cutoff])
             ->orderBy('id')
-            ->chunkById(50, function ($orders) use ($cutoff, &$expiredCount) {
+            ->chunkById(50, function ($orders) {
                 foreach ($orders as $order) {
-                    DB::transaction(function () use ($order, $cutoff, &$expiredCount) {
+                    DB::transaction(function () use ($order) {
                         $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
 
                         if (!$lockedOrder) {
@@ -45,7 +41,7 @@ class ExpirePendingOrders extends Command
                             return;
                         }
 
-                        if ($lockedOrder->created_at && $lockedOrder->created_at->greaterThanOrEqualTo($cutoff)) {
+                        if (! $this->orderReserveService->isExpired($lockedOrder)) {
                             return;
                         }
 

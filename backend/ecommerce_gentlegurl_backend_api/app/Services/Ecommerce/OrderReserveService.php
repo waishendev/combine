@@ -26,7 +26,9 @@ class OrderReserveService
 
     public function getReserveExpiresAt(Order $order): Carbon
     {
-        $base = $order->created_at ? $order->created_at->copy() : Carbon::now();
+        $base = $order->placed_at?->copy()
+            ?? $order->created_at?->copy()
+            ?? Carbon::now();
 
         return $base->addMinutes($this->getReserveMinutes());
     }
