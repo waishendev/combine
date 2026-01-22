@@ -106,57 +106,6 @@ services:
         condition: service_healthy
     networks:
       - appnet
-
-  laravel-scheduler:
-    container_name: laravel_scheduler_prod
-    build:
-      context: .
-      dockerfile: Dockerfile-prod
-      target: app
-    labels:
-      - com.dkwatch.enable=${WATCH_ENABLE}
-      - com.dkwatch.group=${WATCH_NAME}
-    env_file:
-      - .env.production
-    environment:
-      APP_ENV: production
-      APP_DEBUG: "false"
-      LOG_CHANNEL: stderr
-    volumes:
-      - laravel_storage:/var/www/storage:rw
-      - laravel_cache:/var/www/bootstrap/cache:rw
-    command: php artisan schedule:work
-    restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m,mode=1777
-      - /usr/local/var/run/php:size=16m,mode=755
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    init: true
-    ulimits:
-      nofile:
-        soft: 2048
-        hard: 4096
-    deploy:
-      resources:
-        limits:
-          cpus: "1.00"
-          memory: 768M
-          pids: 150
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "7"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - appnet
-
   nginx:
     image: nginx:alpine
     container_name: nginx_laravel_prod

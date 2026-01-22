@@ -28,9 +28,9 @@ class ExpirePendingOrders extends Command
             ->where('payment_status', 'unpaid')
             ->whereRaw('COALESCE(placed_at, created_at) < ?', [$cutoff])
             ->orderBy('id')
-            ->chunkById(50, function ($orders) {
+            ->chunkById(50, function ($orders) use ($cutoff) {
                 foreach ($orders as $order) {
-                    DB::transaction(function () use ($order) {
+                    DB::transaction(function () use ($order, $cutoff) {
                         $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
 
                         if (!$lockedOrder) {
@@ -41,22 +41,19 @@ class ExpirePendingOrders extends Command
                             return;
                         }
 
-                        if (! $this->orderReserveService->isExpired($lockedOrder)) {
+                        $placedOrCreatedAt = $lockedOrder->placed_at ?? $lockedOrder->created_at;
+
+                        if ($placedOrCreatedAt && $placedOrCreatedAt->greaterThanOrEqualTo($cutoff)) {
                             return;
                         }
-
-                        $this->info("Expiring order #{$lockedOrder->id} ({$lockedOrder->order_no}) created at {$lockedOrder->created_at->toDateTimeString()}");
 
                         $lockedOrder->status = 'cancelled';
                         $lockedOrder->save();
 
                         $this->orderReserveService->releaseStockForOrder($lockedOrder);
-                        $expiredCount++;
                     });
                 }
             });
-
-        $this->info("Expired {$expiredCount} pending order(s).");
 
         return Command::SUCCESS;
     }
