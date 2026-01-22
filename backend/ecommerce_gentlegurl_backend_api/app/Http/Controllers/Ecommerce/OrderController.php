@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
-use App\Services\Ecommerce\OrderReserveService;
+// use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -18,7 +18,7 @@ class OrderController extends Controller
 {
     public function __construct(
         protected OrderPaymentService $paymentService,
-        protected OrderReserveService $orderReserveService,
+        // protected OrderReserveService $orderReserveService,
         protected InvoiceService $invoiceService,
     )
     {
@@ -354,7 +354,7 @@ class OrderController extends Controller
             }
             $order->save();
 
-            $this->orderReserveService->releaseStockForOrder($order);
+            // $this->orderReserveService->releaseStockForOrder($order);
         });
 
         return $this->respond($order->fresh(['items', 'customer']), __('Order cancelled.'));
