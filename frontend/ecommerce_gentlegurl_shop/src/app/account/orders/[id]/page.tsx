@@ -241,7 +241,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   {order.bank_account.bank_name} — {order.bank_account.account_name}
                 </p>
                 <p>Account No: {order.bank_account.account_number}</p>
-                {order.bank_account.branch && <p>Branch: {order.bank_account.branch}</p>}
+                {/* {order.bank_account.branch && <p>Branch: {order.bank_account.branch}</p>} */}
               </div>
             )}
           </div>
