@@ -264,7 +264,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       params.set("page", page.toString());
       params.set("per_page", PER_PAGE.toString());
 
-      if (menuSlug) {
+      if (resolvedMenuSlug) {
         params.set("menu_slug", resolvedMenuSlug);
       }
 
