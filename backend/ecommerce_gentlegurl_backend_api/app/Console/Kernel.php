@@ -16,19 +16,13 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('ecommerce:send-low-stock-summary')
-            ->dailyAt('12:00')
-            ->onOneServer()
-            ->withoutOverlapping();
+            ->dailyAt('12:00');
 
         $schedule->command('ecommerce:expire-pending-orders')
-            ->everyMinute()
-            ->onOneServer()
-            ->withoutOverlapping();
+            ->everyMinute();
 
         $schedule->command('ecommerce:expire-approved-returns')
-            ->daily()
-            ->onOneServer()
-            ->withoutOverlapping();
+            ->daily();
     }
 
     protected function commands(): void
