@@ -340,12 +340,15 @@ export default function AccountPage() {
     return null;
   }
 
-  const progressPercent = loyalty
-    ? Math.min(Math.max(loyalty.spending.progress_percent, 0), 100)
+  const currentTier = loyalty?.current_tier ?? null;
+  const loyaltySpending = loyalty?.spending ?? null;
+  const progressPercent = loyaltySpending
+    ? Math.min(Math.max(loyaltySpending.progress_percent ?? 0, 0), 100)
     : 0;
-  const nextTier = loyalty?.spending.next_tier;
-  const daysRemaining = loyalty?.spending.days_remaining ?? (loyalty?.spending.window_months ?? 0) * 30;
-  const amountToNextTier = loyalty?.spending.amount_to_next_tier.toFixed(2);
+  const nextTier = loyaltySpending?.next_tier ?? null;
+  const daysRemaining = loyaltySpending?.days_remaining ?? (loyaltySpending?.window_months ?? 0) * 30;
+  const amountToNextTier = loyaltySpending ? loyaltySpending.amount_to_next_tier.toFixed(2) : "0.00";
+  const tierName = currentTier?.name ?? profile.tier ?? "Normal";
 
   return (
     <div className="space-y-6">
@@ -427,11 +430,11 @@ export default function AccountPage() {
         <section className="flex flex-col gap-4 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Loyalty Summary</h2>
-            {loyalty?.current_tier.badge_image_url && (
+            {currentTier?.badge_image_url && (
               <div className="h-8 w-8 overflow-hidden rounded-full bg-[var(--background-soft)]">
                 <Image
-                  src={loyalty.current_tier.badge_image_url}
-                  alt={`${loyalty.current_tier.name} badge`}
+                  src={currentTier.badge_image_url}
+                  alt={`${tierName} badge`}
                   width={32}
                   height={32}
                   className="h-full w-full object-cover"
@@ -445,11 +448,13 @@ export default function AccountPage() {
               <div className="space-y-1 text-sm text-[color:var(--text-muted)]">
                 <p className="flex items-center gap-2">
                   <span className="text-[color:var(--text-muted)]">Current tier:</span>
-                  <span className="font-semibold text-[var(--accent-stronger)]">{loyalty.current_tier.name}</span>
+                  <span className="font-semibold text-[var(--accent-stronger)]">{tierName}</span>
                 </p>
-                <p className="text-xs text-[color:var(--text-muted)]">
-                  • Min spend: RM {loyalty.current_tier.min_spend.toFixed(2)}
-                </p>
+                {currentTier?.min_spend !== undefined && (
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    • Min spend: RM {currentTier.min_spend.toFixed(2)}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
