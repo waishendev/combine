@@ -23,7 +23,10 @@ export default function RegisterPage() {
     const target = getSafeRedirect(searchParams.get("redirect"));
     if (!target) return null;
     const pathOnly = target.split("?")[0]?.split("#")[0];
+    // Prevent redirect loops - don't redirect to login or register pages
     if (pathOnly === "/login" || pathOnly === "/register") return null;
+    // Also check if the redirect contains login/register in the query string
+    if (target.includes("/login") || target.includes("/register")) return null;
     return target;
   }, [searchParams]);
 
@@ -38,6 +41,8 @@ export default function RegisterPage() {
   }, [redirectTarget]);
 
   useEffect(() => {
+    // Only redirect if customer is logged in (not just registered)
+    // Registration doesn't automatically log in the user
     if (customer && !isRedirecting) {
       setIsSubmitting(false); // Reset form submission state
       setIsRedirecting(true);
@@ -51,7 +56,7 @@ export default function RegisterPage() {
     setResendMessage(null);
     try {
       const response = await resendCustomerVerification({ email: successEmail });
-      setResendMessage(response.message ?? "If the email exists, we sent a verification link.");
+      setResendMessage(response.message ?? " we have resend a verification link.");
     } catch {
       setResendMessage("We couldn't resend the email just now. Please try again.");
     } finally {
@@ -85,9 +90,9 @@ export default function RegisterPage() {
                   We’ve sent a verification email to <strong>{successEmail}</strong>. Please verify to
                   continue.
                 </div>
-                <p className="text-xs text-[var(--foreground)]/65">
-                  Tip: Check Spam or Promotions if you don’t see it.
-                </p>
+                {/* <p className="text-xs text-[color:var(--status-warning)] ">
+                  Important: Check Spam or Promotions if you don’t see it.
+                </p> */}
                 {resendMessage ? (
                   <div className="rounded-2xl border border-[var(--card-border)]/60 bg-[var(--background-soft)] px-4 py-2 text-xs text-[var(--foreground)]/70">
                     {resendMessage}
@@ -113,10 +118,20 @@ export default function RegisterPage() {
             ) : (
               <>
                 <RegisterForm
-                  onSubmittingChange={setIsSubmitting}
+                  onSubmittingChange={(submitting) => {
+                    setIsSubmitting(submitting);
+                    // When form submission completes (submitting becomes false),
+                    // ensure we're not stuck in redirecting state
+                    if (!submitting) {
+                      setIsRedirecting(false);
+                    }
+                  }}
                   onSuccess={(email) => {
                     setSuccessEmail(email);
                     setResendMessage(null);
+                    // Ensure loading states are reset
+                    setIsSubmitting(false);
+                    setIsRedirecting(false);
                   }}
                 />
 

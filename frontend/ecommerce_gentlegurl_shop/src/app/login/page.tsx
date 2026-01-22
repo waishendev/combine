@@ -19,9 +19,9 @@ export default function LoginPage() {
   const resend = searchParams.get("resend") === "1";
 
   const bannerMessage = useMemo(() => {
-    if (registered) {
-      return "Account created. Please verify your email before logging in.";
-    }
+    // if (registered) {
+    //   return "Account created. Please verify your email before logging in.";
+    // }
     if (reset) {
       return "Password updated. Please login.";
     }

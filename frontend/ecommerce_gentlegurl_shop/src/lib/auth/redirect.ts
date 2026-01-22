@@ -14,6 +14,29 @@ export function getSafeRedirect(redirectParam?: string | null): string | null {
     return null;
   }
 
+  // Decode the redirect parameter to check for nested redirects
+  try {
+    const decoded = decodeURIComponent(redirectParam);
+    
+    // Check if the decoded path contains login or register (prevent redirect loops)
+    const pathOnly = decoded.split("?")[0]?.split("#")[0];
+    if (pathOnly === "/login" || pathOnly === "/register") {
+      return null;
+    }
+    
+    // Also check if the full decoded string contains nested redirects to login/register
+    // This prevents chains like /login?redirect=/register?redirect=/login...
+    if (decoded.includes("/login?redirect=") || decoded.includes("/register?redirect=")) {
+      return null;
+    }
+  } catch {
+    // If decoding fails, just check the original string
+    const pathOnly = redirectParam.split("?")[0]?.split("#")[0];
+    if (pathOnly === "/login" || pathOnly === "/register") {
+      return null;
+    }
+  }
+
   return redirectParam;
 }
 

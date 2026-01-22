@@ -440,7 +440,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
 
                 {uploadError && (
                   <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2">
-                    <p className="text-xs text-[color:var(--status-error)]">{uploadError}</p>
+                    <p className="text-xs text-[color:var(--status-error)] ">{uploadError}</p>
                   </div>
                 )}
               </div>

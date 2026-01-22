@@ -135,7 +135,7 @@ export function LoginForm({
     setResendMessage(null);
     try {
       const response = await resendCustomerVerification({ email });
-      setResendMessage(response.message ?? "If the email exists, we sent a verification link.");
+      setResendMessage(response.message ?? "We have resend a verification link..");
     } catch {
       setResendMessage("We couldn't resend the email just now. Please try again.");
     } finally {
@@ -146,17 +146,16 @@ export function LoginForm({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       {verificationMessage && (
-        <div className="space-y-3 rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-3 text-sm text-[color:var(--status-warning)]">
+        <div className="rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2 text-sm text-[color:var(--status-error)]">
           <p>{verificationMessage}</p>
           <button
-            type="button"
-            onClick={handleResendVerification}
-            disabled={resending}
-            className="w-full rounded-lg border border-[var(--status-warning-border)] px-3 py-2 text-xs font-medium text-[color:var(--status-warning)] transition hover:border-[var(--accent)] hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {resending ? "Resending..." : "Resend verification email"}
-          </button>
-          {resendMessage ? <p className="text-xs text-[var(--foreground)]/70">{resendMessage}</p> : null}
+           type="button"
+           onClick={handleResendVerification}
+           disabled={resending}
+           className="w-full rounded-lg mt-2 border border-[var(--status-error-border)] px-3 py-2 text-xs font-medium text-[color:var(--status-error)] transition hover:border-[var(--error)] hover:text-[var(--accent-error)] disabled:cursor-not-allowed disabled:opacity-60"
+         >
+           {resending ? "Resending..." : "Resend verification email"}
+         </button>
         </div>
       )}
 
@@ -208,11 +207,21 @@ export function LoginForm({
         }
       />
 
+      <div className="-mt-2">
+        <Link
+          href="/forgot-password"
+          className="font-medium text-xs text-[var(--accent-strong)] hover:opacity-80
+          ">
+        
+          Forgot password?
+        </Link>
+      </div>
+
       <button
         type="submit"
         disabled={!canSubmit}
         className={[
-          "mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-medium text-white transition",
+          "w-full rounded-xl px-4 py-2.5 text-sm font-medium text-white transition",
           "bg-[var(--accent)] hover:bg-[var(--accent-strong)]",
           "disabled:cursor-not-allowed disabled:opacity-60",
         ].join(" ")}
@@ -221,9 +230,6 @@ export function LoginForm({
       </button>
 
       <div className="flex items-center justify-between pt-1 text-xs text-[var(--foreground)]/60">
-        <Link href="/forgot-password" className="font-medium text-[var(--accent-strong)] hover:opacity-80">
-          Forgot password?
-        </Link>
         <span>New here?</span>
         <Link href={registerHref} className="font-medium text-[var(--accent-strong)] hover:opacity-80">
           Create account

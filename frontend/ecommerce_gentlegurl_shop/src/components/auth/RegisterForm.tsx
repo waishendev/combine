@@ -118,6 +118,8 @@ export function RegisterForm({
 
     try {
       await register(formState);
+      // Registration successful - call onSuccess callback
+      // This will show the success message, not redirect
       onSuccess?.(formState.email);
     } catch (err: unknown) {
       setError(extractApiError(err));
