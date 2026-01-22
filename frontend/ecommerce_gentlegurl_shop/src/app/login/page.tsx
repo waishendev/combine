@@ -14,6 +14,22 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const registered = searchParams.get("registered") === "1";
+  const reset = searchParams.get("reset") === "1";
+  const resend = searchParams.get("resend") === "1";
+
+  const bannerMessage = useMemo(() => {
+    if (registered) {
+      return "Account created. Please verify your email before logging in.";
+    }
+    if (reset) {
+      return "Password updated. Please login.";
+    }
+    if (resend) {
+      return "Enter your email to resend the verification link.";
+    }
+    return null;
+  }, [registered, reset, resend]);
 
   const redirectTarget = useMemo(() => {
     const target = getSafeRedirect(searchParams.get("redirect"));
@@ -50,6 +66,11 @@ export default function LoginPage() {
 
           {/* Card */}
         <div className="rounded-3xl border border-[var(--card-border)]/60 bg-[var(--card)]/80 p-7 shadow-[0_12px_40px_-24px_rgba(var(--accent-rgb),0.25)] backdrop-blur-sm md:p-8">
+            {bannerMessage ? (
+              <div className="mb-4 rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-2 text-sm text-[color:var(--status-info)]">
+                {bannerMessage}
+              </div>
+            ) : null}
             <LoginForm redirectTarget={redirectTarget} onSubmittingChange={setIsSubmitting} />
           </div>
 

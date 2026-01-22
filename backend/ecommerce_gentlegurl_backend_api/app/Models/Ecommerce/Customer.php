@@ -3,17 +3,24 @@
 namespace App\Models\Ecommerce;
 
 use App\Models\CustomerAddress;
+use App\Notifications\CustomerResetPassword;
+use App\Notifications\CustomerVerifyEmail;
+use Illuminate\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use DateTimeInterface;
 
-class Customer extends Authenticatable
+class Customer extends Authenticatable implements MustVerifyEmailContract
 {
     use HasApiTokens;
     use HasFactory;
+    use MustVerifyEmail;
+    use Notifiable;
 
     protected $fillable = [
         'name',
@@ -29,6 +36,7 @@ class Customer extends Authenticatable
         'avatar',
         'gender',
         'date_of_birth',
+        'email_verified_at',
     ];
 
     protected $hidden = [
@@ -45,7 +53,18 @@ class Customer extends Authenticatable
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
             'date_of_birth' => 'date',
+            'email_verified_at' => 'datetime',
         ];
+    }
+
+    public function sendEmailVerificationNotification()
+    {
+        $this->notify(new CustomerVerifyEmail());
+    }
+
+    public function sendPasswordResetNotification($token)
+    {
+        $this->notify(new CustomerResetPassword($token));
     }
 
     public function orders()

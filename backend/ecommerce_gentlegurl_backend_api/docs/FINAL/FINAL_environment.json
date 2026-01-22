@@ -63,6 +63,30 @@
       "enabled": true
     },
     {
+      "key": "verification_hash",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "verification_expires",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "verification_signature",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "reset_token",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
       "key": "customer_name",
       "value": "",
       "type": "default",

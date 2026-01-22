@@ -8,6 +8,7 @@ use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\Ecommerce\PointsRedemptionItem;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -102,6 +103,18 @@ class CustomerController extends Controller
         $customer->delete();
 
         return $this->respond(null, __('Customer deleted successfully.'));
+    }
+
+    public function verifyEmail(Customer $customer)
+    {
+        if ($customer->hasVerifiedEmail()) {
+            return $this->respond($customer, __('Customer email already verified.'));
+        }
+
+        $customer->markEmailAsVerified();
+        event(new Verified($customer));
+
+        return $this->respond($customer, __('Customer email verified successfully.'));
     }
 
     protected function formatCustomerWithSummary(Customer $customer, ?LoyaltySetting $loyaltySetting, $tierRules, array $window)
