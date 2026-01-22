@@ -46,6 +46,23 @@ return [
         'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | This is the base URL of your frontend application (e.g., Next.js shop).
+    | Used for generating email verification links, password reset links, etc.
+    | Set this in your .env file as FRONTEND_URL.
+    |
+    | Example: https://gentlegurls.com or http://localhost:3000
+    |
+    | If not set, it will fall back to APP_URL from config/app.php.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL'),
+
     'billplz' => [
         'api_key' => env('BILPLZ_API_KEY', env('BILLPLZ_API_KEY')),
         'collection_id' => env('BILPLZ_COLLECTION_ID', env('BILLPLZ_COLLECTION_ID')),
