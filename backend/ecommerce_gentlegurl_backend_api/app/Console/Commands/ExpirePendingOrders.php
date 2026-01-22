@@ -22,15 +22,19 @@ class ExpirePendingOrders extends Command
     public function handle(): int
     {
         $reserveMinutes = $this->orderReserveService->getReserveMinutes();
-        $cutoff = carbon::now()->subMinutes($reserveMinutes);
+        $cutoff = Carbon::now()->subMinutes($reserveMinutes);
+
+        $this->info("Checking for pending orders older than {$reserveMinutes} minutes (cutoff: {$cutoff->toDateTimeString()})");
+
+        $expiredCount = 0;
 
         Order::where('status', 'pending')
             ->where('payment_status', 'unpaid')
             ->where('created_at', '<', $cutoff)
             ->orderBy('id')
-            ->chunkById(50, function ($orders) use ($cutoff) {
+            ->chunkById(50, function ($orders) use ($cutoff, &$expiredCount) {
                 foreach ($orders as $order) {
-                    DB::transaction(function () use ($order, $cutoff) {
+                    DB::transaction(function () use ($order, $cutoff, &$expiredCount) {
                         $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
 
                         if (!$lockedOrder) {
@@ -45,13 +49,18 @@ class ExpirePendingOrders extends Command
                             return;
                         }
 
+                        $this->info("Expiring order #{$lockedOrder->id} ({$lockedOrder->order_no}) created at {$lockedOrder->created_at->toDateTimeString()}");
+
                         $lockedOrder->status = 'cancelled';
                         $lockedOrder->save();
 
                         $this->orderReserveService->releaseStockForOrder($lockedOrder);
+                        $expiredCount++;
                     });
                 }
             });
+
+        $this->info("Expired {$expiredCount} pending order(s).");
 
         return Command::SUCCESS;
     }

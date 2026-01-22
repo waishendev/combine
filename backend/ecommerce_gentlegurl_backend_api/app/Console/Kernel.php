@@ -17,17 +17,14 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('ecommerce:send-low-stock-summary')
             ->dailyAt('12:00')
-            ->onOneServer()
             ->withoutOverlapping();
 
         $schedule->command('ecommerce:expire-pending-orders')
             ->everyMinute()
-            ->onOneServer()
             ->withoutOverlapping();
 
         $schedule->command('ecommerce:expire-approved-returns')
             ->daily()
-            ->onOneServer()
             ->withoutOverlapping();
     }
 
