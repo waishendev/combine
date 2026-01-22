@@ -1877,7 +1877,8 @@ export default function ProductForm({
     }
 
     const formData = new FormData()
-    const resolvedPrice = rewardOnly ? '1' : form.price || '0'
+    const resolvedPrice =
+      resolvedType === 'variant' ? '1' : rewardOnly ? '1' : form.price || '0'
     formData.append('name', form.name.trim())
     formData.append('slug', form.slug.trim())
     formData.append('sku', form.sku.trim())
