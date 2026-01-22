@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\JsonResponse;
@@ -43,7 +44,29 @@ class PublicCustomerAuthController extends Controller
             'is_active' => true,
         ]);
 
-        $customer->sendEmailVerificationNotification();
+        try {
+            Log::info('Sending email verification notification', [
+                'customer_id' => $customer->id,
+                'email' => $customer->email,
+                'mail_driver' => config('mail.default'),
+                'mailgun_domain' => config('services.mailgun.domain'),
+                'mail_from' => config('mail.from'),
+            ]);
+
+            $customer->sendEmailVerificationNotification();
+
+            Log::info('Email verification notification sent successfully', [
+                'customer_id' => $customer->id,
+                'email' => $customer->email,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send email verification notification', [
+                'customer_id' => $customer->id,
+                'email' => $customer->email,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
 
         return $this->respond($this->transformCustomer($customer), 'Account created. Please verify your email before logging in.');
     }
@@ -171,15 +194,50 @@ class PublicCustomerAuthController extends Controller
             'email' => ['required', 'email'],
         ]);
 
+        Log::info('Resend verification email requested', [
+            'email' => $data['email'],
+            'mail_driver' => config('mail.default'),
+            'mailgun_domain' => config('services.mailgun.domain'),
+            'mailgun_secret_set' => !empty(config('services.mailgun.secret')),
+        ]);
+
         $customer = Customer::where('email', $data['email'])
             ->where('is_active', true)
             ->first();
 
         if ($customer && !$customer->hasVerifiedEmail()) {
-            $customer->sendEmailVerificationNotification();
+            try {
+                Log::info('Sending email verification notification (resend)', [
+                    'customer_id' => $customer->id,
+                    'email' => $customer->email,
+                    'mail_driver' => config('mail.default'),
+                    'mailgun_domain' => config('services.mailgun.domain'),
+                    'mail_from' => config('mail.from'),
+                ]);
+
+                $customer->sendEmailVerificationNotification();
+
+                Log::info('Email verification notification sent successfully (resend)', [
+                    'customer_id' => $customer->id,
+                    'email' => $customer->email,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to send email verification notification (resend)', [
+                    'customer_id' => $customer->id,
+                    'email' => $customer->email,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
+        } else {
+            Log::info('Resend verification email - customer not found or already verified', [
+                'email' => $data['email'],
+                'customer_found' => $customer !== null,
+                'email_verified' => $customer?->hasVerifiedEmail() ?? false,
+            ]);
         }
 
-        return $this->respond(null, 'If the email exists, we sent a verification link.');
+        return $this->respond(null, 'We have resend a verification link.');
     }
 
     public function verifyEmail(Request $request, string $id, string $hash): JsonResponse
@@ -213,6 +271,19 @@ class PublicCustomerAuthController extends Controller
         $data = $request->validate([
             'email' => ['required', 'email'],
         ]);
+
+        $customer = Customer::where('email', $data['email'])
+            ->where('is_active', true)
+            ->first();
+
+        // Check if customer exists and email is verified
+        if ($customer && !$customer->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'EMAIL_NOT_VERIFIED',
+                'message' => 'Please verify your email before resetting your password.',
+            ], 403);
+        }
 
         Password::broker('customers')->sendResetLink([
             'email' => $data['email'],
