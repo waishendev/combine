@@ -33,10 +33,10 @@ export default function VerifyEmailPage() {
       setStatus("loading");
       try {
         const response = await verifyCustomerEmail({
-          id: payload.id,
-          hash: payload.hash,
-          expires: payload.expires,
-          signature: payload.signature,
+          id: payload.id!,
+          hash: payload.hash!,
+          expires: payload.expires ?? undefined,
+          signature: payload.signature ?? undefined,
         });
         setStatus("success");
         setMessage(response.message ?? "Email verified. You can login now.");
