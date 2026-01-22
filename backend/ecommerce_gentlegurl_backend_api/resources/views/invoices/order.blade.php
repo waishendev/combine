@@ -25,7 +25,7 @@
     @page { margin: 24px; }
 
     body{
-      font-family:"Noto Sans CJK SC","Noto Sans SC","Microsoft YaHei","PingFang SC","Heiti SC","SimHei","WenQuanYi Micro Hei",DejaVu Sans,Arial,sans-serif;
+      font-family:"Noto Sans CJK SC","Microsoft YaHei","PingFang SC","Heiti SC","SimHei","WenQuanYi Micro Hei",DejaVu Sans,Arial,sans-serif;
       font-size: 12px;
       color:#111827;
       margin:0;

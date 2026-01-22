@@ -24,7 +24,12 @@ class InvoiceService
             ];
         })->values();
 
-        return app('dompdf.wrapper')->loadView('invoices.order', [
+        $pdf = app('dompdf.wrapper');
+        $options = $pdf->getDomPDF()->getOptions();
+        $options->set('isFontSubsettingEnabled', true);
+        $pdf->getDomPDF()->setOptions($options);
+
+        return $pdf->loadView('invoices.order', [
             'order' => $order,
             'items' => $items,
             'invoiceProfile' => $invoiceProfile,
