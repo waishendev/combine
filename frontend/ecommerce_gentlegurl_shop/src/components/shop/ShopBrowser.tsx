@@ -78,10 +78,21 @@ type ShopBrowserProps = {
   menuSlug?: string;
 };
 
+const normalizeMenuSlug = (value?: string | null) => {
+  if (!value) return "";
+  const trimmed = value.trim();
+  try {
+    return decodeURIComponent(trimmed).toLowerCase();
+  } catch {
+    return trimmed.toLowerCase();
+  }
+};
+
 export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const normalizedMenuSlug = useMemo(() => normalizeMenuSlug(menuSlug), [menuSlug]);
 
   const page = useMemo(() => Number(searchParams?.get("page")) || 1, [searchParams]);
   const querySearch = searchParams?.get("q") ?? "";
@@ -110,6 +121,13 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   const [appliedMaxPrice, setAppliedMaxPrice] = useState<string>(queryMaxPrice);
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const resolvedMenu = useMemo(() => {
+    if (!menuSlug) return null;
+    return menus.find((menu) => normalizeMenuSlug(menu.slug) === normalizedMenuSlug) ?? null;
+  }, [menuSlug, menus, normalizedMenuSlug]);
+
+  const resolvedMenuSlug = resolvedMenu?.slug ?? menuSlug;
 
   const pushParams = useCallback(
     ({
@@ -213,7 +231,9 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       setMenus(rawMenus ?? []);
 
       if (menuSlug) {
-        setMenuNotFound(!rawMenus.some((menu) => menu.slug === menuSlug));
+        setMenuNotFound(
+          !rawMenus.some((menu) => normalizeMenuSlug(menu.slug) === normalizedMenuSlug),
+        );
       }
     } catch (err) {
       console.error("[ShopBrowser] Menu error", err);
@@ -245,7 +265,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
       params.set("per_page", PER_PAGE.toString());
 
       if (menuSlug) {
-        params.set("menu_slug", menuSlug);
+        params.set("menu_slug", resolvedMenuSlug);
       }
 
       if (queryCategory) {
@@ -326,6 +346,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
     queryMinPrice,
     querySearch,
     querySort,
+    resolvedMenuSlug,
   ]);
 
   useEffect(() => {
@@ -338,20 +359,19 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
 
   const sidebarMenus = useMemo(() => {
     if (menuSlug) {
-      const menu = menus.find((item) => item.slug === menuSlug);
-      return menu ? [menu] : [];
+      return resolvedMenu ? [resolvedMenu] : [];
     }
 
     return menus;
-  }, [menuSlug, menus]);
+  }, [menuSlug, menus, resolvedMenu]);
 
   const currentMenu = useMemo(() => {
     if (menuSlug) {
-      return menus.find((menu) => menu.slug === menuSlug) ?? null;
+      return resolvedMenu;
     }
 
     return null;
-  }, [menuSlug, menus]);
+  }, [menuSlug, resolvedMenu]);
 
   const findCategoryLabel = useCallback(
     (slug: string | null) => {
