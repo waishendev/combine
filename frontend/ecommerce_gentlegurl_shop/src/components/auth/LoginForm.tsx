@@ -135,7 +135,7 @@ export function LoginForm({
     setResendMessage(null);
     try {
       const response = await resendCustomerVerification({ email });
-      setResendMessage(response.message ?? "We have resend a verification link..");
+      setResendMessage(response.message ?? "We have resend a verification link.");
     } catch {
       setResendMessage("We couldn't resend the email just now. Please try again.");
     } finally {
