@@ -56,7 +56,6 @@ export default function BankAccountRow({
       <td className="px-4 py-2 border border-gray-200">{bankAccount.bank_name}</td>
       <td className="px-4 py-2 border border-gray-200">{bankAccount.account_name}</td>
       <td className="px-4 py-2 border border-gray-200">{bankAccount.account_number}</td>
-      <td className="px-4 py-2 border border-gray-200">{bankAccount.branch ?? '-'}</td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={bankAccount.isActive ? 'active' : 'inactive'}

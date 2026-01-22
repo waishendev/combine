@@ -240,7 +240,7 @@ export default function BankAccountTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 9 : 8
+  const colCount = showActions ? 8 : 7
 
   const totalPages = meta.last_page || 1
 
@@ -550,7 +550,6 @@ export default function BankAccountTable({
                   { key: 'bank_name', label: 'Bank Name' },
                   { key: 'account_name', label: 'Account Name' },
                   { key: 'account_number', label: 'Account Number' },
-                  { key: 'branch', label: 'Branch' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'isDefault', label: 'Default' },
                   { key: 'sort_order', label: 'Sort Order' },
