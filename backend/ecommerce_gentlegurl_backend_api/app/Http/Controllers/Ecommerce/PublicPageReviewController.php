@@ -9,6 +9,7 @@ use App\Models\Ecommerce\ReviewPhoto;
 use App\Services\SettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 
 class PublicPageReviewController extends Controller
@@ -99,8 +100,13 @@ class PublicPageReviewController extends Controller
             'body' => $body,
         ]);
 
-        if ($request->hasFile('photos')) {
-            foreach ($request->file('photos') as $photo) {
+        $photos = $request->file('photos');
+        if ($photos instanceof UploadedFile) {
+            $photos = [$photos];
+        }
+
+        if (is_array($photos)) {
+            foreach ($photos as $photo) {
                 $path = $photo->store('review-photos', 'public');
 
                 ReviewPhoto::create([
