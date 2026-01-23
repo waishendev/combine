@@ -248,6 +248,34 @@ export default function RewardVoucherEditModal({
     }))
   }
 
+  const handleCheckAllProducts = () => {
+    setForm((prev) => ({
+      ...prev,
+      productIds: productOptions.map((product) => product.id),
+    }))
+  }
+
+  const handleUntickAllProducts = () => {
+    setForm((prev) => ({
+      ...prev,
+      productIds: [],
+    }))
+  }
+
+  const handleCheckAllCategories = () => {
+    setForm((prev) => ({
+      ...prev,
+      categoryIds: categoryOptions.map((category) => category.id),
+    }))
+  }
+
+  const handleUntickAllCategories = () => {
+    setForm((prev) => ({
+      ...prev,
+      categoryIds: [],
+    }))
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -564,7 +592,25 @@ export default function RewardVoucherEditModal({
                   <label className="block text-sm font-medium text-gray-700">
                     Eligible Products <span className="text-red-500">*</span>
                   </label>
-                  <span className="text-xs text-gray-500">{form.productIds.length} selected</span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-gray-500">{form.productIds.length} selected</span>
+                    <button
+                      type="button"
+                      onClick={handleCheckAllProducts}
+                      className="text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                      disabled={submitting || productOptions.length === 0}
+                    >
+                      Check all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUntickAllProducts}
+                      className="text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                      disabled={submitting || form.productIds.length === 0}
+                    >
+                      Untick all
+                    </button>
+                  </div>
                 </div>
                 <input
                   type="text"
@@ -606,7 +652,25 @@ export default function RewardVoucherEditModal({
                   <label className="block text-sm font-medium text-gray-700">
                     Eligible Categories <span className="text-red-500">*</span>
                   </label>
-                  <span className="text-xs text-gray-500">{form.categoryIds.length} selected</span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-gray-500">{form.categoryIds.length} selected</span>
+                    <button
+                      type="button"
+                      onClick={handleCheckAllCategories}
+                      className="text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                      disabled={submitting || categoryOptions.length === 0}
+                    >
+                      Check all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUntickAllCategories}
+                      className="text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                      disabled={submitting || form.categoryIds.length === 0}
+                    >
+                      Untick all
+                    </button>
+                  </div>
                 </div>
                 <input
                   type="text"
