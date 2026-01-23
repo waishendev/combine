@@ -9,6 +9,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import { HomepageShopMenuItem } from "@/lib/server/getHomepage";
 import { buildRedirectTarget } from "@/lib/auth/redirect";
+import { getOrCreateSessionToken } from "@/lib/sessionToken";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 
 type ShopHeaderClientProps = {
   shopMenu: HomepageShopMenuItem[];
@@ -24,6 +26,26 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<
+    Array<{
+      id: number | string;
+      name: string;
+      slug?: string;
+      price_display?: string | null;
+      sale_price_display?: string | null;
+      price?: number | string;
+      sale_price?: number | string | null;
+      original_price?: number | string | { min: number; max: number } | null;
+      cover_image_url?: string | null;
+      images?: Array<{ image_path?: string | null; url?: string | null; sort_order?: number | null }>;
+      media?: Array<{ type?: string; url?: string | null; sort_order?: number | null }>;
+    }>
+  >([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchImageErrors, setSearchImageErrors] = useState<Set<string>>(new Set());
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -108,7 +130,6 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
   }, [pathname, searchParams]);
 
   const loginHref = `/login?redirect=${encodeURIComponent(redirectTarget)}`;
-  const registerHref = `/register?redirect=${encodeURIComponent(redirectTarget)}`;
 
   const handleLogout = async () => {
     await logout();
@@ -117,6 +138,87 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
     setMobileMenuOpen(false);
     router.push("/");
     router.refresh();
+  };
+
+  useEffect(() => {
+    if (!searchOpen) {
+      setSearchQuery("");
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSearchLoading(true);
+    setSearchError(null);
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("page", "1");
+        params.set("per_page", "8");
+        params.set("q", query);
+
+        const sessionToken = getOrCreateSessionToken();
+        if (sessionToken) {
+          params.set("session_token", sessionToken);
+        }
+
+        const res = await fetch(`/api/proxy/public/shop/products?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to search products (${res.status})`);
+        }
+
+        const json = await res.json();
+        const payload = json.data ?? json;
+        const items = Array.isArray(payload) ? payload : payload.data ?? payload.items ?? [];
+        setSearchResults(items);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error("[ShopHeader] search error", err);
+        setSearchError("Unable to load search results right now.");
+        setSearchResults([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setSearchLoading(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [searchOpen, searchQuery]);
+
+  const handleSearchImageError = (imageSrc: string) => {
+    setSearchImageErrors((prev) => new Set(prev).add(imageSrc));
+  };
+
+  const getSearchImageSrc = (imageSrc: string) =>
+    searchImageErrors.has(imageSrc) ? "/images/placeholder.png" : imageSrc;
+
+  const resolvePriceText = (
+    value?: number | string | { min: number; max: number } | null,
+  ): string | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "object") {
+      return `${value.min} - ${value.max}`;
+    }
+    return String(value);
   };
 
   return (
@@ -403,22 +505,23 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                   )}
                 </div>
               ) : (
-                /* Mobile Login/Register */
-                <div className="flex items-center gap-2 text-sm">
-                  <Link
-                    href={loginHref}
-                    className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
-                  >
-                    Login
-                  </Link>
-                  <Link
-                    href={registerHref}
-                    className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
-                  >
-                    Register
-                  </Link>
-                </div>
+                <Link
+                  href={loginHref}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--card-border)]/60 text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+                  aria-label="Login"
+                >
+                  <i className="fa-solid fa-user" />
+                </Link>
               )}
+
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--card-border)]/60 text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+                aria-label="Open search"
+              >
+                <i className="fa-solid fa-magnifying-glass" />
+              </button>
 
               {/* Mobile Wishlist */}
               <Link
@@ -566,22 +669,23 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
               )}
             </div>
             ) : (
-              /* Login/Register - Desktop */
-              <div className="flex items-center gap-4 text-sm">
-                <Link
-                  href={loginHref}
-                  className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
-                >
-                  Login
-                </Link>
-                <Link
-                  href={registerHref}
-                  className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
-                >
-                  Register
-                </Link>
-              </div>
+              <Link
+                href={loginHref}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--card-border)]/60 text-[var(--foreground)]/80 transition-colors hover:border-[var(--accent-strong)]/60 hover:text-[var(--accent-strong)]"
+                aria-label="Login"
+              >
+                <i className="fa-solid fa-user text-base" />
+              </Link>
             )}
+
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--card-border)]/60 text-[var(--foreground)]/80 transition-colors hover:border-[var(--accent-strong)]/60 hover:text-[var(--accent-strong)]"
+              aria-label="Open search"
+            >
+              <i className="fa-solid fa-magnifying-glass text-base" />
+            </button>
 
             {/* Wishlist - Desktop */}
             <Link
@@ -639,6 +743,149 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
           </div>
         </div>
       </header>
+
+      {searchOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
+            onClick={() => setSearchOpen(false)}
+          />
+          <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-[var(--card-border)]/60 bg-[var(--card)]/95 shadow-2xl backdrop-blur">
+            <div className="flex items-center justify-between border-b border-[var(--muted)]/50 px-5 py-4">
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">Search</h2>
+              <button
+                type="button"
+                onClick={() => setSearchOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                aria-label="Close search"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-5 overflow-hidden px-5 py-4">
+              <div className="relative">
+                <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--foreground)]/60" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search products"
+                  className="w-full rounded-full border border-[var(--card-border)] bg-[var(--background)] px-11 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent-strong)]"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--foreground)]/70 transition hover:text-[var(--accent-strong)]"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-1 flex-col gap-4 overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+                    Products
+                  </span>
+                  {searchLoading && (
+                    <span className="text-xs text-[var(--foreground)]/60">Searching...</span>
+                  )}
+                </div>
+
+                {searchError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                    {searchError}
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto pr-1">
+                  {searchResults.length === 0 && !searchLoading && searchQuery && !searchError && (
+                    <div className="rounded-lg border border-[var(--muted)]/50 bg-[var(--background)]/60 px-4 py-6 text-center text-sm text-[var(--foreground)]/60">
+                      No products found. Try another keyword.
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    {searchResults.map((product) => {
+                      const normalizedSlug =
+                        typeof product.slug === "string"
+                          ? product.slug.trim().toLowerCase()
+                          : null;
+                      const resolvedSlug =
+                        normalizedSlug && !["null", "undefined"].includes(normalizedSlug)
+                          ? product.slug!.trim()
+                          : product.id
+                            ? String(product.id)
+                            : "";
+                      const image = getPrimaryProductImage(product);
+                      const priceText = resolvePriceText(
+                        product.price_display ?? product.original_price ?? product.price,
+                      );
+                      const saleText = resolvePriceText(
+                        product.sale_price_display ?? product.sale_price,
+                      );
+
+                      return (
+                        <Link
+                          key={product.id}
+                          href={`/product/${resolvedSlug}`}
+                          className="flex gap-4 rounded-xl border border-[var(--card-border)]/60 bg-[var(--background)]/80 p-3 transition hover:border-[var(--accent-strong)]/60"
+                          onClick={() => setSearchOpen(false)}
+                        >
+                          <div className="h-20 w-16 overflow-hidden rounded-lg bg-[var(--muted)]/40">
+                            <img
+                              src={getSearchImageSrc(image)}
+                              alt={product.name}
+                              className="h-full w-full object-cover"
+                              onError={() => handleSearchImageError(image)}
+                            />
+                          </div>
+                          <div className="flex flex-1 flex-col justify-center gap-2">
+                            <p className="text-sm font-semibold text-[var(--foreground)]">
+                              {product.name}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs">
+                              {saleText ? (
+                                <>
+                                  <span className="font-semibold text-[var(--accent-strong)]">
+                                    {saleText}
+                                  </span>
+                                  {priceText && (
+                                    <span className="text-[var(--foreground)]/50 line-through">
+                                      {priceText}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="font-semibold text-[var(--accent-strong)]">
+                                  {priceText ?? "-"}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {searchQuery && (
+                  <Link
+                    href={`/shop?q=${encodeURIComponent(searchQuery)}`}
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent-strong)] transition hover:opacity-80"
+                    onClick={() => setSearchOpen(false)}
+                  >
+                    See all results for “{searchQuery}”
+                    <i className="fa-solid fa-arrow-right" />
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Mobile Menu Overlay */}
       {mobileMenuOpen && (
