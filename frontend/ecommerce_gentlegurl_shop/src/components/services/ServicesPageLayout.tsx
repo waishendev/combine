@@ -20,12 +20,14 @@ type FAQItem = {
 
 type HeroSlide = {
   src: string;
-  alt: string;
+  mobileSrc?: string;
+  alt?: string;
   title?: string;
   subtitle?: string;
   description?: string;
   buttonLabel?: string;
   buttonHref?: string;
+  sort_order?: number;
 };
 
 type ServicesPageLayoutProps = {
@@ -75,6 +77,10 @@ export function ServicesPageLayout({
             alt: `${title} hero visual`,
           },
         ];
+  const orderedSlides = baseSlides
+    .map((slide, index) => ({ slide, index }))
+    .sort((a, b) => (a.slide.sort_order ?? a.index) - (b.slide.sort_order ?? b.index))
+    .map(({ slide }) => slide);
 
   const getWhatsAppUrl = useCallback(() => {
     if (!whatsappEnabled || !whatsappPhone) return undefined;
@@ -89,8 +95,9 @@ export function ServicesPageLayout({
   const showFaqSection = faqsActive && faqs.length > 0;
   const showNotesSection = notesActive && notes.length > 0;
 
-  const slides = baseSlides.map((slide, index) => {
+  const slides = orderedSlides.map((slide, index) => {
     const resolvedTitle = slide.title ?? `${title} spotlight ${index + 1}`;
+    const resolvedAlt = slide.alt ?? resolvedTitle;
     const resolvedDescription =
       slide.description ??
       slide.subtitle ??
@@ -103,6 +110,7 @@ export function ServicesPageLayout({
     return {
       ...slide,
       title: resolvedTitle,
+      alt: resolvedAlt,
       description: resolvedDescription,
       buttonHref: resolvedButtonHref,
       buttonLabel: resolvedButtonLabel,
@@ -334,10 +342,19 @@ export function ServicesPageLayout({
                         tabIndex={index === activeSlide ? 0 : -1}
                       >
                         <Image
+                          src={slide.mobileSrc ?? slide.src}
+                          alt={slide.alt}
+                          fill
+                          className="object-cover md:hidden"
+                          sizes="100vw"
+                          priority={index === activeSlide}
+                          draggable={false}
+                        />
+                        <Image
                           src={slide.src}
                           alt={slide.alt}
                           fill
-                          className="object-cover"
+                          className="hidden object-cover md:block"
                           sizes="(min-width: 1280px) 520px, (min-width: 1024px) 480px, (min-width: 768px) 50vw, 100vw"
                           priority={index === activeSlide}
                           draggable={false}

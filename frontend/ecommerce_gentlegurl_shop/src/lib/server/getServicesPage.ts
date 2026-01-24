@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
 
 export type ServicesHeroSlide = {
+  id?: number;
+  sort_order?: number;
   src: string;
-  alt: string;
+  mobileSrc?: string;
+  alt?: string;
   title?: string;
-  subtitle?: string;
   description?: string;
   buttonLabel?: string;
   buttonHref?: string;

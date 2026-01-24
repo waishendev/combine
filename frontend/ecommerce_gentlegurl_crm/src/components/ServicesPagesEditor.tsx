@@ -1,7 +1,6 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
 type ServicesMenuItem = {
@@ -23,14 +22,14 @@ type PricingItem = { label: string; price: string }
 type FaqItem = { question: string; answer: string }
 
 type HeroSlide = {
+  id?: number
+  sort_order: number
   src: string
-  mobileSrc?: string
-  alt: string
-  title?: string
-  subtitle?: string
-  description?: string
-  buttonLabel?: string
-  buttonHref?: string
+  mobileSrc: string
+  title: string
+  description: string
+  buttonLabel: string
+  buttonHref: string
 }
 
 type ServicesPagePayload = {
@@ -63,11 +62,10 @@ const emptySections: ServicesPagePayload['sections'] = {
 }
 
 const emptySlide: HeroSlide = {
+  sort_order: 1,
   src: '',
   mobileSrc: '',
-  alt: '',
   title: '',
-  subtitle: '',
   description: '',
   buttonLabel: '',
   buttonHref: '',
@@ -96,13 +94,26 @@ function ensureSections(sections: Partial<ServicesPagePayload['sections']> | und
   }
 }
 
-function ensureSlides(slides: HeroSlide[] | undefined): HeroSlide[] {
+function ensureSlides(slides: Partial<HeroSlide>[] | undefined): HeroSlide[] {
   if (!slides?.length) return []
-  return slides.map((slide) => ({
-    ...emptySlide,
-    ...slide,
-    mobileSrc: slide.mobileSrc ?? '',
-  }))
+  const sorted = [...slides].sort(
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+  )
+
+  return sorted.map((slide, index) => {
+    const description = slide.description ?? (slide as { subtitle?: string }).subtitle ?? ''
+    return {
+      ...emptySlide,
+      ...slide,
+      sort_order: index + 1,
+      mobileSrc: slide.mobileSrc ?? '',
+      description,
+      title: slide.title ?? '',
+      buttonLabel: slide.buttonLabel ?? '',
+      buttonHref: slide.buttonHref ?? '',
+      src: slide.src ?? '',
+    }
+  })
 }
 
 export default function ServicesPagesEditor({
@@ -112,7 +123,6 @@ export default function ServicesPagesEditor({
   permissions: string[]
   menuId: number
 }) {
-  const router = useRouter()
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
 
   const [menuItems, setMenuItems] = useState<ServicesMenuItem[]>([])
@@ -122,6 +132,11 @@ export default function ServicesPagesEditor({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [collapsedSlides, setCollapsedSlides] = useState<Record<number, boolean>>({})
+  const [slideFiles, setSlideFiles] = useState<(File | null)[]>([])
+  const [slideMobileFiles, setSlideMobileFiles] = useState<(File | null)[]>([])
+  const [slidePreviews, setSlidePreviews] = useState<(string | null)[]>([])
+  const [slideMobilePreviews, setSlideMobilePreviews] = useState<(string | null)[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -184,12 +199,18 @@ export default function ServicesPagesEditor({
         if (!payload) {
           throw new Error('Services page payload missing.')
         }
+        const slides = ensureSlides(payload.hero_slides)
         setPage({
           ...payload,
           menu_item_id: payload.menu_item_id ?? menuId,
-          hero_slides: ensureSlides(payload.hero_slides),
+          hero_slides: slides,
           sections: ensureSections(payload.sections),
         })
+        const slideCount = slides.length
+        setSlideFiles(Array(slideCount).fill(null))
+        setSlideMobileFiles(Array(slideCount).fill(null))
+        setSlidePreviews(Array(slideCount).fill(null))
+        setSlideMobilePreviews(Array(slideCount).fill(null))
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setError(err instanceof Error ? err.message : 'Failed to load services page.')
@@ -222,22 +243,95 @@ export default function ServicesPagesEditor({
     })
   }
 
+  const resequenceSlides = (slides: HeroSlide[]) =>
+    slides.map((slide, index) => ({ ...slide, sort_order: index + 1 }))
+
+  const reorderFiles = (files: (File | null)[], index: number, targetIndex: number) => {
+    const next = [...files]
+    const [moved] = next.splice(index, 1)
+    next.splice(targetIndex, 0, moved ?? null)
+    return next
+  }
+
+  const ensureArrayLength = <T,>(items: (T | null)[], length: number) => {
+    if (items.length >= length) return [...items]
+    return [...items, ...Array(length - items.length).fill(null)]
+  }
+
+  const setSlideFileAt = (index: number, file: File | null, previewUrl: string | null, isMobile: boolean) => {
+    if (isMobile) {
+      setSlideMobileFiles((prevFiles) => {
+        const next = ensureArrayLength(prevFiles, index + 1)
+        next[index] = file
+        return next
+      })
+      setSlideMobilePreviews((prevFiles) => {
+        const next = ensureArrayLength(prevFiles, index + 1)
+        next[index] = previewUrl
+        return next
+      })
+      return
+    }
+
+    setSlideFiles((prevFiles) => {
+      const next = ensureArrayLength(prevFiles, index + 1)
+      next[index] = file
+      return next
+    })
+    setSlidePreviews((prevFiles) => {
+      const next = ensureArrayLength(prevFiles, index + 1)
+      next[index] = previewUrl
+      return next
+    })
+  }
+
+  const toggleSlideCollapsed = (index: number) => {
+    setCollapsedSlides((prev) => ({ ...prev, [index]: !prev[index] }))
+  }
+
+  const moveSlide = (index: number, direction: -1 | 1) => {
+    setPage((prev) => {
+      if (!prev) return prev
+      const targetIndex = index + direction
+      if (targetIndex < 0 || targetIndex >= prev.hero_slides.length) {
+        return prev
+      }
+      const slides = [...prev.hero_slides]
+      const [moved] = slides.splice(index, 1)
+      slides.splice(targetIndex, 0, moved)
+      setSlideFiles((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
+      setSlideMobileFiles((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
+      setSlidePreviews((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
+      setSlideMobilePreviews((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
+      setCollapsedSlides({})
+      return { ...prev, hero_slides: resequenceSlides(slides) }
+    })
+  }
+
   const updateSlide = (index: number, updater: (slide: HeroSlide) => HeroSlide) => {
     setPage((prev) => {
       if (!prev) return prev
       const slides = prev.hero_slides.map((slide, idx) =>
         idx === index ? updater(slide) : slide,
       )
-      return { ...prev, hero_slides: slides }
+      return { ...prev, hero_slides: resequenceSlides(slides) }
     })
   }
 
   const addSlide = () => {
     setPage((prev) => {
       if (!prev) return prev
+      const nextSlide: HeroSlide = {
+        ...emptySlide,
+        sort_order: prev.hero_slides.length + 1,
+      }
+      setSlideFiles((prevFiles) => [...prevFiles, null])
+      setSlideMobileFiles((prevFiles) => [...prevFiles, null])
+      setSlidePreviews((prevFiles) => [...prevFiles, null])
+      setSlideMobilePreviews((prevFiles) => [...prevFiles, null])
       return {
         ...prev,
-        hero_slides: [...prev.hero_slides, { ...emptySlide }],
+        hero_slides: [...prev.hero_slides, nextSlide],
       }
     })
   }
@@ -245,16 +339,16 @@ export default function ServicesPagesEditor({
   const removeSlide = (index: number) => {
     setPage((prev) => {
       if (!prev) return prev
+      setSlideFiles((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
+      setSlideMobileFiles((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
+      setSlidePreviews((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
+      setSlideMobilePreviews((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
+      setCollapsedSlides({})
       return {
         ...prev,
-        hero_slides: prev.hero_slides.filter((_, idx) => idx !== index),
+        hero_slides: resequenceSlides(prev.hero_slides.filter((_, idx) => idx !== index)),
       }
     })
-  }
-
-  const handleMenuChange = (nextMenuId: number) => {
-    if (!Number.isFinite(nextMenuId) || nextMenuId === menuId) return
-    router.push(`/services-pages/${nextMenuId}`)
   }
 
   const handleSave = async () => {
@@ -263,20 +357,48 @@ export default function ServicesPagesEditor({
     setError(null)
     setNotice(null)
     try {
+      const hasMissingImages = page.hero_slides.some(
+        (slide, index) => !slide.src && !slideFiles[index],
+      )
+      if (hasMissingImages) {
+        setError('Each slide needs a desktop image before saving.')
+        setSaving(false)
+        return
+      }
+
+      const formData = new FormData()
+      formData.append('title', selectedMenu.name)
+      formData.append('slug', selectedMenu.slug)
+      formData.append('subtitle', page.subtitle ?? '')
+      formData.append('is_active', page.is_active ? '1' : '0')
+      formData.append('sections', JSON.stringify(page.sections))
+
+      page.hero_slides.forEach((slide, index) => {
+        formData.append(`hero_slides[${index}][sort_order]`, String(slide.sort_order))
+        formData.append(`hero_slides[${index}][src]`, slide.src)
+        formData.append(`hero_slides[${index}][mobileSrc]`, slide.mobileSrc)
+        formData.append(`hero_slides[${index}][title]`, slide.title)
+        formData.append(`hero_slides[${index}][description]`, slide.description)
+        formData.append(`hero_slides[${index}][buttonLabel]`, slide.buttonLabel)
+        formData.append(`hero_slides[${index}][buttonHref]`, slide.buttonHref)
+
+        const imageFile = slideFiles[index]
+        if (imageFile) {
+          formData.append(`hero_slides[${index}][image_file]`, imageFile)
+        }
+
+        const mobileImageFile = slideMobileFiles[index]
+        if (mobileImageFile) {
+          formData.append(`hero_slides[${index}][mobile_image_file]`, mobileImageFile)
+        }
+      })
+
       const res = await fetch(`/api/proxy/ecommerce/services-pages/${menuId}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
           Accept: 'application/json',
         },
-        body: JSON.stringify({
-          title: selectedMenu.name,
-          slug: selectedMenu.slug,
-          subtitle: page.subtitle,
-          hero_slides: page.hero_slides,
-          sections: page.sections,
-          is_active: page.is_active,
-        }),
+        body: formData,
       })
 
       const json: ApiResponse<ServicesPagePayload> = await res.json().catch(() => ({}))
@@ -285,11 +407,17 @@ export default function ServicesPagesEditor({
       }
 
       const payload = json.data
+      const slides = ensureSlides(payload.hero_slides)
       setPage({
         ...payload,
-        hero_slides: ensureSlides(payload.hero_slides),
+        hero_slides: slides,
         sections: ensureSections(payload.sections),
       })
+      const slideCount = slides.length
+      setSlideFiles(Array(slideCount).fill(null))
+      setSlideMobileFiles(Array(slideCount).fill(null))
+      setSlidePreviews(Array(slideCount).fill(null))
+      setSlideMobilePreviews(Array(slideCount).fill(null))
 
       setMenuItems((prev) =>
         prev.map((item) =>
@@ -340,23 +468,23 @@ export default function ServicesPagesEditor({
           <section className="rounded-lg border border-gray-200 bg-white p-6">
             <div className="mb-4 flex flex-col gap-1">
               <h3 className="text-base font-semibold text-gray-900">Page basics</h3>
-              <p className="text-xs text-gray-500">Select the services menu and set the page status.</p>
+              <p className="text-xs text-gray-500">Review the selected services menu and set the page status.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-1 text-sm text-gray-700">
                 <span className="font-medium">Services Menu</span>
                 <select
                   value={menuId}
-                  onChange={(e) => handleMenuChange(Number(e.target.value))}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={!canUpdate || saving}
+                  className="w-full rounded border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-600 focus:outline-none"
+                  disabled
                 >
-                  {sortedMenus.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} ({item.slug})
+                  {selectedMenu && (
+                    <option value={selectedMenu.id}>
+                      {selectedMenu.name} ({selectedMenu.slug})
                     </option>
-                  ))}
+                  )}
                 </select>
+                <p className="text-[11px] text-gray-400">Services Menu cannot be changed here.</p>
               </label>
               <label className="space-y-1 text-sm text-gray-700">
                 <span className="font-medium">Status</span>
@@ -381,10 +509,18 @@ export default function ServicesPagesEditor({
             active={page.hero_slides.length > 0}
             onToggle={(value) => {
               if (value && page.hero_slides.length === 0) {
-                setPage({ ...page, hero_slides: [{ ...emptySlide }] })
+                setPage({ ...page, hero_slides: [{ ...emptySlide, sort_order: 1 }] })
+                setSlideFiles([null])
+                setSlideMobileFiles([null])
+                setSlidePreviews([null])
+                setSlideMobilePreviews([null])
               }
               if (!value) {
                 setPage({ ...page, hero_slides: [] })
+                setSlideFiles([])
+                setSlideMobileFiles([])
+                setSlidePreviews([])
+                setSlideMobilePreviews([])
               }
             }}
             canUpdate={canUpdate}
@@ -398,77 +534,182 @@ export default function ServicesPagesEditor({
               <div className="space-y-4">
                 {page.hero_slides.map((slide, index) => (
                   <div key={`slide-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                        Slide {index + 1}
-                      </div>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <button
                         type="button"
-                        onClick={() => removeSlide(index)}
-                        disabled={!canUpdate}
-                        className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                        onClick={() => toggleSlideCollapsed(index)}
+                        className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
                       >
-                        Remove
+                        <i className={`fa-solid ${collapsedSlides[index] ? 'fa-chevron-right' : 'fa-chevron-down'}`} />
+                        <span>Slide {index + 1}</span>
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                          Sort {slide.sort_order}
+                        </span>
                       </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => moveSlide(index, -1)}
+                          disabled={!canUpdate || index === 0}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Move slide up"
+                        >
+                          <i className="fa-solid fa-arrow-up" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveSlide(index, 1)}
+                          disabled={!canUpdate || index === page.hero_slides.length - 1}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Move slide down"
+                        >
+                          <i className="fa-solid fa-arrow-down" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeSlide(index)}
+                          disabled={!canUpdate}
+                          className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <input
-                        value={slide.src}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, src: e.target.value }))}
-                        placeholder="Desktop image URL"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.mobileSrc ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, mobileSrc: e.target.value }))}
-                        placeholder="Mobile image URL"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.alt}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, alt: e.target.value }))}
-                        placeholder="Alt text"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.title ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, title: e.target.value }))}
-                        placeholder="Title"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.subtitle ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, subtitle: e.target.value }))}
-                        placeholder="Subtitle"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.description ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, description: e.target.value }))}
-                        placeholder="Description"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.buttonLabel ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonLabel: e.target.value }))}
-                        placeholder="Button label"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.buttonHref ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonHref: e.target.value }))}
-                        placeholder="Button link"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                    </div>
+                    {!collapsedSlides[index] && (
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Desktop image</label>
+                            <p className="text-[11px] text-red-500">Suggested size: 1920 x 848</p>
+                            <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-white p-3">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={!canUpdate}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0]
+                                  if (!file) return
+                                  const previewUrl = URL.createObjectURL(file)
+                                  setSlideFileAt(index, file, previewUrl, false)
+                                }}
+                                className="text-xs"
+                              />
+                              {(slidePreviews[index] ?? slide.src) ? (
+                                <div className="relative overflow-hidden rounded border border-gray-200">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={slidePreviews[index] ?? slide.src} alt={slide.title || 'Desktop preview'} className="h-44 w-full object-cover" />
+                                  <div className="absolute right-2 top-2 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSlideFileAt(index, null, null, false)
+                                        updateSlide(index, (prev) => ({ ...prev, src: '' }))
+                                      }}
+                                      disabled={!canUpdate}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-50"
+                                      aria-label="Remove desktop image"
+                                    >
+                                      <i className="fa-solid fa-trash-can text-xs" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex h-44 items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
+                                  Upload a desktop image
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Mobile image</label>
+                            <p className="text-[11px] text-red-500">Suggested size: 1410 x 1360</p>
+                            <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-white p-3">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={!canUpdate}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0]
+                                  if (!file) return
+                                  const previewUrl = URL.createObjectURL(file)
+                                  setSlideFileAt(index, file, previewUrl, true)
+                                }}
+                                className="text-xs"
+                              />
+                              {(slideMobilePreviews[index] ?? slide.mobileSrc) ? (
+                                <div className="relative overflow-hidden rounded border border-gray-200">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={slideMobilePreviews[index] ?? slide.mobileSrc} alt={slide.title || 'Mobile preview'} className="h-44 w-full object-cover" />
+                                  <div className="absolute right-2 top-2 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSlideFileAt(index, null, null, true)
+                                        updateSlide(index, (prev) => ({ ...prev, mobileSrc: '' }))
+                                      }}
+                                      disabled={!canUpdate}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-50"
+                                      aria-label="Remove mobile image"
+                                    >
+                                      <i className="fa-solid fa-trash-can text-xs" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex h-44 items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
+                                  Optional: upload a mobile image
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Title</label>
+                            <input
+                              value={slide.title}
+                              onChange={(e) => updateSlide(index, (prev) => ({ ...prev, title: e.target.value }))}
+                              placeholder="Title"
+                              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              disabled={!canUpdate}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</label>
+                            <textarea
+                              value={slide.description}
+                              onChange={(e) => updateSlide(index, (prev) => ({ ...prev, description: e.target.value }))}
+                              placeholder="Description"
+                              rows={5}
+                              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              disabled={!canUpdate}
+                            />
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Button label</label>
+                              <input
+                                value={slide.buttonLabel}
+                                onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonLabel: e.target.value }))}
+                                placeholder="Button label"
+                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                disabled={!canUpdate}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Button link</label>
+                              <input
+                                value={slide.buttonHref}
+                                onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonHref: e.target.value }))}
+                                placeholder="Button link"
+                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                disabled={!canUpdate}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div className="flex">
@@ -679,6 +920,27 @@ export default function ServicesPagesEditor({
               )}
             />
           </SectionCard>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!canUpdate || saving || loadingPage}
+              className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? (
+                <>
+                  <i className="fa-solid fa-spinner animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-floppy-disk" />
+                  Save changes
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
     </div>

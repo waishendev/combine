@@ -25,7 +25,7 @@ class PublicServicesController extends Controller
     public function show(string $slug)
     {
         $page = ServicesPage::query()
-            ->with(['menuItem:id,name,slug,is_active'])
+            ->with(['menuItem:id,name,slug,is_active', 'slides'])
             ->where('slug', $slug)
             ->where('is_active', true)
             ->firstOrFail();
@@ -40,7 +40,7 @@ class PublicServicesController extends Controller
             'title' => $page->title,
             'slug' => $page->slug,
             'subtitle' => $page->subtitle,
-            'hero_slides' => $page->hero_slides ?? [],
+            'hero_slides' => $page->hero_slides,
             'sections' => $page->sections,
         ]);
     }
