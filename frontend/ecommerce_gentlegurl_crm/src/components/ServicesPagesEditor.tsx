@@ -54,6 +54,7 @@ type ApiResponse<T> = {
   data?: T
   success?: boolean
   message?: string | null
+  errors?: Record<string, string[] | string | undefined>
 }
 
 const emptySections: ServicesPagePayload['sections'] = {
@@ -116,6 +117,26 @@ function ensureSlides(slides: Partial<HeroSlide>[] | undefined): HeroSlide[] {
       src: slide.src ?? '',
     }
   })
+}
+
+function extractApiErrorMessage(response: ApiResponse<unknown>, fallback: string) {
+  if (response?.message) {
+    return response.message
+  }
+  const errors = response?.errors
+  if (errors && typeof errors === 'object') {
+    const firstKey = Object.keys(errors)[0]
+    if (firstKey) {
+      const firstValue = errors[firstKey]
+      if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
+        return firstValue[0]
+      }
+      if (typeof firstValue === 'string') {
+        return firstValue
+      }
+    }
+  }
+  return fallback
 }
 
 export default function ServicesPagesEditor({
@@ -411,6 +432,7 @@ export default function ServicesPagesEditor({
       }
 
       const formData = new FormData()
+      formData.append('_method', 'PUT')
       formData.append('title', selectedMenu.name)
       formData.append('slug', selectedMenu.slug)
       formData.append('subtitle', page.subtitle ?? '')
@@ -438,7 +460,7 @@ export default function ServicesPagesEditor({
       })
 
       const res = await fetch(`/api/proxy/ecommerce/services-pages/${menuId}`, {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           Accept: 'application/json',
         },
@@ -447,7 +469,7 @@ export default function ServicesPagesEditor({
 
       const json: ApiResponse<ServicesPagePayload> = await res.json().catch(() => ({}))
       if (!res.ok || !json.data) {
-        throw new Error(json.message || 'Failed to save services page.')
+        throw new Error(extractApiErrorMessage(json, 'Failed to save services page.'))
       }
 
       const payload = json.data
