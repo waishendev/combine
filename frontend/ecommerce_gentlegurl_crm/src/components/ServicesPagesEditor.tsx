@@ -253,6 +253,38 @@ export default function ServicesPagesEditor({
     return next
   }
 
+  const ensureArrayLength = <T,>(items: (T | null)[], length: number) => {
+    if (items.length >= length) return [...items]
+    return [...items, ...Array(length - items.length).fill(null)]
+  }
+
+  const setSlideFileAt = (index: number, file: File | null, previewUrl: string | null, isMobile: boolean) => {
+    if (isMobile) {
+      setSlideMobileFiles((prevFiles) => {
+        const next = ensureArrayLength(prevFiles, index + 1)
+        next[index] = file
+        return next
+      })
+      setSlideMobilePreviews((prevFiles) => {
+        const next = ensureArrayLength(prevFiles, index + 1)
+        next[index] = previewUrl
+        return next
+      })
+      return
+    }
+
+    setSlideFiles((prevFiles) => {
+      const next = ensureArrayLength(prevFiles, index + 1)
+      next[index] = file
+      return next
+    })
+    setSlidePreviews((prevFiles) => {
+      const next = ensureArrayLength(prevFiles, index + 1)
+      next[index] = previewUrl
+      return next
+    })
+  }
+
   const toggleSlideCollapsed = (index: number) => {
     setCollapsedSlides((prev) => ({ ...prev, [index]: !prev[index] }))
   }
@@ -478,9 +510,17 @@ export default function ServicesPagesEditor({
             onToggle={(value) => {
               if (value && page.hero_slides.length === 0) {
                 setPage({ ...page, hero_slides: [{ ...emptySlide, sort_order: 1 }] })
+                setSlideFiles([null])
+                setSlideMobileFiles([null])
+                setSlidePreviews([null])
+                setSlideMobilePreviews([null])
               }
               if (!value) {
                 setPage({ ...page, hero_slides: [] })
+                setSlideFiles([])
+                setSlideMobileFiles([])
+                setSlidePreviews([])
+                setSlideMobilePreviews([])
               }
             }}
             canUpdate={canUpdate}
@@ -540,6 +580,7 @@ export default function ServicesPagesEditor({
                         <div className="space-y-4">
                           <div className="space-y-2">
                             <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Desktop image</label>
+                            <p className="text-[11px] text-red-500">Suggested size: 1920 x 848</p>
                             <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-white p-3">
                               <input
                                 type="file"
@@ -548,13 +589,8 @@ export default function ServicesPagesEditor({
                                 onChange={(event) => {
                                   const file = event.target.files?.[0]
                                   if (!file) return
-                                  setSlideFiles((prevFiles) =>
-                                    prevFiles.map((entry, idx) => (idx === index ? file : entry ?? null)),
-                                  )
                                   const previewUrl = URL.createObjectURL(file)
-                                  setSlidePreviews((prevFiles) =>
-                                    prevFiles.map((entry, idx) => (idx === index ? previewUrl : entry ?? null)),
-                                  )
+                                  setSlideFileAt(index, file, previewUrl, false)
                                 }}
                                 className="text-xs"
                               />
@@ -566,12 +602,7 @@ export default function ServicesPagesEditor({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setSlideFiles((prevFiles) =>
-                                          prevFiles.map((entry, idx) => (idx === index ? null : entry)),
-                                        )
-                                        setSlidePreviews((prevFiles) =>
-                                          prevFiles.map((entry, idx) => (idx === index ? null : entry)),
-                                        )
+                                        setSlideFileAt(index, null, null, false)
                                         updateSlide(index, (prev) => ({ ...prev, src: '' }))
                                       }}
                                       disabled={!canUpdate}
@@ -591,6 +622,7 @@ export default function ServicesPagesEditor({
                           </div>
                           <div className="space-y-2">
                             <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Mobile image</label>
+                            <p className="text-[11px] text-red-500">Suggested size: 1410 x 1360</p>
                             <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-white p-3">
                               <input
                                 type="file"
@@ -599,13 +631,8 @@ export default function ServicesPagesEditor({
                                 onChange={(event) => {
                                   const file = event.target.files?.[0]
                                   if (!file) return
-                                  setSlideMobileFiles((prevFiles) =>
-                                    prevFiles.map((entry, idx) => (idx === index ? file : entry)),
-                                  )
                                   const previewUrl = URL.createObjectURL(file)
-                                  setSlideMobilePreviews((prevFiles) =>
-                                    prevFiles.map((entry, idx) => (idx === index ? previewUrl : entry)),
-                                  )
+                                  setSlideFileAt(index, file, previewUrl, true)
                                 }}
                                 className="text-xs"
                               />
@@ -617,12 +644,7 @@ export default function ServicesPagesEditor({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setSlideMobileFiles((prevFiles) =>
-                                          prevFiles.map((entry, idx) => (idx === index ? null : entry)),
-                                        )
-                                        setSlideMobilePreviews((prevFiles) =>
-                                          prevFiles.map((entry, idx) => (idx === index ? null : entry)),
-                                        )
+                                        setSlideFileAt(index, null, null, true)
                                         updateSlide(index, (prev) => ({ ...prev, mobileSrc: '' }))
                                       }}
                                       disabled={!canUpdate}
