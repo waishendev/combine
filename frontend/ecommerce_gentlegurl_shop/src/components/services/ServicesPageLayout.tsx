@@ -41,6 +41,7 @@ type ServicesPageLayoutProps = {
   pricingActive?: boolean;
   faqsActive?: boolean;
   notesActive?: boolean;
+  heroActive?: boolean;
   heroImage?: string;
   heroSlides?: HeroSlide[];
   galleryImages?: { src: string; alt: string; caption?: string }[];
@@ -60,6 +61,7 @@ export function ServicesPageLayout({
   pricingActive = true,
   faqsActive = true,
   notesActive = true,
+  heroActive = true,
   heroImage,
   heroSlides,
   whatsappPhone,
@@ -68,15 +70,17 @@ export function ServicesPageLayout({
 }: ServicesPageLayoutProps) {
   const pricingRef = useRef<HTMLDivElement | null>(null);
   const slideContainerRef = useRef<HTMLDivElement | null>(null);
-  const baseSlides: HeroSlide[] =
-    heroSlides && heroSlides.length > 0
+  const baseSlides: HeroSlide[] = heroActive
+    ? heroSlides && heroSlides.length > 0
       ? heroSlides
       : [
           {
             src: heroImage || "/images/slideshow_placeholder.jpg",
             alt: `${title} hero visual`,
           },
-        ];
+        ]
+    : [];
+  const showHero = baseSlides.length > 0;
   const orderedSlides = baseSlides
     .map((slide, index) => ({ slide, index }))
     .sort((a, b) => (a.slide.sort_order ?? a.index) - (b.slide.sort_order ?? b.index))
@@ -132,6 +136,7 @@ export function ServicesPageLayout({
 
   const goToSlide = useCallback(
     (index: number) => {
+      if (slides.length === 0) return;
       const next = (index + slides.length) % slides.length;
       setActiveSlide(next);
     },
@@ -155,6 +160,7 @@ export function ServicesPageLayout({
   }, [autoplayDelayMs, isHoveringHero, lightboxIndex, slides.length]);
 
   useEffect(() => {
+    if (slides.length === 0) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (lightboxIndex !== null) {
         if (event.key === "Escape") {
@@ -255,20 +261,21 @@ export function ServicesPageLayout({
     <main className="bg-gradient-to-b from-transparent via-white/60 to-transparent pb-16">
       <div className="mx-auto max-w-6xl space-y-12 px-4 pt-10 sm:px-6 lg:px-8">
         {/* Hero */}
-        <section
-          className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-sm cursor-grab active:cursor-grabbing"
-          onMouseEnter={() => setIsHoveringHero(true)}
-          onMouseLeave={(e) => {
-            setIsHoveringHero(false);
-            onMouseUp(e);
-          }}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
-        >
+        {showHero && (
+          <section
+            className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-sm cursor-grab active:cursor-grabbing"
+            onMouseEnter={() => setIsHoveringHero(true)}
+            onMouseLeave={(e) => {
+              setIsHoveringHero(false);
+              onMouseUp(e);
+            }}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            onMouseDown={onMouseDown}
+            onMouseMove={onMouseMove}
+            onMouseUp={onMouseUp}
+          >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
           <div className="relative grid min-h-[340px] gap-8 p-6 pb-24 md:min-h-[420px] md:gap-10 md:p-10 md:pb-28 lg:min-h-[480px] lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-12 lg:pb-24">
             <div className="order-2 flex h-full flex-col justify-center space-y-6 lg:order-1">
@@ -401,8 +408,9 @@ export function ServicesPageLayout({
                 />
               ))}
             </div>
-          )} 
-        </section>
+          )}
+          </section>
+        )}
         {lightboxIndex !== null && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
             <div className="relative w-full max-w-5xl">

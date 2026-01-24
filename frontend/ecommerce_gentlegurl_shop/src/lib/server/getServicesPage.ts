@@ -45,6 +45,7 @@ export type ServicesPageData = {
   subtitle: string | null;
   hero_slides: ServicesHeroSlide[];
   sections: {
+    hero: ServicesSection<never>;
     services: ServicesSection<ServicesServiceItem>;
     pricing: ServicesSection<ServicesPricingItem>;
     faqs: ServicesSection<ServicesFaqItem>;

@@ -41,6 +41,7 @@ type ServicesPagePayload = {
   subtitle: string | null
   hero_slides: HeroSlide[]
   sections: {
+    hero: ServicesSection<never>
     services: ServicesSection<ServiceItem>
     pricing: ServicesSection<PricingItem>
     faqs: ServicesSection<FaqItem>
@@ -56,6 +57,7 @@ type ApiResponse<T> = {
 }
 
 const emptySections: ServicesPagePayload['sections'] = {
+  hero: { is_active: true, items: [] },
   services: { is_active: true, items: [] },
   pricing: { is_active: true, items: [] },
   faqs: { is_active: true, items: [] },
@@ -88,6 +90,7 @@ function normalizeMenuItems(input: unknown): ServicesMenuItem[] {
 
 function ensureSections(sections: Partial<ServicesPagePayload['sections']> | undefined) {
   return {
+    hero: sections?.hero ?? emptySections.hero,
     services: sections?.services ?? emptySections.services,
     pricing: sections?.pricing ?? emptySections.pricing,
     faqs: sections?.faqs ?? emptySections.faqs,
@@ -134,6 +137,7 @@ export default function ServicesPagesEditor({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [collapsedSlides, setCollapsedSlides] = useState<Record<number, boolean>>({})
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [slideFiles, setSlideFiles] = useState<(File | null)[]>([])
   const [slideMobileFiles, setSlideMobileFiles] = useState<(File | null)[]>([])
   const [slidePreviews, setSlidePreviews] = useState<(string | null)[]>([])
@@ -394,15 +398,23 @@ export default function ServicesPagesEditor({
     })
   }
 
+  const toggleSectionCollapsed = (sectionKey: string) => {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }))
+  }
+
   const handleSave = async () => {
     if (!page || !selectedMenu) return
     setSaving(true)
     setError(null)
     setNotice(null)
     try {
-      const hasMissingImages = page.hero_slides.some(
-        (slide, index) => !slide.src && !slideFiles[index],
-      )
+      const heroActive = page.sections.hero.is_active
+      const hasMissingImages =
+        heroActive &&
+        page.hero_slides.some((slide, index) => !slide.src && !slideFiles[index])
       if (hasMissingImages) {
         setError('Each slide needs a desktop image before saving.')
         setSaving(false)
@@ -547,27 +559,39 @@ export default function ServicesPagesEditor({
           </section>
 
           <SectionCard
+            sectionKey="hero"
             title="Slider section"
             description="Controls the hero slider content on the services page."
-            active={page.hero_slides.length > 0}
+            active={page.sections.hero.is_active}
             onToggle={(value) => {
-              if (value && page.hero_slides.length === 0) {
-                setPage({ ...page, hero_slides: [{ ...emptySlide, sort_order: 1 }] })
-                setSlideFiles([null])
-                setSlideMobileFiles([null])
-                setSlidePreviews([null])
-                setSlideMobilePreviews([null])
-              }
-              if (!value) {
-                setPage({ ...page, hero_slides: [] })
-                setSlideFiles([])
-                setSlideMobileFiles([])
-                setSlidePreviews([])
-                setSlideMobilePreviews([])
-              }
+              setPage((prev) => {
+                if (!prev) return prev
+                const shouldSeedSlide = value && prev.hero_slides.length === 0
+                if (shouldSeedSlide) {
+                  setSlideFiles([null])
+                  setSlideMobileFiles([null])
+                  setSlidePreviews([null])
+                  setSlideMobilePreviews([null])
+                }
+                return {
+                  ...prev,
+                  hero_slides: shouldSeedSlide
+                    ? [{ ...emptySlide, sort_order: 1 }]
+                    : prev.hero_slides,
+                  sections: {
+                    ...prev.sections,
+                    hero: {
+                      ...prev.sections.hero,
+                      is_active: value,
+                    },
+                  },
+                }
+              })
             }}
             canUpdate={canUpdate}
-            toggleLabel={page.hero_slides.length > 0 ? 'Enabled' : 'Disabled'}
+            toggleLabel={page.sections.hero.is_active ? 'Enabled' : 'Disabled'}
+            collapsed={collapsedSections.hero ?? false}
+            onToggleCollapse={() => toggleSectionCollapsed('hero')}
           >
             {page.hero_slides.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
@@ -823,11 +847,14 @@ export default function ServicesPagesEditor({
           </SectionCard>
 
           <SectionCard
+            sectionKey="services"
             title="Services section"
             description="Highlights the key offerings using the existing ServicesPageLayout cards."
             active={page.sections.services.is_active}
             onToggle={(value) => updateSection<ServiceItem>('services', (section) => ({ ...section, is_active: value }))}
             canUpdate={canUpdate}
+            collapsed={collapsedSections.services ?? false}
+            onToggleCollapse={() => toggleSectionCollapsed('services')}
           >
             <EditableList
               items={page.sections.services.items}
@@ -876,11 +903,14 @@ export default function ServicesPagesEditor({
           </SectionCard>
 
           <SectionCard
+            sectionKey="pricing"
             title="Pricing section"
             description="Controls the price list cards."
             active={page.sections.pricing.is_active}
             onToggle={(value) => updateSection<PricingItem>('pricing', (section) => ({ ...section, is_active: value }))}
             canUpdate={canUpdate}
+            collapsed={collapsedSections.pricing ?? false}
+            onToggleCollapse={() => toggleSectionCollapsed('pricing')}
           >
             <EditableList
               items={page.sections.pricing.items}
@@ -929,11 +959,14 @@ export default function ServicesPagesEditor({
           </SectionCard>
 
           <SectionCard
+            sectionKey="faqs"
             title="FAQ section"
             description="Pairs each question with an expandable answer."
             active={page.sections.faqs.is_active}
             onToggle={(value) => updateSection<FaqItem>('faqs', (section) => ({ ...section, is_active: value }))}
             canUpdate={canUpdate}
+            collapsed={collapsedSections.faqs ?? false}
+            onToggleCollapse={() => toggleSectionCollapsed('faqs')}
           >
             <EditableList
               items={page.sections.faqs.items}
@@ -982,11 +1015,15 @@ export default function ServicesPagesEditor({
           </SectionCard>
 
           <SectionCard
+            sectionKey="notes"
             title="Notes section"
             description="Shows the policy & care notes list."
             active={page.sections.notes.is_active}
             onToggle={(value) => updateSection<string>('notes', (section) => ({ ...section, is_active: value }))}
             canUpdate={canUpdate}
+            toggleLabel={page.sections.notes.is_active ? 'Enabled' : 'Disabled'}
+            collapsed={collapsedSections.notes ?? false}
+            onToggleCollapse={() => toggleSectionCollapsed('notes')}
           >
             <EditableList
               items={page.sections.notes.items}
@@ -1043,6 +1080,7 @@ export default function ServicesPagesEditor({
 }
 
 function SectionCard({
+  sectionKey,
   title,
   description,
   active,
@@ -1050,7 +1088,10 @@ function SectionCard({
   canUpdate,
   children,
   toggleLabel,
+  collapsed,
+  onToggleCollapse,
 }: {
+  sectionKey: string
   title: string
   description: string
   active: boolean
@@ -1058,6 +1099,8 @@ function SectionCard({
   canUpdate: boolean
   children: ReactNode
   toggleLabel?: string
+  collapsed: boolean
+  onToggleCollapse: () => void
 }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-6">
@@ -1066,18 +1109,33 @@ function SectionCard({
           <h3 className="text-base font-semibold text-gray-900">{title}</h3>
           <p className="text-xs text-gray-500">{description}</p>
         </div>
-        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={(e) => onToggle(e.target.checked)}
-            disabled={!canUpdate}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          {toggleLabel ?? 'Enabled'}
-        </label>
+        <div className="flex items-center justify-between gap-2 md:justify-end">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => onToggle(e.target.checked)}
+              disabled={!canUpdate}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            {toggleLabel ?? 'Enabled'}
+          </label>
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            aria-expanded={!collapsed}
+            aria-controls={`${sectionKey}-section-content`}
+            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+          >
+            <i className={`fa-solid ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}`} />
+          </button>
+        </div>
       </div>
-      {children}
+      {!collapsed && (
+        <div id={`${sectionKey}-section-content`}>
+          {children}
+        </div>
+      )}
     </section>
   )
 }
