@@ -106,14 +106,27 @@ async function handleRequest(
 
     // Get request body for POST, PUT, PATCH requests
     let body: string | FormData | undefined;
-    let contentType = request.headers.get('content-type') || '';
-    const isFormData = contentType.includes('multipart/form-data');
+    const contentType = request.headers.get('content-type') || '';
+    let isFormData = contentType.includes('multipart/form-data');
     
     if (['POST', 'PUT', 'PATCH'].includes(method)) {
-      if (isFormData) {
-        // Handle FormData (file uploads)
+      if (!isFormData) {
+        try {
+          const formData = await request.formData();
+          if ([...formData.keys()].length > 0) {
+            body = formData;
+            isFormData = true;
+          }
+        } catch {
+          // Not form data, continue to JSON/text parsing.
+        }
+      }
+
+      if (!body && isFormData) {
         body = await request.formData();
-      } else {
+      }
+
+      if (!body && !isFormData) {
         try {
           const json = await request.json();
           body = JSON.stringify(json);
