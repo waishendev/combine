@@ -24,7 +24,7 @@ class InvoiceService
             ];
         })->values();
 
-        return app('dompdf.wrapper')->loadView('invoices.order', [
+        return app('snappy.pdf.wrapper')->loadView('invoices.order', [
             'order' => $order,
             'items' => $items,
             'invoiceProfile' => $invoiceProfile,

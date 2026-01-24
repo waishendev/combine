@@ -4,7 +4,20 @@ WORKDIR /var/www
 
 # 运行期依赖
 # 运行期依赖（加 ffmpeg）
-RUN apk add --no-cache icu-libs libzip libpng oniguruma postgresql-libs ffmpeg
+RUN apk add --no-cache \
+    icu-libs \
+    libzip \
+    libpng \
+    oniguruma \
+    postgresql-libs \
+    ffmpeg \
+    wkhtmltopdf \
+    fontconfig \
+    noto-fonts \
+    noto-fonts-cjk \
+    libx11 \
+    libxext \
+    libxrender
 
 
 # 构建期依赖
