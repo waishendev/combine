@@ -5,7 +5,7 @@ export type ServicesHeroSlide = {
   sort_order?: number;
   src: string;
   mobileSrc?: string;
-  alt: string;
+  alt?: string;
   title?: string;
   description?: string;
   buttonLabel?: string;

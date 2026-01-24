@@ -50,13 +50,12 @@ class ServicesPage extends Model
                 return [
                     'id' => $slide->id,
                     'sort_order' => $slide->sort_order,
-                    'src' => $slide->desktop_src,
-                    'mobileSrc' => $slide->mobile_src,
-                    'alt' => $slide->alt,
+                    'src' => $slide->image_path,
+                    'mobileSrc' => $slide->mobile_image_path,
                     'title' => $slide->title,
                     'description' => $slide->description,
                     'buttonLabel' => $slide->button_label,
-                    'buttonHref' => $slide->button_href,
+                    'buttonHref' => $slide->button_link,
                 ];
             })->values()->all();
         }
@@ -75,7 +74,6 @@ class ServicesPage extends Model
                 'sort_order' => $slide['sort_order'] ?? $index + 1,
                 'src' => $slide['src'] ?? '',
                 'mobileSrc' => $slide['mobileSrc'] ?? '',
-                'alt' => $slide['alt'] ?? '',
                 'title' => $slide['title'] ?? '',
                 'description' => $slide['description'] ?? ($slide['subtitle'] ?? ''),
                 'buttonLabel' => $slide['buttonLabel'] ?? '',

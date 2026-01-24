@@ -13,13 +13,12 @@ class ServicesPageSlide extends Model
     protected $fillable = [
         'services_page_id',
         'sort_order',
-        'desktop_src',
-        'mobile_src',
-        'alt',
+        'image_path',
+        'mobile_image_path',
         'title',
         'description',
         'button_label',
-        'button_href',
+        'button_link',
     ];
 
     protected $casts = [

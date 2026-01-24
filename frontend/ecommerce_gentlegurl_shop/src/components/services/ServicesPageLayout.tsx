@@ -21,7 +21,7 @@ type FAQItem = {
 type HeroSlide = {
   src: string;
   mobileSrc?: string;
-  alt: string;
+  alt?: string;
   title?: string;
   subtitle?: string;
   description?: string;
@@ -97,6 +97,7 @@ export function ServicesPageLayout({
 
   const slides = orderedSlides.map((slide, index) => {
     const resolvedTitle = slide.title ?? `${title} spotlight ${index + 1}`;
+    const resolvedAlt = slide.alt ?? resolvedTitle;
     const resolvedDescription =
       slide.description ??
       slide.subtitle ??
@@ -109,6 +110,7 @@ export function ServicesPageLayout({
     return {
       ...slide,
       title: resolvedTitle,
+      alt: resolvedAlt,
       description: resolvedDescription,
       buttonHref: resolvedButtonHref,
       buttonLabel: resolvedButtonLabel,

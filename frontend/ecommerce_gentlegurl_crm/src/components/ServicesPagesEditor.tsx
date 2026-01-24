@@ -26,7 +26,6 @@ type HeroSlide = {
   sort_order: number
   src: string
   mobileSrc: string
-  alt: string
   title: string
   description: string
   buttonLabel: string
@@ -66,7 +65,6 @@ const emptySlide: HeroSlide = {
   sort_order: 1,
   src: '',
   mobileSrc: '',
-  alt: '',
   title: '',
   description: '',
   buttonLabel: '',
@@ -111,7 +109,6 @@ function ensureSlides(slides: Partial<HeroSlide>[] | undefined): HeroSlide[] {
       mobileSrc: slide.mobileSrc ?? '',
       description,
       title: slide.title ?? '',
-      alt: slide.alt ?? '',
       buttonLabel: slide.buttonLabel ?? '',
       buttonHref: slide.buttonHref ?? '',
       src: slide.src ?? '',
@@ -135,6 +132,7 @@ export default function ServicesPagesEditor({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [collapsedSlides, setCollapsedSlides] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     const controller = new AbortController()
@@ -238,6 +236,10 @@ export default function ServicesPagesEditor({
   const resequenceSlides = (slides: HeroSlide[]) =>
     slides.map((slide, index) => ({ ...slide, sort_order: index + 1 }))
 
+  const toggleSlideCollapsed = (index: number) => {
+    setCollapsedSlides((prev) => ({ ...prev, [index]: !prev[index] }))
+  }
+
   const moveSlide = (index: number, direction: -1 | 1) => {
     setPage((prev) => {
       if (!prev) return prev
@@ -248,6 +250,7 @@ export default function ServicesPagesEditor({
       const slides = [...prev.hero_slides]
       const [moved] = slides.splice(index, 1)
       slides.splice(targetIndex, 0, moved)
+      setCollapsedSlides({})
       return { ...prev, hero_slides: resequenceSlides(slides) }
     })
   }
@@ -279,6 +282,7 @@ export default function ServicesPagesEditor({
   const removeSlide = (index: number) => {
     setPage((prev) => {
       if (!prev) return prev
+      setCollapsedSlides({})
       return {
         ...prev,
         hero_slides: resequenceSlides(prev.hero_slides.filter((_, idx) => idx !== index)),
@@ -428,12 +432,17 @@ export default function ServicesPagesEditor({
                 {page.hero_slides.map((slide, index) => (
                   <div key={`slide-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      <button
+                        type="button"
+                        onClick={() => toggleSlideCollapsed(index)}
+                        className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                      >
+                        <i className={`fa-solid ${collapsedSlides[index] ? 'fa-chevron-right' : 'fa-chevron-down'}`} />
                         <span>Slide {index + 1}</span>
                         <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500">
                           Sort {slide.sort_order}
                         </span>
-                      </div>
+                      </button>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -463,101 +472,153 @@ export default function ServicesPagesEditor({
                         </button>
                       </div>
                     </div>
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-                      <div className="space-y-3">
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Desktop image URL</label>
-                          <input
-                            value={slide.src}
-                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, src: e.target.value }))}
-                            placeholder="Desktop image URL"
-                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            disabled={!canUpdate}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Mobile image URL</label>
-                          <input
-                            value={slide.mobileSrc}
-                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, mobileSrc: e.target.value }))}
-                            placeholder="Mobile image URL"
-                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            disabled={!canUpdate}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Alt text</label>
-                          <input
-                            value={slide.alt}
-                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, alt: e.target.value }))}
-                            placeholder="Alt text"
-                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            disabled={!canUpdate}
-                          />
-                        </div>
-                        {(slide.src || slide.mobileSrc) && (
-                          <div className="grid gap-2 md:grid-cols-2">
-                            {slide.src && (
-                              <div className="overflow-hidden rounded border border-gray-200 bg-white">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={slide.src} alt={slide.alt || 'Desktop preview'} className="h-40 w-full object-cover" />
-                              </div>
-                            )}
-                            {slide.mobileSrc && (
-                              <div className="overflow-hidden rounded border border-gray-200 bg-white">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={slide.mobileSrc} alt={slide.alt || 'Mobile preview'} className="h-40 w-full object-cover" />
-                              </div>
-                            )}
+                    {!collapsedSlides[index] && (
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Desktop image</label>
+                            <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-white p-3">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={!canUpdate}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0]
+                                  if (!file) return
+                                  const reader = new FileReader()
+                                  reader.onloadend = () => {
+                                    updateSlide(index, (prev) => ({ ...prev, src: reader.result as string }))
+                                  }
+                                  reader.readAsDataURL(file)
+                                }}
+                                className="text-xs"
+                              />
+                              {slide.src ? (
+                                <div className="relative overflow-hidden rounded border border-gray-200">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={slide.src} alt={slide.title || 'Desktop preview'} className="h-44 w-full object-cover" />
+                                  <div className="absolute right-2 top-2 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateSlide(index, (prev) => ({ ...prev, src: '' }))}
+                                      disabled={!canUpdate}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-50"
+                                      aria-label="Remove desktop image"
+                                    >
+                                      <i className="fa-solid fa-trash-can text-xs" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex h-44 items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
+                                  Upload or paste an image URL below
+                                </div>
+                              )}
+                              <input
+                                value={slide.src}
+                                onChange={(e) => updateSlide(index, (prev) => ({ ...prev, src: e.target.value }))}
+                                placeholder="Desktop image URL"
+                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                disabled={!canUpdate}
+                              />
+                            </div>
                           </div>
-                        )}
-                      </div>
-                      <div className="space-y-3">
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Title</label>
-                          <input
-                            value={slide.title}
-                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, title: e.target.value }))}
-                            placeholder="Title"
-                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            disabled={!canUpdate}
-                          />
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Mobile image</label>
+                            <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-white p-3">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={!canUpdate}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0]
+                                  if (!file) return
+                                  const reader = new FileReader()
+                                  reader.onloadend = () => {
+                                    updateSlide(index, (prev) => ({ ...prev, mobileSrc: reader.result as string }))
+                                  }
+                                  reader.readAsDataURL(file)
+                                }}
+                                className="text-xs"
+                              />
+                              {slide.mobileSrc ? (
+                                <div className="relative overflow-hidden rounded border border-gray-200">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={slide.mobileSrc} alt={slide.title || 'Mobile preview'} className="h-44 w-full object-cover" />
+                                  <div className="absolute right-2 top-2 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateSlide(index, (prev) => ({ ...prev, mobileSrc: '' }))}
+                                      disabled={!canUpdate}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-50"
+                                      aria-label="Remove mobile image"
+                                    >
+                                      <i className="fa-solid fa-trash-can text-xs" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex h-44 items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
+                                  Optional: upload a mobile-specific image
+                                </div>
+                              )}
+                              <input
+                                value={slide.mobileSrc}
+                                onChange={(e) => updateSlide(index, (prev) => ({ ...prev, mobileSrc: e.target.value }))}
+                                placeholder="Mobile image URL"
+                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                disabled={!canUpdate}
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</label>
-                          <textarea
-                            value={slide.description}
-                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, description: e.target.value }))}
-                            placeholder="Description"
-                            rows={4}
-                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            disabled={!canUpdate}
-                          />
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-3">
                           <div className="space-y-1">
-                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Button label</label>
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Title</label>
                             <input
-                              value={slide.buttonLabel}
-                              onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonLabel: e.target.value }))}
-                              placeholder="Button label"
+                              value={slide.title}
+                              onChange={(e) => updateSlide(index, (prev) => ({ ...prev, title: e.target.value }))}
+                              placeholder="Title"
                               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               disabled={!canUpdate}
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Button link</label>
-                            <input
-                              value={slide.buttonHref}
-                              onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonHref: e.target.value }))}
-                              placeholder="Button link"
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</label>
+                            <textarea
+                              value={slide.description}
+                              onChange={(e) => updateSlide(index, (prev) => ({ ...prev, description: e.target.value }))}
+                              placeholder="Description"
+                              rows={5}
                               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               disabled={!canUpdate}
                             />
                           </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Button label</label>
+                              <input
+                                value={slide.buttonLabel}
+                                onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonLabel: e.target.value }))}
+                                placeholder="Button label"
+                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                disabled={!canUpdate}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Button link</label>
+                              <input
+                                value={slide.buttonHref}
+                                onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonHref: e.target.value }))}
+                                placeholder="Button link"
+                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                disabled={!canUpdate}
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 ))}
                 <div className="flex">

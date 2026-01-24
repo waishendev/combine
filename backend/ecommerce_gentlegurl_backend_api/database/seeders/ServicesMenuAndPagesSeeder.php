@@ -321,13 +321,12 @@ class ServicesMenuAndPagesSeeder extends Seeder
                 $page->slides()->createMany(array_map(function (array $slide) {
                     return [
                         'sort_order' => $slide['sort_order'],
-                        'desktop_src' => $slide['src'],
-                        'mobile_src' => $slide['mobileSrc'] ?: null,
-                        'alt' => $slide['alt'],
+                        'image_path' => $slide['src'],
+                        'mobile_image_path' => $slide['mobileSrc'] ?: null,
                         'title' => $slide['title'] ?: null,
                         'description' => $slide['description'] ?: null,
                         'button_label' => $slide['buttonLabel'] ?: null,
-                        'button_href' => $slide['buttonHref'] ?: null,
+                        'button_link' => $slide['buttonHref'] ?: null,
                     ];
                 }, $slides));
             }
@@ -347,7 +346,6 @@ class ServicesMenuAndPagesSeeder extends Seeder
                 'sort_order' => (int) ($slide['sort_order'] ?? $index + 1),
                 'src' => (string) ($slide['src'] ?? ''),
                 'mobileSrc' => (string) ($slide['mobileSrc'] ?? ''),
-                'alt' => (string) ($slide['alt'] ?? ''),
                 'title' => (string) ($slide['title'] ?? ''),
                 'description' => (string) ($slide['description'] ?? ($slide['subtitle'] ?? '')),
                 'buttonLabel' => (string) ($slide['buttonLabel'] ?? ''),
