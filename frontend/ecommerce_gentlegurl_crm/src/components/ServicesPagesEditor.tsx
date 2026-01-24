@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { IMAGE_ACCEPT } from './mediaAccept'
 
@@ -125,6 +126,7 @@ export default function ServicesPagesEditor({
   permissions: string[]
   menuId: number
 }) {
+  const router = useRouter()
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
 
   const [menuItems, setMenuItems] = useState<ServicesMenuItem[]>([])
@@ -133,7 +135,6 @@ export default function ServicesPagesEditor({
   const [loadingPage, setLoadingPage] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [collapsedSlides, setCollapsedSlides] = useState<Record<number, boolean>>({})
   const [slideFiles, setSlideFiles] = useState<(File | null)[]>([])
   const [slideMobileFiles, setSlideMobileFiles] = useState<(File | null)[]>([])
@@ -189,7 +190,6 @@ export default function ServicesPagesEditor({
     const loadPage = async () => {
       setLoadingPage(true)
       setError(null)
-      setNotice(null)
       try {
         const res = await fetch(`/api/proxy/ecommerce/services-pages/${menuId}`, {
           cache: 'no-store',
@@ -250,7 +250,7 @@ export default function ServicesPagesEditor({
   const resequenceSlides = (slides: HeroSlide[]) =>
     slides.map((slide, index) => ({ ...slide, sort_order: index + 1 }))
 
-  const reorderFiles = (files: (File | null)[], index: number, targetIndex: number) => {
+  const reorderFiles = <T,>(files: (T | null)[], index: number, targetIndex: number) => {
     const next = [...files]
     const [moved] = next.splice(index, 1)
     next.splice(targetIndex, 0, moved ?? null)
@@ -260,6 +260,26 @@ export default function ServicesPagesEditor({
   const ensureArrayLength = <T,>(items: (T | null)[], length: number) => {
     if (items.length >= length) return [...items]
     return [...items, ...Array(length - items.length).fill(null)]
+  }
+
+  const getMediaUrl = (mediaPath: string | null | undefined) => {
+    if (!mediaPath) return null
+    if (
+      mediaPath.startsWith('http://') ||
+      mediaPath.startsWith('https://') ||
+      mediaPath.startsWith('blob:') ||
+      mediaPath.startsWith('data:')
+    ) {
+      return mediaPath
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000'
+    if (mediaPath.startsWith('/')) {
+      return `${baseUrl}${mediaPath}`
+    }
+
+    const normalizedPath = mediaPath.replace(/^\/+/, '')
+    return `${baseUrl}/storage/${normalizedPath}`
   }
 
   const setSlideFileAt = (index: number, file: File | null, previewUrl: string | null, isMobile: boolean) => {
@@ -399,7 +419,6 @@ export default function ServicesPagesEditor({
     if (!page || !selectedMenu) return
     setSaving(true)
     setError(null)
-    setNotice(null)
     try {
       const hasMissingImages = page.hero_slides.some(
         (slide, index) => !slide.src && !slideFiles[index],
@@ -470,7 +489,7 @@ export default function ServicesPagesEditor({
             : item,
         ),
       )
-      setNotice('Saved! Changes are published together.')
+      router.replace('/services-pages')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save services page.')
     } finally {
@@ -496,12 +515,6 @@ export default function ServicesPagesEditor({
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
-        </div>
-      )}
-
-      {notice && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {notice}
         </div>
       )}
 
@@ -592,8 +605,14 @@ export default function ServicesPagesEditor({
               </div>
             ) : (
               <div className="space-y-4">
-                {page.hero_slides.map((slide, index) => (
-                  <div key={`slide-${index}`} className="rounded-lg border border-gray-200 p-4 space-y-4">
+                {page.hero_slides.map((slide, index) => {
+                  const desktopSource = slidePreviews[index] ?? slide.src
+                  const mobileSource = slideMobilePreviews[index] ?? slide.mobileSrc
+                  const desktopUrl = getMediaUrl(desktopSource)
+                  const mobileUrl = getMediaUrl(mobileSource)
+
+                  return (
+                    <div key={`slide-${index}`} className="rounded-lg border border-gray-200 p-4 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-gray-900">Slide #{index + 1}</p>
@@ -643,7 +662,7 @@ export default function ServicesPagesEditor({
                             <div
                               onClick={() => canUpdate && handleSlideImageClick(index)}
                               className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
-                                (slidePreviews[index] ?? slide.src)
+                                desktopUrl
                                   ? 'border-gray-300'
                                   : 'border-gray-300 hover:border-blue-400'
                               } ${!canUpdate ? 'cursor-not-allowed opacity-50' : ''}`}
@@ -660,11 +679,11 @@ export default function ServicesPagesEditor({
                                 className="hidden"
                                 disabled={!canUpdate}
                               />
-                              {(slidePreviews[index] ?? slide.src) ? (
+                              {desktopUrl ? (
                                 <div className="relative group">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img
-                                    src={slidePreviews[index] ?? slide.src}
+                                    src={desktopUrl}
                                     alt={slide.title || 'Desktop preview'}
                                     className="w-full h-48 object-contain rounded"
                                   />
@@ -709,7 +728,7 @@ export default function ServicesPagesEditor({
                             <div
                               onClick={() => canUpdate && handleSlideMobileImageClick(index)}
                               className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
-                                (slideMobilePreviews[index] ?? slide.mobileSrc)
+                                mobileUrl
                                   ? 'border-gray-300'
                                   : 'border-gray-300 hover:border-blue-400'
                               } ${!canUpdate ? 'cursor-not-allowed opacity-50' : ''}`}
@@ -726,11 +745,11 @@ export default function ServicesPagesEditor({
                                 className="hidden"
                                 disabled={!canUpdate}
                               />
-                              {(slideMobilePreviews[index] ?? slide.mobileSrc) ? (
+                              {mobileUrl ? (
                                 <div className="relative group">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img
-                                    src={slideMobilePreviews[index] ?? slide.mobileSrc}
+                                    src={mobileUrl}
                                     alt={slide.title || 'Mobile preview'}
                                     className="w-full h-48 object-contain rounded"
                                   />
@@ -818,7 +837,8 @@ export default function ServicesPagesEditor({
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
                 <div className="flex">
                   <button
                     type="button"
