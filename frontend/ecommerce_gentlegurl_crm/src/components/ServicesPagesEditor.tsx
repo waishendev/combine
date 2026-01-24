@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
 type ServicesMenuItem = {
@@ -8,6 +9,7 @@ type ServicesMenuItem = {
   name: string
   slug: string
   is_active: boolean
+  sort_order: number
   page?: { id?: number; slug?: string } | null
 }
 
@@ -20,21 +22,24 @@ type ServiceItem = { title: string; description: string }
 type PricingItem = { label: string; price: string }
 type FaqItem = { question: string; answer: string }
 
+type HeroSlide = {
+  src: string
+  mobileSrc?: string
+  alt: string
+  title?: string
+  subtitle?: string
+  description?: string
+  buttonLabel?: string
+  buttonHref?: string
+}
+
 type ServicesPagePayload = {
   id?: number
   menu_item_id: number
   title: string
   slug: string
   subtitle: string | null
-  hero_slides: Array<{
-    src: string
-    alt: string
-    title?: string
-    subtitle?: string
-    description?: string
-    buttonLabel?: string
-    buttonHref?: string
-  }>
+  hero_slides: HeroSlide[]
   sections: {
     services: ServicesSection<ServiceItem>
     pricing: ServicesSection<PricingItem>
@@ -57,11 +62,21 @@ const emptySections: ServicesPagePayload['sections'] = {
   notes: { is_active: true, items: [] },
 }
 
+const emptySlide: HeroSlide = {
+  src: '',
+  mobileSrc: '',
+  alt: '',
+  title: '',
+  subtitle: '',
+  description: '',
+  buttonLabel: '',
+  buttonHref: '',
+}
+
 function normalizeMenuItems(input: unknown): ServicesMenuItem[] {
   if (!input || typeof input !== 'object') return []
   const payload = input as {
     data?: unknown
-    meta?: { total?: number }
   }
 
   const raw = payload.data
@@ -81,6 +96,15 @@ function ensureSections(sections: Partial<ServicesPagePayload['sections']> | und
   }
 }
 
+function ensureSlides(slides: HeroSlide[] | undefined): HeroSlide[] {
+  if (!slides?.length) return []
+  return slides.map((slide) => ({
+    ...emptySlide,
+    ...slide,
+    mobileSrc: slide.mobileSrc ?? '',
+  }))
+}
+
 export default function ServicesPagesEditor({
   permissions,
   menuId,
@@ -88,6 +112,7 @@ export default function ServicesPagesEditor({
   permissions: string[]
   menuId: number
 }) {
+  const router = useRouter()
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
 
   const [menuItems, setMenuItems] = useState<ServicesMenuItem[]>([])
@@ -130,9 +155,14 @@ export default function ServicesPagesEditor({
     return () => controller.abort()
   }, [])
 
+  const sortedMenus = useMemo(
+    () => [...menuItems].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    [menuItems],
+  )
+
   const selectedMenu = useMemo(
-    () => menuItems.find((item) => item.id === menuId) ?? null,
-    [menuItems, menuId],
+    () => sortedMenus.find((item) => item.id === menuId) ?? null,
+    [sortedMenus, menuId],
   )
 
   useEffect(() => {
@@ -157,7 +187,7 @@ export default function ServicesPagesEditor({
         setPage({
           ...payload,
           menu_item_id: payload.menu_item_id ?? menuId,
-          hero_slides: payload.hero_slides ?? [],
+          hero_slides: ensureSlides(payload.hero_slides),
           sections: ensureSections(payload.sections),
         })
       } catch (err) {
@@ -192,8 +222,43 @@ export default function ServicesPagesEditor({
     })
   }
 
+  const updateSlide = (index: number, updater: (slide: HeroSlide) => HeroSlide) => {
+    setPage((prev) => {
+      if (!prev) return prev
+      const slides = prev.hero_slides.map((slide, idx) =>
+        idx === index ? updater(slide) : slide,
+      )
+      return { ...prev, hero_slides: slides }
+    })
+  }
+
+  const addSlide = () => {
+    setPage((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        hero_slides: [...prev.hero_slides, { ...emptySlide }],
+      }
+    })
+  }
+
+  const removeSlide = (index: number) => {
+    setPage((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        hero_slides: prev.hero_slides.filter((_, idx) => idx !== index),
+      }
+    })
+  }
+
+  const handleMenuChange = (nextMenuId: number) => {
+    if (!Number.isFinite(nextMenuId) || nextMenuId === menuId) return
+    router.push(`/services-pages/${nextMenuId}`)
+  }
+
   const handleSave = async () => {
-    if (!page) return
+    if (!page || !selectedMenu) return
     setSaving(true)
     setError(null)
     setNotice(null)
@@ -205,8 +270,8 @@ export default function ServicesPagesEditor({
           Accept: 'application/json',
         },
         body: JSON.stringify({
-          title: page.title,
-          slug: page.slug,
+          title: selectedMenu.name,
+          slug: selectedMenu.slug,
           subtitle: page.subtitle,
           hero_slides: page.hero_slides,
           sections: page.sections,
@@ -222,14 +287,14 @@ export default function ServicesPagesEditor({
       const payload = json.data
       setPage({
         ...payload,
-        hero_slides: payload.hero_slides ?? [],
+        hero_slides: ensureSlides(payload.hero_slides),
         sections: ensureSections(payload.sections),
       })
 
       setMenuItems((prev) =>
         prev.map((item) =>
           item.id === menuId
-            ? { ...item, name: payload.title, slug: payload.slug, is_active: payload.is_active }
+            ? { ...item, is_active: payload.is_active }
             : item,
         ),
       )
@@ -245,10 +310,10 @@ export default function ServicesPagesEditor({
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading services menus...</div>
   }
 
-  if (!selectedMenu) {
+  if (!sortedMenus.length) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700">
-        The selected services menu item no longer exists.
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+        Create at least one Services Menu item before editing pages.
       </div>
     )
   }
@@ -258,15 +323,24 @@ export default function ServicesPagesEditor({
       <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Services menu</label>
-          <div className="text-sm font-medium text-gray-900">
-            {selectedMenu.name} <span className="text-gray-500">({selectedMenu.slug})</span>
-          </div>
+          <select
+            value={menuId}
+            onChange={(e) => handleMenuChange(Number(e.target.value))}
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 md:min-w-[260px]"
+            disabled={!canUpdate || saving || loadingPage}
+          >
+            {sortedMenus.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} ({item.slug})
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={handleSave}
-            disabled={!canUpdate || saving || loadingPage || !page}
+            disabled={!canUpdate || saving || loadingPage || !page || !selectedMenu}
             className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <i className="fa-solid fa-floppy-disk" />
@@ -275,9 +349,11 @@ export default function ServicesPagesEditor({
         </div>
       </div>
 
-      <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-700">
-        Editing <span className="font-semibold">{selectedMenu.name}</span>. Changes stay local until you press <span className="font-semibold">Save All Changes</span>.
-      </div>
+      {selectedMenu && (
+        <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-700">
+          Editing <span className="font-semibold">{selectedMenu.name}</span>. Title and slug come from Services Menu and are not editable here.
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -298,48 +374,151 @@ export default function ServicesPagesEditor({
           <section className="rounded-lg border border-gray-200 bg-white p-6">
             <div className="mb-4 flex flex-col gap-1">
               <h3 className="text-base font-semibold text-gray-900">Page basics</h3>
-              <p className="text-xs text-gray-500">These fields drive both the URL and the header menu label.</p>
+              <p className="text-xs text-gray-500">Select the services menu and set the page status.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-1 text-sm text-gray-700">
-                <span className="font-medium">Title</span>
-                <input
-                  value={page.title}
-                  onChange={(e) => setPage({ ...page, title: e.target.value })}
+                <span className="font-medium">Services Menu</span>
+                <select
+                  value={menuId}
+                  onChange={(e) => handleMenuChange(Number(e.target.value))}
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={!canUpdate}
-                />
+                  disabled={!canUpdate || saving}
+                >
+                  {sortedMenus.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({item.slug})
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="space-y-1 text-sm text-gray-700">
-                <span className="font-medium">Slug</span>
-                <input
-                  value={page.slug}
-                  onChange={(e) => setPage({ ...page, slug: e.target.value })}
+                <span className="font-medium">Status</span>
+                <select
+                  value={page.is_active ? 'active' : 'inactive'}
+                  onChange={(e) =>
+                    setPage({ ...page, is_active: e.target.value === 'active' })
+                  }
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={!canUpdate}
-                />
-              </label>
-              <label className="space-y-1 text-sm text-gray-700 md:col-span-2">
-                <span className="font-medium">Subtitle</span>
-                <textarea
-                  value={page.subtitle ?? ''}
-                  onChange={(e) => setPage({ ...page, subtitle: e.target.value })}
-                  className="min-h-[80px] w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={!canUpdate}
-                />
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={page.is_active}
-                  onChange={(e) => setPage({ ...page, is_active: e.target.checked })}
-                  disabled={!canUpdate}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                Page active
+                  disabled={!canUpdate || saving}
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
               </label>
             </div>
           </section>
+
+          <SectionCard
+            title="Slider section"
+            description="Controls the hero slider content on the services page."
+            active={page.hero_slides.length > 0}
+            onToggle={(value) => {
+              if (value && page.hero_slides.length === 0) {
+                setPage({ ...page, hero_slides: [{ ...emptySlide }] })
+              }
+              if (!value) {
+                setPage({ ...page, hero_slides: [] })
+              }
+            }}
+            canUpdate={canUpdate}
+            toggleLabel={page.hero_slides.length > 0 ? 'Enabled' : 'Disabled'}
+          >
+            {page.hero_slides.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+                No slides yet. Toggle the section on to add slides.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {page.hero_slides.map((slide, index) => (
+                  <div key={`slide-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        Slide {index + 1}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeSlide(index)}
+                        disabled={!canUpdate}
+                        className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <input
+                        value={slide.src}
+                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, src: e.target.value }))}
+                        placeholder="Desktop image URL"
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={!canUpdate}
+                      />
+                      <input
+                        value={slide.mobileSrc ?? ''}
+                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, mobileSrc: e.target.value }))}
+                        placeholder="Mobile image URL"
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={!canUpdate}
+                      />
+                      <input
+                        value={slide.alt}
+                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, alt: e.target.value }))}
+                        placeholder="Alt text"
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={!canUpdate}
+                      />
+                      <input
+                        value={slide.title ?? ''}
+                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, title: e.target.value }))}
+                        placeholder="Title"
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={!canUpdate}
+                      />
+                      <input
+                        value={slide.subtitle ?? ''}
+                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, subtitle: e.target.value }))}
+                        placeholder="Subtitle"
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={!canUpdate}
+                      />
+                      <input
+                        value={slide.description ?? ''}
+                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, description: e.target.value }))}
+                        placeholder="Description"
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={!canUpdate}
+                      />
+                      <input
+                        value={slide.buttonLabel ?? ''}
+                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonLabel: e.target.value }))}
+                        placeholder="Button label"
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={!canUpdate}
+                      />
+                      <input
+                        value={slide.buttonHref ?? ''}
+                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonHref: e.target.value }))}
+                        placeholder="Button link"
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={!canUpdate}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div className="flex">
+                  <button
+                    type="button"
+                    onClick={addSlide}
+                    disabled={!canUpdate}
+                    className="inline-flex items-center gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
+                  >
+                    <i className="fa-solid fa-plus" />
+                    Add slide
+                  </button>
+                </div>
+              </div>
+            )}
+          </SectionCard>
 
           <SectionCard
             title="Services section"
@@ -547,6 +726,7 @@ function SectionCard({
   onToggle,
   canUpdate,
   children,
+  toggleLabel,
 }: {
   title: string
   description: string
@@ -554,6 +734,7 @@ function SectionCard({
   onToggle: (value: boolean) => void
   canUpdate: boolean
   children: ReactNode
+  toggleLabel?: string
 }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-6">
@@ -570,7 +751,7 @@ function SectionCard({
             disabled={!canUpdate}
             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          Active
+          {toggleLabel ?? 'Active'}
         </label>
       </div>
       {children}

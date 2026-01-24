@@ -74,7 +74,7 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
     [menuItems, menuId],
   )
 
-  const handleCreate = async () => {
+  const handleContinue = () => {
     if (!menuId) {
       setError('Please select a Services Menu item first.')
       return
@@ -86,41 +86,7 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
 
     setSaving(true)
     setError(null)
-    try {
-      const res = await fetch(`/api/proxy/ecommerce/services-pages/${selectedMenu.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          title: selectedMenu.name,
-          slug: selectedMenu.slug,
-          subtitle: null,
-          hero_slides: [],
-          sections: {
-            services: { is_active: true, items: [] },
-            pricing: { is_active: true, items: [] },
-            faqs: { is_active: true, items: [] },
-            notes: { is_active: true, items: [] },
-          },
-          is_active: selectedMenu.is_active,
-        }),
-      })
-
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        const message = typeof json?.message === 'string' ? json.message : 'Failed to create services page.'
-        throw new Error(message)
-      }
-
-      router.replace(`/services-pages/${selectedMenu.id}`)
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create services page.')
-    } finally {
-      setSaving(false)
-    }
+    router.push(`/services-pages/${selectedMenu.id}`)
   }
 
   if (loading) {
@@ -131,7 +97,7 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
     <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
       <div>
         <h3 className="text-base font-semibold text-gray-900">Create Services Page</h3>
-        <p className="text-xs text-gray-500">You must select a Services Menu item before creating a page.</p>
+        <p className="text-xs text-gray-500">You must select a Services Menu item before continuing.</p>
       </div>
 
       <label className="space-y-1 text-sm text-gray-700">
@@ -174,11 +140,11 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
         </button>
         <button
           type="button"
-          onClick={handleCreate}
+          onClick={handleContinue}
           className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={!canUpdate || saving || !menuId}
         >
-          {saving ? 'Preparing...' : 'Continue'}
+          Continue
         </button>
       </div>
     </div>

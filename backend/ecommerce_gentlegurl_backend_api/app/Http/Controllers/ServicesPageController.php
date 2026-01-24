@@ -55,6 +55,7 @@ class ServicesPageController extends Controller
             'subtitle' => ['nullable', 'string', 'max:500'],
             'hero_slides' => ['nullable', 'array'],
             'hero_slides.*.src' => ['required_with:hero_slides', 'string', 'max:255'],
+            'hero_slides.*.mobileSrc' => ['nullable', 'string', 'max:255'],
             'hero_slides.*.alt' => ['required_with:hero_slides', 'string', 'max:255'],
             'hero_slides.*.title' => ['nullable', 'string', 'max:255'],
             'hero_slides.*.subtitle' => ['nullable', 'string', 'max:255'],
