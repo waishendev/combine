@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             LoyaltyRewardSeederReal::class,
             StoreLocationsSeederReal::class,
             FooterWidgetSeederReal::class,
+            ServicesMenuAndPagesSeeder::class,
 
             SuperAdminRoleSeeder::class,
             SuperAdminSeeder::class,

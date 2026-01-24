@@ -12,6 +12,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\PaymentGateway;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\SeoGlobal;
+use App\Models\Ecommerce\ServicesMenuItem;
 use App\Models\Ecommerce\ShopMenuItem;
 use App\Services\SettingService;
 use Carbon\Carbon;
@@ -82,6 +83,16 @@ class PublicHomepageController extends Controller
                 ]);
 
             $shopMenu = ShopMenuItem::query()
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->get([
+                    'id',
+                    'name as label',
+                    'slug',
+                    'sort_order',
+                ]);
+
+            $servicesMenu = ServicesMenuItem::query()
                 ->where('is_active', true)
                 ->orderBy('sort_order')
                 ->get([
@@ -173,6 +184,7 @@ class PublicHomepageController extends Controller
                 'marquees' => $marquees,
                 'announcements' => $announcements,
                 'shop_menu' => $shopMenu,
+                'services_menu' => $servicesMenu,
                 'new_products' => $newProducts,
                 'best_sellers' => $bestSellers,
                 'featured_products' => $featuredProducts,

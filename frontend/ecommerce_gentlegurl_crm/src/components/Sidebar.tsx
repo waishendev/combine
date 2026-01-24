@@ -125,6 +125,18 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             requiredPermission: 'ecommerce.shop-menu.view',
           },
           {
+            key: 'services-menu',
+            label: 'Services Menu',
+            href: '/services-menu',
+            requiredPermission: 'ecommerce.services-menu.view',
+          },
+          {
+            key: 'services-pages',
+            label: 'Services Pages',
+            href: '/services-pages',
+            requiredPermission: 'ecommerce.services-pages.view',
+          },
+          {
             key: 'categories',
             label: 'Categories',
             href: '/categories',
