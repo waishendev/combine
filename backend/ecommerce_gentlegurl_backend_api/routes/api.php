@@ -55,8 +55,11 @@ use App\Http\Controllers\PublicShopController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SeoGlobalController;
 use App\Http\Controllers\ShopMenuItemController;
+use App\Http\Controllers\ServicesMenuItemController;
+use App\Http\Controllers\ServicesPageController;
 use App\Http\Controllers\StoreLocationController;
 use App\Http\Controllers\Payments\BillplzCallbackController;
+use App\Http\Controllers\PublicServicesController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Ecommerce\PublicHomepageController;
 
@@ -192,6 +195,11 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/vouchers', [PublicVoucherController::class, 'index']);
         Route::get('/vouchers/{voucher}', [PublicVoucherController::class, 'show']);
     });
+});
+
+Route::prefix('/public/services')->group(function () {
+    Route::get('/menu', [PublicServicesController::class, 'menu']);
+    Route::get('/pages/{slug}', [PublicServicesController::class, 'show']);
 });
 
 
@@ -379,6 +387,38 @@ $protectedRoutes = function () {
 
         Route::post('/shop-menu-items/{shopMenuItem}/move-down', [ShopMenuItemController::class, 'moveDown'])
             ->middleware('permission:ecommerce.shop-menu.update');
+
+        // Services Menu Items
+        Route::get('/services-menu-items', [ServicesMenuItemController::class, 'index'])
+            ->middleware('permission:ecommerce.services-menu.view');
+
+        Route::post('/services-menu-items', [ServicesMenuItemController::class, 'store'])
+            ->middleware('permission:ecommerce.services-menu.create');
+
+        Route::get('/services-menu-items/{servicesMenuItem}', [ServicesMenuItemController::class, 'show'])
+            ->middleware('permission:ecommerce.services-menu.view');
+
+        Route::put('/services-menu-items/{servicesMenuItem}', [ServicesMenuItemController::class, 'update'])
+            ->middleware('permission:ecommerce.services-menu.update');
+
+        Route::delete('/services-menu-items/{servicesMenuItem}', [ServicesMenuItemController::class, 'destroy'])
+            ->middleware('permission:ecommerce.services-menu.delete');
+
+        Route::post('/services-menu-items/{servicesMenuItem}/move-up', [ServicesMenuItemController::class, 'moveUp'])
+            ->middleware('permission:ecommerce.services-menu.update');
+
+        Route::post('/services-menu-items/{servicesMenuItem}/move-down', [ServicesMenuItemController::class, 'moveDown'])
+            ->middleware('permission:ecommerce.services-menu.update');
+
+        // Services Pages
+        Route::get('/services-pages', [ServicesPageController::class, 'index'])
+            ->middleware('permission:ecommerce.services-pages.view');
+
+        Route::get('/services-pages/{servicesMenuItem}', [ServicesPageController::class, 'show'])
+            ->middleware('permission:ecommerce.services-pages.view');
+
+        Route::put('/services-pages/{servicesMenuItem}', [ServicesPageController::class, 'upsert'])
+            ->middleware('permission:ecommerce.services-pages.update');
 
         // Store Locations
         Route::get('/store-locations', [StoreLocationController::class, 'index'])

@@ -7,16 +7,20 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { getWishlistItems } from "@/lib/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
-import { HomepageShopMenuItem } from "@/lib/server/getHomepage";
+import {
+  HomepageServicesMenuItem,
+  HomepageShopMenuItem,
+} from "@/lib/server/getHomepage";
 import { buildRedirectTarget } from "@/lib/auth/redirect";
 import { getOrCreateSessionToken } from "@/lib/sessionToken";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 
 type ShopHeaderClientProps = {
   shopMenu: HomepageShopMenuItem[];
+  servicesMenu: HomepageServicesMenuItem[];
 };
 
-export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
+export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientProps) {
   const { customer, logout, isLoading } = useAuth();
   const { items, resetAfterLogout } = useCart();
   const [shopOpen, setShopOpen] = useState(false);
@@ -49,6 +53,13 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const effectiveServicesMenu = servicesMenu.length
+    ? servicesMenu
+    : [
+        { id: 1, label: "Nail Services", slug: "nail-services", sort_order: 1 },
+        { id: 2, label: "Waxing & Hair Removal", slug: "waxing-hair-removal", sort_order: 2 },
+        { id: 3, label: "Nail Courses", slug: "nail-courses", sort_order: 3 },
+      ];
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -306,27 +317,16 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
 
               {servicesOpen && (
                 <div className="absolute left-0 z-20 mt-2 w-64 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
-                  <Link
-                    href="/services/nail-services"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
-                    onClick={() => setServicesOpen(false)}
-                  >
-                    Nail Services
-                  </Link>
-                  <Link
-                    href="/services/waxing-hair-removal"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
-                    onClick={() => setServicesOpen(false)}
-                  >
-                    Waxing &amp; Hair Removal
-                  </Link>
-                  <Link
-                    href="/services/nail-courses"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
-                    onClick={() => setServicesOpen(false)}
-                  >
-                    Nail Courses
-                  </Link>
+                  {effectiveServicesMenu.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={`/services/${item.slug}`}
+                      className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
+                      onClick={() => setServicesOpen(false)}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
                 </div>
               )}
             </div>
@@ -912,36 +912,19 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 </button>
                 {servicesOpen && (
                   <div className="ml-4 mt-1 space-y-1 border-l border-[var(--muted)]/50 pl-4">
-                    <Link
-                      href="/services/nail-services"
-                      className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                      onClick={() => {
-                        setServicesOpen(false);
-                        setMobileMenuOpen(false);
-                      }}
-                    >
-                      Nail Services
-                    </Link>
-                    <Link
-                      href="/services/waxing-hair-removal"
-                      className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                      onClick={() => {
-                        setServicesOpen(false);
-                        setMobileMenuOpen(false);
-                      }}
-                    >
-                      Waxing &amp; Hair Removal
-                    </Link>
-                    <Link
-                      href="/services/nail-courses"
-                      className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                      onClick={() => {
-                        setServicesOpen(false);
-                        setMobileMenuOpen(false);
-                      }}
-                    >
-                      Nail Courses
-                    </Link>
+                    {effectiveServicesMenu.map((item) => (
+                      <Link
+                        key={`mobile-${item.id}`}
+                        href={`/services/${item.slug}`}
+                        className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                        onClick={() => {
+                          setServicesOpen(false);
+                          setMobileMenuOpen(false);
+                        }}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
                   </div>
                 )}
               </div>

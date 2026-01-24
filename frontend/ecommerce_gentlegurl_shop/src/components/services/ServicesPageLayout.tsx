@@ -35,6 +35,10 @@ type ServicesPageLayoutProps = {
   pricing: PricingItem[];
   faqs: FAQItem[];
   notes: string[];
+  servicesActive?: boolean;
+  pricingActive?: boolean;
+  faqsActive?: boolean;
+  notesActive?: boolean;
   heroImage?: string;
   heroSlides?: HeroSlide[];
   galleryImages?: { src: string; alt: string; caption?: string }[];
@@ -50,6 +54,10 @@ export function ServicesPageLayout({
   pricing,
   faqs,
   notes,
+  servicesActive = true,
+  pricingActive = true,
+  faqsActive = true,
+  notesActive = true,
   heroImage,
   heroSlides,
   whatsappPhone,
@@ -76,6 +84,10 @@ export function ServicesPageLayout({
   }, [title, whatsappDefaultMessage, whatsappEnabled, whatsappPhone]);
 
   const whatsappUrl = getWhatsAppUrl();
+  const showServicesSection = servicesActive && services.length > 0;
+  const showPricingSection = pricingActive && pricing.length > 0;
+  const showFaqSection = faqsActive && faqs.length > 0;
+  const showNotesSection = notesActive && notes.length > 0;
 
   const slides = baseSlides.map((slide, index) => {
     const resolvedTitle = slide.title ?? `${title} spotlight ${index + 1}`;
@@ -457,148 +469,156 @@ export function ServicesPageLayout({
         )} */}
 
         {/* Services */}
-        <section className="space-y-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Services</p>
-              <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">What&apos;s Included</h2>
-            </div>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/80 to-transparent sm:ml-6" />
-          </div>
-
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((item) => (
-              <div
-                key={item.title}
-                className="h-full rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-lg font-semibold text-[var(--foreground)]">{item.title}</h3>
-                  <span className="rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs font-medium text-[var(--foreground)]/70">Included</span>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">{item.description}</p>
+        {showServicesSection && (
+          <section className="space-y-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Services</p>
+                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">What&apos;s Included</h2>
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Pricing */}
-        <section className="space-y-6" ref={pricingRef}>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Pricing</p>
-              <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Transparent rates</h2>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/80 to-transparent sm:ml-6" />
             </div>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/35 to-transparent sm:ml-6" />
-          </div>
 
-          <div className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
-            <div className="divide-y divide-[var(--muted)] max-h-[500px] overflow-y-auto">
-              {pricing.map((item) => (
-                <div key={item.label} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-base font-semibold text-[var(--foreground)]">{item.label}</p>
-                    <p className="text-sm text-[var(--foreground)]/70">Beautiful results, no hidden fees.</p>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {services.map((item) => (
+                <div
+                  key={item.title}
+                  className="h-full rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-[var(--foreground)]">{item.title}</h3>
+                    <span className="rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs font-medium text-[var(--foreground)]/70">Included</span>
                   </div>
-                  <p className="w-fit rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
-                    {item.price}
-                  </p>
+                  <p className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">{item.description}</p>
                 </div>
               ))}
             </div>
-          </div>
-        </section>
+          </section>
+        )}
+
+        {/* Pricing */}
+        {showPricingSection && (
+          <section className="space-y-6" ref={pricingRef}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Pricing</p>
+                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Transparent rates</h2>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/35 to-transparent sm:ml-6" />
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
+              <div className="divide-y divide-[var(--muted)] max-h-[500px] overflow-y-auto">
+                {pricing.map((item) => (
+                  <div key={item.label} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-base font-semibold text-[var(--foreground)]">{item.label}</p>
+                      <p className="text-sm text-[var(--foreground)]/70">Beautiful results, no hidden fees.</p>
+                    </div>
+                    <p className="w-fit rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
+                      {item.price}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* FAQ */}
-        <section className="space-y-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">FAQ</p>
-              <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">You might be wondering</h2>
+        {showFaqSection && (
+          <section className="space-y-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">FAQ</p>
+                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">You might be wondering</h2>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/45 to-transparent sm:ml-6" />
             </div>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/45 to-transparent sm:ml-6" />
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 items-start">
-            {faqs.map((item, index) => {
-              const faqId = `faq-${index}`;
-              const isOpen = openFaqId === faqId;
-              // Check if answer contains bullet points (• or -)
-              const hasBulletPoints = item.answer.includes("•") || item.answer.includes("-");
-              // Split answer into lines if it contains bullet points
-              // Split by • first, then by newlines, then filter empty strings
-              const answerLines = hasBulletPoints
-                ? item.answer
-                    .split(/•/)
-                    .map((line) => line.trim())
-                    .filter((line) => line.length > 0)
-                : item.answer.includes("\n")
+            <div className="grid gap-4 sm:grid-cols-2 items-start">
+              {faqs.map((item, index) => {
+                const faqId = `faq-${index}`;
+                const isOpen = openFaqId === faqId;
+                // Check if answer contains bullet points (• or -)
+                const hasBulletPoints = item.answer.includes("•") || item.answer.includes("-");
+                // Split answer into lines if it contains bullet points
+                // Split by • first, then by newlines, then filter empty strings
+                const answerLines = hasBulletPoints
                   ? item.answer
-                      .split("\n")
+                      .split(/•/)
                       .map((line) => line.trim())
                       .filter((line) => line.length > 0)
-                  : [item.answer];
+                  : item.answer.includes("\n")
+                    ? item.answer
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter((line) => line.length > 0)
+                    : [item.answer];
 
-              return (
-                <div
-                  key={faqId}
-                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenFaqId(isOpen ? null : faqId)}
-                    className="flex w-full cursor-pointer items-center justify-between gap-3 text-left text-sm font-semibold text-[var(--foreground)]"
+                return (
+                  <div
+                    key={faqId}
+                    className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
                   >
-                    <span>{item.question}</span>
-                    <span
-                      className={`rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs text-[var(--foreground)]/70 transition ${
-                        isOpen ? "rotate-45" : ""
-                      }`}
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaqId(isOpen ? null : faqId)}
+                      className="flex w-full cursor-pointer items-center justify-between gap-3 text-left text-sm font-semibold text-[var(--foreground)]"
                     >
-                      +
-                    </span>
-                  </button>
-                  {isOpen && (
-                    <div className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">
-                      {hasBulletPoints && answerLines.length > 1 ? (
-                        <ul className="space-y-2">
-                          {answerLines.map((line, lineIndex) => (
-                            <li key={lineIndex} className="flex items-start gap-2">
-                              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/70" />
-                              <span>{line}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p>{item.answer}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
+                      <span>{item.question}</span>
+                      <span
+                        className={`rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs text-[var(--foreground)]/70 transition ${
+                          isOpen ? "rotate-45" : ""
+                        }`}
+                      >
+                        +
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">
+                        {hasBulletPoints && answerLines.length > 1 ? (
+                          <ul className="space-y-2">
+                            {answerLines.map((line, lineIndex) => (
+                              <li key={lineIndex} className="flex items-start gap-2">
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/70" />
+                                <span>{line}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>{item.answer}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Policy / Notes */}
-        <section className="space-y-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">Notes</p>
-              <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Policy &amp; care</h2>
+        {showNotesSection && (
+          <section className="space-y-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">Notes</p>
+                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Policy &amp; care</h2>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/70 to-transparent sm:ml-6" />
             </div>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/70 to-transparent sm:ml-6" />
-          </div>
 
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {notes.map((note) => (
-              <li key={note} className="flex items-center gap-3 rounded-xl bg-[var(--background-soft)]/70 p-4 text-sm text-[var(--foreground)]/80">
-                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/70 text-white">•</span>
-                <span>{note}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {notes.map((note) => (
+                <li key={note} className="flex items-center gap-3 rounded-xl bg-[var(--background-soft)]/70 p-4 text-sm text-[var(--foreground)]/80">
+                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/70 text-white">•</span>
+                  <span>{note}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </main>
   );

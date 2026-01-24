@@ -36,6 +36,8 @@ export type HomepageShopMenuItem = {
   sort_order: number;
 };
 
+export type HomepageServicesMenuItem = HomepageShopMenuItem;
+
 export type HomepageSeo = {
   meta_title: string | null;
   meta_description: string | null;
@@ -156,6 +158,7 @@ export type HomepageData = {
   marquees: HomepageMarquee[];
   announcements: HomepageAnnouncement[];
   shop_menu: HomepageShopMenuItem[];
+  services_menu?: HomepageServicesMenuItem[];
   new_products: HomepageProduct[];
   best_sellers: HomepageProduct[];
   featured_products: HomepageProduct[];
