@@ -69,9 +69,17 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
     return () => controller.abort()
   }, [])
 
+  const availableMenus = useMemo(
+    () =>
+      menuItems
+        .filter((item) => !item.page?.id)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    [menuItems],
+  )
+
   const selectedMenu = useMemo(
-    () => menuItems.find((item) => String(item.id) === menuId) ?? null,
-    [menuItems, menuId],
+    () => availableMenus.find((item) => String(item.id) === menuId) ?? null,
+    [availableMenus, menuId],
   )
 
   const handleContinue = () => {
@@ -93,6 +101,14 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading services menus...</div>
   }
 
+  if (!availableMenus.length) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+        All Services Menu items already have pages. Create a new menu item first.
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
       <div>
@@ -109,19 +125,14 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
           disabled={!canUpdate || saving}
         >
           <option value="">Select a services menu...</option>
-          {menuItems.map((item) => (
+          {availableMenus.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.name} ({item.slug}){item.page?.id ? ' — has page' : ''}
+              {item.name} ({item.slug})
             </option>
           ))}
         </select>
       </label>
 
-      {selectedMenu?.page?.id && (
-        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          A page already exists for this menu. You can still continue to edit it.
-        </div>
-      )}
 
       {error && (
         <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

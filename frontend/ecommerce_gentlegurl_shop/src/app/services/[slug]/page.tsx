@@ -40,6 +40,9 @@ export default async function ServicesDetailPage({
 
   const whatsapp = homepage?.contact?.whatsapp;
   const sections = mergeSections(pageData.sections);
+  const heroSlides = [...(pageData.hero_slides ?? [])].sort(
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+  );
 
   return (
     <ServicesPageLayout
@@ -53,7 +56,7 @@ export default async function ServicesDetailPage({
       pricingActive={sections.pricing.is_active}
       faqsActive={sections.faqs.is_active}
       notesActive={sections.notes.is_active}
-      heroSlides={pageData.hero_slides}
+      heroSlides={heroSlides}
       whatsappPhone={whatsapp?.phone ?? null}
       whatsappEnabled={whatsapp?.enabled ?? false}
       whatsappDefaultMessage={whatsapp?.default_message ?? null}

@@ -302,17 +302,64 @@ class ServicesMenuAndPagesSeeder extends Seeder
                 ]
             );
 
-            ServicesPage::updateOrCreate(
+            $slides = $this->normalizeSlides($pageData['hero_slides']);
+
+            $page = ServicesPage::updateOrCreate(
                 ['services_menu_item_id' => $menuItem->id],
                 [
                     'title' => $pageData['name'],
                     'slug' => $pageData['slug'],
                     'subtitle' => $pageData['subtitle'],
-                    'hero_slides' => $pageData['hero_slides'],
+                    'hero_slides' => $slides,
                     'sections' => $pageData['sections'],
                     'is_active' => true,
                 ]
             );
+
+            $page->slides()->delete();
+            if (! empty($slides)) {
+                $page->slides()->createMany(array_map(function (array $slide) {
+                    return [
+                        'sort_order' => $slide['sort_order'],
+                        'desktop_src' => $slide['src'],
+                        'mobile_src' => $slide['mobileSrc'] ?: null,
+                        'alt' => $slide['alt'],
+                        'title' => $slide['title'] ?: null,
+                        'description' => $slide['description'] ?: null,
+                        'button_label' => $slide['buttonLabel'] ?: null,
+                        'button_href' => $slide['buttonHref'] ?: null,
+                    ];
+                }, $slides));
+            }
         }
+    }
+
+    private function normalizeSlides(array $slides): array
+    {
+        $normalized = [];
+
+        foreach (array_values($slides) as $index => $slide) {
+            if (! is_array($slide)) {
+                continue;
+            }
+
+            $normalized[] = [
+                'sort_order' => (int) ($slide['sort_order'] ?? $index + 1),
+                'src' => (string) ($slide['src'] ?? ''),
+                'mobileSrc' => (string) ($slide['mobileSrc'] ?? ''),
+                'alt' => (string) ($slide['alt'] ?? ''),
+                'title' => (string) ($slide['title'] ?? ''),
+                'description' => (string) ($slide['description'] ?? ($slide['subtitle'] ?? '')),
+                'buttonLabel' => (string) ($slide['buttonLabel'] ?? ''),
+                'buttonHref' => (string) ($slide['buttonHref'] ?? ''),
+            ];
+        }
+
+        usort($normalized, fn (array $a, array $b) => $a['sort_order'] <=> $b['sort_order']);
+        foreach ($normalized as $index => $slide) {
+            $normalized[$index]['sort_order'] = $index + 1;
+        }
+
+        return $normalized;
     }
 }

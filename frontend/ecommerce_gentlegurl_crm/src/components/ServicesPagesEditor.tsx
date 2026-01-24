@@ -1,7 +1,6 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
 type ServicesMenuItem = {
@@ -23,14 +22,15 @@ type PricingItem = { label: string; price: string }
 type FaqItem = { question: string; answer: string }
 
 type HeroSlide = {
+  id?: number
+  sort_order: number
   src: string
-  mobileSrc?: string
+  mobileSrc: string
   alt: string
-  title?: string
-  subtitle?: string
-  description?: string
-  buttonLabel?: string
-  buttonHref?: string
+  title: string
+  description: string
+  buttonLabel: string
+  buttonHref: string
 }
 
 type ServicesPagePayload = {
@@ -63,11 +63,11 @@ const emptySections: ServicesPagePayload['sections'] = {
 }
 
 const emptySlide: HeroSlide = {
+  sort_order: 1,
   src: '',
   mobileSrc: '',
   alt: '',
   title: '',
-  subtitle: '',
   description: '',
   buttonLabel: '',
   buttonHref: '',
@@ -96,13 +96,27 @@ function ensureSections(sections: Partial<ServicesPagePayload['sections']> | und
   }
 }
 
-function ensureSlides(slides: HeroSlide[] | undefined): HeroSlide[] {
+function ensureSlides(slides: Partial<HeroSlide>[] | undefined): HeroSlide[] {
   if (!slides?.length) return []
-  return slides.map((slide) => ({
-    ...emptySlide,
-    ...slide,
-    mobileSrc: slide.mobileSrc ?? '',
-  }))
+  const sorted = [...slides].sort(
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+  )
+
+  return sorted.map((slide, index) => {
+    const description = slide.description ?? (slide as { subtitle?: string }).subtitle ?? ''
+    return {
+      ...emptySlide,
+      ...slide,
+      sort_order: index + 1,
+      mobileSrc: slide.mobileSrc ?? '',
+      description,
+      title: slide.title ?? '',
+      alt: slide.alt ?? '',
+      buttonLabel: slide.buttonLabel ?? '',
+      buttonHref: slide.buttonHref ?? '',
+      src: slide.src ?? '',
+    }
+  })
 }
 
 export default function ServicesPagesEditor({
@@ -112,7 +126,6 @@ export default function ServicesPagesEditor({
   permissions: string[]
   menuId: number
 }) {
-  const router = useRouter()
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
 
   const [menuItems, setMenuItems] = useState<ServicesMenuItem[]>([])
@@ -222,22 +235,43 @@ export default function ServicesPagesEditor({
     })
   }
 
+  const resequenceSlides = (slides: HeroSlide[]) =>
+    slides.map((slide, index) => ({ ...slide, sort_order: index + 1 }))
+
+  const moveSlide = (index: number, direction: -1 | 1) => {
+    setPage((prev) => {
+      if (!prev) return prev
+      const targetIndex = index + direction
+      if (targetIndex < 0 || targetIndex >= prev.hero_slides.length) {
+        return prev
+      }
+      const slides = [...prev.hero_slides]
+      const [moved] = slides.splice(index, 1)
+      slides.splice(targetIndex, 0, moved)
+      return { ...prev, hero_slides: resequenceSlides(slides) }
+    })
+  }
+
   const updateSlide = (index: number, updater: (slide: HeroSlide) => HeroSlide) => {
     setPage((prev) => {
       if (!prev) return prev
       const slides = prev.hero_slides.map((slide, idx) =>
         idx === index ? updater(slide) : slide,
       )
-      return { ...prev, hero_slides: slides }
+      return { ...prev, hero_slides: resequenceSlides(slides) }
     })
   }
 
   const addSlide = () => {
     setPage((prev) => {
       if (!prev) return prev
+      const nextSlide: HeroSlide = {
+        ...emptySlide,
+        sort_order: prev.hero_slides.length + 1,
+      }
       return {
         ...prev,
-        hero_slides: [...prev.hero_slides, { ...emptySlide }],
+        hero_slides: [...prev.hero_slides, nextSlide],
       }
     })
   }
@@ -247,14 +281,9 @@ export default function ServicesPagesEditor({
       if (!prev) return prev
       return {
         ...prev,
-        hero_slides: prev.hero_slides.filter((_, idx) => idx !== index),
+        hero_slides: resequenceSlides(prev.hero_slides.filter((_, idx) => idx !== index)),
       }
     })
-  }
-
-  const handleMenuChange = (nextMenuId: number) => {
-    if (!Number.isFinite(nextMenuId) || nextMenuId === menuId) return
-    router.push(`/services-pages/${nextMenuId}`)
   }
 
   const handleSave = async () => {
@@ -340,23 +369,23 @@ export default function ServicesPagesEditor({
           <section className="rounded-lg border border-gray-200 bg-white p-6">
             <div className="mb-4 flex flex-col gap-1">
               <h3 className="text-base font-semibold text-gray-900">Page basics</h3>
-              <p className="text-xs text-gray-500">Select the services menu and set the page status.</p>
+              <p className="text-xs text-gray-500">Review the selected services menu and set the page status.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-1 text-sm text-gray-700">
                 <span className="font-medium">Services Menu</span>
                 <select
                   value={menuId}
-                  onChange={(e) => handleMenuChange(Number(e.target.value))}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={!canUpdate || saving}
+                  className="w-full rounded border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-600 focus:outline-none"
+                  disabled
                 >
-                  {sortedMenus.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} ({item.slug})
+                  {selectedMenu && (
+                    <option value={selectedMenu.id}>
+                      {selectedMenu.name} ({selectedMenu.slug})
                     </option>
-                  ))}
+                  )}
                 </select>
+                <p className="text-[11px] text-gray-400">Services Menu cannot be changed here.</p>
               </label>
               <label className="space-y-1 text-sm text-gray-700">
                 <span className="font-medium">Status</span>
@@ -381,7 +410,7 @@ export default function ServicesPagesEditor({
             active={page.hero_slides.length > 0}
             onToggle={(value) => {
               if (value && page.hero_slides.length === 0) {
-                setPage({ ...page, hero_slides: [{ ...emptySlide }] })
+                setPage({ ...page, hero_slides: [{ ...emptySlide, sort_order: 1 }] })
               }
               if (!value) {
                 setPage({ ...page, hero_slides: [] })
@@ -398,76 +427,136 @@ export default function ServicesPagesEditor({
               <div className="space-y-4">
                 {page.hero_slides.map((slide, index) => (
                   <div key={`slide-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                        Slide {index + 1}
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        <span>Slide {index + 1}</span>
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                          Sort {slide.sort_order}
+                        </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeSlide(index)}
-                        disabled={!canUpdate}
-                        className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => moveSlide(index, -1)}
+                          disabled={!canUpdate || index === 0}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Move slide up"
+                        >
+                          <i className="fa-solid fa-arrow-up" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveSlide(index, 1)}
+                          disabled={!canUpdate || index === page.hero_slides.length - 1}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Move slide down"
+                        >
+                          <i className="fa-solid fa-arrow-down" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeSlide(index)}
+                          disabled={!canUpdate}
+                          className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <input
-                        value={slide.src}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, src: e.target.value }))}
-                        placeholder="Desktop image URL"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.mobileSrc ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, mobileSrc: e.target.value }))}
-                        placeholder="Mobile image URL"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.alt}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, alt: e.target.value }))}
-                        placeholder="Alt text"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.title ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, title: e.target.value }))}
-                        placeholder="Title"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.subtitle ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, subtitle: e.target.value }))}
-                        placeholder="Subtitle"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.description ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, description: e.target.value }))}
-                        placeholder="Description"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.buttonLabel ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonLabel: e.target.value }))}
-                        placeholder="Button label"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
-                      <input
-                        value={slide.buttonHref ?? ''}
-                        onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonHref: e.target.value }))}
-                        placeholder="Button link"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        disabled={!canUpdate}
-                      />
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Desktop image URL</label>
+                          <input
+                            value={slide.src}
+                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, src: e.target.value }))}
+                            placeholder="Desktop image URL"
+                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            disabled={!canUpdate}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Mobile image URL</label>
+                          <input
+                            value={slide.mobileSrc}
+                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, mobileSrc: e.target.value }))}
+                            placeholder="Mobile image URL"
+                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            disabled={!canUpdate}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Alt text</label>
+                          <input
+                            value={slide.alt}
+                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, alt: e.target.value }))}
+                            placeholder="Alt text"
+                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            disabled={!canUpdate}
+                          />
+                        </div>
+                        {(slide.src || slide.mobileSrc) && (
+                          <div className="grid gap-2 md:grid-cols-2">
+                            {slide.src && (
+                              <div className="overflow-hidden rounded border border-gray-200 bg-white">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={slide.src} alt={slide.alt || 'Desktop preview'} className="h-40 w-full object-cover" />
+                              </div>
+                            )}
+                            {slide.mobileSrc && (
+                              <div className="overflow-hidden rounded border border-gray-200 bg-white">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={slide.mobileSrc} alt={slide.alt || 'Mobile preview'} className="h-40 w-full object-cover" />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Title</label>
+                          <input
+                            value={slide.title}
+                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, title: e.target.value }))}
+                            placeholder="Title"
+                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            disabled={!canUpdate}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</label>
+                          <textarea
+                            value={slide.description}
+                            onChange={(e) => updateSlide(index, (prev) => ({ ...prev, description: e.target.value }))}
+                            placeholder="Description"
+                            rows={4}
+                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            disabled={!canUpdate}
+                          />
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Button label</label>
+                            <input
+                              value={slide.buttonLabel}
+                              onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonLabel: e.target.value }))}
+                              placeholder="Button label"
+                              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              disabled={!canUpdate}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Button link</label>
+                            <input
+                              value={slide.buttonHref}
+                              onChange={(e) => updateSlide(index, (prev) => ({ ...prev, buttonHref: e.target.value }))}
+                              placeholder="Button link"
+                              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              disabled={!canUpdate}
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -679,6 +768,27 @@ export default function ServicesPagesEditor({
               )}
             />
           </SectionCard>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!canUpdate || saving || loadingPage}
+              className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? (
+                <>
+                  <i className="fa-solid fa-spinner animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-floppy-disk" />
+                  Save changes
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
     </div>
