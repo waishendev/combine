@@ -174,6 +174,10 @@ export function ServicesPageLayout({
   const minSwipeDistance = 50;
 
   const onTouchStart = (e: React.TouchEvent) => {
+    // 如果触摸的是按钮或链接，不处理滑动
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a')) return;
+    
     setTouchEnd(null);
     setTouchStart(e.targetTouches[0].clientX);
   };
@@ -197,6 +201,10 @@ export function ServicesPageLayout({
   };
 
   const onMouseDown = (e: React.MouseEvent) => {
+    // 如果点击的是按钮或链接，不处理滑动
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a')) return;
+    
     e.preventDefault();
     setDragStart(e.clientX);
   };
@@ -228,9 +236,18 @@ export function ServicesPageLayout({
       <div className="mx-auto max-w-6xl space-y-12 px-4 pt-10 sm:px-6 lg:px-8">
         {/* Hero */}
         <section
-          className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-sm"
+          className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-sm cursor-grab active:cursor-grabbing"
           onMouseEnter={() => setIsHoveringHero(true)}
-          onMouseLeave={() => setIsHoveringHero(false)}
+          onMouseLeave={(e) => {
+            setIsHoveringHero(false);
+            onMouseUp(e);
+          }}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
           <div className="relative grid min-h-[340px] gap-8 p-6 pb-24 md:min-h-[420px] md:gap-10 md:p-10 md:pb-28 lg:min-h-[480px] lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-12 lg:pb-24">
@@ -317,7 +334,7 @@ export function ServicesPageLayout({
                     ))}
                   </div>
                 </div>
-                {slides.length > 1 && (
+                {/* {slides.length > 1 && (
                   <div className="pointer-events-none absolute inset-y-0 left-0 right-0 hidden items-center justify-between px-3 sm:flex">
                     <button
                       type="button"
@@ -336,49 +353,26 @@ export function ServicesPageLayout({
                       <span aria-hidden>›</span>
                     </button>
                   </div>
-                )}
+                )} */}
               </div>
             </div>
           </div>
           {slides.length > 1 && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center md:bottom-7">
-              <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/95 px-3 py-2 shadow-sm backdrop-blur">
+            <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2 rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/95 px-3 py-2  text-white backdrop-blur">
+              {slides.map((slide, index) => (
                 <button
+                  key={`${slide.src}-dot`}
                   type="button"
-                  onClick={goToPrevSlide}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--background-soft)] text-base text-[var(--foreground)] transition hover:bg-[var(--card)]"
-                  aria-label="Previous slide"
-                >
-                  <span aria-hidden>‹</span>
-                </button>
-                <div className="flex items-center gap-2">
-                  {slides.map((slide, index) => {
-                    const isActive = index === activeSlide;
-                    return (
-                      <button
-                        key={`${slide.src}-dot`}
-                        type="button"
-                        onClick={() => goToSlide(index)}
-                        className={`h-2 rounded-full transition-all duration-300 ${
-                          isActive ? "w-7 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
-                        }`}
-                        aria-label={`Go to slide ${index + 1}`}
-                        aria-pressed={isActive}
-                      />
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={goToNextSlide}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--background-soft)] text-base text-[var(--foreground)] transition hover:bg-[var(--card)]"
-                  aria-label="Next slide"
-                >
-                  <span aria-hidden>›</span>
-                </button>
-              </div>
+                  onClick={() => goToSlide(index)}
+                  className={`h-2.5 rounded-full transition  ${
+                    index === activeSlide
+                      ?  "w-7 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
+                  }`}
+                  aria-label={`Go to slide ${index + 1}`}
+                />
+              ))}
             </div>
-          )}
+          )} 
         </section>
         {lightboxIndex !== null && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -392,7 +386,7 @@ export function ServicesPageLayout({
                 <span aria-hidden>✕</span>
               </button>
 
-              {slides.length > 1 && (
+              {/* {slides.length > 1 && (
                 <>
                   <button
                     type="button"
@@ -411,7 +405,7 @@ export function ServicesPageLayout({
                     <span aria-hidden>→</span>
                   </button>
                 </>
-              )}
+              )} */}
 
               <div className="relative aspect-[16/10] w-full overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
                 {slides.map((slide, index) => (
