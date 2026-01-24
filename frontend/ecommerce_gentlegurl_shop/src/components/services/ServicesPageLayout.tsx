@@ -289,50 +289,50 @@ export function ServicesPageLayout({
                     ))}
                   </div>
                 </div>
-                {slides.length > 1 && (
-                  <>
-                    <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 items-center justify-between px-4 sm:flex">
-                      <button
-                        type="button"
-                        onClick={goToPrevSlide}
-                        className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/80 text-[var(--foreground)] shadow-md transition hover:-translate-y-0.5 hover:bg-white"
-                        aria-label="Previous slide"
-                      >
-                        <span aria-hidden>←</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={goToNextSlide}
-                        className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/80 text-[var(--foreground)] shadow-md transition hover:-translate-y-0.5 hover:bg-white"
-                        aria-label="Next slide"
-                      >
-                        <span aria-hidden>→</span>
-                      </button>
-                    </div>
-                    <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-                      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/60 bg-white/85 px-3 py-2 shadow-sm backdrop-blur">
-                        {slides.map((slide, index) => {
-                          const isActive = index === activeSlide;
-                          return (
-                            <button
-                              key={`${slide.src}-dot`}
-                              type="button"
-                              onClick={() => goToSlide(index)}
-                              className={`h-2 rounded-full transition-all duration-300 ${
-                                isActive ? "w-6 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
-                              }`}
-                              aria-label={`Go to slide ${index + 1}`}
-                              aria-pressed={isActive}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
           </div>
+          {slides.length > 1 && (
+            <>
+              <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 items-center justify-between px-4 md:px-6 lg:flex">
+                <button
+                  type="button"
+                  onClick={goToPrevSlide}
+                  className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/85 text-[var(--foreground)] shadow-md transition hover:-translate-y-0.5 hover:bg-white"
+                  aria-label="Previous slide"
+                >
+                  <span aria-hidden>←</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNextSlide}
+                  className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/85 text-[var(--foreground)] shadow-md transition hover:-translate-y-0.5 hover:bg-white"
+                  aria-label="Next slide"
+                >
+                  <span aria-hidden>→</span>
+                </button>
+              </div>
+              <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center md:bottom-6">
+                <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 px-3 py-2 shadow-sm backdrop-blur">
+                  {slides.map((slide, index) => {
+                    const isActive = index === activeSlide;
+                    return (
+                      <button
+                        key={`${slide.src}-dot`}
+                        type="button"
+                        onClick={() => goToSlide(index)}
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          isActive ? "w-6 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
+                        }`}
+                        aria-label={`Go to slide ${index + 1}`}
+                        aria-pressed={isActive}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </section>
         {lightboxIndex !== null && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
