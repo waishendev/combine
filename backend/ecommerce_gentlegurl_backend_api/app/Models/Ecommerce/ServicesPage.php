@@ -50,8 +50,8 @@ class ServicesPage extends Model
                 return [
                     'id' => $slide->id,
                     'sort_order' => $slide->sort_order,
-                    'src' => $slide->image_path,
-                    'mobileSrc' => $slide->mobile_image_path,
+                    'src' => $slide->image_url ?? $slide->image_path,
+                    'mobileSrc' => $slide->mobile_image_url ?? $slide->mobile_image_path,
                     'title' => $slide->title,
                     'description' => $slide->description,
                     'buttonLabel' => $slide->button_label,
