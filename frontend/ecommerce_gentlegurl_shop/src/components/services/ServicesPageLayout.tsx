@@ -18,6 +18,16 @@ type FAQItem = {
   answer: string;
 };
 
+type HeroSlide = {
+  src: string;
+  alt: string;
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  buttonLabel?: string;
+  buttonHref?: string;
+};
+
 type ServicesPageLayoutProps = {
   title: string;
   subtitle: string;
@@ -26,7 +36,7 @@ type ServicesPageLayoutProps = {
   faqs: FAQItem[];
   notes: string[];
   heroImage?: string;
-  heroSlides?: { src: string; alt: string; title?: string; subtitle?: string }[];
+  heroSlides?: HeroSlide[];
   galleryImages?: { src: string; alt: string; caption?: string }[];
   whatsappPhone?: string | null;
   whatsappEnabled?: boolean;
@@ -48,7 +58,7 @@ export function ServicesPageLayout({
 }: ServicesPageLayoutProps) {
   const pricingRef = useRef<HTMLDivElement | null>(null);
   const slideContainerRef = useRef<HTMLDivElement | null>(null);
-  const baseSlides =
+  const baseSlides: HeroSlide[] =
     heroSlides && heroSlides.length > 0
       ? heroSlides
       : [
@@ -57,15 +67,35 @@ export function ServicesPageLayout({
             alt: `${title} hero visual`,
           },
         ];
-  const slides = baseSlides.map((slide, index) => ({
-    ...slide,
-    title: slide.title ?? `${title} spotlight ${index + 1}`,
-    subtitle:
+
+  const getWhatsAppUrl = useCallback(() => {
+    if (!whatsappEnabled || !whatsappPhone) return undefined;
+    const sanitizedPhone = whatsappPhone.replace(/[^\d]/g, "");
+    const message = whatsappDefaultMessage ?? `Hi! I would like to book an appointment for ${title}.`;
+    return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
+  }, [title, whatsappDefaultMessage, whatsappEnabled, whatsappPhone]);
+
+  const whatsappUrl = getWhatsAppUrl();
+
+  const slides = baseSlides.map((slide, index) => {
+    const resolvedTitle = slide.title ?? `${title} spotlight ${index + 1}`;
+    const resolvedDescription =
+      slide.description ??
       slide.subtitle ??
       (index === 0
         ? subtitle
-        : "Placeholder copy for a synced hero slider. Update this slide text when content is ready."),
-  }));
+        : "Add a short highlight for this slide so it feels like a complete card.");
+    const resolvedButtonHref = slide.buttonHref ?? whatsappUrl;
+    const resolvedButtonLabel = resolvedButtonHref ? slide.buttonLabel ?? "Book an Appointment" : undefined;
+
+    return {
+      ...slide,
+      title: resolvedTitle,
+      description: resolvedDescription,
+      buttonHref: resolvedButtonHref,
+      buttonLabel: resolvedButtonLabel,
+    };
+  });
   const [activeSlide, setActiveSlide] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
@@ -141,18 +171,13 @@ export function ServicesPageLayout({
     };
   }, [lightboxIndex]);
 
-  const getWhatsAppUrl = () => {
-    if (!whatsappEnabled || !whatsappPhone) return "#";
-    const sanitizedPhone = whatsappPhone.replace(/[^\d]/g, "");
-    const message = whatsappDefaultMessage ?? `Hi! I would like to book an appointment for ${title}.`;
-    return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
-  };
-
-  const showBookButton = whatsappEnabled && whatsappPhone;
-
   const minSwipeDistance = 50;
 
   const onTouchStart = (e: React.TouchEvent) => {
+    // 如果触摸的是按钮或链接，不处理滑动
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a')) return;
+    
     setTouchEnd(null);
     setTouchStart(e.targetTouches[0].clientX);
   };
@@ -176,6 +201,10 @@ export function ServicesPageLayout({
   };
 
   const onMouseDown = (e: React.MouseEvent) => {
+    // 如果点击的是按钮或链接，不处理滑动
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a')) return;
+    
     e.preventDefault();
     setDragStart(e.clientX);
   };
@@ -207,49 +236,65 @@ export function ServicesPageLayout({
       <div className="mx-auto max-w-6xl space-y-12 px-4 pt-10 sm:px-6 lg:px-8">
         {/* Hero */}
         <section
-          className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-sm"
+          className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-sm cursor-grab active:cursor-grabbing"
           onMouseEnter={() => setIsHoveringHero(true)}
-          onMouseLeave={() => setIsHoveringHero(false)}
+          onMouseLeave={(e) => {
+            setIsHoveringHero(false);
+            onMouseUp(e);
+          }}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
-          <div className="relative grid min-h-[320px] gap-10 p-6 md:min-h-[380px] md:p-10 lg:min-h-[420px] lg:grid-cols-2 lg:items-center">
+          <div className="relative grid min-h-[340px] gap-8 p-6 pb-24 md:min-h-[420px] md:gap-10 md:p-10 md:pb-28 lg:min-h-[480px] lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-12 lg:pb-24">
             <div className="order-2 flex h-full flex-col justify-center space-y-6 lg:order-1">
-              <div className="relative min-h-[200px]">
+              <div className="relative min-h-[260px] sm:min-h-[280px] lg:min-h-[320px]">
                 {slides.map((slide, index) => (
                   <div
                     key={`${slide.src}-content-${index}`}
-                    className={`absolute inset-0 flex flex-col justify-center space-y-3 transition-all duration-500 ease-out will-change-transform ${
+                    className={`absolute inset-0 flex flex-col justify-center space-y-4 transition-all duration-500 ease-out will-change-transform ${
                       index === activeSlide
                         ? "translate-x-0 opacity-100"
                         : "pointer-events-none translate-x-8 opacity-0"
                     }`}
                     aria-hidden={index !== activeSlide}
                   >
-                    <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
-                      {slide.title}
-                    </h1>
-                    <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg">
-                      {slide.subtitle}
-                    </p>
+                    <div className="max-w-xl space-y-4">
+                      <h1 className="text-3xl font-semibold leading-[1.15] text-[var(--foreground)] sm:text-4xl lg:text-5xl">
+                        {slide.title}
+                      </h1>
+                      <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg lg:text-xl">
+                        {slide.description}
+                      </p>
+                    </div>
+                    {slide.buttonHref && slide.buttonLabel && (
+                      <div className="pt-2">
+                        {(() => {
+                          const isExternalLink = slide.buttonHref?.startsWith("http");
+                          return (
+                            <a
+                              href={slide.buttonHref}
+                              target={isExternalLink ? "_blank" : undefined}
+                              rel={isExternalLink ? "noreferrer" : undefined}
+                              className="inline-flex rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
+                            >
+                              {slide.buttonLabel}
+                            </a>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-              {showBookButton && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <a
-                    href={getWhatsAppUrl()}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
-                  >
-                    Book an Appointment
-                  </a>
-                </div>
-              )}
             </div>
 
             <div className="order-1 flex h-full items-center justify-center lg:order-2 lg:justify-end">
-              <div className="relative w-full max-w-xl">
+              <div className="relative w-full max-w-2xl">
                 <div
                   ref={slideContainerRef}
                   className="relative mx-auto w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-sm"
@@ -261,7 +306,7 @@ export function ServicesPageLayout({
                   onMouseUp={onMouseUp}
                   onMouseLeave={onMouseUp}
                 >
-                  <div className="relative aspect-[16/10] w-full">
+                  <div className="relative aspect-[4/3] w-full md:aspect-[16/10] lg:aspect-[5/4]">
                     {slides.map((slide, index) => (
                       <button
                         key={`${slide.src}-${slide.alt}`}
@@ -289,33 +334,45 @@ export function ServicesPageLayout({
                     ))}
                   </div>
                 </div>
+                {/* {slides.length > 1 && (
+                  <div className="pointer-events-none absolute inset-y-0 left-0 right-0 hidden items-center justify-between px-3 sm:flex">
+                    <button
+                      type="button"
+                      onClick={goToPrevSlide}
+                      className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 text-lg text-[var(--foreground)] shadow-sm transition hover:-translate-y-0.5 hover:bg-[var(--card)]"
+                      aria-label="Previous slide"
+                    >
+                      <span aria-hidden>‹</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToNextSlide}
+                      className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 text-lg text-[var(--foreground)] shadow-sm transition hover:-translate-y-0.5 hover:bg-[var(--card)]"
+                      aria-label="Next slide"
+                    >
+                      <span aria-hidden>›</span>
+                    </button>
+                  </div>
+                )} */}
               </div>
             </div>
           </div>
           {slides.length > 1 && (
-            <>
-            
-              <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center md:bottom-6">
-                <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 px-3 py-2 shadow-sm backdrop-blur">
-                  {slides.map((slide, index) => {
-                    const isActive = index === activeSlide;
-                    return (
-                      <button
-                        key={`${slide.src}-dot`}
-                        type="button"
-                        onClick={() => goToSlide(index)}
-                        className={`h-2 rounded-full transition-all duration-300 ${
-                          isActive ? "w-6 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
-                        }`}
-                        aria-label={`Go to slide ${index + 1}`}
-                        aria-pressed={isActive}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
+            <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2 rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/95 px-3 py-2  text-white backdrop-blur">
+              {slides.map((slide, index) => (
+                <button
+                  key={`${slide.src}-dot`}
+                  type="button"
+                  onClick={() => goToSlide(index)}
+                  className={`h-2.5 rounded-full transition  ${
+                    index === activeSlide
+                      ?  "w-7 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
+                  }`}
+                  aria-label={`Go to slide ${index + 1}`}
+                />
+              ))}
+            </div>
+          )} 
         </section>
         {lightboxIndex !== null && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -329,7 +386,7 @@ export function ServicesPageLayout({
                 <span aria-hidden>✕</span>
               </button>
 
-              {slides.length > 1 && (
+              {/* {slides.length > 1 && (
                 <>
                   <button
                     type="button"
@@ -348,7 +405,7 @@ export function ServicesPageLayout({
                     <span aria-hidden>→</span>
                   </button>
                 </>
-              )}
+              )} */}
 
               <div className="relative aspect-[16/10] w-full overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
                 {slides.map((slide, index) => (
