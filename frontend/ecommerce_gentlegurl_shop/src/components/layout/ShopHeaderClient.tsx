@@ -9,6 +9,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import { HomepageShopMenuItem } from "@/lib/server/getHomepage";
 import { buildRedirectTarget } from "@/lib/auth/redirect";
+import { getOrCreateSessionToken } from "@/lib/sessionToken";
+import { getPrimaryProductImage } from "@/lib/productMedia";
 
 type ShopHeaderClientProps = {
   shopMenu: HomepageShopMenuItem[];
@@ -24,6 +26,26 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<
+    Array<{
+      id: number | string;
+      name: string;
+      slug?: string;
+      price_display?: string | null;
+      sale_price_display?: string | null;
+      price?: number | string;
+      sale_price?: number | string | null;
+      original_price?: number | string | { min: number; max: number } | null;
+      cover_image_url?: string | null;
+      images?: Array<{ image_path?: string | null; url?: string | null; sort_order?: number | null }>;
+      media?: Array<{ type?: string; url?: string | null; sort_order?: number | null }>;
+    }>
+  >([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchImageErrors, setSearchImageErrors] = useState<Set<string>>(new Set());
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -108,7 +130,6 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
   }, [pathname, searchParams]);
 
   const loginHref = `/login?redirect=${encodeURIComponent(redirectTarget)}`;
-  const registerHref = `/register?redirect=${encodeURIComponent(redirectTarget)}`;
 
   const handleLogout = async () => {
     await logout();
@@ -117,6 +138,87 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
     setMobileMenuOpen(false);
     router.push("/");
     router.refresh();
+  };
+
+  useEffect(() => {
+    if (!searchOpen) {
+      setSearchQuery("");
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSearchLoading(true);
+    setSearchError(null);
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("page", "1");
+        params.set("per_page", "8");
+        params.set("q", query);
+
+        const sessionToken = getOrCreateSessionToken();
+        if (sessionToken) {
+          params.set("session_token", sessionToken);
+        }
+
+        const res = await fetch(`/api/proxy/public/shop/products?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to search products (${res.status})`);
+        }
+
+        const json = await res.json();
+        const payload = json.data ?? json;
+        const items = Array.isArray(payload) ? payload : payload.data ?? payload.items ?? [];
+        setSearchResults(items);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error("[ShopHeader] search error", err);
+        setSearchError("Unable to load search results right now.");
+        setSearchResults([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setSearchLoading(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [searchOpen, searchQuery]);
+
+  const handleSearchImageError = (imageSrc: string) => {
+    setSearchImageErrors((prev) => new Set(prev).add(imageSrc));
+  };
+
+  const getSearchImageSrc = (imageSrc: string) =>
+    searchImageErrors.has(imageSrc) ? "/images/placeholder.png" : imageSrc;
+
+  const resolvePriceText = (
+    value?: number | string | { min: number; max: number } | null,
+  ): string | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "object") {
+      return `${value.min} - ${value.max}`;
+    }
+    return String(value);
   };
 
   return (
@@ -152,15 +254,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
               >
                 <span>Shop</span>
-                <svg
-                  className="h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                 </svg>
               </button>
 
@@ -204,15 +299,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
               >
                 <span>Services & Courses</span>
-                <svg
-                  className="h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                 </svg>
               </button>
 
@@ -255,15 +343,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
               >
                 <span>Membership</span>
-                <svg
-                  className="h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                 </svg>
               </button>
 
@@ -293,21 +374,14 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
         </div>
 
           {/* Mobile: Hamburger + Logo + User/Cart */}
-          <div className="flex w-full items-center justify-between md:hidden">
+          <div className="flex w-full items-center gap-4 md:hidden">
             {/* Hamburger Menu Button */}
             <button
               onClick={() => setMobileMenuOpen((prev) => !prev)}
               className="flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
               aria-label="Toggle menu"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="h-6 w-6"
-              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
               </svg>
             </button>
@@ -325,7 +399,7 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
             </Link>
 
             {/* Mobile Right Side: User/Cart */}
-            <div className="flex items-center gap-3">
+            <div className="ml-auto flex items-center gap-3">
               {isLoading ? (
                 <div className="h-8 w-8 animate-pulse rounded-full bg-[var(--muted)]/50" />
               ) : profile ? (
@@ -403,22 +477,27 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                   )}
                 </div>
               ) : (
-                /* Mobile Login/Register */
-                <div className="flex items-center gap-2 text-sm">
-                  <Link
-                    href={loginHref}
-                    className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
-                  >
-                    Login
-                  </Link>
-                  <Link
-                    href={registerHref}
-                    className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
-                  >
-                    Register
-                  </Link>
-                </div>
+                <Link
+                  href={loginHref}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+                  aria-label="Login"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7Z" />
+                  </svg>
+                </Link>
               )}
+
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+                aria-label="Open search"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+              </button>
 
               {/* Mobile Wishlist */}
               <Link
@@ -426,19 +505,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 className="relative flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
                 aria-label="Wishlist"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill={wishlistCount > 0 ? "currentColor" : "none"}
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  className="h-6 w-6"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-                  />
+                <svg className="h-5 w-5" fill={wishlistCount > 0 ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
                 </svg>
                 {wishlistCount > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
@@ -452,21 +520,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 href="/cart"
                 className="relative flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth="1.5"
-                  stroke="currentColor"
-                  className="h-6 w-6"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25h11.218c.97 0 1.694-.908 1.46-1.852l-1.383-5.527a1.125 1.125 0 0 0-1.088-.848H6.178"
-                  />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25 5.647 5.272" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm12.75 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" />
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
                 </svg>
                 {badgeCount > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
@@ -498,15 +553,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                     />
                   </div>
                   <span className="text-sm font-medium text-[var(--foreground)]/80">{profile?.name}</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className={`h-4 w-4 transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                  <svg className={`h-3 w-3 transition-transform ${userMenuOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
 
@@ -566,41 +614,36 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
               )}
             </div>
             ) : (
-              /* Login/Register - Desktop */
-              <div className="flex items-center gap-4 text-sm">
-                <Link
-                  href={loginHref}
-                  className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
-                >
-                  Login
-                </Link>
-                <Link
-                  href={registerHref}
-                  className="text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
-                >
-                  Register
-                </Link>
-              </div>
+              <Link
+                href={loginHref}
+                 className="relative flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+                aria-label="Login"
+              >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21a8 8 0 0 0-16 0" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              </Link>
             )}
+
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="relative flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+              aria-label="Open search"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+            </button>
 
             {/* Wishlist - Desktop */}
             <Link
               href="/wishlist"
               className="relative flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill={wishlistCount > 0 ? "currentColor" : "none"}
-                stroke="currentColor"
-                strokeWidth="1.5"
-                className="h-6 w-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-                />
+              <svg className="h-5 w-5" fill={wishlistCount > 0 ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
               </svg>
               {wishlistCount > 0 && (
                 <span className="absolute -right-2 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
@@ -614,21 +657,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
               href="/cart"
               className="relative flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth="1.5"
-                stroke="currentColor"
-                className="h-6 w-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25h11.218c.97 0 1.694-.908 1.46-1.852l-1.383-5.527a1.125 1.125 0 0 0-1.088-.848H6.178"
-                />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25 5.647 5.272" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm12.75 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" />
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
               </svg>
               {badgeCount > 0 && (
                 <span className="absolute -right-2 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
@@ -639,6 +669,155 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
           </div>
         </div>
       </header>
+
+      {searchOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
+            onClick={() => setSearchOpen(false)}
+          />
+          <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-[var(--card-border)]/60 bg-[var(--card)]/95 shadow-2xl backdrop-blur">
+            <div className="flex items-center justify-between border-b border-[var(--muted)]/50 px-5 py-4">
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">Search</h2>
+              <button
+                type="button"
+                onClick={() => setSearchOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                aria-label="Close search"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-5 overflow-hidden px-5 py-4">
+              <div className="relative">
+                <svg className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--foreground)]/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search products"
+                  className="w-full rounded-full border border-[var(--card-border)] bg-[var(--card)] px-11 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent-strong)]"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--foreground)]/70 transition hover:text-[var(--accent-strong)]"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-1 flex-col gap-4 overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
+                    Products
+                  </span>
+                  {searchLoading && (
+                    <span className="text-xs text-[var(--foreground)]/60">Searching...</span>
+                  )}
+                </div>
+
+                {searchError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                    {searchError}
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto pr-1">
+                  {searchResults.length === 0 && !searchLoading && searchQuery && !searchError && (
+                    <div className="rounded-lg border border-[var(--muted)]/50 bg-[var(--background)]/60 px-4 py-6 text-center text-sm text-[var(--foreground)]/60">
+                      No products found. Try another keyword.
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    {searchResults.map((product) => {
+                      const normalizedSlug =
+                        typeof product.slug === "string"
+                          ? product.slug.trim().toLowerCase()
+                          : null;
+                      const resolvedSlug =
+                        normalizedSlug && !["null", "undefined"].includes(normalizedSlug)
+                          ? product.slug!.trim()
+                          : product.id
+                            ? String(product.id)
+                            : "";
+                      const image = getPrimaryProductImage(product);
+                      const priceText = resolvePriceText(
+                        product.price_display ?? product.original_price ?? product.price,
+                      );
+                      const saleText = resolvePriceText(
+                        product.sale_price_display ?? product.sale_price,
+                      );
+
+                      return (
+                        <Link
+                          key={product.id}
+                          href={`/product/${resolvedSlug}`}
+                          className="flex gap-4 rounded-xl border border-[var(--card-border)]/60 bg-[var(--background)]/80 p-3 transition hover:border-[var(--accent-strong)]/60"
+                          onClick={() => setSearchOpen(false)}
+                        >
+                          <div className="h-20 w-16 overflow-hidden rounded-lg bg-[var(--muted)]/40">
+                            <img
+                              src={getSearchImageSrc(image)}
+                              alt={product.name}
+                              className="h-full w-full object-cover"
+                              onError={() => handleSearchImageError(image)}
+                            />
+                          </div>
+                          <div className="flex flex-1 flex-col justify-center gap-2">
+                            <p className="text-sm font-semibold text-[var(--foreground)]">
+                              {product.name}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs">
+                              {saleText ? (
+                                <>
+                                  <span className="font-semibold text-[var(--accent-strong)]">
+                                   RM {saleText}
+                                  </span>
+                                  {priceText && (
+                                    <span className="text-[var(--foreground)]/50 line-through">
+                                     RM {priceText}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="font-semibold text-[var(--accent-strong)]">
+                                  {priceText ?? "-"}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {searchQuery && (
+                  <Link
+                    href={`/shop?q=${encodeURIComponent(searchQuery)}`}
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent-strong)] transition hover:opacity-80"
+                    onClick={() => setSearchOpen(false)}
+                  >
+                    See all results for “{searchQuery}”
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                    </svg>
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Mobile Menu Overlay */}
       {mobileMenuOpen && (
@@ -658,15 +837,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                 className="flex items-center text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
                 aria-label="Close menu"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="h-6 w-6"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
@@ -690,15 +862,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                 >
                   <span>Shop</span>
-                  <svg
-                    className={`h-4 w-4 transition-transform ${shopOpen ? "rotate-180" : ""}`}
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                  <svg className={`h-3 w-3 transition-transform ${shopOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
                 {shopOpen && shopMenu.length > 0 && (
@@ -741,15 +906,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                 >
                   <span>Services & Courses</span>
-                  <svg
-                    className={`h-4 w-4 transition-transform ${servicesOpen ? "rotate-180" : ""}`}
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                  <svg className={`h-3 w-3 transition-transform ${servicesOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
                 {servicesOpen && (
@@ -796,15 +954,8 @@ export function ShopHeaderClient({ shopMenu }: ShopHeaderClientProps) {
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                 >
                   <span>Membership</span>
-                  <svg
-                    className={`h-4 w-4 transition-transform ${membershipOpen ? "rotate-180" : ""}`}
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                  <svg className={`h-3 w-3 transition-transform ${membershipOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
                 {membershipOpen && (
