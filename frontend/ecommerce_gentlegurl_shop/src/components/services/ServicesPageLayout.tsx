@@ -142,15 +142,15 @@ export function ServicesPageLayout({
     <main className="bg-gradient-to-b from-transparent via-white/60 to-transparent pb-16">
       <div className="mx-auto max-w-6xl space-y-12 px-4 pt-10 sm:px-6 lg:px-8">
         {/* Hero */}
-        <section className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/85 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
+        <section className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
-          <div className="relative grid gap-8 p-8 sm:p-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-center">
+          <div className="relative grid gap-10 p-8 sm:p-10 lg:grid-cols-2 lg:items-center">
             <div className="order-2 space-y-6 lg:order-1">
-              <div className="relative min-h-[190px] rounded-[28px] border border-white/60 bg-white/65 shadow-[0_18px_45px_-35px_rgba(17,24,39,0.45)] backdrop-blur-sm">
+              <div className="relative min-h-[160px]">
                 {slides.map((slide, index) => (
                   <div
                     key={`${slide.src}-content-${index}`}
-                    className={`absolute inset-0 space-y-3 p-6 transition-all duration-500 sm:p-8 ${
+                    className={`absolute inset-0 space-y-3 transition-all duration-500 ${
                       index === activeSlide
                         ? "translate-x-0 opacity-100"
                         : "pointer-events-none translate-x-6 opacity-0"
@@ -179,46 +179,44 @@ export function ServicesPageLayout({
               )}
             </div>
 
-            <div className="order-1 flex flex-col items-center gap-4 lg:order-2 lg:items-end">
-              <div className="relative w-full max-w-xl lg:-mr-6 lg:translate-x-4">
-                <div
-                  ref={slideContainerRef}
-                  className="relative aspect-[5/4] w-full overflow-hidden rounded-[28px] border border-white/60 bg-[var(--background-soft)] shadow-[0_24px_60px_-40px_rgba(17,24,39,0.55)] cursor-grab active:cursor-grabbing"
-                  onTouchStart={onTouchStart}
-                  onTouchMove={onTouchMove}
-                  onTouchEnd={onTouchEnd}
-                  onMouseDown={onMouseDown}
-                  onMouseMove={onMouseMove}
-                  onMouseUp={onMouseUp}
-                  onMouseLeave={onMouseUp}
-                >
-                  {slides.map((slide, index) => (
-                    <div
-                      key={`${slide.src}-${slide.alt}`}
-                      className={`absolute inset-0 transition-all duration-500 ${
-                        index === activeSlide
-                          ? "translate-x-0 opacity-100"
-                          : "pointer-events-none -translate-x-6 opacity-0"
-                      }`}
-                    >
-                      <Image
-                        src={slide.src}
-                        alt={slide.alt}
-                        fill
-                        className="object-cover"
-                        sizes="(min-width: 1280px) 520px, (min-width: 1024px) 480px, (min-width: 640px) 70vw, 100vw"
-                        priority={index === activeSlide}
-                        draggable={false}
-                      />
-                    </div>
-                  ))}
-                </div>
+            <div className="order-1 flex justify-center lg:order-2 lg:justify-end">
+              <div
+                ref={slideContainerRef}
+                className="relative h-80 w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)] cursor-grab active:cursor-grabbing sm:h-96"
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+                onMouseDown={onMouseDown}
+                onMouseMove={onMouseMove}
+                onMouseUp={onMouseUp}
+                onMouseLeave={onMouseUp}
+              >
+                {slides.map((slide, index) => (
+                  <div
+                    key={`${slide.src}-${slide.alt}`}
+                    className={`absolute inset-0 transition-all duration-500 ${
+                      index === activeSlide
+                        ? "translate-x-0 opacity-100"
+                        : "pointer-events-none -translate-x-6 opacity-0"
+                    }`}
+                  >
+                    <Image
+                      src={slide.src}
+                      alt={slide.alt}
+                      fill
+                      className="object-cover"
+                      sizes="(min-width: 1024px) 420px, (min-width: 640px) 520px, 100vw"
+                      priority={index === activeSlide}
+                      draggable={false}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           </div>
           {slides.length > 1 && (
-            <div className="relative mt-4 flex items-center justify-center lg:justify-end">
-              <div className="flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-white/80 px-4 py-2 shadow-sm backdrop-blur lg:mr-10">
+            <div className="relative mt-6 flex items-center justify-center">
+              <div className="flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 px-4 py-2 shadow-sm backdrop-blur">
                 {slides.map((slide, index) => (
                   <button
                     key={`${slide.src}-dot`}
