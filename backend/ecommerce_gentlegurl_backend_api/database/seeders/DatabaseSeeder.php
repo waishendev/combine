@@ -31,12 +31,12 @@ class DatabaseSeeder extends Seeder
             SuperAdminSeeder::class,
             PaymentGatewaySeeder::class,
 
-            // FooterWidgetSeederTesting::class,
-            // FrontendTestDataSeeder::class,
-            // LoyaltyRewardSeederTesting::class,
-            // LoyaltyDemoCustomerSeederTesting::class,
-            // SelfPickupCompletedOrderSeeder::class,
-            // GuestCompletedOrderSeeder::class,
+            FooterWidgetSeederTesting::class,
+            FrontendTestDataSeeder::class,
+            LoyaltyRewardSeederTesting::class,
+            LoyaltyDemoCustomerSeederTesting::class,
+            SelfPickupCompletedOrderSeeder::class,
+            GuestCompletedOrderSeeder::class,
 
 
             //ReturnDemoSeeder::class,
