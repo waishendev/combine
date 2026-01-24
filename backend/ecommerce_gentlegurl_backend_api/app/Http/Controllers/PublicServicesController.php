@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Ecommerce\ServicesMenuItem;
 use App\Models\Ecommerce\ServicesPage;
+use Illuminate\Support\Facades\Storage;
 
 class PublicServicesController extends Controller
 {
@@ -34,14 +35,36 @@ class PublicServicesController extends Controller
             abort(404);
         }
 
+        $heroSlides = array_map(function (array $slide) {
+            return array_merge($slide, [
+                'src' => $this->resolvePublicUrl($slide['src'] ?? null),
+                'mobileSrc' => $this->resolvePublicUrl($slide['mobileSrc'] ?? null),
+            ]);
+        }, $page->hero_slides ?? []);
+
         return $this->respond([
             'id' => $page->id,
             'menu_item_id' => $page->services_menu_item_id,
             'title' => $page->title,
             'slug' => $page->slug,
             'subtitle' => $page->subtitle,
-            'hero_slides' => $page->hero_slides,
+            'hero_slides' => $heroSlides,
             'sections' => $page->sections,
         ]);
+    }
+
+    private function resolvePublicUrl(?string $path): string
+    {
+        if (! $path) {
+            return '';
+        }
+
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+
+        $normalizedPath = ltrim($path, '/');
+
+        return Storage::disk('public')->url($normalizedPath);
     }
 }
