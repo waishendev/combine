@@ -6,6 +6,7 @@ use App\Models\Ecommerce\ServicesMenuItem;
 use App\Models\Ecommerce\ServicesPage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ServicesPageController extends Controller
@@ -45,6 +46,13 @@ class ServicesPageController extends Controller
     {
         $existingPageId = ServicesPage::where('services_menu_item_id', $servicesMenuItem->id)->value('id');
 
+        if (is_string($request->input('sections'))) {
+            $decodedSections = json_decode($request->input('sections'), true);
+            if (is_array($decodedSections)) {
+                $request->merge(['sections' => $decodedSections]);
+            }
+        }
+
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:150'],
             'slug' => [
@@ -56,8 +64,10 @@ class ServicesPageController extends Controller
             'subtitle' => ['nullable', 'string', 'max:500'],
             'hero_slides' => ['nullable', 'array'],
             'hero_slides.*.sort_order' => ['nullable', 'integer', 'min:1'],
-            'hero_slides.*.src' => ['required_with:hero_slides', 'string', 'max:255'],
+            'hero_slides.*.src' => ['nullable', 'string', 'max:255'],
             'hero_slides.*.mobileSrc' => ['nullable', 'string', 'max:255'],
+            'hero_slides.*.image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+            'hero_slides.*.mobile_image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
             'hero_slides.*.title' => ['nullable', 'string', 'max:255'],
             'hero_slides.*.subtitle' => ['nullable', 'string', 'max:255'],
             'hero_slides.*.description' => ['nullable', 'string'],
@@ -67,9 +77,17 @@ class ServicesPageController extends Controller
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
-        $normalizedSlides = $this->normalizeSlides($validated['hero_slides'] ?? []);
+        $normalizedSlides = $this->normalizeSlides($request, $validated['hero_slides'] ?? []);
 
         $page = DB::transaction(function () use ($servicesMenuItem, $validated, $normalizedSlides) {
+            $page = ServicesPage::with('slides')
+                ->where('services_menu_item_id', $servicesMenuItem->id)
+                ->first();
+
+            if ($page) {
+                $this->deleteSlideFiles($page->slides);
+            }
+
             $page = ServicesPage::updateOrCreate(
                 ['services_menu_item_id' => $servicesMenuItem->id],
                 [
@@ -113,7 +131,7 @@ class ServicesPageController extends Controller
         return $this->respond($page, __('Services page saved successfully.'));
     }
 
-    private function normalizeSlides(array $slides): array
+    private function normalizeSlides(Request $request, array $slides): array
     {
         $normalized = [];
 
@@ -123,11 +141,25 @@ class ServicesPageController extends Controller
             }
 
             $description = trim((string) ($slide['description'] ?? $slide['subtitle'] ?? ''));
+            $imagePath = (string) ($slide['src'] ?? '');
+            $mobileImagePath = (string) ($slide['mobileSrc'] ?? '');
+
+            if ($request->hasFile("hero_slides.$index.image_file")) {
+                $imagePath = $this->storeSlideImage($request->file("hero_slides.$index.image_file"), false);
+            }
+
+            if ($request->hasFile("hero_slides.$index.mobile_image_file")) {
+                $mobileImagePath = $this->storeSlideImage($request->file("hero_slides.$index.mobile_image_file"), true);
+            }
+
+            if ($imagePath === '') {
+                continue;
+            }
 
             $normalized[] = [
                 'sort_order' => (int) ($slide['sort_order'] ?? $index + 1),
-                'src' => (string) ($slide['src'] ?? ''),
-                'mobileSrc' => (string) ($slide['mobileSrc'] ?? ''),
+                'src' => $imagePath,
+                'mobileSrc' => $mobileImagePath,
                 'title' => (string) ($slide['title'] ?? ''),
                 'description' => $description,
                 'buttonLabel' => (string) ($slide['buttonLabel'] ?? ''),
@@ -143,6 +175,33 @@ class ServicesPageController extends Controller
         }
 
         return $normalized;
+    }
+
+    private function storeSlideImage($file, bool $isMobile): string
+    {
+        $prefix = $isMobile ? 'services-slides/mobile_' : 'services-slides/';
+        $filename = $prefix . uniqid() . '.' . $file->getClientOriginalExtension();
+
+        return $file->storeAs('', $filename, 'public');
+    }
+
+    private function deleteSlideFiles($slides): void
+    {
+        foreach ($slides as $slide) {
+            $this->deleteIfOwnedPath($slide->image_path);
+            $this->deleteIfOwnedPath($slide->mobile_image_path);
+        }
+    }
+
+    private function deleteIfOwnedPath(?string $path): void
+    {
+        if (! $path || ! str_starts_with($path, 'services-slides/')) {
+            return;
+        }
+
+        if (Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+        }
     }
 
     private function defaultSections(): array

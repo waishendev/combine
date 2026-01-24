@@ -133,6 +133,10 @@ export default function ServicesPagesEditor({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [collapsedSlides, setCollapsedSlides] = useState<Record<number, boolean>>({})
+  const [slideFiles, setSlideFiles] = useState<(File | null)[]>([])
+  const [slideMobileFiles, setSlideMobileFiles] = useState<(File | null)[]>([])
+  const [slidePreviews, setSlidePreviews] = useState<(string | null)[]>([])
+  const [slideMobilePreviews, setSlideMobilePreviews] = useState<(string | null)[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -195,12 +199,18 @@ export default function ServicesPagesEditor({
         if (!payload) {
           throw new Error('Services page payload missing.')
         }
+        const slides = ensureSlides(payload.hero_slides)
         setPage({
           ...payload,
           menu_item_id: payload.menu_item_id ?? menuId,
-          hero_slides: ensureSlides(payload.hero_slides),
+          hero_slides: slides,
           sections: ensureSections(payload.sections),
         })
+        const slideCount = slides.length
+        setSlideFiles(Array(slideCount).fill(null))
+        setSlideMobileFiles(Array(slideCount).fill(null))
+        setSlidePreviews(Array(slideCount).fill(null))
+        setSlideMobilePreviews(Array(slideCount).fill(null))
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setError(err instanceof Error ? err.message : 'Failed to load services page.')
@@ -236,6 +246,13 @@ export default function ServicesPagesEditor({
   const resequenceSlides = (slides: HeroSlide[]) =>
     slides.map((slide, index) => ({ ...slide, sort_order: index + 1 }))
 
+  const reorderFiles = (files: (File | null)[], index: number, targetIndex: number) => {
+    const next = [...files]
+    const [moved] = next.splice(index, 1)
+    next.splice(targetIndex, 0, moved ?? null)
+    return next
+  }
+
   const toggleSlideCollapsed = (index: number) => {
     setCollapsedSlides((prev) => ({ ...prev, [index]: !prev[index] }))
   }
@@ -250,6 +267,10 @@ export default function ServicesPagesEditor({
       const slides = [...prev.hero_slides]
       const [moved] = slides.splice(index, 1)
       slides.splice(targetIndex, 0, moved)
+      setSlideFiles((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
+      setSlideMobileFiles((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
+      setSlidePreviews((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
+      setSlideMobilePreviews((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
       setCollapsedSlides({})
       return { ...prev, hero_slides: resequenceSlides(slides) }
     })
@@ -272,6 +293,10 @@ export default function ServicesPagesEditor({
         ...emptySlide,
         sort_order: prev.hero_slides.length + 1,
       }
+      setSlideFiles((prevFiles) => [...prevFiles, null])
+      setSlideMobileFiles((prevFiles) => [...prevFiles, null])
+      setSlidePreviews((prevFiles) => [...prevFiles, null])
+      setSlideMobilePreviews((prevFiles) => [...prevFiles, null])
       return {
         ...prev,
         hero_slides: [...prev.hero_slides, nextSlide],
@@ -282,6 +307,10 @@ export default function ServicesPagesEditor({
   const removeSlide = (index: number) => {
     setPage((prev) => {
       if (!prev) return prev
+      setSlideFiles((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
+      setSlideMobileFiles((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
+      setSlidePreviews((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
+      setSlideMobilePreviews((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
       setCollapsedSlides({})
       return {
         ...prev,
@@ -296,20 +325,48 @@ export default function ServicesPagesEditor({
     setError(null)
     setNotice(null)
     try {
+      const hasMissingImages = page.hero_slides.some(
+        (slide, index) => !slide.src && !slideFiles[index],
+      )
+      if (hasMissingImages) {
+        setError('Each slide needs a desktop image before saving.')
+        setSaving(false)
+        return
+      }
+
+      const formData = new FormData()
+      formData.append('title', selectedMenu.name)
+      formData.append('slug', selectedMenu.slug)
+      formData.append('subtitle', page.subtitle ?? '')
+      formData.append('is_active', page.is_active ? '1' : '0')
+      formData.append('sections', JSON.stringify(page.sections))
+
+      page.hero_slides.forEach((slide, index) => {
+        formData.append(`hero_slides[${index}][sort_order]`, String(slide.sort_order))
+        formData.append(`hero_slides[${index}][src]`, slide.src)
+        formData.append(`hero_slides[${index}][mobileSrc]`, slide.mobileSrc)
+        formData.append(`hero_slides[${index}][title]`, slide.title)
+        formData.append(`hero_slides[${index}][description]`, slide.description)
+        formData.append(`hero_slides[${index}][buttonLabel]`, slide.buttonLabel)
+        formData.append(`hero_slides[${index}][buttonHref]`, slide.buttonHref)
+
+        const imageFile = slideFiles[index]
+        if (imageFile) {
+          formData.append(`hero_slides[${index}][image_file]`, imageFile)
+        }
+
+        const mobileImageFile = slideMobileFiles[index]
+        if (mobileImageFile) {
+          formData.append(`hero_slides[${index}][mobile_image_file]`, mobileImageFile)
+        }
+      })
+
       const res = await fetch(`/api/proxy/ecommerce/services-pages/${menuId}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
           Accept: 'application/json',
         },
-        body: JSON.stringify({
-          title: selectedMenu.name,
-          slug: selectedMenu.slug,
-          subtitle: page.subtitle,
-          hero_slides: page.hero_slides,
-          sections: page.sections,
-          is_active: page.is_active,
-        }),
+        body: formData,
       })
 
       const json: ApiResponse<ServicesPagePayload> = await res.json().catch(() => ({}))
@@ -318,11 +375,17 @@ export default function ServicesPagesEditor({
       }
 
       const payload = json.data
+      const slides = ensureSlides(payload.hero_slides)
       setPage({
         ...payload,
-        hero_slides: ensureSlides(payload.hero_slides),
+        hero_slides: slides,
         sections: ensureSections(payload.sections),
       })
+      const slideCount = slides.length
+      setSlideFiles(Array(slideCount).fill(null))
+      setSlideMobileFiles(Array(slideCount).fill(null))
+      setSlidePreviews(Array(slideCount).fill(null))
+      setSlideMobilePreviews(Array(slideCount).fill(null))
 
       setMenuItems((prev) =>
         prev.map((item) =>
@@ -485,22 +548,32 @@ export default function ServicesPagesEditor({
                                 onChange={(event) => {
                                   const file = event.target.files?.[0]
                                   if (!file) return
-                                  const reader = new FileReader()
-                                  reader.onloadend = () => {
-                                    updateSlide(index, (prev) => ({ ...prev, src: reader.result as string }))
-                                  }
-                                  reader.readAsDataURL(file)
+                                  setSlideFiles((prevFiles) =>
+                                    prevFiles.map((entry, idx) => (idx === index ? file : entry ?? null)),
+                                  )
+                                  const previewUrl = URL.createObjectURL(file)
+                                  setSlidePreviews((prevFiles) =>
+                                    prevFiles.map((entry, idx) => (idx === index ? previewUrl : entry ?? null)),
+                                  )
                                 }}
                                 className="text-xs"
                               />
-                              {slide.src ? (
+                              {(slidePreviews[index] ?? slide.src) ? (
                                 <div className="relative overflow-hidden rounded border border-gray-200">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={slide.src} alt={slide.title || 'Desktop preview'} className="h-44 w-full object-cover" />
+                                  <img src={slidePreviews[index] ?? slide.src} alt={slide.title || 'Desktop preview'} className="h-44 w-full object-cover" />
                                   <div className="absolute right-2 top-2 flex items-center gap-2">
                                     <button
                                       type="button"
-                                      onClick={() => updateSlide(index, (prev) => ({ ...prev, src: '' }))}
+                                      onClick={() => {
+                                        setSlideFiles((prevFiles) =>
+                                          prevFiles.map((entry, idx) => (idx === index ? null : entry)),
+                                        )
+                                        setSlidePreviews((prevFiles) =>
+                                          prevFiles.map((entry, idx) => (idx === index ? null : entry)),
+                                        )
+                                        updateSlide(index, (prev) => ({ ...prev, src: '' }))
+                                      }}
                                       disabled={!canUpdate}
                                       className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-50"
                                       aria-label="Remove desktop image"
@@ -511,16 +584,9 @@ export default function ServicesPagesEditor({
                                 </div>
                               ) : (
                                 <div className="flex h-44 items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
-                                  Upload or paste an image URL below
+                                  Upload a desktop image
                                 </div>
                               )}
-                              <input
-                                value={slide.src}
-                                onChange={(e) => updateSlide(index, (prev) => ({ ...prev, src: e.target.value }))}
-                                placeholder="Desktop image URL"
-                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                disabled={!canUpdate}
-                              />
                             </div>
                           </div>
                           <div className="space-y-2">
@@ -533,22 +599,32 @@ export default function ServicesPagesEditor({
                                 onChange={(event) => {
                                   const file = event.target.files?.[0]
                                   if (!file) return
-                                  const reader = new FileReader()
-                                  reader.onloadend = () => {
-                                    updateSlide(index, (prev) => ({ ...prev, mobileSrc: reader.result as string }))
-                                  }
-                                  reader.readAsDataURL(file)
+                                  setSlideMobileFiles((prevFiles) =>
+                                    prevFiles.map((entry, idx) => (idx === index ? file : entry)),
+                                  )
+                                  const previewUrl = URL.createObjectURL(file)
+                                  setSlideMobilePreviews((prevFiles) =>
+                                    prevFiles.map((entry, idx) => (idx === index ? previewUrl : entry)),
+                                  )
                                 }}
                                 className="text-xs"
                               />
-                              {slide.mobileSrc ? (
+                              {(slideMobilePreviews[index] ?? slide.mobileSrc) ? (
                                 <div className="relative overflow-hidden rounded border border-gray-200">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={slide.mobileSrc} alt={slide.title || 'Mobile preview'} className="h-44 w-full object-cover" />
+                                  <img src={slideMobilePreviews[index] ?? slide.mobileSrc} alt={slide.title || 'Mobile preview'} className="h-44 w-full object-cover" />
                                   <div className="absolute right-2 top-2 flex items-center gap-2">
                                     <button
                                       type="button"
-                                      onClick={() => updateSlide(index, (prev) => ({ ...prev, mobileSrc: '' }))}
+                                      onClick={() => {
+                                        setSlideMobileFiles((prevFiles) =>
+                                          prevFiles.map((entry, idx) => (idx === index ? null : entry)),
+                                        )
+                                        setSlideMobilePreviews((prevFiles) =>
+                                          prevFiles.map((entry, idx) => (idx === index ? null : entry)),
+                                        )
+                                        updateSlide(index, (prev) => ({ ...prev, mobileSrc: '' }))
+                                      }}
                                       disabled={!canUpdate}
                                       className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-50"
                                       aria-label="Remove mobile image"
@@ -559,16 +635,9 @@ export default function ServicesPagesEditor({
                                 </div>
                               ) : (
                                 <div className="flex h-44 items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
-                                  Optional: upload a mobile-specific image
+                                  Optional: upload a mobile image
                                 </div>
                               )}
-                              <input
-                                value={slide.mobileSrc}
-                                onChange={(e) => updateSlide(index, (prev) => ({ ...prev, mobileSrc: e.target.value }))}
-                                placeholder="Mobile image URL"
-                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                disabled={!canUpdate}
-                              />
                             </div>
                           </div>
                         </div>
