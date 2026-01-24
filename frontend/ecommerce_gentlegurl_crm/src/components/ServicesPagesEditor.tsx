@@ -8,6 +8,7 @@ type ServicesMenuItem = {
   name: string
   slug: string
   is_active: boolean
+  page?: { id?: number; slug?: string } | null
 }
 
 type ServicesSection<T> = {
@@ -80,11 +81,16 @@ function ensureSections(sections: Partial<ServicesPagePayload['sections']> | und
   }
 }
 
-export default function ServicesPagesEditor({ permissions }: { permissions: string[] }) {
+export default function ServicesPagesEditor({
+  permissions,
+  menuId,
+}: {
+  permissions: string[]
+  menuId: number
+}) {
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
 
   const [menuItems, setMenuItems] = useState<ServicesMenuItem[]>([])
-  const [selectedMenuId, setSelectedMenuId] = useState<number | null>(null)
   const [page, setPage] = useState<ServicesPagePayload | null>(null)
   const [loadingMenus, setLoadingMenus] = useState(true)
   const [loadingPage, setLoadingPage] = useState(false)
@@ -98,7 +104,7 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
       setLoadingMenus(true)
       setError(null)
       try {
-        const qs = new URLSearchParams({ per_page: '100' })
+        const qs = new URLSearchParams({ per_page: '200' })
         const res = await fetch(`/api/proxy/ecommerce/services-menu-items?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
@@ -109,7 +115,6 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
         const json: ApiResponse<unknown> = await res.json().catch(() => ({}))
         const items = normalizeMenuItems(json)
         setMenuItems(items)
-        setSelectedMenuId((prev) => prev ?? items[0]?.id ?? null)
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setError(err instanceof Error ? err.message : 'Failed to load services menu items.')
@@ -126,23 +131,18 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
   }, [])
 
   const selectedMenu = useMemo(
-    () => menuItems.find((item) => item.id === selectedMenuId) ?? null,
-    [menuItems, selectedMenuId],
+    () => menuItems.find((item) => item.id === menuId) ?? null,
+    [menuItems, menuId],
   )
 
   useEffect(() => {
-    if (!selectedMenuId) {
-      setPage(null)
-      return
-    }
-
     const controller = new AbortController()
     const loadPage = async () => {
       setLoadingPage(true)
       setError(null)
       setNotice(null)
       try {
-        const res = await fetch(`/api/proxy/ecommerce/services-pages/${selectedMenuId}`, {
+        const res = await fetch(`/api/proxy/ecommerce/services-pages/${menuId}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -156,7 +156,7 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
         }
         setPage({
           ...payload,
-          menu_item_id: payload.menu_item_id ?? selectedMenuId,
+          menu_item_id: payload.menu_item_id ?? menuId,
           hero_slides: payload.hero_slides ?? [],
           sections: ensureSections(payload.sections),
         })
@@ -173,7 +173,7 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
 
     loadPage()
     return () => controller.abort()
-  }, [selectedMenuId])
+  }, [menuId])
 
   const updateSection = <T,>(
     key: keyof ServicesPagePayload['sections'],
@@ -193,12 +193,12 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
   }
 
   const handleSave = async () => {
-    if (!page || !selectedMenuId) return
+    if (!page) return
     setSaving(true)
     setError(null)
     setNotice(null)
     try {
-      const res = await fetch(`/api/proxy/ecommerce/services-pages/${selectedMenuId}`, {
+      const res = await fetch(`/api/proxy/ecommerce/services-pages/${menuId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -228,7 +228,7 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
 
       setMenuItems((prev) =>
         prev.map((item) =>
-          item.id === selectedMenuId
+          item.id === menuId
             ? { ...item, name: payload.title, slug: payload.slug, is_active: payload.is_active }
             : item,
         ),
@@ -245,10 +245,10 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading services menus...</div>
   }
 
-  if (!menuItems.length) {
+  if (!selectedMenu) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-        Create at least one Services Menu item before editing pages.
+      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+        The selected services menu item no longer exists.
       </div>
     )
   }
@@ -258,17 +258,9 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
       <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Services menu</label>
-          <select
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 md:min-w-[260px]"
-            value={selectedMenuId ?? ''}
-            onChange={(e) => setSelectedMenuId(Number(e.target.value))}
-          >
-            {menuItems.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} ({item.slug})
-              </option>
-            ))}
-          </select>
+          <div className="text-sm font-medium text-gray-900">
+            {selectedMenu.name} <span className="text-gray-500">({selectedMenu.slug})</span>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -283,11 +275,9 @@ export default function ServicesPagesEditor({ permissions }: { permissions: stri
         </div>
       </div>
 
-      {selectedMenu && (
-        <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-700">
-          Editing <span className="font-semibold">{selectedMenu.name}</span>. Changes stay local until you press <span className="font-semibold">Save All Changes</span>.
-        </div>
-      )}
+      <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-700">
+        Editing <span className="font-semibold">{selectedMenu.name}</span>. Changes stay local until you press <span className="font-semibold">Save All Changes</span>.
+      </div>
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
