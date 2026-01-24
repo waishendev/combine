@@ -233,9 +233,9 @@ export function ServicesPageLayout({
           onMouseLeave={() => setIsHoveringHero(false)}
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
-          <div className="relative grid min-h-[320px] gap-10 p-6 md:min-h-[380px] md:p-10 lg:min-h-[420px] lg:grid-cols-2 lg:items-center">
+          <div className="relative grid min-h-[340px] gap-8 p-6 pb-24 md:min-h-[420px] md:gap-10 md:p-10 md:pb-28 lg:min-h-[480px] lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-12 lg:pb-24">
             <div className="order-2 flex h-full flex-col justify-center space-y-6 lg:order-1">
-              <div className="relative min-h-[220px]">
+              <div className="relative min-h-[260px] sm:min-h-[280px] lg:min-h-[320px]">
                 {slides.map((slide, index) => (
                   <div
                     key={`${slide.src}-content-${index}`}
@@ -246,11 +246,11 @@ export function ServicesPageLayout({
                     }`}
                     aria-hidden={index !== activeSlide}
                   >
-                    <div className="space-y-3">
-                      <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
+                    <div className="max-w-xl space-y-4">
+                      <h1 className="text-3xl font-semibold leading-[1.15] text-[var(--foreground)] sm:text-4xl lg:text-5xl">
                         {slide.title}
                       </h1>
-                      <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg">
+                      <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg lg:text-xl">
                         {slide.description}
                       </p>
                     </div>
@@ -263,7 +263,7 @@ export function ServicesPageLayout({
                               href={slide.buttonHref}
                               target={isExternalLink ? "_blank" : undefined}
                               rel={isExternalLink ? "noreferrer" : undefined}
-                              className="inline-flex rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
+                              className="inline-flex rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
                             >
                               {slide.buttonLabel}
                             </a>
@@ -277,7 +277,7 @@ export function ServicesPageLayout({
             </div>
 
             <div className="order-1 flex h-full items-center justify-center lg:order-2 lg:justify-end">
-              <div className="relative w-full max-w-xl">
+              <div className="relative w-full max-w-2xl">
                 <div
                   ref={slideContainerRef}
                   className="relative mx-auto w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-sm"
@@ -289,7 +289,7 @@ export function ServicesPageLayout({
                   onMouseUp={onMouseUp}
                   onMouseLeave={onMouseUp}
                 >
-                  <div className="relative aspect-[16/10] w-full">
+                  <div className="relative aspect-[4/3] w-full md:aspect-[16/10] lg:aspect-[5/4]">
                     {slides.map((slide, index) => (
                       <button
                         key={`${slide.src}-${slide.alt}`}
@@ -317,14 +317,41 @@ export function ServicesPageLayout({
                     ))}
                   </div>
                 </div>
+                {slides.length > 1 && (
+                  <div className="pointer-events-none absolute inset-y-0 left-0 right-0 hidden items-center justify-between px-3 sm:flex">
+                    <button
+                      type="button"
+                      onClick={goToPrevSlide}
+                      className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 text-lg text-[var(--foreground)] shadow-sm transition hover:-translate-y-0.5 hover:bg-[var(--card)]"
+                      aria-label="Previous slide"
+                    >
+                      <span aria-hidden>‹</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToNextSlide}
+                      className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 text-lg text-[var(--foreground)] shadow-sm transition hover:-translate-y-0.5 hover:bg-[var(--card)]"
+                      aria-label="Next slide"
+                    >
+                      <span aria-hidden>›</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
           {slides.length > 1 && (
-            <>
-            
-              <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center md:bottom-6">
-                <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 px-3 py-2 shadow-sm backdrop-blur">
+            <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center md:bottom-7">
+              <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/95 px-3 py-2 shadow-sm backdrop-blur">
+                <button
+                  type="button"
+                  onClick={goToPrevSlide}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--background-soft)] text-base text-[var(--foreground)] transition hover:bg-[var(--card)]"
+                  aria-label="Previous slide"
+                >
+                  <span aria-hidden>‹</span>
+                </button>
+                <div className="flex items-center gap-2">
                   {slides.map((slide, index) => {
                     const isActive = index === activeSlide;
                     return (
@@ -333,7 +360,7 @@ export function ServicesPageLayout({
                         type="button"
                         onClick={() => goToSlide(index)}
                         className={`h-2 rounded-full transition-all duration-300 ${
-                          isActive ? "w-6 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
+                          isActive ? "w-7 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
                         }`}
                         aria-label={`Go to slide ${index + 1}`}
                         aria-pressed={isActive}
@@ -341,8 +368,16 @@ export function ServicesPageLayout({
                     );
                   })}
                 </div>
+                <button
+                  type="button"
+                  onClick={goToNextSlide}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--background-soft)] text-base text-[var(--foreground)] transition hover:bg-[var(--card)]"
+                  aria-label="Next slide"
+                >
+                  <span aria-hidden>›</span>
+                </button>
               </div>
-            </>
+            </div>
           )}
         </section>
         {lightboxIndex !== null && (
