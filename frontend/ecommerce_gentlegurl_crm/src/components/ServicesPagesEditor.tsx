@@ -320,41 +320,7 @@ export default function ServicesPagesEditor({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Services menu</label>
-          <select
-            value={menuId}
-            onChange={(e) => handleMenuChange(Number(e.target.value))}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 md:min-w-[260px]"
-            disabled={!canUpdate || saving || loadingPage}
-          >
-            {sortedMenus.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} ({item.slug})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!canUpdate || saving || loadingPage || !page || !selectedMenu}
-            className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <i className="fa-solid fa-floppy-disk" />
-            {saving ? 'Saving...' : 'Save All Changes'}
-          </button>
-        </div>
-      </div>
-
-      {selectedMenu && (
-        <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-700">
-          Editing <span className="font-semibold">{selectedMenu.name}</span>. Title and slug come from Services Menu and are not editable here.
-        </div>
-      )}
-
+     
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
