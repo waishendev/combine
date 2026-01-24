@@ -35,11 +35,11 @@ export default async function ServicesMenuPage() {
           href="/services-menu"
           className="text-blue-600 hover:underline"
         >
-          {t('catalog.servicesMenu', { defaultValue: 'Services Menu' })}
+          {t('catalog.servicesMenu')}
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        {t('catalog.servicesMenu', { defaultValue: 'Services Menu' })}
+        {t('catalog.servicesMenu')}
       </h2>
       <ServicesMenuTable
         permissions={user.permissions}

@@ -274,5 +274,8 @@
   "table.loading_data": "Loading data...",
 
   "previous": "Previous",
-  "next": "Next"
+  "next": "Next",
+
+  "catalog.servicesMenu": "Services Menu",
+  "catalog.servicesPages": "Services Pages"
 }

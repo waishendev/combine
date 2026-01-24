@@ -207,6 +207,10 @@ class ServicesPageController extends Controller
     private function defaultSections(): array
     {
         return [
+            'hero' => [
+                'is_active' => true,
+                'items' => [],
+            ],
             'services' => [
                 'is_active' => true,
                 'items' => [],

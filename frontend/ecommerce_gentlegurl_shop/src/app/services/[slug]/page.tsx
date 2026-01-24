@@ -7,6 +7,7 @@ import { getServicesPage } from "@/lib/server/getServicesPage";
 type ServicesSections = NonNullable<Awaited<ReturnType<typeof getServicesPage>>>["sections"];
 
 const defaultSections: ServicesSections = {
+  hero: { is_active: true, items: [] },
   services: { is_active: true, items: [] },
   pricing: { is_active: true, items: [] },
   faqs: { is_active: true, items: [] },
@@ -16,6 +17,7 @@ const defaultSections: ServicesSections = {
 function mergeSections(sections: ServicesSections | undefined): ServicesSections {
   if (!sections) return defaultSections;
   return {
+    hero: sections.hero ?? defaultSections.hero,
     services: sections.services ?? defaultSections.services,
     pricing: sections.pricing ?? defaultSections.pricing,
     faqs: sections.faqs ?? defaultSections.faqs,
@@ -56,6 +58,7 @@ export default async function ServicesDetailPage({
       pricingActive={sections.pricing.is_active}
       faqsActive={sections.faqs.is_active}
       notesActive={sections.notes.is_active}
+      heroActive={sections.hero.is_active}
       heroSlides={heroSlides}
       whatsappPhone={whatsapp?.phone ?? null}
       whatsappEnabled={whatsapp?.enabled ?? false}
