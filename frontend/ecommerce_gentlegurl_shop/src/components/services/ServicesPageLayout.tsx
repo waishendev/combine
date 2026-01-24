@@ -8,6 +8,12 @@ type ServiceItem = {
   description: string;
 };
 
+type ServiceSlide = ServiceItem & {
+  imageSrc?: string;
+  imageAlt?: string;
+  badge?: string;
+};
+
 type PricingItem = {
   label: string;
   price: string;
@@ -22,6 +28,7 @@ type ServicesPageLayoutProps = {
   title: string;
   subtitle: string;
   services: ServiceItem[];
+  serviceSlides?: ServiceSlide[];
   pricing: PricingItem[];
   faqs: FAQItem[];
   notes: string[];
@@ -37,6 +44,7 @@ export function ServicesPageLayout({
   title,
   subtitle,
   services,
+  serviceSlides,
   pricing,
   faqs,
   notes,
@@ -66,7 +74,15 @@ export function ServicesPageLayout({
         ? subtitle
         : "Placeholder copy for a synced hero slider. Update this slide text when content is ready."),
   }));
+  const baseServiceSlides: ServiceSlide[] =
+    serviceSlides && serviceSlides.length > 0 ? serviceSlides : services.map((item) => ({ ...item }));
+  const normalizedServiceSlides = baseServiceSlides.map((item) => ({
+    ...item,
+    badge: item.badge ?? "Included",
+    imageAlt: item.imageAlt ?? `${item.title} highlight`,
+  }));
   const [activeSlide, setActiveSlide] = useState(0);
+  const [activeServiceSlide, setActiveServiceSlide] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const [dragStart, setDragStart] = useState<number | null>(null);
@@ -80,12 +96,28 @@ export function ServicesPageLayout({
     return () => window.clearTimeout(resetId);
   }, [title, slides.length]);
 
+  useEffect(() => {
+    const resetId = window.setTimeout(() => setActiveServiceSlide(0), 0);
+    return () => window.clearTimeout(resetId);
+  }, [title, normalizedServiceSlides.length]);
+
   const goToSlide = useCallback(
     (index: number) => {
       const next = (index + slides.length) % slides.length;
       setActiveSlide(next);
+      setLightboxIndex((prev) => (prev === null ? prev : next));
     },
     [slides.length],
+  );
+
+  const goToServiceSlide = useCallback(
+    (index: number) => {
+      const length = normalizedServiceSlides.length;
+      if (length === 0) return;
+      const next = (index + length) % length;
+      setActiveServiceSlide(next);
+    },
+    [normalizedServiceSlides.length],
   );
 
   const goToNextSlide = useCallback(() => {
@@ -95,6 +127,14 @@ export function ServicesPageLayout({
   const goToPrevSlide = useCallback(() => {
     goToSlide(activeSlide - 1);
   }, [activeSlide, goToSlide]);
+
+  const goToNextServiceSlide = useCallback(() => {
+    goToServiceSlide(activeServiceSlide + 1);
+  }, [activeServiceSlide, goToServiceSlide]);
+
+  const goToPrevServiceSlide = useCallback(() => {
+    goToServiceSlide(activeServiceSlide - 1);
+  }, [activeServiceSlide, goToServiceSlide]);
 
   useEffect(() => {
     if (slides.length <= 1 || isHoveringHero || lightboxIndex !== null) return;
@@ -111,10 +151,20 @@ export function ServicesPageLayout({
           setLightboxIndex(null);
         } else if (event.key === "ArrowRight") {
           event.preventDefault();
-          setLightboxIndex((prev) => (prev === null ? prev : (prev + 1) % slides.length));
+          setLightboxIndex((prev) => {
+            if (prev === null) return prev;
+            const next = (prev + 1) % slides.length;
+            setActiveSlide(next);
+            return next;
+          });
         } else if (event.key === "ArrowLeft") {
           event.preventDefault();
-          setLightboxIndex((prev) => (prev === null ? prev : (prev - 1 + slides.length) % slides.length));
+          setLightboxIndex((prev) => {
+            if (prev === null) return prev;
+            const next = (prev - 1 + slides.length) % slides.length;
+            setActiveSlide(next);
+            return next;
+          });
         }
         return;
       }
@@ -266,7 +316,10 @@ export function ServicesPageLayout({
                       <button
                         key={`${slide.src}-${slide.alt}`}
                         type="button"
-                        onClick={() => setLightboxIndex(index)}
+                        onClick={() => {
+                          setActiveSlide(index);
+                          setLightboxIndex(index);
+                        }}
                         className={`absolute inset-0 block h-full w-full cursor-zoom-in transition-all duration-500 ease-out will-change-transform ${
                           index === activeSlide
                             ? "translate-x-0 opacity-100"
@@ -333,7 +386,14 @@ export function ServicesPageLayout({
                 <>
                   <button
                     type="button"
-                    onClick={() => setLightboxIndex((prev) => (prev === null ? prev : (prev - 1 + slides.length) % slides.length))}
+                    onClick={() =>
+                      setLightboxIndex((prev) => {
+                        if (prev === null) return prev;
+                        const next = (prev - 1 + slides.length) % slides.length;
+                        setActiveSlide(next);
+                        return next;
+                      })
+                    }
                     className="absolute left-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
                     aria-label="Previous image"
                   >
@@ -341,7 +401,14 @@ export function ServicesPageLayout({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setLightboxIndex((prev) => (prev === null ? prev : (prev + 1) % slides.length))}
+                    onClick={() =>
+                      setLightboxIndex((prev) => {
+                        if (prev === null) return prev;
+                        const next = (prev + 1) % slides.length;
+                        setActiveSlide(next);
+                        return next;
+                      })
+                    }
                     className="absolute right-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
                     aria-label="Next image"
                   >
@@ -409,19 +476,94 @@ export function ServicesPageLayout({
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/80 to-transparent sm:ml-6" />
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((item) => (
-              <div
-                key={item.title}
-                className="h-full rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-lg font-semibold text-[var(--foreground)]">{item.title}</h3>
-                  <span className="rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs font-medium text-[var(--foreground)]/70">Included</span>
+          <div className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_24px_70px_-45px_rgba(17,24,39,0.55)]">
+            <div className="relative min-h-[280px]">
+              {normalizedServiceSlides.map((item, index) => {
+                const isActive = index === activeServiceSlide;
+                return (
+                  <article
+                    key={`${item.title}-service-slide-${index}`}
+                    className={`absolute inset-0 grid gap-6 p-6 transition-all duration-500 ease-out md:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] md:items-center md:p-10 ${
+                      isActive ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-10 opacity-0"
+                    }`}
+                    aria-hidden={!isActive}
+                  >
+                    <div className="order-2 flex flex-col justify-center space-y-4 md:order-1">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-[var(--foreground)]/70">
+                          {item.badge}
+                        </span>
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]/80">
+                          Service detail
+                        </span>
+                      </div>
+                      <h3 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">{item.title}</h3>
+                      <p className="text-sm leading-relaxed text-[var(--foreground)]/75 sm:text-base">{item.description}</p>
+                    </div>
+                    <div className="order-1 md:order-2">
+                      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-inner">
+                        {item.imageSrc ? (
+                          <Image
+                            src={item.imageSrc}
+                            alt={item.imageAlt ?? item.title}
+                            fill
+                            className="object-cover"
+                            sizes="(min-width: 1024px) 420px, (min-width: 768px) 50vw, 100vw"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[var(--accent)]/15 via-transparent to-[var(--accent-strong)]/20 p-6 text-center text-sm font-medium uppercase tracking-[0.2em] text-[var(--foreground)]/55">
+                            Add service image
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {normalizedServiceSlides.length > 1 && (
+              <>
+                <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-between px-3 md:px-5">
+                  <button
+                    type="button"
+                    onClick={goToPrevServiceSlide}
+                    className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 text-lg text-[var(--foreground)]/80 shadow-sm transition hover:-translate-y-0.5 hover:text-[var(--foreground)]"
+                    aria-label="Previous service"
+                  >
+                    <span aria-hidden>←</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goToNextServiceSlide}
+                    className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 text-lg text-[var(--foreground)]/80 shadow-sm transition hover:-translate-y-0.5 hover:text-[var(--foreground)]"
+                    aria-label="Next service"
+                  >
+                    <span aria-hidden>→</span>
+                  </button>
                 </div>
-                <p className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">{item.description}</p>
-              </div>
-            ))}
+
+                <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center md:bottom-6">
+                  <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[var(--card-border)]/80 bg-[var(--card)]/90 px-3 py-2 shadow-sm backdrop-blur">
+                    {normalizedServiceSlides.map((item, index) => {
+                      const isActive = index === activeServiceSlide;
+                      return (
+                        <button
+                          key={`${item.title}-service-dot-${index}`}
+                          type="button"
+                          onClick={() => goToServiceSlide(index)}
+                          className={`h-2 rounded-full transition-all duration-300 ${
+                            isActive ? "w-6 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
+                          }`}
+                          aria-label={`Go to service ${index + 1}`}
+                          aria-pressed={isActive}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
