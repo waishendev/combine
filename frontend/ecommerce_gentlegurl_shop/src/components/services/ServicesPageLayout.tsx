@@ -18,6 +18,16 @@ type FAQItem = {
   answer: string;
 };
 
+type HeroSlide = {
+  src: string;
+  alt: string;
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  buttonLabel?: string;
+  buttonHref?: string;
+};
+
 type ServicesPageLayoutProps = {
   title: string;
   subtitle: string;
@@ -26,7 +36,7 @@ type ServicesPageLayoutProps = {
   faqs: FAQItem[];
   notes: string[];
   heroImage?: string;
-  heroSlides?: { src: string; alt: string; title?: string; subtitle?: string }[];
+  heroSlides?: HeroSlide[];
   galleryImages?: { src: string; alt: string; caption?: string }[];
   whatsappPhone?: string | null;
   whatsappEnabled?: boolean;
@@ -48,7 +58,7 @@ export function ServicesPageLayout({
 }: ServicesPageLayoutProps) {
   const pricingRef = useRef<HTMLDivElement | null>(null);
   const slideContainerRef = useRef<HTMLDivElement | null>(null);
-  const baseSlides =
+  const baseSlides: HeroSlide[] =
     heroSlides && heroSlides.length > 0
       ? heroSlides
       : [
@@ -57,15 +67,35 @@ export function ServicesPageLayout({
             alt: `${title} hero visual`,
           },
         ];
-  const slides = baseSlides.map((slide, index) => ({
-    ...slide,
-    title: slide.title ?? `${title} spotlight ${index + 1}`,
-    subtitle:
+
+  const getWhatsAppUrl = useCallback(() => {
+    if (!whatsappEnabled || !whatsappPhone) return undefined;
+    const sanitizedPhone = whatsappPhone.replace(/[^\d]/g, "");
+    const message = whatsappDefaultMessage ?? `Hi! I would like to book an appointment for ${title}.`;
+    return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
+  }, [title, whatsappDefaultMessage, whatsappEnabled, whatsappPhone]);
+
+  const whatsappUrl = getWhatsAppUrl();
+
+  const slides = baseSlides.map((slide, index) => {
+    const resolvedTitle = slide.title ?? `${title} spotlight ${index + 1}`;
+    const resolvedDescription =
+      slide.description ??
       slide.subtitle ??
       (index === 0
         ? subtitle
-        : "Placeholder copy for a synced hero slider. Update this slide text when content is ready."),
-  }));
+        : "Add a short highlight for this slide so it feels like a complete card.");
+    const resolvedButtonHref = slide.buttonHref ?? whatsappUrl;
+    const resolvedButtonLabel = resolvedButtonHref ? slide.buttonLabel ?? "Book an Appointment" : undefined;
+
+    return {
+      ...slide,
+      title: resolvedTitle,
+      description: resolvedDescription,
+      buttonHref: resolvedButtonHref,
+      buttonLabel: resolvedButtonLabel,
+    };
+  });
   const [activeSlide, setActiveSlide] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
@@ -141,15 +171,6 @@ export function ServicesPageLayout({
     };
   }, [lightboxIndex]);
 
-  const getWhatsAppUrl = () => {
-    if (!whatsappEnabled || !whatsappPhone) return "#";
-    const sanitizedPhone = whatsappPhone.replace(/[^\d]/g, "");
-    const message = whatsappDefaultMessage ?? `Hi! I would like to book an appointment for ${title}.`;
-    return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
-  };
-
-  const showBookButton = whatsappEnabled && whatsappPhone;
-
   const minSwipeDistance = 50;
 
   const onTouchStart = (e: React.TouchEvent) => {
@@ -214,38 +235,45 @@ export function ServicesPageLayout({
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
           <div className="relative grid min-h-[320px] gap-10 p-6 md:min-h-[380px] md:p-10 lg:min-h-[420px] lg:grid-cols-2 lg:items-center">
             <div className="order-2 flex h-full flex-col justify-center space-y-6 lg:order-1">
-              <div className="relative min-h-[200px]">
+              <div className="relative min-h-[220px]">
                 {slides.map((slide, index) => (
                   <div
                     key={`${slide.src}-content-${index}`}
-                    className={`absolute inset-0 flex flex-col justify-center space-y-3 transition-all duration-500 ease-out will-change-transform ${
+                    className={`absolute inset-0 flex flex-col justify-center space-y-4 transition-all duration-500 ease-out will-change-transform ${
                       index === activeSlide
                         ? "translate-x-0 opacity-100"
                         : "pointer-events-none translate-x-8 opacity-0"
                     }`}
                     aria-hidden={index !== activeSlide}
                   >
-                    <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
-                      {slide.title}
-                    </h1>
-                    <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg">
-                      {slide.subtitle}
-                    </p>
+                    <div className="space-y-3">
+                      <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
+                        {slide.title}
+                      </h1>
+                      <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg">
+                        {slide.description}
+                      </p>
+                    </div>
+                    {slide.buttonHref && slide.buttonLabel && (
+                      <div className="pt-2">
+                        {(() => {
+                          const isExternalLink = slide.buttonHref?.startsWith("http");
+                          return (
+                            <a
+                              href={slide.buttonHref}
+                              target={isExternalLink ? "_blank" : undefined}
+                              rel={isExternalLink ? "noreferrer" : undefined}
+                              className="inline-flex rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
+                            >
+                              {slide.buttonLabel}
+                            </a>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-              {showBookButton && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <a
-                    href={getWhatsAppUrl()}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
-                  >
-                    Book an Appointment
-                  </a>
-                </div>
-              )}
             </div>
 
             <div className="order-1 flex h-full items-center justify-center lg:order-2 lg:justify-end">

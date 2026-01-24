@@ -81,12 +81,41 @@ export default async function NailServicesPage() {
       faqs={faqs}
       notes={notes}
       heroSlides={[
-        { src: "/images/CUSTOMERGIVE/Manicure.jpeg", alt: "Gel manicure with design" },
-        { src: "/images/CUSTOMERGIVE/Gel Manicure.jpeg", alt: "Gel manicure with design" },
-        { src: "/images/CUSTOMERGIVE/Gel Manicure with Design.jpeg", alt: "Gel manicure with design" },
-        // { src: "/images/CUSTOMERGIVE/Pedicure RM45.jpeg", alt: "Gel manicure with design" },
-        { src: "/images/CUSTOMERGIVE/Gel Pedicure.jpeg", alt: "Gel manicure with design" },
-        { src: "/images/CUSTOMERGIVE/Gel Pedicure with Design.jpeg", alt: "Gel pedicure with design" },
+        {
+          src: "/images/CUSTOMERGIVE/Manicure.jpeg",
+          alt: "Classic manicure service",
+          title: "Manicure & Gel Manicure",
+          description: "Cuticle care, shaping, and polish options from classic shades to art design and mystery boxes.",
+          buttonLabel: "Book Manicure",
+        },
+        {
+          src: "/images/CUSTOMERGIVE/Gel Manicure.jpeg",
+          alt: "Gel manicure finish",
+          title: "Long-lasting gel color",
+          description: "Choose plain, glitter, cat eye, chrome, or custom finishing for a durable gel manicure.",
+          buttonLabel: "See Gel Options",
+        },
+        {
+          src: "/images/CUSTOMERGIVE/Gel Manicure with Design.jpeg",
+          alt: "Gel manicure with nail art",
+          title: "Custom creative nail art",
+          description: "Share your reference photos early so we can reserve enough time for detailed art sessions.",
+          buttonLabel: "Plan Nail Art",
+        },
+        {
+          src: "/images/CUSTOMERGIVE/Gel Pedicure.jpeg",
+          alt: "Gel pedicure service",
+          title: "Pedicure & gel pedicure",
+          description: "Relaxing foot care paired with gel finishes that stay glossy and chip-resistant for weeks.",
+          buttonLabel: "Book Pedicure",
+        },
+        {
+          src: "/images/CUSTOMERGIVE/Gel Pedicure with Design.jpeg",
+          alt: "Gel pedicure with design",
+          title: "Spa upgrades & enhancements",
+          description: "Add masks, scrubs, massage, and collagen therapy to turn your appointment into a full spa experience.",
+          buttonLabel: "Add Spa Upgrade",
+        },
       ]}
 
       whatsappPhone={whatsapp?.phone ?? null}
