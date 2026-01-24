@@ -26,7 +26,7 @@ type ServicesPageLayoutProps = {
   faqs: FAQItem[];
   notes: string[];
   heroImage?: string;
-  heroSlides?: { src: string; alt: string }[];
+  heroSlides?: { src: string; alt: string; title?: string; subtitle?: string }[];
   galleryImages?: { src: string; alt: string; caption?: string }[];
   whatsappPhone?: string | null;
   whatsappEnabled?: boolean;
@@ -42,14 +42,13 @@ export function ServicesPageLayout({
   notes,
   heroImage,
   heroSlides,
-  galleryImages,
   whatsappPhone,
   whatsappEnabled = true,
   whatsappDefaultMessage,
 }: ServicesPageLayoutProps) {
   const pricingRef = useRef<HTMLDivElement | null>(null);
   const slideContainerRef = useRef<HTMLDivElement | null>(null);
-  const slides =
+  const baseSlides =
     heroSlides && heroSlides.length > 0
       ? heroSlides
       : [
@@ -58,15 +57,24 @@ export function ServicesPageLayout({
             alt: `${title} hero visual`,
           },
         ];
+  const slides = baseSlides.map((slide, index) => ({
+    ...slide,
+    title: slide.title ?? `${title} spotlight ${index + 1}`,
+    subtitle:
+      slide.subtitle ??
+      (index === 0
+        ? subtitle
+        : "Placeholder copy for a synced hero slider. Update this slide text when content is ready."),
+  }));
   const [activeSlide, setActiveSlide] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
 
   useEffect(() => {
-    setActiveSlide(0);
+    const resetId = window.setTimeout(() => setActiveSlide(0), 0);
+    return () => window.clearTimeout(resetId);
   }, [title, slides.length]);
 
   const getWhatsAppUrl = () => {
@@ -105,14 +113,12 @@ export function ServicesPageLayout({
 
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    setIsDragging(false);
     setDragStart(e.clientX);
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
     if (dragStart !== null) {
       e.preventDefault();
-      setIsDragging(true);
     }
   };
 
@@ -130,7 +136,6 @@ export function ServicesPageLayout({
     }
 
     setDragStart(null);
-    setIsDragging(false);
   };
 
   return (
@@ -141,10 +146,24 @@ export function ServicesPageLayout({
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
           <div className="relative grid gap-10 p-8 sm:p-10 lg:grid-cols-2 lg:items-center">
             <div className="order-2 space-y-6 lg:order-1">
-          
-              <div className="space-y-3">
-                <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">{title}</h1>
-                <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg">{subtitle}</p>
+              <div className="relative min-h-[160px]">
+                {slides.map((slide, index) => (
+                  <div
+                    key={`${slide.src}-content-${index}`}
+                    className={`absolute inset-0 space-y-3 transition-all duration-500 ${
+                      index === activeSlide
+                        ? "translate-x-0 opacity-100"
+                        : "pointer-events-none translate-x-6 opacity-0"
+                    }`}
+                  >
+                    <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
+                      {slide.title}
+                    </h1>
+                    <p className="text-base leading-relaxed text-[var(--foreground)]/80 sm:text-lg">
+                      {slide.subtitle}
+                    </p>
+                  </div>
+                ))}
               </div>
               {showBookButton && (
                 <div className="flex flex-wrap items-center gap-3">
@@ -163,7 +182,7 @@ export function ServicesPageLayout({
             <div className="order-1 flex justify-center lg:order-2 lg:justify-end">
               <div
                 ref={slideContainerRef}
-                className="relative h-70 w-full max-w-md overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)] cursor-grab active:cursor-grabbing"
+                className="relative h-80 w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)] cursor-grab active:cursor-grabbing sm:h-96"
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
@@ -175,8 +194,10 @@ export function ServicesPageLayout({
                 {slides.map((slide, index) => (
                   <div
                     key={`${slide.src}-${slide.alt}`}
-                    className={`absolute inset-0 transition-opacity duration-500 ${
-                      index === activeSlide ? "opacity-100" : "opacity-0"
+                    className={`absolute inset-0 transition-all duration-500 ${
+                      index === activeSlide
+                        ? "translate-x-0 opacity-100"
+                        : "pointer-events-none -translate-x-6 opacity-0"
                     }`}
                   >
                     <Image
@@ -190,26 +211,27 @@ export function ServicesPageLayout({
                     />
                   </div>
                 ))}
-                {slides.length > 1 && (
-                  <div className="absolute inset-x-0 bottom-3 flex items-center justify-center">
-                    <div className="flex items-center gap-2 rounded-full bg-black/30 px-3 py-1.5 backdrop-blur-sm">
-                      {slides.map((slide, index) => (
-                        <button
-                          key={`${slide.src}-dot`}
-                          type="button"
-                          onClick={() => setActiveSlide(index)}
-                          className={`h-2 w-2 rounded-full transition ${
-                            index === activeSlide ? "bg-white" : "bg-white/50"
-                          }`}
-                          aria-label={`Go to slide ${index + 1}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
+          {slides.length > 1 && (
+            <div className="relative mt-6 flex items-center justify-center">
+              <div className="flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 px-4 py-2 shadow-sm backdrop-blur">
+                {slides.map((slide, index) => (
+                  <button
+                    key={`${slide.src}-dot`}
+                    type="button"
+                    onClick={() => setActiveSlide(index)}
+                    className={`h-2.5 w-2.5 rounded-full transition ${
+                      index === activeSlide ? "scale-110 bg-[var(--accent)]" : "bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/40"
+                    }`}
+                    aria-label={`Go to slide ${index + 1}`}
+                    aria-pressed={index === activeSlide}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 {/* 
         {galleryImages && galleryImages.length > 0 && (
