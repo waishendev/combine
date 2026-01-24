@@ -85,7 +85,7 @@ export default function ServicesMenuRow({
               <button
                 type="button"
                 onClick={() => onEdit?.(servicesMenu)}
-                className="px-2 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
                 aria-label="Edit"
                 title="Edit"
               >
@@ -96,7 +96,7 @@ export default function ServicesMenuRow({
               <button
                 type="button"
                 onClick={() => onDelete?.(servicesMenu)}
-                className="px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
                 aria-label="Delete"
                 title="Delete"
               >
