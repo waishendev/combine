@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type ServiceItem = {
   title: string;
@@ -71,11 +71,75 @@ export function ServicesPageLayout({
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
+  const [isHoveringHero, setIsHoveringHero] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const autoplayDelayMs = 5000;
 
   useEffect(() => {
     const resetId = window.setTimeout(() => setActiveSlide(0), 0);
     return () => window.clearTimeout(resetId);
   }, [title, slides.length]);
+
+  const goToSlide = useCallback(
+    (index: number) => {
+      const next = (index + slides.length) % slides.length;
+      setActiveSlide(next);
+    },
+    [slides.length],
+  );
+
+  const goToNextSlide = useCallback(() => {
+    goToSlide(activeSlide + 1);
+  }, [activeSlide, goToSlide]);
+
+  const goToPrevSlide = useCallback(() => {
+    goToSlide(activeSlide - 1);
+  }, [activeSlide, goToSlide]);
+
+  useEffect(() => {
+    if (slides.length <= 1 || isHoveringHero || lightboxIndex !== null) return;
+    const intervalId = window.setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % slides.length);
+    }, autoplayDelayMs);
+    return () => window.clearInterval(intervalId);
+  }, [autoplayDelayMs, isHoveringHero, lightboxIndex, slides.length]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (lightboxIndex !== null) {
+        if (event.key === "Escape") {
+          setLightboxIndex(null);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          setLightboxIndex((prev) => (prev === null ? prev : (prev + 1) % slides.length));
+        } else if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          setLightboxIndex((prev) => (prev === null ? prev : (prev - 1 + slides.length) % slides.length));
+        }
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setActiveSlide((prev) => (prev + 1) % slides.length);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lightboxIndex, slides.length]);
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = overflow;
+    };
+  }, [lightboxIndex]);
 
   const getWhatsAppUrl = () => {
     if (!whatsappEnabled || !whatsappPhone) return "#";
@@ -104,10 +168,10 @@ export function ServicesPageLayout({
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe) {
-      setActiveSlide((prev) => (prev + 1) % slides.length);
+      goToNextSlide();
     }
     if (isRightSwipe) {
-      setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
+      goToPrevSlide();
     }
   };
 
@@ -129,10 +193,10 @@ export function ServicesPageLayout({
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe) {
-      setActiveSlide((prev) => (prev + 1) % slides.length);
+      goToNextSlide();
     }
     if (isRightSwipe) {
-      setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
+      goToPrevSlide();
     }
 
     setDragStart(null);
@@ -142,19 +206,24 @@ export function ServicesPageLayout({
     <main className="bg-gradient-to-b from-transparent via-white/60 to-transparent pb-16">
       <div className="mx-auto max-w-6xl space-y-12 px-4 pt-10 sm:px-6 lg:px-8">
         {/* Hero */}
-        <section className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
+        <section
+          className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-sm"
+          onMouseEnter={() => setIsHoveringHero(true)}
+          onMouseLeave={() => setIsHoveringHero(false)}
+        >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(231,162,186,0.18),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(247,223,233,0.35),transparent_30%)]" />
-          <div className="relative grid gap-10 p-8 sm:p-10 lg:grid-cols-2 lg:items-center">
-            <div className="order-2 space-y-6 lg:order-1">
-              <div className="relative min-h-[160px]">
+          <div className="relative grid min-h-[320px] gap-10 p-6 md:min-h-[380px] md:p-10 lg:min-h-[420px] lg:grid-cols-2 lg:items-center">
+            <div className="order-2 flex h-full flex-col justify-center space-y-6 lg:order-1">
+              <div className="relative min-h-[200px]">
                 {slides.map((slide, index) => (
                   <div
                     key={`${slide.src}-content-${index}`}
-                    className={`absolute inset-0 space-y-3 transition-all duration-500 ${
+                    className={`absolute inset-0 flex flex-col justify-center space-y-3 transition-all duration-500 ease-out will-change-transform ${
                       index === activeSlide
                         ? "translate-x-0 opacity-100"
-                        : "pointer-events-none translate-x-6 opacity-0"
+                        : "pointer-events-none translate-x-8 opacity-0"
                     }`}
+                    aria-hidden={index !== activeSlide}
                   >
                     <h1 className="text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
                       {slide.title}
@@ -171,7 +240,7 @@ export function ServicesPageLayout({
                     href={getWhatsAppUrl()}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white shadow-md transition hover:bg-[var(--accent-strong)]"
+                    className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
                   >
                     Book an Appointment
                   </a>
@@ -179,60 +248,148 @@ export function ServicesPageLayout({
               )}
             </div>
 
-            <div className="order-1 flex justify-center lg:order-2 lg:justify-end">
-              <div
-                ref={slideContainerRef}
-                className="relative h-80 w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)] cursor-grab active:cursor-grabbing sm:h-96"
-                onTouchStart={onTouchStart}
-                onTouchMove={onTouchMove}
-                onTouchEnd={onTouchEnd}
-                onMouseDown={onMouseDown}
-                onMouseMove={onMouseMove}
-                onMouseUp={onMouseUp}
-                onMouseLeave={onMouseUp}
+            <div className="order-1 flex h-full items-center justify-center lg:order-2 lg:justify-end">
+              <div className="relative w-full max-w-xl">
+                <div
+                  ref={slideContainerRef}
+                  className="relative mx-auto w-full overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-sm"
+                  onTouchStart={onTouchStart}
+                  onTouchMove={onTouchMove}
+                  onTouchEnd={onTouchEnd}
+                  onMouseDown={onMouseDown}
+                  onMouseMove={onMouseMove}
+                  onMouseUp={onMouseUp}
+                  onMouseLeave={onMouseUp}
+                >
+                  <div className="relative aspect-[16/10] w-full">
+                    {slides.map((slide, index) => (
+                      <button
+                        key={`${slide.src}-${slide.alt}`}
+                        type="button"
+                        onClick={() => setLightboxIndex(index)}
+                        className={`absolute inset-0 block h-full w-full cursor-zoom-in transition-all duration-500 ease-out will-change-transform ${
+                          index === activeSlide
+                            ? "translate-x-0 opacity-100"
+                            : "pointer-events-none -translate-x-8 opacity-0"
+                        }`}
+                        aria-label={`Open slide ${index + 1} image`}
+                        aria-hidden={index !== activeSlide}
+                        tabIndex={index === activeSlide ? 0 : -1}
+                      >
+                        <Image
+                          src={slide.src}
+                          alt={slide.alt}
+                          fill
+                          className="object-cover"
+                          sizes="(min-width: 1280px) 520px, (min-width: 1024px) 480px, (min-width: 768px) 50vw, 100vw"
+                          priority={index === activeSlide}
+                          draggable={false}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {slides.length > 1 && (
+                  <>
+                    <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 items-center justify-between px-4 sm:flex">
+                      <button
+                        type="button"
+                        onClick={goToPrevSlide}
+                        className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/80 text-[var(--foreground)] shadow-md transition hover:-translate-y-0.5 hover:bg-white"
+                        aria-label="Previous slide"
+                      >
+                        <span aria-hidden>←</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={goToNextSlide}
+                        className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/80 text-[var(--foreground)] shadow-md transition hover:-translate-y-0.5 hover:bg-white"
+                        aria-label="Next slide"
+                      >
+                        <span aria-hidden>→</span>
+                      </button>
+                    </div>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+                      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/60 bg-white/85 px-3 py-2 shadow-sm backdrop-blur">
+                        {slides.map((slide, index) => {
+                          const isActive = index === activeSlide;
+                          return (
+                            <button
+                              key={`${slide.src}-dot`}
+                              type="button"
+                              onClick={() => goToSlide(index)}
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                isActive ? "w-6 bg-[var(--accent)]" : "w-2 bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/45"
+                              }`}
+                              aria-label={`Go to slide ${index + 1}`}
+                              aria-pressed={isActive}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+        {lightboxIndex !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="relative w-full max-w-5xl">
+              <button
+                type="button"
+                onClick={() => setLightboxIndex(null)}
+                className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
+                aria-label="Close image preview"
               >
+                <span aria-hidden>✕</span>
+              </button>
+
+              {slides.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxIndex((prev) => (prev === null ? prev : (prev - 1 + slides.length) % slides.length))}
+                    className="absolute left-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
+                    aria-label="Previous image"
+                  >
+                    <span aria-hidden>←</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxIndex((prev) => (prev === null ? prev : (prev + 1) % slides.length))}
+                    className="absolute right-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
+                    aria-label="Next image"
+                  >
+                    <span aria-hidden>→</span>
+                  </button>
+                </>
+              )}
+
+              <div className="relative aspect-[16/10] w-full overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
                 {slides.map((slide, index) => (
                   <div
-                    key={`${slide.src}-${slide.alt}`}
-                    className={`absolute inset-0 transition-all duration-500 ${
-                      index === activeSlide
-                        ? "translate-x-0 opacity-100"
-                        : "pointer-events-none -translate-x-6 opacity-0"
+                    key={`${slide.src}-lightbox-${index}`}
+                    className={`absolute inset-0 transition-all duration-500 ease-out will-change-transform ${
+                      index === lightboxIndex ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-6 opacity-0"
                     }`}
+                    aria-hidden={index !== lightboxIndex}
                   >
                     <Image
                       src={slide.src}
                       alt={slide.alt}
                       fill
-                      className="object-cover"
-                      sizes="(min-width: 1024px) 420px, (min-width: 640px) 520px, 100vw"
-                      priority={index === activeSlide}
-                      draggable={false}
+                      className="object-contain"
+                      sizes="100vw"
+                      priority={index === lightboxIndex}
                     />
                   </div>
                 ))}
               </div>
             </div>
           </div>
-          {slides.length > 1 && (
-            <div className="relative mt-6 flex items-center justify-center">
-              <div className="flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 px-4 py-2 shadow-sm backdrop-blur">
-                {slides.map((slide, index) => (
-                  <button
-                    key={`${slide.src}-dot`}
-                    type="button"
-                    onClick={() => setActiveSlide(index)}
-                    className={`h-2.5 w-2.5 rounded-full transition ${
-                      index === activeSlide ? "scale-110 bg-[var(--accent)]" : "bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/40"
-                    }`}
-                    aria-label={`Go to slide ${index + 1}`}
-                    aria-pressed={index === activeSlide}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
+        )}
 {/* 
         {galleryImages && galleryImages.length > 0 && (
           <section className="space-y-6">
