@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const CRM_SESSION_COOKIE = 'gentlegurl-crm-session';
+const LEGACY_AUTH_COOKIE_NAMES = [
+  'connect.sid',
+  'laravel-session',
+  'gentlegurl-api-session',
+];
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -82,9 +89,13 @@ export async function POST(request: NextRequest) {
             }
           });
           
-          console.log(`[Login API] Setting cookie: ${name} with path=${path}, httpOnly=${httpOnly}, sameSite=${sameSite}`);
+          const cookieName = LEGACY_AUTH_COOKIE_NAMES.includes(name.trim())
+            ? CRM_SESSION_COOKIE
+            : name.trim();
+
+          console.log(`[Login API] Setting cookie: ${cookieName} with path=${path}, httpOnly=${httpOnly}, sameSite=${sameSite}`);
           
-          nextResponse.cookies.set(name.trim(), value.trim(), {
+          nextResponse.cookies.set(cookieName, value.trim(), {
             httpOnly,
             sameSite,
             path,
@@ -104,4 +115,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
