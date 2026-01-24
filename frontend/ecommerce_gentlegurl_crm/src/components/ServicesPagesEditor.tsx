@@ -1,7 +1,9 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+
+import { IMAGE_ACCEPT } from './mediaAccept'
 
 type ServicesMenuItem = {
   id: number
@@ -137,6 +139,8 @@ export default function ServicesPagesEditor({
   const [slideMobileFiles, setSlideMobileFiles] = useState<(File | null)[]>([])
   const [slidePreviews, setSlidePreviews] = useState<(string | null)[]>([])
   const [slideMobilePreviews, setSlideMobilePreviews] = useState<(string | null)[]>([])
+  const slideImageInputRefs = useRef<(HTMLInputElement | null)[]>([])
+  const slideMobileImageInputRefs = useRef<(HTMLInputElement | null)[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -283,6 +287,46 @@ export default function ServicesPagesEditor({
       next[index] = previewUrl
       return next
     })
+  }
+
+  const handleSlideImageClick = (index: number) => {
+    const input = slideImageInputRefs.current[index]
+    if (input) {
+      input.click()
+    }
+  }
+
+  const handleSlideMobileImageClick = (index: number) => {
+    const input = slideMobileImageInputRefs.current[index]
+    if (input) {
+      input.click()
+    }
+  }
+
+  const handleSlideImageChange = (index: number, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      const previewUrl = URL.createObjectURL(file)
+      setSlideFileAt(index, file, previewUrl, false)
+    }
+  }
+
+  const handleSlideMobileImageChange = (index: number, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      const previewUrl = URL.createObjectURL(file)
+      setSlideFileAt(index, file, previewUrl, true)
+    }
+  }
+
+  const handleRemoveSlideImage = (index: number, isMobile: boolean) => {
+    setSlideFileAt(index, null, null, isMobile)
+    updateSlide(index, (prev) => ({ ...prev, [isMobile ? 'mobileSrc' : 'src']: '' }))
+    if (isMobile && slideMobileImageInputRefs.current[index]) {
+      slideMobileImageInputRefs.current[index].value = ''
+    } else if (!isMobile && slideImageInputRefs.current[index]) {
+      slideImageInputRefs.current[index].value = ''
+    }
   }
 
   const toggleSlideCollapsed = (index: number) => {
@@ -501,6 +545,22 @@ export default function ServicesPagesEditor({
                 </select>
               </label>
             </div>
+            <div className="mt-4">
+              <label className="space-y-1 text-sm text-gray-700">
+                <span className="font-medium">Subtitle</span>
+                <input
+                  type="text"
+                  value={page.subtitle ?? ''}
+                  onChange={(e) =>
+                    setPage({ ...page, subtitle: e.target.value || null })
+                  }
+                  placeholder="Optional subtitle for the page"
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  disabled={!canUpdate || saving}
+                />
+                <p className="text-[11px] text-gray-400">Optional subtitle text displayed on the services page.</p>
+              </label>
+            </div>
           </section>
 
           <SectionCard
@@ -533,25 +593,17 @@ export default function ServicesPagesEditor({
             ) : (
               <div className="space-y-4">
                 {page.hero_slides.map((slide, index) => (
-                  <div key={`slide-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleSlideCollapsed(index)}
-                        className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
-                      >
-                        <i className={`fa-solid ${collapsedSlides[index] ? 'fa-chevron-right' : 'fa-chevron-down'}`} />
-                        <span>Slide {index + 1}</span>
-                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500">
-                          Sort {slide.sort_order}
-                        </span>
-                      </button>
+                  <div key={`slide-${index}`} className="rounded-lg border border-gray-200 p-4 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Slide #{index + 1}</p>
+                      </div>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => moveSlide(index, -1)}
                           disabled={!canUpdate || index === 0}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                           aria-label="Move slide up"
                         >
                           <i className="fa-solid fa-arrow-up" />
@@ -560,104 +612,159 @@ export default function ServicesPagesEditor({
                           type="button"
                           onClick={() => moveSlide(index, 1)}
                           disabled={!canUpdate || index === page.hero_slides.length - 1}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                           aria-label="Move slide down"
                         >
                           <i className="fa-solid fa-arrow-down" />
                         </button>
                         <button
                           type="button"
+                          onClick={() => toggleSlideCollapsed(index)}
+                          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                        >
+                          <i className={`fa-solid ${collapsedSlides[index] ? 'fa-chevron-down' : 'fa-chevron-up'}`} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => removeSlide(index)}
                           disabled={!canUpdate}
-                          className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                          className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                         >
-                          Remove
+                          <i className="fa-solid fa-trash" />
                         </button>
                       </div>
                     </div>
                     {!collapsedSlides[index] && (
                       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
                         <div className="space-y-4">
-                          <div className="space-y-2">
-                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Desktop image</label>
-                            <p className="text-[11px] text-red-500">Suggested size: 1920 x 848</p>
-                            <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-white p-3">
+                          <div>
+                            <h3 className="text-sm font-medium text-gray-700 mb-1">Desktop Image <span className="text-red-500">*</span></h3>
+                            <p className="text-xs text-red-500 mb-2">Suggested size: 1920 x 848</p>
+                            <div
+                              onClick={() => canUpdate && handleSlideImageClick(index)}
+                              className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                                (slidePreviews[index] ?? slide.src)
+                                  ? 'border-gray-300'
+                                  : 'border-gray-300 hover:border-blue-400'
+                              } ${!canUpdate ? 'cursor-not-allowed opacity-50' : ''}`}
+                            >
                               <input
-                                type="file"
-                                accept="image/*"
-                                disabled={!canUpdate}
-                                onChange={(event) => {
-                                  const file = event.target.files?.[0]
-                                  if (!file) return
-                                  const previewUrl = URL.createObjectURL(file)
-                                  setSlideFileAt(index, file, previewUrl, false)
+                                ref={(el) => {
+                                  if (el) {
+                                    slideImageInputRefs.current[index] = el
+                                  }
                                 }}
-                                className="text-xs"
+                                type="file"
+                                accept={IMAGE_ACCEPT}
+                                onChange={(e) => handleSlideImageChange(index, e)}
+                                className="hidden"
+                                disabled={!canUpdate}
                               />
                               {(slidePreviews[index] ?? slide.src) ? (
-                                <div className="relative overflow-hidden rounded border border-gray-200">
+                                <div className="relative group">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={slidePreviews[index] ?? slide.src} alt={slide.title || 'Desktop preview'} className="h-44 w-full object-cover" />
-                                  <div className="absolute right-2 top-2 flex items-center gap-2">
+                                  <img
+                                    src={slidePreviews[index] ?? slide.src}
+                                    alt={slide.title || 'Desktop preview'}
+                                    className="w-full h-48 object-contain rounded"
+                                  />
+                                  <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setSlideFileAt(index, null, null, false)
-                                        updateSlide(index, (prev) => ({ ...prev, src: '' }))
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (canUpdate) handleSlideImageClick(index)
                                       }}
+                                      className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                      aria-label="Replace desktop image"
                                       disabled={!canUpdate}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-50"
-                                      aria-label="Remove desktop image"
+                                    >
+                                      <i className="fa-solid fa-image text-xs" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (canUpdate) handleRemoveSlideImage(index, false)
+                                      }}
+                                      className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                      aria-label="Delete desktop image"
+                                      disabled={!canUpdate}
                                     >
                                       <i className="fa-solid fa-trash-can text-xs" />
                                     </button>
                                   </div>
                                 </div>
                               ) : (
-                                <div className="flex h-44 items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
-                                  Upload a desktop image
+                                <div className="flex flex-col items-center justify-center py-8">
+                                  <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                                  <p className="text-sm text-gray-600">Click to upload</p>
                                 </div>
                               )}
                             </div>
                           </div>
-                          <div className="space-y-2">
-                            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Mobile image</label>
-                            <p className="text-[11px] text-red-500">Suggested size: 1410 x 1360</p>
-                            <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-white p-3">
+                          <div>
+                            <h3 className="text-sm font-medium text-gray-700 mb-1">Mobile Image</h3>
+                            <p className="text-xs text-red-500 mb-2">Suggested size: 1410 x 1360</p>
+                            <div
+                              onClick={() => canUpdate && handleSlideMobileImageClick(index)}
+                              className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                                (slideMobilePreviews[index] ?? slide.mobileSrc)
+                                  ? 'border-gray-300'
+                                  : 'border-gray-300 hover:border-blue-400'
+                              } ${!canUpdate ? 'cursor-not-allowed opacity-50' : ''}`}
+                            >
                               <input
-                                type="file"
-                                accept="image/*"
-                                disabled={!canUpdate}
-                                onChange={(event) => {
-                                  const file = event.target.files?.[0]
-                                  if (!file) return
-                                  const previewUrl = URL.createObjectURL(file)
-                                  setSlideFileAt(index, file, previewUrl, true)
+                                ref={(el) => {
+                                  if (el) {
+                                    slideMobileImageInputRefs.current[index] = el
+                                  }
                                 }}
-                                className="text-xs"
+                                type="file"
+                                accept={IMAGE_ACCEPT}
+                                onChange={(e) => handleSlideMobileImageChange(index, e)}
+                                className="hidden"
+                                disabled={!canUpdate}
                               />
                               {(slideMobilePreviews[index] ?? slide.mobileSrc) ? (
-                                <div className="relative overflow-hidden rounded border border-gray-200">
+                                <div className="relative group">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={slideMobilePreviews[index] ?? slide.mobileSrc} alt={slide.title || 'Mobile preview'} className="h-44 w-full object-cover" />
-                                  <div className="absolute right-2 top-2 flex items-center gap-2">
+                                  <img
+                                    src={slideMobilePreviews[index] ?? slide.mobileSrc}
+                                    alt={slide.title || 'Mobile preview'}
+                                    className="w-full h-48 object-contain rounded"
+                                  />
+                                  <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setSlideFileAt(index, null, null, true)
-                                        updateSlide(index, (prev) => ({ ...prev, mobileSrc: '' }))
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (canUpdate) handleSlideMobileImageClick(index)
                                       }}
+                                      className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                      aria-label="Replace mobile image"
                                       disabled={!canUpdate}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-50"
-                                      aria-label="Remove mobile image"
+                                    >
+                                      <i className="fa-solid fa-image text-xs" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (canUpdate) handleRemoveSlideImage(index, true)
+                                      }}
+                                      className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                                      aria-label="Delete mobile image"
+                                      disabled={!canUpdate}
                                     >
                                       <i className="fa-solid fa-trash-can text-xs" />
                                     </button>
                                   </div>
                                 </div>
                               ) : (
-                                <div className="flex h-44 items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
-                                  Optional: upload a mobile image
+                                <div className="flex flex-col items-center justify-center py-8">
+                                  <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                                  <p className="text-sm text-gray-600">Click to upload</p>
                                 </div>
                               )}
                             </div>
