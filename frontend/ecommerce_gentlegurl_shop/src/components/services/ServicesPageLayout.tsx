@@ -182,7 +182,7 @@ export function ServicesPageLayout({
             <div className="order-1 flex justify-center lg:order-2 lg:justify-end">
               <div
                 ref={slideContainerRef}
-                className="relative h-70 w-full max-w-md overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)] cursor-grab active:cursor-grabbing"
+                className="relative h-80 w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--background-soft)] shadow-[0_16px_40px_-28px_rgba(17,24,39,0.6)] cursor-grab active:cursor-grabbing sm:h-96"
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
@@ -211,26 +211,27 @@ export function ServicesPageLayout({
                     />
                   </div>
                 ))}
-                {slides.length > 1 && (
-                  <div className="absolute inset-x-0 bottom-3 flex items-center justify-center">
-                    <div className="flex items-center gap-2 rounded-full bg-black/30 px-3 py-1.5 backdrop-blur-sm">
-                      {slides.map((slide, index) => (
-                        <button
-                          key={`${slide.src}-dot`}
-                          type="button"
-                          onClick={() => setActiveSlide(index)}
-                          className={`h-2 w-2 rounded-full transition ${
-                            index === activeSlide ? "bg-white" : "bg-white/50"
-                          }`}
-                          aria-label={`Go to slide ${index + 1}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
+          {slides.length > 1 && (
+            <div className="relative mt-6 flex items-center justify-center">
+              <div className="flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 px-4 py-2 shadow-sm backdrop-blur">
+                {slides.map((slide, index) => (
+                  <button
+                    key={`${slide.src}-dot`}
+                    type="button"
+                    onClick={() => setActiveSlide(index)}
+                    className={`h-2.5 w-2.5 rounded-full transition ${
+                      index === activeSlide ? "scale-110 bg-[var(--accent)]" : "bg-[var(--foreground)]/25 hover:bg-[var(--foreground)]/40"
+                    }`}
+                    aria-label={`Go to slide ${index + 1}`}
+                    aria-pressed={index === activeSlide}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 {/* 
         {galleryImages && galleryImages.length > 0 && (
