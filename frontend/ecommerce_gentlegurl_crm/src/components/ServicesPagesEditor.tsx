@@ -422,6 +422,7 @@ export default function ServicesPagesEditor({
       }
 
       const formData = new FormData()
+      formData.append('_method', 'PUT')
       formData.append('title', selectedMenu.name)
       formData.append('slug', selectedMenu.slug)
       formData.append('subtitle', page.subtitle ?? '')
@@ -449,7 +450,7 @@ export default function ServicesPagesEditor({
       })
 
       const res = await fetch(`/api/proxy/ecommerce/services-pages/${menuId}`, {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           Accept: 'application/json',
         },

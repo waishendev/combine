@@ -42,7 +42,5 @@ export const mapServicesMenuApiItemToRow = (
     slug: item.slug ?? '-',
     sortOrder: normalizedSortOrder,
     isActive,
-    createdAt: item.created_at ?? '',
-    updatedAt: item.updated_at ?? '',
   }
 }

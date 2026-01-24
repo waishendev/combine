@@ -104,7 +104,6 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
               <tr>
                 <th className="px-5 py-3 text-left font-semibold">Name</th>
                 <th className="px-5 py-3 text-left font-semibold">Slug</th>
-                <th className="px-5 py-3 text-left font-semibold">Sort Order</th>
                 <th className="px-5 py-3 text-left font-semibold">Menu Status</th>
                 <th className="px-5 py-3 text-left font-semibold">Page</th>
                 <th className="px-5 py-3 text-right font-semibold">Actions</th>
@@ -118,7 +117,6 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
                   <tr key={item.id} className="hover:bg-gray-50/60">
                     <td className="px-5 py-3 font-medium text-gray-900">{item.name}</td>
                     <td className="px-5 py-3 text-gray-600">{item.slug}</td>
-                    <td className="px-5 py-3 text-gray-600">{item.sort_order ?? 0}</td>
                     <td className="px-5 py-3">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -135,9 +133,11 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
                       <div className="flex items-center justify-end gap-2">
                         <Link
                           href={`/services-pages/${item.id}`}
-                          className="inline-flex items-center gap-1 rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-blue-200 hover:text-blue-700"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
+                          aria-label={hasPage ? 'Edit services page' : 'Create services page'}
+                          title={hasPage ? 'Edit services page' : 'Create services page'}
                         >
-                          {hasPage ? 'Edit' : 'Create'}
+                          <i className={`fa-solid ${hasPage ? 'fa-pen' : 'fa-plus'}`} />
                         </Link>
                         {!canUpdate && (
                           <span className="text-[11px] text-gray-400">View only</span>

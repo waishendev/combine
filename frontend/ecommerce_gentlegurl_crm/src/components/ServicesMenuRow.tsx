@@ -9,8 +9,6 @@ export interface ServicesMenuRowData {
   slug: string
   sortOrder: number | null
   isActive: boolean
-  createdAt: string
-  updatedAt: string
 }
 
 interface ServicesMenuRowProps {
@@ -80,8 +78,6 @@ export default function ServicesMenuRow({
           label={servicesMenu.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
-      <td className="px-4 py-2 border border-gray-200">{servicesMenu.createdAt}</td>
-      <td className="px-4 py-2 border border-gray-200">{servicesMenu.updatedAt}</td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
