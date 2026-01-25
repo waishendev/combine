@@ -4,8 +4,9 @@ WORKDIR /var/www
 
 # 运行期依赖
 # 运行期依赖（加 ffmpeg）
-# 添加 edge 仓库以获取 ffmpeg
+# 添加 edge 仓库以获取 ffmpeg / wkhtmltopdf
 RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && \
+    echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
     apk update
 
 # 安装基础依赖
@@ -25,7 +26,12 @@ RUN apk add --no-cache \
     libxrender \
     libstdc++ \
     libgcc \
-    ffmpeg \
+    ffmpeg
+
+# wkhtmltopdf 在 edge/testing 提供，使用指定仓库确保可安装
+RUN apk add --no-cache \
+    --repository "http://dl-cdn.alpinelinux.org/alpine/edge/community" \
+    --repository "http://dl-cdn.alpinelinux.org/alpine/edge/testing" \
     wkhtmltopdf
 
 
