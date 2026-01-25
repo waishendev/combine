@@ -71,6 +71,15 @@ class ServicesMenuItemController extends Controller
 
     public function destroy(ServicesMenuItem $servicesMenuItem)
     {
+        if ($servicesMenuItem->page()->exists()) {
+            return $this->respond(
+                null,
+                __('Please delete the Services Page first before deleting this services menu item.'),
+                false,
+                409
+            );
+        }
+
         $servicesMenuItem->delete();
 
         return $this->respond(null, __('Services menu item deleted successfully.'));
