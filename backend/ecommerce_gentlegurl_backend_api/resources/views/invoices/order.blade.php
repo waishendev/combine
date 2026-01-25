@@ -5,43 +5,80 @@
   <title>Invoice {{ $order->order_number }}</title>
 
   @php
-    $fontSources = [
-      'Noto Sans CJK KR' => [
-        public_path('fonts/NotoSansCJKkr-Regular.otf'),
-        storage_path('fonts/NotoSansCJKkr-Regular.otf'),
-      ],
-      'Noto Sans KR' => [
-        public_path('fonts/NotoSansKR-Regular.otf'),
-        storage_path('fonts/NotoSansKR-Regular.otf'),
-      ],
-      'Noto Sans SC' => [
-        public_path('fonts/NotoSansSC-Regular.otf'),
-        storage_path('fonts/NotoSansSC-Regular.otf'),
-      ],
-      'Malgun Gothic' => [
+    // Check if CJK font exists (supports Chinese, Japanese, Korean)
+    $cjkFontPath = collect([
+      public_path('fonts/NotoSansCJKkr-Regular.otf'),
+      storage_path('fonts/NotoSansCJKkr-Regular.otf'),
+    ])->first(fn ($path) => file_exists($path));
+    
+    // Define fonts - prioritize CJK font if available, otherwise use separate fonts
+    $fontConfigs = [];
+    
+    if ($cjkFontPath) {
+      // Use CJK font that supports both Chinese and Korean
+      $fontConfigs[] = [
+        'name' => 'Noto Sans CJK',
+        'paths' => [$cjkFontPath],
+      ];
+    } else {
+      // Fallback: use separate fonts for Korean and Chinese
+      $fontConfigs[] = [
+        'name' => 'Noto Sans KR',
+        'paths' => [
+          public_path('fonts/NotoSansKR-Regular.otf'),
+          storage_path('fonts/NotoSansKR-Regular.otf'),
+        ],
+      ];
+      $fontConfigs[] = [
+        'name' => 'Noto Sans SC',
+        'paths' => [
+          public_path('fonts/NotoSansSC-Regular.otf'),
+          storage_path('fonts/NotoSansSC-Regular.otf'),
+        ],
+      ];
+    }
+    
+    // Add Malgun Gothic as fallback
+    $fontConfigs[] = [
+      'name' => 'Malgun Gothic',
+      'paths' => [
         public_path('fonts/malgun.ttf'),
         storage_path('fonts/malgun.ttf'),
       ],
     ];
-    $resolvedFonts = collect($fontSources)->map(fn ($paths) => collect($paths)->first(fn ($path) => file_exists($path)));
+    
+    $resolvedFonts = collect($fontConfigs)->map(function ($config) {
+      $fontPath = collect($config['paths'])->first(fn ($path) => file_exists($path));
+      if ($fontPath) {
+        // Convert Windows path to format suitable for wkhtmltopdf
+        $fontPathFormatted = str_replace('\\', '/', $fontPath);
+        // Use file:// protocol for local files
+        $fontUrl = 'file:///' . $fontPathFormatted;
+        $fontFormat = str_ends_with($fontPath, '.ttf') ? 'truetype' : 'opentype';
+        return [
+          'name' => $config['name'],
+          'url' => $fontUrl,
+          'format' => $fontFormat,
+        ];
+      }
+      return null;
+    })->filter();
   @endphp
 
   <style>
-    @foreach($resolvedFonts as $fontName => $fontPath)
-      @if($fontPath)
+    @foreach($resolvedFonts as $font)
       @font-face {
-        font-family: "{{ $fontName }}";
+        font-family: "{{ $font['name'] }}";
         font-style: normal;
         font-weight: 400;
-        src: url("{{ 'file://' . $fontPath }}") format("{{ str_ends_with($fontPath, '.ttf') ? 'truetype' : 'opentype' }}");
+        src: url("{{ $font['url'] }}") format("{{ $font['format'] }}");
       }
-      @endif
     @endforeach
 
     @page { margin: 24px; }
 
     body{
-      font-family:"Noto Sans CJK KR","Noto Sans KR","Noto Sans SC","Malgun Gothic","Microsoft YaHei","PingFang SC","Heiti SC","SimHei","WenQuanYi Micro Hei",DejaVu Sans,Arial,sans-serif;
+      font-family:"Noto Sans CJK","Noto Sans KR","Noto Sans SC","Malgun Gothic","Microsoft YaHei","PingFang SC","Heiti SC","SimHei","WenQuanYi Micro Hei",DejaVu Sans,Arial,sans-serif;
       font-size: 12px;
       color:#111827;
       margin:0;
