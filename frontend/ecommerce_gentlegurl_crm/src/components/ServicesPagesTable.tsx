@@ -156,32 +156,18 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-2">
                         {hasPage ? (
-                          <>
-                            {canUpdate ? (
-                              <Link
-                                href={`/services-pages/${item.id}`}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
-                                aria-label="Edit services page"
-                                title="Edit services page"
-                              >
-                                <i className="fa-solid fa-pen" />
-                              </Link>
-                            ) : null}
-                            {canDelete ? (
-                              <button
-                                type="button"
-                                onClick={() => setDeleteTarget(item)}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-red-600 hover:border-red-200 hover:text-red-700"
-                                aria-label="Delete services page"
-                                title="Delete services page"
-                              >
-                                <i className="fa-solid fa-trash" />
-                              </button>
-                            ) : null}
-                            {!canUpdate && !canDelete ? (
-                              <span className="text-[11px] text-gray-400">View only</span>
-                            ) : null}
-                          </>
+                          canUpdate ? (
+                            <Link
+                              href={`/services-pages/${item.id}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
+                              aria-label="Edit services page"
+                              title="Edit services page"
+                            >
+                              <i className="fa-solid fa-pen" />
+                            </Link>
+                          ) : (
+                            <span className="text-[11px] text-gray-400">View only</span>
+                          )
                         ) : canCreate ? (
                           <Link
                             href={`/services-pages/${item.id}`}
