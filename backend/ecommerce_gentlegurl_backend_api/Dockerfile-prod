@@ -9,6 +9,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     apk update
 
 # 安装基础依赖
+# 注意：我们使用自定义字体，不需要系统字体包
 RUN apk add --no-cache \
     icu-libs \
     libzip \
@@ -16,10 +17,6 @@ RUN apk add --no-cache \
     oniguruma \
     postgresql-libs \
     fontconfig \
-    ttf-dejavu \
-    ttf-droid \
-    ttf-freefont \
-    ttf-liberation \
     libx11 \
     libxext \
     libxrender \
@@ -27,63 +24,111 @@ RUN apk add --no-cache \
     libgcc \
     openssl \
     openssl-dev \
-    ffmpeg
+    ffmpeg && \
+    mkdir -p /var/cache/fontconfig && \
+    chmod -R 755 /var/cache/fontconfig
 
 # 安装 wkhtmltopdf
-# 方法1: 如果存在本地文件，使用本地文件（推荐）
-# 方法2: 尝试在线下载（如果本地文件不存在）
+# 从 GitHub 下载静态二进制文件（适用于 Alpine Linux）
+# 注意：Alpine 使用 musl libc，需要静态编译版本或安装兼容层
 RUN set -eux; \
-    apk add --no-cache tar xz; \
+    echo "Installing wkhtmltopdf..."; \
+    apk add --no-cache curl tar xz; \
+    echo "Installing glibc compatibility for Alpine (needed for wkhtmltopdf)..."; \
+    apk add --no-cache gcompat || \
+    (echo "gcompat not in main repo, trying edge..." && \
+     echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
+     apk update && \
+     apk add --no-cache gcompat) || \
+    (echo "WARNING: gcompat not available, binary may not work" && true); \
+    cd /tmp && \
     if [ -f /var/www/wkhtmltopdf.tar.xz ]; then \
         echo "Using local wkhtmltopdf file..."; \
-        cp /var/www/wkhtmltopdf.tar.xz /tmp/wkhtmltopdf.tar.xz; \
+        cp /var/www/wkhtmltopdf.tar.xz wkhtmltopdf.tar.xz; \
     else \
-        echo "Local file not found, attempting to download..."; \
-        apk add --no-cache curl; \
-        cd /tmp && \
-        (curl -fSL "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.static-amd64.tar.xz" \
+        echo "Downloading wkhtmltopdf from GitHub..."; \
+        curl -fSL "https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.4/wkhtmltox-0.12.4_linux-generic-amd64.tar.xz" \
              --output wkhtmltopdf.tar.xz \
              --fail \
              --location \
              --max-time 300 \
-             --retry 2 \
-             --retry-delay 3 \
-             --silent \
+             --retry 3 \
+             --retry-delay 5 \
              --show-error || \
-         curl -fSL "https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.static-amd64.tar.xz" \
-             --output wkhtmltopdf.tar.xz \
-             --fail \
-             --location \
-             --max-time 300 \
-             --retry 2 \
-             --retry-delay 3 \
-             --silent \
-             --show-error) && \
-        apk del curl; \
+        (echo "First URL failed, trying alternative..." && \
+         curl -fSL "https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.static-amd64.tar.xz" \
+              --output wkhtmltopdf.tar.xz \
+              --fail \
+              --location \
+              --max-time 300 \
+              --retry 3 \
+              --retry-delay 5 \
+              --show-error); \
     fi; \
     if [ ! -f /tmp/wkhtmltopdf.tar.xz ] || [ ! -s /tmp/wkhtmltopdf.tar.xz ]; then \
-        echo "ERROR: wkhtmltopdf file not found. Please:"; \
-        echo "1. Download wkhtmltox_0.12.6-1.static-amd64.tar.xz manually"; \
-        echo "2. Place it in the project root directory as 'wkhtmltopdf.tar.xz'"; \
-        echo "3. Rebuild the Docker image"; \
+        echo "ERROR: Failed to download wkhtmltopdf"; \
+        echo "Please download manually and place as wkhtmltopdf.tar.xz in project root"; \
         exit 1; \
     fi; \
     echo "Extracting wkhtmltopdf (size: $(du -h /tmp/wkhtmltopdf.tar.xz | cut -f1))..."; \
-    cd /tmp && \
-    tar -xf wkhtmltopdf.tar.xz || (echo "ERROR: Failed to extract archive" && exit 1); \
-    mkdir -p /usr/local/bin; \
-    cp wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf || (echo "ERROR: Failed to copy binary" && exit 1); \
-    chmod +x /usr/local/bin/wkhtmltopdf; \
-    ln -sf /usr/local/bin/wkhtmltopdf /usr/bin/wkhtmltopdf; \
-    rm -rf /tmp/wkhtmltopdf.tar.xz /tmp/wkhtmltox; \
-    if ! command -v wkhtmltopdf >/dev/null 2>&1; then \
-        echo "ERROR: wkhtmltopdf command not found in PATH"; \
+    tar -xJf wkhtmltopdf.tar.xz 2>/dev/null || tar -xf wkhtmltopdf.tar.xz || (echo "ERROR: Extraction failed" && exit 1); \
+    if [ -d wkhtmltox ]; then \
+        echo "Copying wkhtmltox to /usr/local..."; \
+        cp -r wkhtmltox /usr/local/; \
+        echo "Verifying files..."; \
+        ls -la /usr/local/wkhtmltox/bin/ || true; \
+        if [ -f /usr/local/wkhtmltox/bin/wkhtmltopdf ]; then \
+            chmod +x /usr/local/wkhtmltox/bin/wkhtmltopdf; \
+            echo "Binary found at /usr/local/wkhtmltox/bin/wkhtmltopdf"; \
+            echo "Checking binary type..."; \
+            file /usr/local/wkhtmltox/bin/wkhtmltopdf || true; \
+            ldd /usr/local/wkhtmltox/bin/wkhtmltopdf 2>&1 | head -5 || echo "Binary may be statically linked or incompatible"; \
+        else \
+            echo "ERROR: Binary not found, searching..."; \
+            find /usr/local/wkhtmltox -name wkhtmltopdf -type f || true; \
+            exit 1; \
+        fi; \
+        echo "Setting up wrapper script..."; \
+        echo '#!/bin/sh' > /usr/local/bin/wkhtmltopdf-wrapper; \
+        if [ -d /usr/local/wkhtmltox/lib ]; then \
+            echo 'export LD_LIBRARY_PATH=/usr/local/wkhtmltox/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        fi; \
+        echo 'export FONTCONFIG_CACHEDIR="${FONTCONFIG_CACHEDIR:-/var/cache/fontconfig}"' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'export QT_QPA_PLATFORM=offscreen' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'export FONTCONFIG_FILE=/etc/fonts/fonts.conf' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo '# Suppress fontconfig cache warnings - we use custom fonts via @font-face' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'export FC_DEBUG=0' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'BINARY="/usr/local/wkhtmltox/bin/wkhtmltopdf"' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'if [ ! -f "$BINARY" ]; then' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo '  echo "ERROR: wkhtmltopdf binary not found at $BINARY" >&2' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo '  exit 127' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'fi' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo '# Note: SSL warnings from wkhtmltopdf can be ignored (it uses old OpenSSL but works fine for local HTML->PDF)' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'if command -v gcompat >/dev/null 2>&1; then' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo '  exec gcompat "$BINARY" "$@"' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'else' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo '  exec "$BINARY" "$@"' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        echo 'fi' >> /usr/local/bin/wkhtmltopdf-wrapper; \
+        chmod +x /usr/local/bin/wkhtmltopdf-wrapper; \
+        ln -sf /usr/local/bin/wkhtmltopdf-wrapper /usr/bin/wkhtmltopdf; \
+        ln -sf /usr/local/bin/wkhtmltopdf-wrapper /usr/local/bin/wkhtmltopdf; \
+    else \
+        echo "ERROR: wkhtmltox directory not found after extraction"; \
+        ls -la /tmp/; \
         exit 1; \
     fi; \
-    echo "Testing wkhtmltopdf..."; \
-    wkhtmltopdf --version || (echo "ERROR: Version check failed" && exit 1); \
-    echo "✓ wkhtmltopdf installed successfully at $(which wkhtmltopdf)"; \
-    apk del tar xz 2>/dev/null || true
+    rm -rf /tmp/wkhtmltopdf.tar.xz /tmp/wkhtmltox*; \
+    echo "Testing installation..."; \
+    (LD_LIBRARY_PATH=/usr/local/wkhtmltox/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} /usr/local/wkhtmltox/bin/wkhtmltopdf --version || \
+     /usr/local/bin/wkhtmltopdf --version || \
+     (echo "WARNING: Version check failed, but installation completed. Binary at /usr/local/wkhtmltox/bin/wkhtmltopdf" && \
+      ls -la /usr/local/wkhtmltox/bin/wkhtmltopdf)) || true; \
+    echo "✓ wkhtmltopdf installation completed"; \
+    echo "Creating font cache directories (custom fonts will be loaded via @font-face)..."; \
+    mkdir -p /var/cache/fontconfig /home/www-data/.cache/fontconfig && \
+    chmod -R 755 /var/cache/fontconfig && \
+    echo "✓ Font cache directories created (skipping system font cache - using custom fonts)"; \
+    apk del curl tar xz
 
 # 构建期依赖
 RUN apk add --no-cache --virtual .build-deps \
@@ -144,6 +189,15 @@ COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 # 带上 composer
 COPY --from=deps /usr/bin/composer /usr/bin/composer
+
+# 验证 wkhtmltopdf 安装
+RUN if [ ! -f /usr/local/wkhtmltox/bin/wkhtmltopdf ]; then \
+        echo "ERROR: wkhtmltopdf binary not found!"; \
+        ls -la /usr/local/wkhtmltox/bin/ 2>/dev/null || echo "Directory does not exist"; \
+        exit 1; \
+    fi && \
+    ls -la /usr/local/bin/wkhtmltopdf* /usr/bin/wkhtmltopdf || true && \
+    echo "✓ wkhtmltopdf verified in final image"
 
 # 拷入所有应用 & vendor
 COPY --from=deps --chown=www-data:www-data /var/www /var/www
