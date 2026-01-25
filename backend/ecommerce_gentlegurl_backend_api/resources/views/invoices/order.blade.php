@@ -6,15 +6,17 @@
 
   @php
     $fontSources = [
-      'Noto Sans SC' => [
-        public_path('fonts/NotoSansSC-Regular.otf'),
-        storage_path('fonts/NotoSansSC-Regular.otf'),
+      'Noto Sans CJK KR' => [
+        public_path('fonts/NotoSansCJKkr-Regular.otf'),
+        storage_path('fonts/NotoSansCJKkr-Regular.otf'),
       ],
       'Noto Sans KR' => [
         public_path('fonts/NotoSansKR-Regular.otf'),
         storage_path('fonts/NotoSansKR-Regular.otf'),
-        public_path('fonts/NotoSansCJKkr-Regular.otf'),
-        storage_path('fonts/NotoSansCJKkr-Regular.otf'),
+      ],
+      'Noto Sans SC' => [
+        public_path('fonts/NotoSansSC-Regular.otf'),
+        storage_path('fonts/NotoSansSC-Regular.otf'),
       ],
       'Malgun Gothic' => [
         public_path('fonts/malgun.ttf'),
@@ -39,7 +41,7 @@
     @page { margin: 24px; }
 
     body{
-      font-family:"Noto Sans CJK KR","Noto Sans KR","Noto Sans CJK SC","Noto Sans SC","Malgun Gothic","Microsoft YaHei","PingFang SC","Heiti SC","SimHei","WenQuanYi Micro Hei",DejaVu Sans,Arial,sans-serif;
+      font-family:"Noto Sans CJK KR","Noto Sans KR","Noto Sans SC","Malgun Gothic","Microsoft YaHei","PingFang SC","Heiti SC","SimHei","WenQuanYi Micro Hei",DejaVu Sans,Arial,sans-serif;
       font-size: 12px;
       color:#111827;
       margin:0;
