@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import ServicesPagesDeleteModal from './ServicesPagesDeleteModal'
 
 type ServicesMenuItem = {
   id: number
@@ -33,11 +34,14 @@ function normalizeMenuItems(response: ApiResponse): ServicesMenuItem[] {
 }
 
 export default function ServicesPagesTable({ permissions }: { permissions: string[] }) {
+  const canCreate = permissions.includes('ecommerce.services-pages.create')
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
+  const canDelete = permissions.includes('ecommerce.services-pages.delete')
 
   const [items, setItems] = useState<ServicesMenuItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ServicesMenuItem | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -75,20 +79,40 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
     [items],
   )
 
+  const handlePageDeleted = (menuId: number) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === menuId ? { ...item, page: null } : item,
+      ),
+    )
+  }
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      {deleteTarget && (
+        <ServicesPagesDeleteModal
+          servicesMenu={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onSuccess={(menuId) => {
+            setDeleteTarget(null)
+            handlePageDeleted(menuId)
+          }}
+        />
+      )}
       <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h3 className="text-base font-semibold text-gray-900">Services Pages</h3>
           <p className="text-xs text-gray-500">Pick a services menu and manage its page.</p>
         </div>
-        <Link
-          href="/services-pages/create"
-          className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <i className="fa-solid fa-plus" />
-          Create Page
-        </Link>
+        {canCreate ? (
+          <Link
+            href="/services-pages/create"
+            className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            <i className="fa-solid fa-plus" />
+            Create Page
+          </Link>
+        ) : null}
       </div>
 
       {loading ? (
@@ -131,16 +155,44 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/services-pages/${item.id}`}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
-                          aria-label={hasPage ? 'Edit services page' : 'Create services page'}
-                          title={hasPage ? 'Edit services page' : 'Create services page'}
-                        >
-                          <i className={`fa-solid ${hasPage ? 'fa-pen' : 'fa-plus'}`} />
-                        </Link>
-                        {!canUpdate && (
-                          <span className="text-[11px] text-gray-400">View only</span>
+                        {hasPage ? (
+                          <>
+                            {canUpdate ? (
+                              <Link
+                                href={`/services-pages/${item.id}`}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
+                                aria-label="Edit services page"
+                                title="Edit services page"
+                              >
+                                <i className="fa-solid fa-pen" />
+                              </Link>
+                            ) : null}
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTarget(item)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-red-600 hover:border-red-200 hover:text-red-700"
+                                aria-label="Delete services page"
+                                title="Delete services page"
+                              >
+                                <i className="fa-solid fa-trash" />
+                              </button>
+                            ) : null}
+                            {!canUpdate && !canDelete ? (
+                              <span className="text-[11px] text-gray-400">View only</span>
+                            ) : null}
+                          </>
+                        ) : canCreate ? (
+                          <Link
+                            href={`/services-pages/${item.id}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
+                            aria-label="Create services page"
+                            title="Create services page"
+                          >
+                            <i className="fa-solid fa-plus" />
+                          </Link>
+                        ) : (
+                          <span className="text-[11px] text-gray-400">No access</span>
                         )}
                       </div>
                     </td>

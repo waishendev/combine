@@ -131,6 +131,23 @@ class ServicesPageController extends Controller
         return $this->respond($page, __('Services page saved successfully.'));
     }
 
+    public function destroy(ServicesMenuItem $servicesMenuItem)
+    {
+        $page = ServicesPage::with('slides')
+            ->where('services_menu_item_id', $servicesMenuItem->id)
+            ->first();
+
+        if (! $page) {
+            return $this->respond(null, __('Services page not found.'), false, 404);
+        }
+
+        $this->deleteSlideFiles($page->slides);
+        $page->slides()->delete();
+        $page->delete();
+
+        return $this->respond(null, __('Services page deleted successfully.'));
+    }
+
     private function normalizeSlides(Request $request, array $slides): array
     {
         $normalized = [];

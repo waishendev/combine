@@ -420,6 +420,9 @@ $protectedRoutes = function () {
         Route::put('/services-pages/{servicesMenuItem}', [ServicesPageController::class, 'upsert'])
             ->middleware('permission:ecommerce.services-pages.update');
 
+        Route::delete('/services-pages/{servicesMenuItem}', [ServicesPageController::class, 'destroy'])
+            ->middleware('permission:ecommerce.services-pages.delete');
+
         // Store Locations
         Route::get('/store-locations', [StoreLocationController::class, 'index'])
             ->middleware('permission:ecommerce.stores.view');

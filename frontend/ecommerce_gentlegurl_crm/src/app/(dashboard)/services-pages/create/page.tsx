@@ -16,7 +16,7 @@ export default async function ServicesPagesCreatePage() {
   }
 
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'ecommerce.services-pages.view',
+    (perm) => perm === 'ecommerce.services-pages.create',
   )
 
   if (!hasPermission) {
