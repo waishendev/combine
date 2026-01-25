@@ -329,7 +329,17 @@
   $companyLogoUrl = $profile['company_logo_url'] ?? null;
   if (!empty($companyLogoUrl)) {
     if (str_starts_with($companyLogoUrl, 'http://') || str_starts_with($companyLogoUrl, 'https://')) {
-      $companyLogoSrc = $companyLogoUrl;
+      $appHost = parse_url(config('app.url'), PHP_URL_HOST);
+      $logoHost = parse_url($companyLogoUrl, PHP_URL_HOST);
+      $logoPath = parse_url($companyLogoUrl, PHP_URL_PATH);
+      if ($appHost && $logoHost && $logoHost === $appHost && $logoPath) {
+        $localLogoPath = public_path(ltrim($logoPath, '/'));
+        $companyLogoSrc = file_exists($localLogoPath)
+          ? 'file://' . str_replace('\\', '/', $localLogoPath)
+          : $companyLogoUrl;
+      } else {
+        $companyLogoSrc = $companyLogoUrl;
+      }
     } else {
       $logoPath = public_path(ltrim($companyLogoUrl, '/'));
       $companyLogoSrc = file_exists($logoPath) ? 'file://' . str_replace('\\', '/', $logoPath) : $companyLogoUrl;
