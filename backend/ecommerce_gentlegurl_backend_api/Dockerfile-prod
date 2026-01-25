@@ -30,45 +30,46 @@ RUN apk add --no-cache \
     ffmpeg
 
 # 安装 wkhtmltopdf
-# 使用多个备用下载源，确保至少一个成功
+# 方法1: 如果存在本地文件，使用本地文件（推荐）
+# 方法2: 尝试在线下载（如果本地文件不存在）
 RUN set -eux; \
-    apk add --no-cache curl tar xz; \
-    echo "Attempting to install wkhtmltopdf..."; \
-    DOWNLOAD_SUCCESS=0; \
-    cd /tmp && \
-    for URL in \
-        "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.static-amd64.tar.xz" \
-        "https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.static-amd64.tar.xz" \
-        "https://sourceforge.net/projects/wkhtmltopdf/files/0.12.6/wkhtmltox_0.12.6-1.static-amd64.tar.xz" \
-        "https://downloads.sourceforge.net/project/wkhtmltopdf/0.12.6/wkhtmltox_0.12.6-1.static-amd64.tar.xz"; \
-    do \
-        echo "Trying URL: $URL"; \
-        if curl -fSL "$URL" \
-            --output wkhtmltopdf.tar.xz \
-            --fail \
-            --location \
-            --max-time 300 \
-            --retry 2 \
-            --retry-delay 3 \
-            --silent \
-            --show-error; then \
-            if [ -f /tmp/wkhtmltopdf.tar.xz ] && [ -s /tmp/wkhtmltopdf.tar.xz ]; then \
-                echo "Download successful from: $URL"; \
-                DOWNLOAD_SUCCESS=1; \
-                break; \
-            fi; \
-        fi; \
-        echo "Download failed, trying next URL..."; \
-        rm -f /tmp/wkhtmltopdf.tar.xz; \
-    done; \
-    if [ "$DOWNLOAD_SUCCESS" -eq 0 ]; then \
-        echo "ERROR: All download sources failed. Please check:"; \
-        echo "1. Network connectivity"; \
-        echo "2. Firewall/proxy settings"; \
-        echo "3. Or manually download wkhtmltox_0.12.6-1.static-amd64.tar.xz and place it in the build context"; \
+    apk add --no-cache tar xz; \
+    if [ -f /var/www/wkhtmltopdf.tar.xz ]; then \
+        echo "Using local wkhtmltopdf file..."; \
+        cp /var/www/wkhtmltopdf.tar.xz /tmp/wkhtmltopdf.tar.xz; \
+    else \
+        echo "Local file not found, attempting to download..."; \
+        apk add --no-cache curl; \
+        cd /tmp && \
+        (curl -fSL "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.static-amd64.tar.xz" \
+             --output wkhtmltopdf.tar.xz \
+             --fail \
+             --location \
+             --max-time 300 \
+             --retry 2 \
+             --retry-delay 3 \
+             --silent \
+             --show-error || \
+         curl -fSL "https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.static-amd64.tar.xz" \
+             --output wkhtmltopdf.tar.xz \
+             --fail \
+             --location \
+             --max-time 300 \
+             --retry 2 \
+             --retry-delay 3 \
+             --silent \
+             --show-error) && \
+        apk del curl; \
+    fi; \
+    if [ ! -f /tmp/wkhtmltopdf.tar.xz ] || [ ! -s /tmp/wkhtmltopdf.tar.xz ]; then \
+        echo "ERROR: wkhtmltopdf file not found. Please:"; \
+        echo "1. Download wkhtmltox_0.12.6-1.static-amd64.tar.xz manually"; \
+        echo "2. Place it in the project root directory as 'wkhtmltopdf.tar.xz'"; \
+        echo "3. Rebuild the Docker image"; \
         exit 1; \
     fi; \
     echo "Extracting wkhtmltopdf (size: $(du -h /tmp/wkhtmltopdf.tar.xz | cut -f1))..."; \
+    cd /tmp && \
     tar -xf wkhtmltopdf.tar.xz || (echo "ERROR: Failed to extract archive" && exit 1); \
     mkdir -p /usr/local/bin; \
     cp wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf || (echo "ERROR: Failed to copy binary" && exit 1); \
@@ -82,7 +83,7 @@ RUN set -eux; \
     echo "Testing wkhtmltopdf..."; \
     wkhtmltopdf --version || (echo "ERROR: Version check failed" && exit 1); \
     echo "✓ wkhtmltopdf installed successfully at $(which wkhtmltopdf)"; \
-    apk del curl tar xz
+    apk del tar xz 2>/dev/null || true
 
 # 构建期依赖
 RUN apk add --no-cache --virtual .build-deps \
@@ -114,6 +115,9 @@ WORKDIR /var/www
 # Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
+
+# 复制 wkhtmltopdf 文件（如果存在）- 可选
+COPY wkhtmltopdf.tar.xz* ./
 
 # 复制 composer 文件（用于缓存）
 COPY composer.json composer.lock ./
