@@ -7,6 +7,21 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Invoice PDF rendering (wkhtmltopdf + CJK fonts)
+
+Invoice PDFs are rendered with `wkhtmltopdf` via Laravel Snappy. For local development, make sure the binary and Unicode/CJK fonts are installed on your machine, otherwise Chinese/Korean characters can show up as tofu squares or garbled symbols.
+
+**Install wkhtmltopdf**
+- Linux (Debian/Ubuntu): `sudo apt-get install -y wkhtmltopdf` or download from https://wkhtmltopdf.org/downloads.html
+- macOS: `brew install wkhtmltopdf`
+
+**Install CJK fonts (Noto Sans CJK recommended)**
+- Linux (Debian/Ubuntu): `sudo apt-get install -y fonts-noto-cjk fontconfig` then run `fc-cache -f`
+- macOS: install Noto fonts (e.g. https://fonts.google.com/noto/specimen/Noto+Sans+SC) and ensure Font Book has them enabled
+
+**Optional config**
+- Override the binary path with `WKHTMLTOPDF_BINARY=/path/to/wkhtmltopdf` in your `.env` if needed.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
