@@ -26,6 +26,7 @@ class LoyaltyDemoCustomerSeederTesting extends Seeder
                 'password' => Hash::make('password'),
                 'tier' => 'gold',
                 'is_active' => true,
+                'email_verified_at' => now(),
             ]
         );
 
