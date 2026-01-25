@@ -4,9 +4,8 @@ WORKDIR /var/www
 
 # 运行期依赖
 # 运行期依赖（加 ffmpeg）
-# 添加 edge 仓库以获取 ffmpeg / wkhtmltopdf
+# 添加 edge 仓库以获取 ffmpeg
 RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && \
-    echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
     apk update
 
 # 安装基础依赖
@@ -28,11 +27,21 @@ RUN apk add --no-cache \
     libgcc \
     ffmpeg
 
-# wkhtmltopdf 在 edge/testing 提供，使用指定仓库确保可安装
-RUN apk add --no-cache \
-    --repository "http://dl-cdn.alpinelinux.org/alpine/edge/community" \
-    --repository "http://dl-cdn.alpinelinux.org/alpine/edge/testing" \
-    wkhtmltopdf
+# wkhtmltopdf：优先使用 apk 安装，不存在时回退到 GitHub APK
+RUN set -eux; \
+    apk add --no-cache --virtual .wkhtmltopdf-deps wget ca-certificates; \
+    if apk add --no-cache wkhtmltopdf; then \
+        echo "wkhtmltopdf installed via apk"; \
+    else \
+        ALPINE_VERSION="$(cut -d'.' -f1,2 /etc/alpine-release)"; \
+        WKHTML_VERSION="0.12.6.1-3"; \
+        ARCH="amd64"; \
+        wget -q "https://github.com/wkhtmltopdf/packaging/releases/download/${WKHTML_VERSION}/wkhtmltox-${WKHTML_VERSION}.alpine${ALPINE_VERSION}-${ARCH}.apk" -O /tmp/wkhtmltopdf.apk || \
+        wget -q "https://github.com/wkhtmltopdf/packaging/releases/download/${WKHTML_VERSION}/wkhtmltox-${WKHTML_VERSION}.alpine3.17-${ARCH}.apk" -O /tmp/wkhtmltopdf.apk; \
+        apk add --allow-untrusted /tmp/wkhtmltopdf.apk; \
+        rm /tmp/wkhtmltopdf.apk; \
+    fi; \
+    apk del .wkhtmltopdf-deps
 
 
 # 构建期依赖
