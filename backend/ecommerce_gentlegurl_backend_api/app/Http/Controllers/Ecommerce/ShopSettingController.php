@@ -428,9 +428,9 @@ class ShopSettingController extends Controller
     {
         return [
             'company_logo_url' => null,
-            'company_name' => 'Gentlegurl Shop',
+            'company_name' => 'Gentlegurls Nail Salon',
             'company_reg_no' => null,
-            'company_address' => "123 Gentle Lane\nKuala Lumpur\nMalaysia",
+            'company_address' => "14, Lebuh Cintra, George Town, 10200 George Town, Pulau Pinang",
             'company_phone' => null,
             'company_email' => null,
             'company_website' => null,
