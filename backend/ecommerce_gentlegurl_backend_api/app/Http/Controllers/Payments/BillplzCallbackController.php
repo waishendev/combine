@@ -97,7 +97,7 @@ class BillplzCallbackController extends Controller
         if ($isPaymentConfirmed && $order->payment_status !== 'paid') {
             $order->payment_status = 'paid';
             if ($order->status === 'pending') {
-                $order->status = 'paid';
+                $order->status = 'confirmed';
             }
             $order->paid_at = $paidAt ? Carbon::parse($paidAt) : now();
             $order->payment_reference = $order->payment_reference ?: $billId;
