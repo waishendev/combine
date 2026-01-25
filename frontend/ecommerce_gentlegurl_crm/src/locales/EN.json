@@ -90,6 +90,7 @@
   "common.removeFilter": "Remove filter",
   "common.close": "Close",
   "common.cancel": "Cancel",
+  "common.delete": "Delete",
   "common.creating": "Creating...",
   "common.create": "Create",
   "common.edit": "Edit",
