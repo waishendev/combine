@@ -1,88 +1,166 @@
-# ---------- Stage 1: PHP 扩展 ----------
-FROM php:8.2-fpm-alpine AS php-extensions
-WORKDIR /var/www
+# ---------- Stage 1: PHP Extensions + Runtime deps ----------
+    FROM php:8.2-fpm-bookworm AS php-extensions
+    WORKDIR /var/www
 
-# 运行期依赖
-# 运行期依赖（加 ffmpeg）
-RUN apk add --no-cache \
-    icu-libs \
-    libzip \
-    libpng \
-    oniguruma \
-    postgresql-libs \
-    ffmpeg \
-    wkhtmltopdf \
-    fontconfig \
-    noto-fonts \
-    noto-fonts-cjk \
-    libx11 \
-    libxext \
-    libxrender
+    # ========== Runtime deps (must stay in final image) ==========
+    # - wkhtmltopdf deps + fonts
+    # - pgsql runtime lib: libpq5 (fix pdo_pgsql.so missing libpq.so.5)
+    # - zip runtime lib: libzip4 (fix zip.so missing libzip.so.4)
+    # - composer dist install: unzip
+    # - composer fallback to source: git
+    RUN set -eux; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends \
+          ca-certificates \
+          wget \
+          fontconfig \
+          xfonts-75dpi xfonts-base \
+          libxrender1 libxext6 libfontconfig1 libfreetype6 \
+          fonts-dejavu-core \
+          fonts-noto-cjk \
+          ffmpeg \
+          libpq5 \
+          libzip4 \
+          unzip \
+          git \
+        ; \
+        rm -rf /var/lib/apt/lists/*; \
+        mkdir -p /var/cache/fontconfig; \
+        chmod -R 755 /var/cache/fontconfig
+
+    # ========== wkhtmltopdf 0.12.6.1 (bookworm) patched qt ==========
+    RUN set -eux; \
+        wget -O /tmp/wkhtmltox.deb \
+          "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb"; \
+        dpkg -i /tmp/wkhtmltox.deb || true; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends -f; \
+        rm -f /tmp/wkhtmltox.deb; \
+        rm -rf /var/lib/apt/lists/*; \
+        command -v wkhtmltopdf; \
+        wkhtmltopdf --version
+
+    # ========== Build deps (only for compiling PHP extensions) ==========
+    RUN set -eux; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends \
+          $PHPIZE_DEPS \
+          autoconf \
+          pkg-config \
+          build-essential \
+          libicu-dev \
+          libonig-dev \
+          libzip-dev \
+          libpng-dev \
+          libpq-dev \
+        ; \
+        rm -rf /var/lib/apt/lists/*
 
 
-# 构建期依赖
-RUN apk add --no-cache --virtual .build-deps \
-    $PHPIZE_DEPS build-base autoconf pkgconfig \
-    icu-dev oniguruma-dev libzip-dev libpng-dev postgresql-dev
+    # ========== Install PHP extensions ==========
+    RUN set -eux; \
+        docker-php-ext-install -j"$(nproc)" \
+          pdo \
+          pdo_pgsql \
+          mbstring \
+          intl \
+          zip \
+          bcmath \
+          pcntl \
+        ; \
+        pecl install redis; \
+        docker-php-ext-enable redis opcache
 
-# 安装扩展
-RUN docker-php-ext-install -j$(nproc) \
-        pdo pdo_pgsql mbstring intl zip bcmath pcntl \
-    && pecl install redis \
-    && docker-php-ext-enable redis opcache
+    # OPcache config
+    RUN set -eux; \
+        { \
+          echo 'opcache.enable=1'; \
+          echo 'opcache.enable_cli=1'; \
+          echo 'opcache.validate_timestamps=0'; \
+          echo 'opcache.memory_consumption=192'; \
+          echo 'opcache.interned_strings_buffer=16'; \
+          echo 'opcache.max_accelerated_files=100000'; \
+        } > /usr/local/etc/php/conf.d/opcache.ini
 
-# 配置 OPcache
-RUN { \
-    echo 'opcache.enable=1'; \
-    echo 'opcache.enable_cli=1'; \
-    echo 'opcache.validate_timestamps=0'; \
-    echo 'opcache.memory_consumption=192'; \
-    echo 'opcache.interned_strings_buffer=16'; \
-    echo 'opcache.max_accelerated_files=100000'; \
-} > /usr/local/etc/php/conf.d/opcache.ini
+    # ========== Remove only build deps (keep runtime libs!) ==========
+    RUN set -eux; \
+        apt-get purge -y --auto-remove \
+          $PHPIZE_DEPS \
+          autoconf \
+          pkg-config \
+          build-essential \
+          libicu-dev \
+          libonig-dev \
+          libzip-dev \
+          libpng-dev \
+          libpq-dev \
+        ; \
+        rm -rf /var/lib/apt/lists/*
 
-RUN apk del .build-deps
+    # Quick sanity check for the exact errors you hit
+    RUN set -eux; \
+        php -m | grep -E 'pdo_pgsql|zip'; \
+        php -r 'echo "PHP OK\n";'
 
-# ---------- Stage 2: 依赖安装 ----------
-FROM php-extensions AS deps
-WORKDIR /var/www
 
-# Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-ENV COMPOSER_ALLOW_SUPERUSER=1
+    # ---------- Stage 2: Dependencies (composer install) ----------
+    FROM php-extensions AS deps
+    WORKDIR /var/www
 
-# 复制 composer 文件（用于缓存）
-COPY composer.json composer.lock ./
+    # Composer
+    COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+    ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# ⚠️ 此时不能执行 composer install（没有 artisan）——跳过！
-# 我们先复制完整应用，再执行 install
+    # 复制 composer 文件（用于缓存）
+    COPY composer.json composer.lock ./
 
-# 复制项目所有代码
-COPY . .
 
-# 保证 storage / cache 可写
-RUN mkdir -p bootstrap/cache storage/logs \
-    && chown -R www-data:www-data bootstrap/cache storage
+    # 复制项目所有代码
+    COPY . .
 
-# ⚠️ 现在 artisan 存在了，安全安装依赖（会跑 scripts）
-RUN composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+    # 保证 storage / cache 可写
+    RUN set -eux; \
+        mkdir -p bootstrap/cache storage/logs storage/framework/cache storage/framework/sessions storage/framework/views; \
+        chown -R www-data:www-data bootstrap/cache storage
 
-# ---------- Stage 3: 运行镜像 ----------
-FROM php-extensions AS app
-WORKDIR /var/www
+    # 安装依赖（production）
+    RUN set -eux; \
+        composer install \
+          --no-dev \
+          --prefer-dist \
+          --no-interaction \
+          --no-progress \
+          --optimize-autoloader
 
-# 配置上传文件大小
-COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
-# 带上 composer
-COPY --from=deps /usr/bin/composer /usr/bin/composer
+    # ---------- Stage 3: Runtime ----------
+    FROM php-extensions AS app
+    WORKDIR /var/www
 
-# 拷入所有应用 & vendor
-COPY --from=deps --chown=www-data:www-data /var/www /var/www
+    # 配置上传文件大小
+    COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
-# 可写目录
-RUN set -eux; \
-    install -d -m 755 -o www-data -g www-data /usr/local/var/run/php
+    # 复制 entrypoint 脚本
+    COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+    RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-USER www-data
-CMD ["php-fpm"]
+    # 拷入所有应用 & vendor
+    COPY --from=deps --chown=www-data:www-data /var/www /var/www
+
+    # font cache dirs (safe for wkhtmltopdf/fontconfig)
+    RUN set -eux; \
+        mkdir -p /var/cache/fontconfig /home/www-data/.cache/fontconfig; \
+        chown -R www-data:www-data /var/cache/fontconfig /home/www-data; \
+        chmod -R 755 /var/cache/fontconfig /home/www-data/.cache
+
+    # Verify wkhtmltopdf in final image
+    RUN set -eux; \
+        command -v wkhtmltopdf; \
+        wkhtmltopdf --version
+
+    # php-fpm run dir
+    RUN set -eux; \
+        install -d -m 755 -o www-data -g www-data /usr/local/var/run/php
+
+    USER www-data
+    CMD ["php-fpm"]

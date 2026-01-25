@@ -24,6 +24,8 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777
       - /usr/local/var/run/php:size=16m,mode=755
+      - /var/cache/fontconfig:size=10m,mode=755
+      - /home/www-data/.cache:size=10m,mode=755
     cap_drop:
       - ALL
     security_opt:
@@ -81,6 +83,8 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777
       - /usr/local/var/run/php:size=16m,mode=755
+      - /var/cache/fontconfig:size=10m,mode=755
+      - /home/www-data/.cache:size=10m,mode=755
     cap_drop:
       - ALL
     security_opt:
