@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import ServicesPagesDeleteModal from './ServicesPagesDeleteModal'
 
 type ServicesMenuItem = {
   id: number
@@ -35,10 +36,12 @@ function normalizeMenuItems(response: ApiResponse): ServicesMenuItem[] {
 export default function ServicesPagesTable({ permissions }: { permissions: string[] }) {
   const canCreate = permissions.includes('ecommerce.services-pages.create')
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
+  const canDelete = permissions.includes('ecommerce.services-pages.delete')
 
   const [items, setItems] = useState<ServicesMenuItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ServicesMenuItem | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -76,8 +79,26 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
     [items],
   )
 
+  const handlePageDeleted = (menuId: number) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === menuId ? { ...item, page: null } : item,
+      ),
+    )
+  }
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      {deleteTarget && (
+        <ServicesPagesDeleteModal
+          servicesMenu={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onSuccess={(menuId) => {
+            setDeleteTarget(null)
+            handlePageDeleted(menuId)
+          }}
+        />
+      )}
       <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h3 className="text-base font-semibold text-gray-900">Services Pages</h3>
