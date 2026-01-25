@@ -5,27 +5,41 @@
   <title>Invoice {{ $order->order_number }}</title>
 
   @php
-    $cjkFontCandidates = [
-      public_path('fonts/NotoSansSC-Regular.otf'),
-      storage_path('fonts/NotoSansSC-Regular.otf'),
+    $fontSources = [
+      'Noto Sans SC' => [
+        public_path('fonts/NotoSansSC-Regular.otf'),
+        storage_path('fonts/NotoSansSC-Regular.otf'),
+      ],
+      'Noto Sans KR' => [
+        public_path('fonts/NotoSansKR-Regular.otf'),
+        storage_path('fonts/NotoSansKR-Regular.otf'),
+        public_path('fonts/NotoSansCJKkr-Regular.otf'),
+        storage_path('fonts/NotoSansCJKkr-Regular.otf'),
+      ],
+      'Malgun Gothic' => [
+        public_path('fonts/malgun.ttf'),
+        storage_path('fonts/malgun.ttf'),
+      ],
     ];
-    $cjkFontFile = collect($cjkFontCandidates)->first(fn ($path) => file_exists($path));
+    $resolvedFonts = collect($fontSources)->map(fn ($paths) => collect($paths)->first(fn ($path) => file_exists($path)));
   @endphp
 
   <style>
-    @if($cjkFontFile)
-    @font-face {
-      font-family: "Noto Sans SC";
-      font-style: normal;
-      font-weight: 400;
-      src: url("{{ 'file://' . $cjkFontFile }}") format("opentype");
-    }
-    @endif
+    @foreach($resolvedFonts as $fontName => $fontPath)
+      @if($fontPath)
+      @font-face {
+        font-family: "{{ $fontName }}";
+        font-style: normal;
+        font-weight: 400;
+        src: url("{{ 'file://' . $fontPath }}") format("{{ str_ends_with($fontPath, '.ttf') ? 'truetype' : 'opentype' }}");
+      }
+      @endif
+    @endforeach
 
     @page { margin: 24px; }
 
     body{
-      font-family:"Noto Sans CJK SC","Noto Sans SC","Microsoft YaHei","PingFang SC","Heiti SC","SimHei","WenQuanYi Micro Hei",DejaVu Sans,Arial,sans-serif;
+      font-family:"Noto Sans CJK KR","Noto Sans KR","Noto Sans CJK SC","Noto Sans SC","Malgun Gothic","Microsoft YaHei","PingFang SC","Heiti SC","SimHei","WenQuanYi Micro Hei",DejaVu Sans,Arial,sans-serif;
       font-size: 12px;
       color:#111827;
       margin:0;
