@@ -33,6 +33,7 @@ function normalizeMenuItems(response: ApiResponse): ServicesMenuItem[] {
 }
 
 export default function ServicesPagesTable({ permissions }: { permissions: string[] }) {
+  const canCreate = permissions.includes('ecommerce.services-pages.create')
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
 
   const [items, setItems] = useState<ServicesMenuItem[]>([])
@@ -82,13 +83,15 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
           <h3 className="text-base font-semibold text-gray-900">Services Pages</h3>
           <p className="text-xs text-gray-500">Pick a services menu and manage its page.</p>
         </div>
-        <Link
-          href="/services-pages/create"
-          className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <i className="fa-solid fa-plus" />
-          Create Page
-        </Link>
+        {canCreate ? (
+          <Link
+            href="/services-pages/create"
+            className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            <i className="fa-solid fa-plus" />
+            Create Page
+          </Link>
+        ) : null}
       </div>
 
       {loading ? (
@@ -131,16 +134,30 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/services-pages/${item.id}`}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
-                          aria-label={hasPage ? 'Edit services page' : 'Create services page'}
-                          title={hasPage ? 'Edit services page' : 'Create services page'}
-                        >
-                          <i className={`fa-solid ${hasPage ? 'fa-pen' : 'fa-plus'}`} />
-                        </Link>
-                        {!canUpdate && (
-                          <span className="text-[11px] text-gray-400">View only</span>
+                        {hasPage ? (
+                          canUpdate ? (
+                            <Link
+                              href={`/services-pages/${item.id}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
+                              aria-label="Edit services page"
+                              title="Edit services page"
+                            >
+                              <i className="fa-solid fa-pen" />
+                            </Link>
+                          ) : (
+                            <span className="text-[11px] text-gray-400">View only</span>
+                          )
+                        ) : canCreate ? (
+                          <Link
+                            href={`/services-pages/${item.id}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
+                            aria-label="Create services page"
+                            title="Create services page"
+                          >
+                            <i className="fa-solid fa-plus" />
+                          </Link>
+                        ) : (
+                          <span className="text-[11px] text-gray-400">No access</span>
                         )}
                       </div>
                     </td>

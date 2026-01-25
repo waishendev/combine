@@ -29,7 +29,7 @@ function normalizeMenuItems(response: ApiResponse): ServicesMenuItem[] {
 
 export default function ServicesPageCreateForm({ permissions }: { permissions: string[] }) {
   const router = useRouter()
-  const canUpdate = permissions.includes('ecommerce.services-pages.update')
+  const canCreate = permissions.includes('ecommerce.services-pages.create')
 
   const [menuItems, setMenuItems] = useState<ServicesMenuItem[]>([])
   const [menuId, setMenuId] = useState<string>('')
@@ -122,7 +122,7 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
           value={menuId}
           onChange={(e) => setMenuId(e.target.value)}
           className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={!canUpdate || saving}
+          disabled={!canCreate || saving}
         >
           <option value="">Select a services menu...</option>
           {availableMenus.map((item) => (
@@ -153,7 +153,7 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
           type="button"
           onClick={handleContinue}
           className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={!canUpdate || saving || !menuId}
+          disabled={!canCreate || saving || !menuId}
         >
           Continue
         </button>
