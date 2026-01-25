@@ -10,15 +10,12 @@ import { ShopFooter } from "@/components/layout/ShopFooter";
 import { headers } from "next/headers";
 import { getHomepage } from "@/lib/server/getHomepage";
 import { getUser } from "@/lib/server/getUser";
-import { cache } from "react";
 import { mapSeoToMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-const getHomepageCached = cache(getHomepage);
-
 export async function generateMetadata(): Promise<Metadata> {
-  const homepage = await getHomepageCached();
+  const homepage = await getHomepage();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const baseMetadata = mapSeoToMetadata(homepage?.seo, {
     meta_title: "Gentlegurls",
@@ -72,7 +69,7 @@ export default async function RootLayout({
   const pathname = headerList.get("x-pathname") ?? "";
   const isAuthRoute = pathname === "/login" || pathname === "/register";
   const initialCustomer = isAuthRoute ? null : await getUser();
-  const homepage = await getHomepageCached();
+  const homepage = await getHomepage();
 
   return (
     <html lang="en" data-theme={theme}>
