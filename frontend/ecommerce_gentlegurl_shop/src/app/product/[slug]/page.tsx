@@ -15,13 +15,12 @@ type ProductPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const getHomepageCached = cache(getHomepage);
 const getProductCached = cache(getProduct);
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
   const [homepage, product] = await Promise.all([
-    getHomepageCached(),
+    getHomepage(),
     getProductCached(slug),
   ]);
 

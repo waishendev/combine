@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function FlushCachePage() {
@@ -9,6 +10,7 @@ export default function FlushCachePage() {
     message: string;
     data?: { cleared_keys?: string[] };
   } | null>(null);
+  const router = useRouter();
 
   const handleFlushCache = async () => {
     setLoading(true);
@@ -24,6 +26,9 @@ export default function FlushCachePage() {
 
       const data = await response.json();
       setResult(data);
+      if (data?.success) {
+        router.refresh();
+      }
     } catch (error) {
       setResult({
         success: false,
@@ -86,4 +91,3 @@ export default function FlushCachePage() {
     </main>
   );
 }
-
