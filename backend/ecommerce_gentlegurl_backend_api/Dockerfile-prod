@@ -25,31 +25,41 @@ RUN apk add --no-cache \
     libxrender \
     libstdc++ \
     libgcc \
+    openssl \
+    openssl-dev \
     ffmpeg
 
-# 安装 wkhtmltopdf（从 GitHub 下载预编译的 APK）
-# 检测 Alpine 版本并下载对应的包
-RUN apk add --no-cache wget ca-certificates && \
-    ALPINE_VERSION=$(cat /etc/alpine-release | cut -d'.' -f1,2) && \
-    ALPINE_MAJOR=$(echo $ALPINE_VERSION | cut -d'.' -f1) && \
-    ALPINE_MINOR=$(echo $ALPINE_VERSION | cut -d'.' -f2) && \
-    (if [ "$ALPINE_MAJOR" = "3" ] && [ "$ALPINE_MINOR" -ge "17" ]; then \
-        ALPINE_VER="3.17"; \
-     elif [ "$ALPINE_MAJOR" = "3" ] && [ "$ALPINE_MINOR" -ge "16" ]; then \
-        ALPINE_VER="3.16"; \
-     else \
-        ALPINE_VER="3.17"; \
-     fi && \
-     WKHTML_VERSION="0.12.6.1-3" && \
-     ARCH="amd64" && \
-     wget -q "https://github.com/wkhtmltopdf/packaging/releases/download/${WKHTML_VERSION}/wkhtmltox-${WKHTML_VERSION}.alpine${ALPINE_VER}-${ARCH}.apk" -O /tmp/wkhtmltopdf.apk && \
-     apk add --allow-untrusted /tmp/wkhtmltopdf.apk && \
-     rm /tmp/wkhtmltopdf.apk && \
-     echo "wkhtmltopdf installed successfully") || \
-    (echo "WARNING: wkhtmltopdf installation failed. PDF generation may not work." && \
-     echo "You can install it manually or set WKHTMLTOPDF_BINARY in .env to point to the binary path.") && \
-    apk del wget ca-certificates || true
-
+# 安装 wkhtmltopdf
+# 方法1: 尝试从 Alpine 社区仓库安装（如果可用）
+# 方法2: 从 SourceForge 下载静态二进制文件
+RUN set -eux; \
+    apk add --no-cache curl tar xz; \
+    echo "Attempting to install wkhtmltopdf..."; \
+    (apk add --no-cache wkhtmltopdf 2>/dev/null && echo "Installed from Alpine repository") || \
+    (echo "Alpine repository not available, downloading from SourceForge..." && \
+     cd /tmp && \
+     curl -fSL "https://sourceforge.net/projects/wkhtmltopdf/files/0.12.6/wkhtmltox_0.12.6-1.static-amd64.tar.xz/download" \
+          --output wkhtmltopdf.tar.xz \
+          --fail \
+          --location \
+          --max-time 300 \
+          --retry 3 \
+          --retry-delay 5 && \
+     echo "Extracting..." && \
+     tar -xf wkhtmltopdf.tar.xz && \
+     mkdir -p /usr/local/bin && \
+     cp wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf && \
+     chmod +x /usr/local/bin/wkhtmltopdf && \
+     ln -sf /usr/local/bin/wkhtmltopdf /usr/bin/wkhtmltopdf && \
+     rm -rf /tmp/wkhtmltopdf.tar.xz /tmp/wkhtmltox); \
+    if ! command -v wkhtmltopdf >/dev/null 2>&1; then \
+        echo "ERROR: wkhtmltopdf installation failed. Please check network connectivity or download manually."; \
+        exit 1; \
+    fi; \
+    echo "Testing wkhtmltopdf..."; \
+    wkhtmltopdf --version || (echo "ERROR: Version check failed" && exit 1); \
+    echo "✓ wkhtmltopdf installed at $(which wkhtmltopdf)"; \
+    apk del curl tar xz
 
 # 构建期依赖
 RUN apk add --no-cache --virtual .build-deps \

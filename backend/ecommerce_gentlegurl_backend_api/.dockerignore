@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.idea
+.vscode
+.phpactor.json
+.fleet
+.zed
+
+# Environment
+.env
+.env.backup
+.env.local
+.env.*.local
+
+# Dependencies
+/vendor
+/node_modules
+
+# Build artifacts
+/public/build
+/public/hot
+
+# Storage symlink (will be created in container)
+/public/storage
+
+# Logs
+*.log
+storage/logs/*.log
+
+# Cache
+.phpunit.cache
+.phpunit.result.cache
+bootstrap/cache/*.php
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+docs
+
+# Test files
+tests
+.phpunit.xml

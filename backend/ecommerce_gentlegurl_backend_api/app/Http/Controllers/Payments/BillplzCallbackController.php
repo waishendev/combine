@@ -17,8 +17,20 @@ class BillplzCallbackController extends Controller
         $payload = $request->all();
         $billplzPayload = $payload['billplz'] ?? $payload;
 
-        if (!$this->verifySignature($payload)) {
-            Log::warning('Billplz callback invalid signature', $payload);
+        // Log incoming callback for debugging
+        Log::info('Billplz callback received', [
+            'payload' => $payload,
+            'billplz_payload' => $billplzPayload,
+            'headers' => $request->headers->all(),
+        ]);
+
+        $signatureValid = $this->verifySignature($payload);
+        if (!$signatureValid) {
+            Log::warning('Billplz callback invalid signature', [
+                'payload' => $payload,
+                'x_signature_received' => $billplzPayload['x_signature'] ?? null,
+                'x_signature_key' => config('services.billplz.x_signature') ? 'set' : 'not set',
+            ]);
             return response('invalid signature', 400);
         }
 
@@ -26,6 +38,7 @@ class BillplzCallbackController extends Controller
         $referenceOrderNo = $billplzPayload['reference_1'] ?? $billplzPayload['order_no'] ?? null;
 
         if (!$billId && !$referenceOrderNo) {
+            Log::warning('Billplz callback missing bill id and reference', ['payload' => $billplzPayload]);
             return response('missing bill id', 400);
         }
 
@@ -37,7 +50,11 @@ class BillplzCallbackController extends Controller
         }
 
         if (!$order) {
-            Log::warning('Billplz callback order not found', ['bill_id' => $billId, 'reference' => $referenceOrderNo]);
+            Log::warning('Billplz callback order not found', [
+                'bill_id' => $billId,
+                'reference' => $referenceOrderNo,
+                'payload' => $billplzPayload,
+            ]);
             return response('order not found', 404);
         }
 
@@ -59,8 +76,30 @@ class BillplzCallbackController extends Controller
             $bill->save();
         }
 
-        $paid = isset($billplzPayload['paid']) ? filter_var($billplzPayload['paid'], FILTER_VALIDATE_BOOLEAN) : false;
+        // Check paid status - handle both string and boolean values
+        $paid = false;
+        if (isset($billplzPayload['paid'])) {
+            $paidValue = $billplzPayload['paid'];
+            if (is_bool($paidValue)) {
+                $paid = $paidValue;
+            } elseif (is_string($paidValue)) {
+                $paid = in_array(strtolower($paidValue), ['true', '1', 'yes', 'paid'], true);
+            } else {
+                $paid = (bool) $paidValue;
+            }
+        }
+        
         $paidAt = $billplzPayload['paid_at'] ?? null;
+
+        Log::info('Billplz callback processing', [
+            'order_id' => $order->id,
+            'order_no' => $order->order_number,
+            'bill_id' => $billId,
+            'paid' => $paid,
+            'paid_at' => $paidAt,
+            'current_payment_status' => $order->payment_status,
+            'current_status' => $order->status,
+        ]);
 
         if ($paid && $order->payment_status !== 'paid') {
             $order->payment_status = 'paid';
@@ -72,7 +111,21 @@ class BillplzCallbackController extends Controller
             $order->payment_provider = $order->payment_provider ?: 'billplz';
             $order->save();
 
+            Log::info('Billplz callback: Order payment status updated', [
+                'order_id' => $order->id,
+                'order_no' => $order->order_number,
+                'payment_status' => $order->payment_status,
+                'status' => $order->status,
+            ]);
+
             $this->clearOrderCart($order);
+        } elseif (!$paid) {
+            Log::warning('Billplz callback: Payment not marked as paid', [
+                'order_id' => $order->id,
+                'order_no' => $order->order_number,
+                'paid_value' => $billplzPayload['paid'] ?? null,
+                'paid_parsed' => $paid,
+            ]);
         }
 
         return response('OK', 200);
