@@ -111,6 +111,26 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const isBillplzPayment = (paymentMethod ?? order?.payment_method)?.startsWith("billplz");
   const paymentProvider = order?.payment_provider ?? (isBillplzPayment ? "billplz" : "manual");
   const isPaid = order?.payment_status === "paid";
+  const shouldPollPayment = Boolean(isBillplzPayment && !isPaid);
+
+  useEffect(() => {
+    if (!shouldPollPayment) return;
+
+    let attempts = 0;
+    const maxAttempts = 12;
+    const intervalMs = 5000;
+
+    const intervalId = window.setInterval(() => {
+      attempts += 1;
+      void loadOrder();
+
+      if (attempts >= maxAttempts) {
+        window.clearInterval(intervalId);
+      }
+    }, intervalMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadOrder, shouldPollPayment]);
 
   // Status display logic based on new requirements
   const displayStatus = useMemo(() => {
