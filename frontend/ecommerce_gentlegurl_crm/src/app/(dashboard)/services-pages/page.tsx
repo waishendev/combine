@@ -35,11 +35,11 @@ export default async function ServicesPagesPage() {
           href="/services-pages"
           className="text-blue-600 hover:underline"
         >
-          {t('catalog.servicesPages', { defaultValue: 'Services Pages' })}
+          {t('catalog.servicesPages')}
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-2">
-        {t('catalog.servicesPages', { defaultValue: 'Services Pages' })}
+        {t('catalog.servicesPages')}
       </h2>
       <p className="mb-6 text-sm text-gray-500">
         Start from a table, then create or edit each services page.

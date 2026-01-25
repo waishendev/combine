@@ -151,8 +151,6 @@ export default function ServicesMenuEditModal({
             slug: trimmedSlug,
             sortOrder: loadedServicesMenu?.sortOrder ?? null,
             isActive: form.isActive,
-            createdAt: loadedServicesMenu?.createdAt ?? '',
-            updatedAt: loadedServicesMenu?.updatedAt ?? '',
           }
 
       setLoadedServicesMenu(servicesMenuRow)

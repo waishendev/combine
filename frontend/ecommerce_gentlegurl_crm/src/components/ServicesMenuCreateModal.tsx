@@ -103,8 +103,6 @@ export default function ServicesMenuCreateModal({
             slug: trimmedSlug,
             sortOrder: null,
             isActive: true,
-            createdAt: '',
-            updatedAt: '',
           }
 
       onSuccess(servicesMenuRow)

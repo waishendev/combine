@@ -651,7 +651,7 @@ export default function ServicesMenuTable({
         <ServicesMenuDeleteModal
           servicesMenu={deleteTarget}
           onClose={() => setDeleteTarget(null)}
-          onDeleted={(servicesMenuId) => {
+          onSuccess={(servicesMenuId) => {
             setDeleteTarget(null)
             handleServicesMenuDeleted(servicesMenuId)
           }}

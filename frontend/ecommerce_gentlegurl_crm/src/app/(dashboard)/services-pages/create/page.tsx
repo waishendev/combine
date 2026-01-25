@@ -32,7 +32,7 @@ export default async function ServicesPagesCreatePage() {
         <span className="text-gray-500">Catalog</span>
         <span className="mx-1">/</span>
         <Link href="/services-pages" className="text-blue-600 hover:underline">
-          {t('catalog.servicesPages', { defaultValue: 'Services Pages' })}
+          {t('catalog.servicesPages')}
         </Link>
         <span className="mx-1">/</span>
         <span className="text-gray-700">Create</span>
