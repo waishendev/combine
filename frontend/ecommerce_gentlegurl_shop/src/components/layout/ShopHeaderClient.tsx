@@ -53,13 +53,8 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const effectiveServicesMenu = servicesMenu.length
-    ? servicesMenu
-    : [
-        { id: 1, label: "Nail Services", slug: "nail-services", sort_order: 1 },
-        { id: 2, label: "Waxing & Hair Removal", slug: "waxing-hair-removal", sort_order: 2 },
-        { id: 3, label: "Nail Courses", slug: "nail-courses", sort_order: 3 },
-      ];
+  const hasShopMenu = shopMenu.length > 0;
+  const hasServicesMenu = servicesMenu.length > 0;
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -256,80 +251,99 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
 
             {/* SHOP + Dropdown */}
             <div className="relative" data-menu>
-              <button
-                type="button"
-                onClick={() => {
-                  setShopOpen((prev) => !prev);
-                  setServicesOpen(false);
-                }}
-                className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
-              >
-                <span>Shop</span>
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                </svg>
-              </button>
-
-              {shopOpen && shopMenu.length > 0 && (
-                <div className="absolute left-0 z-20 mt-2 w-56 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
-                  <Link
-                    href="/shop"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
-                    onClick={() => setShopOpen(false)}
+              {hasShopMenu ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShopOpen((prev) => !prev);
+                      setServicesOpen(false);
+                    }}
+                    className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
                   >
-                    All Products
-                  </Link>
+                    <span>Shop</span>
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
 
-                  <div className="my-1 border-t border-[var(--muted)]" />
-
-                  {shopMenu
-                    .slice()
-                    .sort((a, b) => a.sort_order - b.sort_order)
-                    .map((item) => (
+                  {shopOpen && (
+                    <div className="absolute left-0 z-20 mt-2 w-56 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
                       <Link
-                        key={item.id}
-                        href={`/shop/${item.slug}`}
+                        href="/shop"
                         className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
                         onClick={() => setShopOpen(false)}
                       >
-                        {item.label}
+                        All Products
                       </Link>
-                    ))}
-                </div>
+
+                      <div className="my-1 border-t border-[var(--muted)]" />
+
+                      {shopMenu
+                        .slice()
+                        .sort((a, b) => a.sort_order - b.sort_order)
+                        .map((item) => (
+                          <Link
+                            key={item.id}
+                            href={`/shop/${item.slug}`}
+                            className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
+                            onClick={() => setShopOpen(false)}
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Link
+                  href="/shop"
+                  className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
+                >
+                  Shop
+                </Link>
               )}
             </div>
 
             {/* Services & Courses Dropdown */}
-            <div className="relative" data-menu>
-              <button
-                type="button"
-                onClick={() => {
-                  setServicesOpen((prev) => !prev);
-                  setShopOpen(false);
-                }}
-                className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
-              >
-                <span>Services & Courses</span>
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                </svg>
-              </button>
+            {hasServicesMenu && (
+              <div className="relative" data-menu>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServicesOpen((prev) => !prev);
+                    setShopOpen(false);
+                  }}
+                  className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
+                >
+                  <span>Services & Courses</span>
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
 
-              {servicesOpen && (
-                <div className="absolute left-0 z-20 mt-2 w-64 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
-                  {effectiveServicesMenu.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={`/services/${item.slug}`}
-                      className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
-                      onClick={() => setServicesOpen(false)}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
+                {servicesOpen && (
+                  <div className="absolute left-0 z-20 mt-2 w-64 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
+                    {servicesMenu.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={`/services/${item.slug}`}
+                        className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
+                        onClick={() => setServicesOpen(false)}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Membership Dropdown */}
             <div className="relative" data-menu>
@@ -856,78 +870,98 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
 
               {/* Shop Menu */}
               <div>
-                <button
-                  type="button"
-                  onClick={() => setShopOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                >
-                  <span>Shop</span>
-                  <svg className={`h-3 w-3 transition-transform ${shopOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                  </svg>
-                </button>
-                {shopOpen && shopMenu.length > 0 && (
-                  <div className="ml-4 mt-1 space-y-1 border-l border-[var(--muted)]/50 pl-4">
-                    <Link
-                      href="/shop"
-                      className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                      onClick={() => {
-                        setShopOpen(false);
-                        setMobileMenuOpen(false);
-                      }}
+                {hasShopMenu ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShopOpen((prev) => !prev)}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                     >
-                      All Products
-                    </Link>
-                    {shopMenu
-                      .slice()
-                      .sort((a, b) => a.sort_order - b.sort_order)
-                      .map((item) => (
+                      <span>Shop</span>
+                      <svg
+                        className={`h-3 w-3 transition-transform ${shopOpen ? "rotate-180" : ""}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                    {shopOpen && (
+                      <div className="ml-4 mt-1 space-y-1 border-l border-[var(--muted)]/50 pl-4">
                         <Link
-                          key={item.id}
-                          href={`/shop/${item.slug}`}
+                          href="/shop"
                           className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                           onClick={() => {
                             setShopOpen(false);
                             setMobileMenuOpen(false);
                           }}
                         >
-                          {item.label}
+                          All Products
                         </Link>
-                      ))}
-                  </div>
+                        {shopMenu
+                          .slice()
+                          .sort((a, b) => a.sort_order - b.sort_order)
+                          .map((item) => (
+                            <Link
+                              key={item.id}
+                              href={`/shop/${item.slug}`}
+                              className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                              onClick={() => {
+                                setShopOpen(false);
+                                setMobileMenuOpen(false);
+                              }}
+                            >
+                              {item.label}
+                            </Link>
+                          ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <Link
+                    href="/shop"
+                    className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Shop
+                  </Link>
                 )}
               </div>
 
               {/* Services Menu */}
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setServicesOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                >
-                  <span>Services & Courses</span>
-                  <svg className={`h-3 w-3 transition-transform ${servicesOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                  </svg>
-                </button>
-                {servicesOpen && (
-                  <div className="ml-4 mt-1 space-y-1 border-l border-[var(--muted)]/50 pl-4">
-                    {effectiveServicesMenu.map((item) => (
-                      <Link
-                        key={`mobile-${item.id}`}
-                        href={`/services/${item.slug}`}
-                        className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                        onClick={() => {
-                          setServicesOpen(false);
-                          setMobileMenuOpen(false);
-                        }}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {hasServicesMenu && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setServicesOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  >
+                    <span>Services & Courses</span>
+                    <svg className={`h-3 w-3 transition-transform ${servicesOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                  {servicesOpen && (
+                    <div className="ml-4 mt-1 space-y-1 border-l border-[var(--muted)]/50 pl-4">
+                      {servicesMenu.map((item) => (
+                        <Link
+                          key={`mobile-${item.id}`}
+                          href={`/services/${item.slug}`}
+                          className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                          onClick={() => {
+                            setServicesOpen(false);
+                            setMobileMenuOpen(false);
+                          }}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Membership Menu - Mobile */}
               <div>
