@@ -52,8 +52,8 @@
       if ($fontPath) {
         // Convert Windows path to format suitable for wkhtmltopdf
         $fontPathFormatted = str_replace('\\', '/', $fontPath);
-        // Use file:// protocol for local files
-        $fontUrl = 'file:///' . $fontPathFormatted;
+        // Use file:// protocol for local files (avoid extra slash)
+        $fontUrl = 'file://' . $fontPathFormatted;
         $fontFormat = str_ends_with($fontPath, '.ttf') ? 'truetype' : 'opentype';
         return [
           'name' => $config['name'],
@@ -325,6 +325,17 @@
 
   $footerNote = $profile['footer_note'] ?? null;
 
+  $companyLogoSrc = null;
+  $companyLogoUrl = $profile['company_logo_url'] ?? null;
+  if (!empty($companyLogoUrl)) {
+    if (str_starts_with($companyLogoUrl, 'http://') || str_starts_with($companyLogoUrl, 'https://')) {
+      $companyLogoSrc = $companyLogoUrl;
+    } else {
+      $logoPath = public_path(ltrim($companyLogoUrl, '/'));
+      $companyLogoSrc = file_exists($logoPath) ? 'file://' . str_replace('\\', '/', $logoPath) : $companyLogoUrl;
+    }
+  }
+
   // Support lines (fallback to profile fields)
   $supportEmail = $profile['company_email'] ?? null;
   $supportPhone = $profile['company_phone'] ?? null;
@@ -340,9 +351,9 @@
           <td style="width:60%;">
             <table style="width:100%;">
               <tr>
-                @if(!empty($profile['company_logo_url']))
+                @if(!empty($companyLogoSrc))
                   <td style="width:150px; padding-right:10px; vertical-align:top;">
-                    <img class="company-logo" src="{{ $profile['company_logo_url'] }}" alt="Company Logo" />
+                    <img class="company-logo" src="{{ $companyLogoSrc }}" alt="Company Logo" />
                   </td>
                 @endif
                 <td style="vertical-align:top;">
