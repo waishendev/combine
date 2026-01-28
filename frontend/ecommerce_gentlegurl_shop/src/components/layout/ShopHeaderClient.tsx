@@ -52,6 +52,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchImageErrors, setSearchImageErrors] = useState<Set<string>>(new Set());
   const fallbackLogo = "/images/logo.png";
+  const storageKey = "branding.shop_logo_url";
   const [resolvedLogoUrl, setResolvedLogoUrl] = useState(logoUrl || fallbackLogo);
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -60,8 +61,20 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   const hasServicesMenu = servicesMenu.length > 0;
 
   useEffect(() => {
-    setResolvedLogoUrl(logoUrl || fallbackLogo);
-  }, [logoUrl, fallbackLogo]);
+    if (typeof window === "undefined") return;
+    const cachedLogo = window.sessionStorage.getItem(storageKey);
+    if (cachedLogo && !logoUrl) {
+      setResolvedLogoUrl(cachedLogo);
+    }
+  }, [logoUrl]);
+
+  useEffect(() => {
+    if (!logoUrl) return;
+    setResolvedLogoUrl(logoUrl);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(storageKey, logoUrl);
+    }
+  }, [logoUrl]);
 
   // Close menus when clicking outside
   useEffect(() => {
