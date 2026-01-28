@@ -596,6 +596,18 @@ export default function ServicesPagesEditor({
         if (!value) return ''
         try {
           const url = new URL(value)
+          if (url.pathname.startsWith('/_next/image')) {
+            const raw = url.searchParams.get('url')
+            if (raw) {
+              const decoded = decodeURIComponent(raw)
+              try {
+                const innerUrl = new URL(decoded)
+                return `${innerUrl.pathname}${innerUrl.search}${innerUrl.hash}`
+              } catch {
+                return decoded
+              }
+            }
+          }
           return `${url.pathname}${url.search}${url.hash}`
         } catch {
           return value
