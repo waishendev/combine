@@ -27,14 +27,37 @@ export type ServicesFaqItem = {
   answer: string;
 };
 
+export type ServicesSectionHeading = {
+  label: string;
+  title: string;
+  align?: "left" | "center" | "right";
+};
+
+export type ServicesGalleryItem = {
+  src: string;
+  alt?: string;
+  caption?: string;
+  captionAlign?: "left" | "center" | "right";
+};
+
 export type ServicesSection<T> = {
   is_active: boolean;
   items: T[];
+  heading?: ServicesSectionHeading;
 };
 
 export type ServicesNotesSection = {
   is_active: boolean;
   items: string[];
+  heading?: ServicesSectionHeading;
+};
+
+export type ServicesGallerySection = {
+  is_active: boolean;
+  items: ServicesGalleryItem[];
+  heading?: ServicesSectionHeading;
+  footerText?: string;
+  footerAlign?: "left" | "center" | "right";
 };
 
 export type ServicesPageData = {
@@ -47,6 +70,7 @@ export type ServicesPageData = {
   sections: {
     hero: ServicesSection<never>;
     services: ServicesSection<ServicesServiceItem>;
+    gallery: ServicesGallerySection;
     pricing: ServicesSection<ServicesPricingItem>;
     faqs: ServicesSection<ServicesFaqItem>;
     notes: ServicesNotesSection;

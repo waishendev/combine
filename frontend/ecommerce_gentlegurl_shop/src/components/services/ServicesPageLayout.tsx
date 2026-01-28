@@ -18,6 +18,19 @@ type FAQItem = {
   answer: string;
 };
 
+type SectionHeading = {
+  label: string;
+  title: string;
+  align?: "left" | "center" | "right";
+};
+
+type GalleryImage = {
+  src: string;
+  alt?: string;
+  caption?: string;
+  captionAlign?: "left" | "center" | "right";
+};
+
 type HeroSlide = {
   src: string;
   mobileSrc?: string;
@@ -34,17 +47,25 @@ type ServicesPageLayoutProps = {
   title: string;
   subtitle: string;
   services: ServiceItem[];
+  gallery: GalleryImage[];
   pricing: PricingItem[];
   faqs: FAQItem[];
   notes: string[];
   servicesActive?: boolean;
+  galleryActive?: boolean;
   pricingActive?: boolean;
   faqsActive?: boolean;
   notesActive?: boolean;
   heroActive?: boolean;
   heroImage?: string;
   heroSlides?: HeroSlide[];
-  galleryImages?: { src: string; alt: string; caption?: string }[];
+  servicesHeading?: SectionHeading;
+  galleryHeading?: SectionHeading;
+  galleryFooterText?: string;
+  galleryFooterAlign?: "left" | "center" | "right";
+  pricingHeading?: SectionHeading;
+  faqHeading?: SectionHeading;
+  notesHeading?: SectionHeading;
   whatsappPhone?: string | null;
   whatsappEnabled?: boolean;
   whatsappDefaultMessage?: string | null;
@@ -54,16 +75,25 @@ export function ServicesPageLayout({
   title,
   subtitle,
   services,
+  gallery,
   pricing,
   faqs,
   notes,
   servicesActive = true,
+  galleryActive = true,
   pricingActive = true,
   faqsActive = true,
   notesActive = true,
   heroActive = true,
   heroImage,
   heroSlides,
+  servicesHeading,
+  galleryHeading,
+  galleryFooterText,
+  galleryFooterAlign = "center",
+  pricingHeading,
+  faqHeading,
+  notesHeading,
   whatsappPhone,
   whatsappEnabled = true,
   whatsappDefaultMessage,
@@ -95,9 +125,35 @@ export function ServicesPageLayout({
 
   const whatsappUrl = getWhatsAppUrl();
   const showServicesSection = servicesActive && services.length > 0;
+  const showGallerySection = galleryActive && gallery.length > 0;
   const showPricingSection = pricingActive && pricing.length > 0;
   const showFaqSection = faqsActive && faqs.length > 0;
   const showNotesSection = notesActive && notes.length > 0;
+  const resolvedServicesHeading = servicesHeading ?? {
+    label: "Services",
+    title: "What's Included",
+    align: "left",
+  };
+  const resolvedGalleryHeading = galleryHeading ?? {
+    label: "Service Menu",
+    title: "Click to view services and pricing",
+    align: "center",
+  };
+  const resolvedPricingHeading = pricingHeading ?? {
+    label: "Pricing",
+    title: "Transparent rates",
+    align: "left",
+  };
+  const resolvedFaqHeading = faqHeading ?? {
+    label: "FAQ",
+    title: "You might be wondering",
+    align: "left",
+  };
+  const resolvedNotesHeading = notesHeading ?? {
+    label: "Notes",
+    title: "Policy & care",
+    align: "left",
+  };
 
   const slides = orderedSlides.map((slide, index) => {
     const resolvedTitle = slide.title ?? `${title} spotlight ${index + 1}`;
@@ -127,7 +183,9 @@ export function ServicesPageLayout({
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
   const [isHoveringHero, setIsHoveringHero] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [galleryLightboxIndex, setGalleryLightboxIndex] = useState<number | null>(null);
   const autoplayDelayMs = 5000;
+  const isLightboxOpen = lightboxIndex !== null || galleryLightboxIndex !== null;
 
   useEffect(() => {
     const resetId = window.setTimeout(() => setActiveSlide(0), 0);
@@ -152,25 +210,36 @@ export function ServicesPageLayout({
   }, [activeSlide, goToSlide]);
 
   useEffect(() => {
-    if (slides.length <= 1 || isHoveringHero || lightboxIndex !== null) return;
+    if (slides.length <= 1 || isHoveringHero || isLightboxOpen) return;
     const intervalId = window.setInterval(() => {
       setActiveSlide((prev) => (prev + 1) % slides.length);
     }, autoplayDelayMs);
     return () => window.clearInterval(intervalId);
-  }, [autoplayDelayMs, isHoveringHero, lightboxIndex, slides.length]);
+  }, [autoplayDelayMs, isHoveringHero, isLightboxOpen, slides.length]);
 
   useEffect(() => {
     if (slides.length === 0) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (lightboxIndex !== null) {
+      if (lightboxIndex !== null || galleryLightboxIndex !== null) {
         if (event.key === "Escape") {
           setLightboxIndex(null);
+          setGalleryLightboxIndex(null);
         } else if (event.key === "ArrowRight") {
           event.preventDefault();
-          setLightboxIndex((prev) => (prev === null ? prev : (prev + 1) % slides.length));
+          if (lightboxIndex !== null) {
+            setLightboxIndex((prev) => (prev === null ? prev : (prev + 1) % slides.length));
+          }
+          if (galleryLightboxIndex !== null) {
+            setGalleryLightboxIndex((prev) => (prev === null ? prev : (prev + 1) % gallery.length));
+          }
         } else if (event.key === "ArrowLeft") {
           event.preventDefault();
-          setLightboxIndex((prev) => (prev === null ? prev : (prev - 1 + slides.length) % slides.length));
+          if (lightboxIndex !== null) {
+            setLightboxIndex((prev) => (prev === null ? prev : (prev - 1 + slides.length) % slides.length));
+          }
+          if (galleryLightboxIndex !== null) {
+            setGalleryLightboxIndex((prev) => (prev === null ? prev : (prev - 1 + gallery.length) % gallery.length));
+          }
         }
         return;
       }
@@ -186,16 +255,34 @@ export function ServicesPageLayout({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [lightboxIndex, slides.length]);
+  }, [gallery.length, galleryLightboxIndex, lightboxIndex, slides.length]);
 
   useEffect(() => {
-    if (lightboxIndex === null) return;
+    if (!isLightboxOpen) return;
     const { overflow } = document.body.style;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = overflow;
     };
-  }, [lightboxIndex]);
+  }, [isLightboxOpen]);
+
+  const getTextAlignClass = (align: SectionHeading["align"] = "left") => {
+    if (align === "center") return "text-center";
+    if (align === "right") return "text-right";
+    return "text-left";
+  };
+
+  const getItemsAlignClass = (align: SectionHeading["align"] = "left") => {
+    if (align === "center") return "items-center";
+    if (align === "right") return "items-end";
+    return "items-start";
+  };
+
+  const getCaptionAlignClass = (align: GalleryImage["captionAlign"] = "center") => {
+    if (align === "left") return "text-left";
+    if (align === "right") return "text-right";
+    return "text-center";
+  };
 
   const minSwipeDistance = 50;
 
@@ -255,6 +342,34 @@ export function ServicesPageLayout({
     }
 
     setDragStart(null);
+  };
+
+  const renderSectionHeading = (
+    heading: SectionHeading,
+    tone: "accent" | "muted" = "accent",
+  ) => {
+    const alignClass = getTextAlignClass(heading.align);
+    const itemsAlignClass = getItemsAlignClass(heading.align);
+    const dividerClass =
+      tone === "accent"
+        ? "bg-gradient-to-r from-transparent via-[var(--accent-strong)]/45 to-transparent"
+        : "bg-gradient-to-r from-transparent via-[var(--muted)]/80 to-transparent";
+
+    return (
+      <div className={`flex flex-col gap-2 ${alignClass} ${itemsAlignClass}`}>
+        <p
+          className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+            tone === "accent" ? "text-[var(--accent-strong)]" : "text-[var(--accent)]"
+          }`}
+        >
+          {heading.label}
+        </p>
+        <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">
+          {heading.title}
+        </h2>
+        <div className={`h-px w-full ${dividerClass}`} />
+      </div>
+    );
   };
 
   return (
@@ -467,42 +582,48 @@ export function ServicesPageLayout({
             </div>
           </div>
         )}
-{/* 
-        {galleryImages && galleryImages.length > 0 && (
-          <section className="space-y-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Price List</p>
-                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Photo menu</h2>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/80 to-transparent sm:ml-6" />
-            </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {galleryImages.map((image) => (
-                <div
-                  key={image.alt}
-                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)]"
-                >
-                  <div className="relative h-80 w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
-                    <Image src={image.src} alt={image.alt} fill className="object-cover" sizes="(min-width: 1024px) 320px, 100vw" />
-                  </div>
-                  {image.caption && <p className="mt-3 text-sm text-[var(--foreground)]/70">{image.caption}</p>}
-                </div>
-              ))}
-            </div>
-          </section>
-        )} */}
+        {galleryLightboxIndex !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="relative w-full max-w-5xl">
+              <button
+                type="button"
+                onClick={() => setGalleryLightboxIndex(null)}
+                className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
+                aria-label="Close image preview"
+              >
+                <span aria-hidden>✕</span>
+              </button>
 
+              <div className="relative aspect-[16/10] w-full overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
+                {gallery.map((image, index) => {
+                  const altText = image.alt ?? image.caption ?? `Gallery image ${index + 1}`;
+                  return (
+                    <div
+                      key={`${image.src}-lightbox-${index}`}
+                      className={`absolute inset-0 transition-all duration-500 ease-out will-change-transform ${
+                        index === galleryLightboxIndex ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-6 opacity-0"
+                      }`}
+                      aria-hidden={index !== galleryLightboxIndex}
+                    >
+                      <Image
+                        src={image.src}
+                        alt={altText}
+                        fill
+                        className="object-contain"
+                        sizes="100vw"
+                        priority={index === galleryLightboxIndex}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
         {/* Services */}
         {showServicesSection && (
           <section className="space-y-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Services</p>
-                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">What&apos;s Included</h2>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/80 to-transparent sm:ml-6" />
-            </div>
+            {renderSectionHeading(resolvedServicesHeading, "accent")}
 
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {services.map((item) => (
@@ -521,16 +642,50 @@ export function ServicesPageLayout({
           </section>
         )}
 
+        {/* Gallery */}
+        {showGallerySection && (
+          <section className="space-y-6">
+            {renderSectionHeading(resolvedGalleryHeading, "accent")}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] xl:grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
+              {gallery.map((image, index) => {
+                const altText = image.alt ?? image.caption ?? `Gallery image ${index + 1}`;
+                return (
+                  <button
+                    key={`${image.src}-${index}`}
+                    type="button"
+                    onClick={() => setGalleryLightboxIndex(index)}
+                    className="group flex w-full cursor-zoom-in flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-3 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
+                  >
+                    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
+                      <Image
+                        src={image.src}
+                        alt={altText}
+                        fill
+                        className="object-cover transition duration-300 group-hover:scale-[1.02]"
+                        sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw"
+                      />
+                    </div>
+                    {image.caption && (
+                      <p className={`text-sm text-[var(--foreground)]/70 ${getCaptionAlignClass(image.captionAlign)}`}>
+                        {image.caption}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {galleryFooterText && (
+              <p className={`text-sm uppercase tracking-[0.3em] text-[var(--foreground)]/50 ${getTextAlignClass(galleryFooterAlign)}`}>
+                {galleryFooterText}
+              </p>
+            )}
+          </section>
+        )}
+
         {/* Pricing */}
         {showPricingSection && (
           <section className="space-y-6" ref={pricingRef}>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Pricing</p>
-                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Transparent rates</h2>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/35 to-transparent sm:ml-6" />
-            </div>
+            {renderSectionHeading(resolvedPricingHeading, "accent")}
 
             <div className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
               <div className="divide-y divide-[var(--muted)] max-h-[500px] overflow-y-auto">
@@ -553,13 +708,7 @@ export function ServicesPageLayout({
         {/* FAQ */}
         {showFaqSection && (
           <section className="space-y-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">FAQ</p>
-                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">You might be wondering</h2>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--accent-strong)]/45 to-transparent sm:ml-6" />
-            </div>
+            {renderSectionHeading(resolvedFaqHeading, "accent")}
 
             <div className="grid gap-4 sm:grid-cols-2 items-start">
               {faqs.map((item, index) => {
@@ -626,13 +775,7 @@ export function ServicesPageLayout({
         {/* Policy / Notes */}
         {showNotesSection && (
           <section className="space-y-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">Notes</p>
-                <h2 className="text-2xl font-semibold text-[var(--foreground)] sm:text-3xl">Policy &amp; care</h2>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--muted)]/70 to-transparent sm:ml-6" />
-            </div>
+            {renderSectionHeading(resolvedNotesHeading, "muted")}
 
             <ul className="grid gap-3 sm:grid-cols-2">
               {notes.map((note) => (

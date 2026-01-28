@@ -74,18 +74,25 @@ class ServicesPageController extends Controller
             'hero_slides.*.buttonLabel' => ['nullable', 'string', 'max:255'],
             'hero_slides.*.buttonHref' => ['nullable', 'string', 'max:255'],
             'sections' => ['required', 'array'],
+            'gallery_images' => ['nullable', 'array', 'max:16'],
+            'gallery_images.*' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
         $normalizedSlides = $this->normalizeSlides($request, $validated['hero_slides'] ?? []);
+        $normalizedSections = $this->mergeWithDefaults(
+            $this->normalizeGallerySection($request, $validated['sections'])
+        );
 
-        $page = DB::transaction(function () use ($servicesMenuItem, $validated, $normalizedSlides) {
-            $page = ServicesPage::with('slides')
-                ->where('services_menu_item_id', $servicesMenuItem->id)
-                ->first();
+        $existingPage = ServicesPage::with('slides')
+            ->where('services_menu_item_id', $servicesMenuItem->id)
+            ->first();
+        $existingGalleryPaths = $existingPage ? $this->extractGalleryPaths($existingPage->sections ?? []) : [];
 
-            if ($page) {
-                $this->deleteSlideFiles($page->slides);
+        $page = DB::transaction(function () use ($servicesMenuItem, $validated, $normalizedSlides, $normalizedSections, $existingPage, $existingGalleryPaths) {
+            if ($existingPage) {
+                $this->deleteSlideFiles($existingPage->slides);
+                $this->deleteGalleryFiles($existingGalleryPaths, $normalizedSections);
             }
 
             $page = ServicesPage::updateOrCreate(
@@ -95,7 +102,7 @@ class ServicesPageController extends Controller
                     'slug' => $validated['slug'],
                     'subtitle' => $validated['subtitle'] ?? null,
                     'hero_slides' => $normalizedSlides,
-                    'sections' => $this->mergeWithDefaults($validated['sections']),
+                    'sections' => $normalizedSections,
                     'is_active' => $validated['is_active'] ?? true,
                 ]
             );
@@ -146,6 +153,56 @@ class ServicesPageController extends Controller
         $page->delete();
 
         return $this->respond(null, __('Services page deleted successfully.'));
+    }
+
+    private function normalizeGallerySection(Request $request, array $sections): array
+    {
+        if (! isset($sections['gallery']) || ! is_array($sections['gallery'])) {
+            return $sections;
+        }
+
+        $gallery = $sections['gallery'];
+        $items = $gallery['items'] ?? [];
+        $normalizedItems = [];
+
+        if (is_array($items)) {
+            foreach (array_values($items) as $index => $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+
+                $src = (string) ($item['src'] ?? '');
+                if ($request->hasFile("gallery_images.$index")) {
+                    $src = $this->storeGalleryImage($request->file("gallery_images.$index"));
+                }
+
+                if ($src === '') {
+                    continue;
+                }
+
+                $normalizedItems[] = [
+                    'src' => $src,
+                    'alt' => (string) ($item['alt'] ?? ''),
+                    'caption' => (string) ($item['caption'] ?? ''),
+                    'captionAlign' => $this->normalizeAlignment($item['captionAlign'] ?? 'center'),
+                ];
+
+                if (count($normalizedItems) >= 16) {
+                    break;
+                }
+            }
+        }
+
+        $gallery['items'] = $normalizedItems;
+        if (isset($gallery['heading']['align'])) {
+            $gallery['heading']['align'] = $this->normalizeAlignment($gallery['heading']['align']);
+        }
+        if (isset($gallery['footerAlign'])) {
+            $gallery['footerAlign'] = $this->normalizeAlignment($gallery['footerAlign']);
+        }
+        $sections['gallery'] = $gallery;
+
+        return $sections;
     }
 
     private function normalizeSlides(Request $request, array $slides): array
@@ -202,6 +259,13 @@ class ServicesPageController extends Controller
         return $file->storeAs('', $filename, 'public');
     }
 
+    private function storeGalleryImage($file): string
+    {
+        $filename = 'services-gallery/' . uniqid() . '.' . $file->getClientOriginalExtension();
+
+        return $file->storeAs('', $filename, 'public');
+    }
+
     private function deleteSlideFiles($slides): void
     {
         foreach ($slides as $slide) {
@@ -210,15 +274,58 @@ class ServicesPageController extends Controller
         }
     }
 
+    private function deleteGalleryFiles(array $existingPaths, array $sections): void
+    {
+        $nextPaths = $this->extractGalleryPaths($sections);
+        $pathsToDelete = array_diff($existingPaths, $nextPaths);
+
+        foreach ($pathsToDelete as $path) {
+            $this->deleteIfOwnedPath($path);
+        }
+    }
+
     private function deleteIfOwnedPath(?string $path): void
     {
-        if (! $path || ! str_starts_with($path, 'services-slides/')) {
+        if (
+            ! $path ||
+            (! str_starts_with($path, 'services-slides/') && ! str_starts_with($path, 'services-gallery/'))
+        ) {
             return;
         }
 
         if (Storage::disk('public')->exists($path)) {
             Storage::disk('public')->delete($path);
         }
+    }
+
+    private function extractGalleryPaths(array $sections): array
+    {
+        $items = $sections['gallery']['items'] ?? [];
+        if (! is_array($items)) {
+            return [];
+        }
+
+        $paths = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $src = $item['src'] ?? null;
+            if (is_string($src) && str_starts_with($src, 'services-gallery/')) {
+                $paths[] = $src;
+            }
+        }
+
+        return $paths;
+    }
+
+    private function normalizeAlignment($alignment): string
+    {
+        $value = is_string($alignment) ? strtolower($alignment) : 'left';
+        if (in_array($value, ['left', 'center', 'right'], true)) {
+            return $value;
+        }
+        return 'left';
     }
 
     private function defaultSections(): array
@@ -231,18 +338,49 @@ class ServicesPageController extends Controller
             'services' => [
                 'is_active' => true,
                 'items' => [],
+                'heading' => [
+                    'label' => 'Services',
+                    'title' => "What's Included",
+                    'align' => 'left',
+                ],
+            ],
+            'gallery' => [
+                'is_active' => true,
+                'items' => [],
+                'heading' => [
+                    'label' => 'Service Menu',
+                    'title' => 'Click to view services and pricing',
+                    'align' => 'center',
+                ],
+                'footerText' => '',
+                'footerAlign' => 'center',
             ],
             'pricing' => [
                 'is_active' => true,
                 'items' => [],
+                'heading' => [
+                    'label' => 'Pricing',
+                    'title' => 'Transparent rates',
+                    'align' => 'left',
+                ],
             ],
             'faqs' => [
                 'is_active' => true,
                 'items' => [],
+                'heading' => [
+                    'label' => 'FAQ',
+                    'title' => 'You might be wondering',
+                    'align' => 'left',
+                ],
             ],
             'notes' => [
                 'is_active' => true,
                 'items' => [],
+                'heading' => [
+                    'label' => 'Notes',
+                    'title' => 'Policy & care',
+                    'align' => 'left',
+                ],
             ],
         ];
     }
@@ -261,6 +399,28 @@ class ServicesPageController extends Controller
                 ? (bool) $sections[$key]['is_active']
                 : $value['is_active'];
             $sections[$key]['items'] = array_values($sections[$key]['items'] ?? []);
+
+            foreach ($value as $sectionKey => $sectionValue) {
+                if (in_array($sectionKey, ['is_active', 'items'], true)) {
+                    continue;
+                }
+
+                if (is_array($sectionValue)) {
+                    $sections[$key][$sectionKey] = array_merge(
+                        $sectionValue,
+                        is_array($sections[$key][$sectionKey] ?? null) ? $sections[$key][$sectionKey] : []
+                    );
+                } else {
+                    $sections[$key][$sectionKey] = $sections[$key][$sectionKey] ?? $sectionValue;
+                }
+            }
+
+            if (isset($sections[$key]['heading']['align'])) {
+                $sections[$key]['heading']['align'] = $this->normalizeAlignment($sections[$key]['heading']['align']);
+            }
+            if ($key === 'gallery' && isset($sections[$key]['footerAlign'])) {
+                $sections[$key]['footerAlign'] = $this->normalizeAlignment($sections[$key]['footerAlign']);
+            }
         }
 
         return $sections;

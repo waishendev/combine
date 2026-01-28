@@ -8,20 +8,94 @@ type ServicesSections = NonNullable<Awaited<ReturnType<typeof getServicesPage>>>
 
 const defaultSections: ServicesSections = {
   hero: { is_active: true, items: [] },
-  services: { is_active: true, items: [] },
-  pricing: { is_active: true, items: [] },
-  faqs: { is_active: true, items: [] },
-  notes: { is_active: true, items: [] },
+  services: {
+    is_active: true,
+    items: [],
+    heading: {
+      label: "Services",
+      title: "What's Included",
+      align: "left",
+    },
+  },
+  gallery: {
+    is_active: true,
+    items: [],
+    heading: {
+      label: "Service Menu",
+      title: "Click to view services and pricing",
+      align: "center",
+    },
+    footerText: "",
+    footerAlign: "center",
+  },
+  pricing: {
+    is_active: true,
+    items: [],
+    heading: {
+      label: "Pricing",
+      title: "Transparent rates",
+      align: "left",
+    },
+  },
+  faqs: {
+    is_active: true,
+    items: [],
+    heading: {
+      label: "FAQ",
+      title: "You might be wondering",
+      align: "left",
+    },
+  },
+  notes: {
+    is_active: true,
+    items: [],
+    heading: {
+      label: "Notes",
+      title: "Policy & care",
+      align: "left",
+    },
+  },
 };
 
 function mergeSections(sections: ServicesSections | undefined): ServicesSections {
   if (!sections) return defaultSections;
+  const mergeHeading = (
+    heading: ServicesSections[keyof ServicesSections]["heading"] | undefined,
+    fallback: ServicesSections[keyof ServicesSections]["heading"] | undefined,
+  ) => {
+    if (!fallback) return heading;
+    return {
+      ...fallback,
+      ...(heading ?? {}),
+    };
+  };
+
+  const mergeSection = <T,>(
+    section: { items: T[]; heading?: ServicesSections[keyof ServicesSections]["heading"]; [key: string]: unknown } | undefined,
+    fallback: { items: T[]; heading?: ServicesSections[keyof ServicesSections]["heading"]; [key: string]: unknown },
+  ) => ({
+    ...fallback,
+    ...(section ?? {}),
+    items: section?.items ?? fallback.items,
+    heading: mergeHeading(section?.heading, fallback.heading),
+  });
+
+  const mergedGallery = {
+    ...mergeSection(sections.gallery, defaultSections.gallery),
+    footerText: sections.gallery?.footerText ?? defaultSections.gallery.footerText,
+    footerAlign: sections.gallery?.footerAlign ?? defaultSections.gallery.footerAlign,
+  };
+
   return {
     hero: sections.hero ?? defaultSections.hero,
-    services: sections.services ?? defaultSections.services,
-    pricing: sections.pricing ?? defaultSections.pricing,
-    faqs: sections.faqs ?? defaultSections.faqs,
-    notes: sections.notes ?? defaultSections.notes,
+    services: mergeSection(sections.services, defaultSections.services),
+    gallery: {
+      ...mergedGallery,
+      items: mergedGallery.items.filter((item) => item?.src),
+    },
+    pricing: mergeSection(sections.pricing, defaultSections.pricing),
+    faqs: mergeSection(sections.faqs, defaultSections.faqs),
+    notes: mergeSection(sections.notes, defaultSections.notes),
   };
 }
 
@@ -51,13 +125,22 @@ export default async function ServicesDetailPage({
       title={pageData.title}
       subtitle={pageData.subtitle ?? ""}
       services={sections.services.items}
+      gallery={sections.gallery.items}
       pricing={sections.pricing.items}
       faqs={sections.faqs.items}
       notes={sections.notes.items}
       servicesActive={sections.services.is_active}
+      galleryActive={sections.gallery.is_active}
       pricingActive={sections.pricing.is_active}
       faqsActive={sections.faqs.is_active}
       notesActive={sections.notes.is_active}
+      servicesHeading={sections.services.heading ?? defaultSections.services.heading}
+      galleryHeading={sections.gallery.heading ?? defaultSections.gallery.heading}
+      galleryFooterText={sections.gallery.footerText ?? defaultSections.gallery.footerText}
+      galleryFooterAlign={sections.gallery.footerAlign ?? defaultSections.gallery.footerAlign}
+      pricingHeading={sections.pricing.heading ?? defaultSections.pricing.heading}
+      faqHeading={sections.faqs.heading ?? defaultSections.faqs.heading}
+      notesHeading={sections.notes.heading ?? defaultSections.notes.heading}
       heroActive={sections.hero.is_active}
       heroSlides={heroSlides}
       whatsappPhone={whatsapp?.phone ?? null}
