@@ -17,6 +17,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const accountRef = useRef<HTMLDivElement | null>(null)
+  const storageKey = 'branding.crm_logo_url'
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -31,7 +32,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
 
   const loadBranding = async (signal?: AbortSignal) => {
     try {
-      const response = await fetch('/api/proxy/ecommerce/branding', {
+      const response = await fetch(`/api/proxy/ecommerce/branding?ts=${Date.now()}`, {
         cache: 'no-store',
         signal,
       })
@@ -44,6 +45,9 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
       const crmLogo = payload?.data?.crm_logo_url ?? null
 
       setLogoUrl(crmLogo)
+      if (typeof window !== 'undefined' && crmLogo) {
+        window.sessionStorage.setItem(storageKey, crmLogo)
+      }
     } catch (error) {
       if (signal?.aborted) return
     }
@@ -52,9 +56,23 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
   useEffect(() => {
     let abort = false
     const controller = new AbortController()
+    if (typeof window !== 'undefined') {
+      const cachedLogo = window.sessionStorage.getItem(storageKey)
+      if (cachedLogo) {
+        setLogoUrl(cachedLogo)
+      }
+    }
     loadBranding(controller.signal)
 
-    const handleBrandingUpdate = () => {
+    const handleBrandingUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ logoKey?: string; logoUrl?: string | null }>).detail
+      if (detail?.logoKey === 'crm_logo_url' && detail.logoUrl) {
+        setLogoUrl(detail.logoUrl)
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(storageKey, detail.logoUrl)
+        }
+        return
+      }
       if (!abort) {
         loadBranding(controller.signal)
       }

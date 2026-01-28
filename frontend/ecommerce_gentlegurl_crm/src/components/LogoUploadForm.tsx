@@ -42,6 +42,7 @@ export default function LogoUploadForm({
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const storageKey = `branding.${logoKey}`
 
   const currentLogo = previewUrl ?? logoUrl
 
@@ -57,6 +58,12 @@ export default function LogoUploadForm({
 
     const fetchBranding = async () => {
       try {
+        if (typeof window !== 'undefined') {
+          const cachedLogo = window.sessionStorage.getItem(storageKey)
+          if (cachedLogo) {
+            setLogoUrl(cachedLogo)
+          }
+        }
         const response = await fetch('/api/proxy/ecommerce/branding', {
           cache: 'no-store',
           signal: controller.signal,
@@ -154,9 +161,17 @@ export default function LogoUploadForm({
         type: 'success',
         message: payload?.message || 'Logo updated successfully.',
       })
+      if (typeof window !== 'undefined' && updatedLogo) {
+        window.sessionStorage.setItem(storageKey, updatedLogo)
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
-          new CustomEvent('branding:updated', { detail: { logoKey: updatedLogo } })
+          new CustomEvent('branding:updated', {
+            detail: {
+              logoKey,
+              logoUrl: updatedLogo,
+            },
+          })
         )
       }
     } catch (error) {
