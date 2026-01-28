@@ -592,10 +592,18 @@ export default function ServicesPagesEditor({
       formData.append('is_active', page.is_active ? '1' : '0')
       formData.append('sections', JSON.stringify(page.sections))
 
+      const normalizeImagePath = (value: string) => {
+        if (!value) return ''
+        try {
+          const url = new URL(value)
+          return `${url.pathname}${url.search}${url.hash}`
+        } catch {
+          return value
+        }
+      }
+
       page.hero_slides.forEach((slide, index) => {
         formData.append(`hero_slides[${index}][sort_order]`, String(slide.sort_order))
-        formData.append(`hero_slides[${index}][src]`, slide.src)
-        formData.append(`hero_slides[${index}][mobileSrc]`, slide.mobileSrc)
         formData.append(`hero_slides[${index}][title]`, slide.title)
         formData.append(`hero_slides[${index}][description]`, slide.description)
         formData.append(`hero_slides[${index}][buttonLabel]`, slide.buttonLabel)
@@ -604,11 +612,15 @@ export default function ServicesPagesEditor({
         const imageFile = slideFiles[index]
         if (imageFile) {
           formData.append(`hero_slides[${index}][image_file]`, imageFile)
+        } else {
+          formData.append(`hero_slides[${index}][src]`, normalizeImagePath(slide.src))
         }
 
         const mobileImageFile = slideMobileFiles[index]
         if (mobileImageFile) {
           formData.append(`hero_slides[${index}][mobile_image_file]`, mobileImageFile)
+        } else {
+          formData.append(`hero_slides[${index}][mobileSrc]`, normalizeImagePath(slide.mobileSrc))
         }
       })
 
