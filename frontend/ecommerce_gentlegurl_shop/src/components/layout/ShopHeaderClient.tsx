@@ -18,9 +18,10 @@ import { getPrimaryProductImage } from "@/lib/productMedia";
 type ShopHeaderClientProps = {
   shopMenu: HomepageShopMenuItem[];
   servicesMenu: HomepageServicesMenuItem[];
+  logoUrl?: string | null;
 };
 
-export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientProps) {
+export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeaderClientProps) {
   const { customer, logout, isLoading } = useAuth();
   const { items, resetAfterLogout } = useCart();
   const [shopOpen, setShopOpen] = useState(false);
@@ -50,11 +51,17 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchImageErrors, setSearchImageErrors] = useState<Set<string>>(new Set());
+  const fallbackLogo = "/images/logo.png";
+  const [resolvedLogoUrl, setResolvedLogoUrl] = useState(logoUrl || fallbackLogo);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
   const hasShopMenu = shopMenu.length > 0;
   const hasServicesMenu = servicesMenu.length > 0;
+
+  useEffect(() => {
+    setResolvedLogoUrl(logoUrl || fallbackLogo);
+  }, [logoUrl, fallbackLogo]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -236,12 +243,13 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
             {/* Logo - Desktop */}
             <Link href="/" className="hidden items-center md:flex">
               <Image
-                src="/images/logo.png"
+                src={resolvedLogoUrl}
                 alt="Gentlegurl Shop"
                 width={120}
                 height={40}
                 className="h-8 w-auto object-contain"
                 priority
+                onError={() => setResolvedLogoUrl(fallbackLogo)}
               />
             </Link>
 
@@ -403,12 +411,13 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
             {/* Logo - Mobile */}
             <Link href="/" className="flex items-center">
               <Image
-                src="/images/logo.png"
+                src={resolvedLogoUrl}
                 alt="Gentlegurl Shop"
                 width={120}
                 height={40}
                 className="h-7 w-auto object-contain"
                 priority
+                onError={() => setResolvedLogoUrl(fallbackLogo)}
               />
             </Link>
 

@@ -15,6 +15,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
   const { t } = useI18n()
   const [accountOpen, setAccountOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const accountRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -26,6 +27,40 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    let abort = false
+    const controller = new AbortController()
+
+    const fetchBranding = async () => {
+      try {
+        const response = await fetch('/api/proxy/ecommerce/branding', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          return
+        }
+
+        const payload = await response.json()
+        const crmLogo = payload?.data?.crm_logo_url ?? null
+
+        if (!abort) {
+          setLogoUrl(crmLogo)
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return
+      }
+    }
+
+    fetchBranding()
+
+    return () => {
+      abort = true
+      controller.abort()
+    }
   }, [])
 
   const handleLogout = async () => {
@@ -50,7 +85,15 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
           <i className="fa-solid fa-bars text-lg" />
         </button>
         <div className="flex items-center gap-3">
-          <Image src="/images/logo.png" alt="95BALL" width={100} height={100} priority />
+          <Image
+            src={logoUrl || '/images/logo.png'}
+            alt="CRM Logo"
+            width={120}
+            height={40}
+            className="h-8 w-auto object-contain"
+            priority
+            onError={() => setLogoUrl(null)}
+          />
         </div>
       </div>
 

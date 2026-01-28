@@ -15,6 +15,7 @@ use App\Http\Controllers\Ecommerce\MarqueeController;
 use App\Http\Controllers\Ecommerce\HomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicAnnouncementController;
 use App\Http\Controllers\Ecommerce\DashboardController;
+use App\Http\Controllers\Ecommerce\BrandingController;
 use App\Http\Controllers\Ecommerce\PublicBankAccountController;
 use App\Http\Controllers\Ecommerce\PublicCartController;
 use App\Http\Controllers\Ecommerce\PublicCheckoutController;
@@ -657,6 +658,16 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.settings.view');
 
         Route::put('/shop-settings/{key}', [ShopSettingController::class, 'update'])
+            ->middleware('permission:ecommerce.settings.update');
+
+        // Branding (logos)
+        Route::get('/branding', [BrandingController::class, 'show'])
+            ->middleware('permission:ecommerce.settings.view');
+
+        Route::post('/branding/shop-logo', [BrandingController::class, 'uploadShopLogo'])
+            ->middleware('permission:ecommerce.settings.update');
+
+        Route::post('/branding/crm-logo', [BrandingController::class, 'uploadCrmLogo'])
             ->middleware('permission:ecommerce.settings.update');
 
         // Promotions Admin

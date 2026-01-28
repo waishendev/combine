@@ -159,6 +159,7 @@ export type HomepageData = {
   announcements: HomepageAnnouncement[];
   shop_menu: HomepageShopMenuItem[];
   services_menu?: HomepageServicesMenuItem[];
+  shop_logo_url?: string | null;
   new_products: HomepageProduct[];
   best_sellers: HomepageProduct[];
   featured_products: HomepageProduct[];
