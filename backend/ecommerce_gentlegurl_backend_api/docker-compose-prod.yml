@@ -41,20 +41,20 @@ services:
     #       cpus: "1.00"
     #       memory: 768M
     #       pids: 150
-    healthcheck:
-      test: ["CMD-SHELL", "pidof php-fpm || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    # healthcheck:
+    #   test: ["CMD-SHELL", "pidof php-fpm || exit 1"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 30s
     logging:
       driver: json-file
       options:
         max-size: "50m"
         max-file: "7"
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
+      # condition: service_healthy
     networks:
       - appnet
 
@@ -106,8 +106,8 @@ services:
         max-size: "50m"
         max-file: "7"
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
+      # condition: service_healthy
     networks:
       - appnet
 
@@ -186,11 +186,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    # healthcheck:
+    #   test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} || exit 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 10
     networks:
       - appnet
 
