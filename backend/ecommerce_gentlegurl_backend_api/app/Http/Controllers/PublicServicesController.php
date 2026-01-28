@@ -42,6 +42,20 @@ class PublicServicesController extends Controller
             ]);
         }, $page->hero_slides ?? []);
 
+        $sections = $page->sections ?? [];
+        if (isset($sections['gallery']['items']) && is_array($sections['gallery']['items'])) {
+            $sections['gallery']['items'] = array_values(array_filter(array_map(function ($item) {
+                if (! is_array($item)) {
+                    return null;
+                }
+                $item['src'] = $this->resolvePublicUrl($item['src'] ?? null);
+                if ($item['src'] === '') {
+                    return null;
+                }
+                return $item;
+            }, $sections['gallery']['items'])));
+        }
+
         return $this->respond([
             'id' => $page->id,
             'menu_item_id' => $page->services_menu_item_id,
@@ -49,7 +63,7 @@ class PublicServicesController extends Controller
             'slug' => $page->slug,
             'subtitle' => $page->subtitle,
             'hero_slides' => $heroSlides,
-            'sections' => $page->sections,
+            'sections' => $sections,
         ]);
     }
 

@@ -83,6 +83,18 @@ class ServicesMenuAndPagesSeeder extends Seeder
                             ],
                         ],
                     ],
+                    'gallery' => [
+                        'is_active' => true,
+                        'items' => [],
+                        'layout' => 'fixed',
+                        'heading' => [
+                            'label' => 'Service Menu',
+                            'title' => 'Click to view services and pricing',
+                            'align' => 'center',
+                        ],
+                        'footerText' => '',
+                        'footerAlign' => 'center',
+                    ],
                     'pricing' => [
                         'is_active' => true,
                         'items' => [
@@ -157,6 +169,18 @@ class ServicesMenuAndPagesSeeder extends Seeder
                             ['title' => '810 Laser Ice Hair Removal', 'description' => 'Armpit, full arm, and full leg packages with session options.'],
                             ['title' => 'Keratin Lash Lift', 'description' => 'Lifted, curled lashes with a clean, natural finish.'],
                         ],
+                    ],
+                    'gallery' => [
+                        'is_active' => true,
+                        'items' => [],
+                        'layout' => 'fixed',
+                        'heading' => [
+                            'label' => 'Service Menu',
+                            'title' => 'Click to view services and pricing',
+                            'align' => 'center',
+                        ],
+                        'footerText' => '',
+                        'footerAlign' => 'center',
                     ],
                     'pricing' => [
                         'is_active' => true,
@@ -243,6 +267,18 @@ class ServicesMenuAndPagesSeeder extends Seeder
                             ['title' => '地点', 'description' => 'Gentlegurls, 14 Lebuh Cintra, Penang。'],
                             ['title' => '毕业文凭', 'description' => '课后提供工作室毕业文凭。'],
                         ],
+                    ],
+                    'gallery' => [
+                        'is_active' => true,
+                        'items' => [],
+                        'layout' => 'fixed',
+                        'heading' => [
+                            'label' => 'Service Menu',
+                            'title' => 'Click to view services and pricing',
+                            'align' => 'center',
+                        ],
+                        'footerText' => '',
+                        'footerAlign' => 'center',
                     ],
                     'pricing' => [
                         'is_active' => true,
