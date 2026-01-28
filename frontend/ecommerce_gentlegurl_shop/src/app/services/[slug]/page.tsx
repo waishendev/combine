@@ -72,8 +72,20 @@ function mergeSections(sections: ServicesSections | undefined): ServicesSections
   };
 
   const mergeSection = <T,>(
-    section: { items: T[]; heading?: ServicesSections[keyof ServicesSections]["heading"]; [key: string]: unknown } | undefined,
-    fallback: { items: T[]; heading?: ServicesSections[keyof ServicesSections]["heading"]; [key: string]: unknown },
+    section:
+      | {
+          is_active: boolean;
+          items: T[];
+          heading?: ServicesSections[keyof ServicesSections]["heading"];
+          [key: string]: unknown;
+        }
+      | undefined,
+    fallback: {
+      is_active: boolean;
+      items: T[];
+      heading?: ServicesSections[keyof ServicesSections]["heading"];
+      [key: string]: unknown;
+    },
   ) => ({
     ...fallback,
     ...(section ?? {}),

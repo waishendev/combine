@@ -20,7 +20,7 @@ services:
       - laravel_storage:/var/www/storage:rw
       - laravel_cache:/var/www/bootstrap/cache:rw
     restart: unless-stopped
-    read_only: true
+    # read_only: true
     # tmpfs:
     #   - /tmp:size=64m,mode=1777
     #   - /usr/local/var/run/php:size=16m,mode=755
@@ -79,7 +79,7 @@ services:
     command: php artisan queue:work --sleep=2 --tries=3 --timeout=120 --max-time=3600 --max-jobs=500
     restart: unless-stopped
     stop_grace_period: 30s
-    read_only: true
+    # read_only: true
     # tmpfs:
     #   - /tmp:size=64m,mode=1777
     #   - /usr/local/var/run/php:size=16m,mode=755
