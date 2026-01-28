@@ -54,7 +54,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   const fallbackLogo = "/images/logo.png";
   const storageKey = "branding.shop_logo_url";
   const [resolvedLogoUrl, setResolvedLogoUrl] = useState(logoUrl || fallbackLogo);
-  const [logoLoaded, setLogoLoaded] = useState(resolvedLogoUrl === fallbackLogo);
+  const [logoLoaded, setLogoLoaded] = useState(resolvedLogoUrl !== fallbackLogo);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -78,11 +78,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   }, [logoUrl]);
 
   useEffect(() => {
-    if (resolvedLogoUrl === fallbackLogo) {
-      setLogoLoaded(true);
-    } else {
-      setLogoLoaded(false);
-    }
+    setLogoLoaded(resolvedLogoUrl !== fallbackLogo);
   }, [resolvedLogoUrl, fallbackLogo]);
 
   // Close menus when clicking outside
@@ -267,8 +263,9 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
               <span
                 className="flex h-8 w-[120px] items-center justify-center bg-center bg-no-repeat"
                 style={{
-                  backgroundImage: `url(${fallbackLogo})`,
-                  backgroundSize: "contain",
+                  backgroundImage:
+                    resolvedLogoUrl === fallbackLogo ? `url(${fallbackLogo})` : "none",
+                  backgroundSize: resolvedLogoUrl === fallbackLogo ? "contain" : undefined,
                 }}
               >
                 <Image
@@ -276,9 +273,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                   alt="Gentlegurl Shop"
                   width={120}
                   height={40}
-                  className={`h-8 w-auto object-contain transition-opacity duration-300 ${
-                    logoLoaded ? "opacity-100" : "opacity-0"
-                  }`}
+                  className={`h-8 w-auto object-contain ${logoLoaded ? "opacity-100" : "opacity-0"}`}
                   priority
                   onLoadingComplete={() => setLogoLoaded(true)}
                   onError={() => {
@@ -449,8 +444,9 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
               <span
                 className="flex h-7 w-[120px] items-center justify-center bg-center bg-no-repeat"
                 style={{
-                  backgroundImage: `url(${fallbackLogo})`,
-                  backgroundSize: "contain",
+                  backgroundImage:
+                    resolvedLogoUrl === fallbackLogo ? `url(${fallbackLogo})` : "none",
+                  backgroundSize: resolvedLogoUrl === fallbackLogo ? "contain" : undefined,
                 }}
               >
                 <Image
@@ -458,9 +454,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                   alt="Gentlegurl Shop"
                   width={120}
                   height={40}
-                  className={`h-7 w-auto object-contain transition-opacity duration-300 ${
-                    logoLoaded ? "opacity-100" : "opacity-0"
-                  }`}
+                  className={`h-7 w-auto object-contain ${logoLoaded ? "opacity-100" : "opacity-0"}`}
                   priority
                   onLoadingComplete={() => setLogoLoaded(true)}
                   onError={() => {
