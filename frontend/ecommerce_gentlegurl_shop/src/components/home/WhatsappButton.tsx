@@ -29,7 +29,7 @@ export default function WhatsappButton({ phone, defaultMessage, enabled = true }
         aria-label="Chat with us on WhatsApp"
       >
         <Image
-          src="/images/whatapps-icon.webp"
+          src="/images/whatapps-icon.png"
           alt="WhatsApp"
           width={60}
           height={60}
