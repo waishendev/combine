@@ -29,37 +29,42 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const loadBranding = async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch('/api/proxy/ecommerce/branding', {
+        cache: 'no-store',
+        signal,
+      })
+
+      if (!response.ok) {
+        return
+      }
+
+      const payload = await response.json()
+      const crmLogo = payload?.data?.crm_logo_url ?? null
+
+      setLogoUrl(crmLogo)
+    } catch (error) {
+      if (signal?.aborted) return
+    }
+  }
+
   useEffect(() => {
     let abort = false
     const controller = new AbortController()
+    loadBranding(controller.signal)
 
-    const fetchBranding = async () => {
-      try {
-        const response = await fetch('/api/proxy/ecommerce/branding', {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-
-        if (!response.ok) {
-          return
-        }
-
-        const payload = await response.json()
-        const crmLogo = payload?.data?.crm_logo_url ?? null
-
-        if (!abort) {
-          setLogoUrl(crmLogo)
-        }
-      } catch (error) {
-        if (controller.signal.aborted) return
+    const handleBrandingUpdate = () => {
+      if (!abort) {
+        loadBranding(controller.signal)
       }
     }
-
-    fetchBranding()
+    window.addEventListener('branding:updated', handleBrandingUpdate)
 
     return () => {
       abort = true
       controller.abort()
+      window.removeEventListener('branding:updated', handleBrandingUpdate)
     }
   }, [])
 

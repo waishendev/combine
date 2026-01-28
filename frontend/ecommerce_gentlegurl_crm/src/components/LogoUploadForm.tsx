@@ -154,6 +154,11 @@ export default function LogoUploadForm({
         type: 'success',
         message: payload?.message || 'Logo updated successfully.',
       })
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('branding:updated', { detail: { logoKey: updatedLogo } })
+        )
+      }
     } catch (error) {
       setFeedback({
         type: 'error',
