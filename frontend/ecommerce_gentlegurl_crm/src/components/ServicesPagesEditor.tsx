@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 type ServicesMenuItem = {
@@ -208,7 +209,6 @@ export default function ServicesPagesEditor({
   const [loadingPage, setLoadingPage] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [collapsedSlides, setCollapsedSlides] = useState<Record<number, boolean>>({})
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [slideFiles, setSlideFiles] = useState<(File | null)[]>([])
@@ -220,6 +220,7 @@ export default function ServicesPagesEditor({
   const desktopImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
   const mobileImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
   const galleryImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
+  const router = useRouter()
 
   useEffect(() => {
     const controller = new AbortController()
@@ -268,7 +269,6 @@ export default function ServicesPagesEditor({
     const loadPage = async () => {
       setLoadingPage(true)
       setError(null)
-      setNotice(null)
       try {
         const res = await fetch(`/api/proxy/ecommerce/services-pages/${menuId}`, {
           cache: 'no-store',
@@ -575,7 +575,6 @@ export default function ServicesPagesEditor({
     if (!page || !selectedMenu) return
     setSaving(true)
     setError(null)
-    setNotice(null)
     try {
       const heroActive = page.sections.hero.is_active
       const hasMissingImages =
@@ -662,7 +661,7 @@ export default function ServicesPagesEditor({
             : item,
         ),
       )
-      setNotice('Saved! Changes are published together.')
+      router.push('/services-pages')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save services page.')
     } finally {
@@ -688,12 +687,6 @@ export default function ServicesPagesEditor({
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
-        </div>
-      )}
-
-      {notice && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {notice}
         </div>
       )}
 
@@ -1171,7 +1164,10 @@ export default function ServicesPagesEditor({
                   {page.sections.gallery.items.map((item, index) => (
                     <div key={`gallery-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-gray-900">Image {index + 1}</p>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Image {index + 1}</p>
+                          <p className="text-xs text-gray-500">Suggested size: 900 x 1200 (3:4)</p>
+                        </div>
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
@@ -1580,41 +1576,45 @@ function SectionHeadingFields({
   extraField?: ReactNode
 }) {
   return (
-    <div className={`grid gap-3 ${extraField ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-      <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
-        <span className="font-medium">Label</span>
-        <input
-          value={heading.label}
-          onChange={(e) => onChange({ ...heading, label: e.target.value })}
-          placeholder="Label"
-          className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={!canUpdate}
-        />
-      </label>
-      <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
-        <span className="font-medium">Title</span>
-        <input
-          value={heading.title}
-          onChange={(e) => onChange({ ...heading, title: e.target.value })}
-          placeholder="Title"
-          className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={!canUpdate}
-        />
-      </label>
-      <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
-        <span className="font-medium">Alignment</span>
-        <select
-          value={heading.align}
-          onChange={(e) => onChange({ ...heading, align: e.target.value as SectionHeading['align'] })}
-          className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={!canUpdate}
-        >
-          <option value="left">Left</option>
-          <option value="center">Center</option>
-          <option value="right">Right</option>
-        </select>
-      </label>
-      {extraField}
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+          <span className="font-medium">Label</span>
+          <input
+            value={heading.label}
+            onChange={(e) => onChange({ ...heading, label: e.target.value })}
+            placeholder="Label"
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            disabled={!canUpdate}
+          />
+        </label>
+        <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
+          <span className="font-medium">Title</span>
+          <input
+            value={heading.title}
+            onChange={(e) => onChange({ ...heading, title: e.target.value })}
+            placeholder="Title"
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            disabled={!canUpdate}
+          />
+        </label>
+      </div>
+      <div className={`grid gap-3 ${extraField ? 'md:grid-cols-2' : 'md:grid-cols-1'}`}>
+        <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+          <span className="font-medium">Alignment</span>
+          <select
+            value={heading.align}
+            onChange={(e) => onChange({ ...heading, align: e.target.value as SectionHeading['align'] })}
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            disabled={!canUpdate}
+          >
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+        {extraField}
+      </div>
     </div>
   )
 }
