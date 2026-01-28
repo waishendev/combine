@@ -39,6 +39,8 @@ class ServicesPageController extends Controller
             ]);
         }
 
+        $page->sections = $this->resolveSectionUrls($page->sections ?? []);
+
         return $this->respond($page);
     }
 
@@ -134,6 +136,7 @@ class ServicesPageController extends Controller
         });
 
         $page->load(['menuItem', 'slides']);
+        $page->sections = $this->resolveSectionUrls($page->sections ?? []);
 
         return $this->respond($page, __('Services page saved successfully.'));
     }
@@ -171,7 +174,7 @@ class ServicesPageController extends Controller
                     continue;
                 }
 
-                $src = (string) ($item['src'] ?? '');
+                $src = $this->normalizeStoragePath((string) ($item['src'] ?? ''));
                 if ($request->hasFile("gallery_images.$index")) {
                     $src = $this->storeGalleryImage($request->file("gallery_images.$index"));
                 }
@@ -215,8 +218,8 @@ class ServicesPageController extends Controller
             }
 
             $description = trim((string) ($slide['description'] ?? $slide['subtitle'] ?? ''));
-            $imagePath = (string) ($slide['src'] ?? '');
-            $mobileImagePath = (string) ($slide['mobileSrc'] ?? '');
+            $imagePath = $this->normalizeStoragePath((string) ($slide['src'] ?? ''));
+            $mobileImagePath = $this->normalizeStoragePath((string) ($slide['mobileSrc'] ?? ''));
 
             if ($request->hasFile("hero_slides.$index.image_file")) {
                 $imagePath = $this->storeSlideImage($request->file("hero_slides.$index.image_file"), false);
@@ -264,6 +267,53 @@ class ServicesPageController extends Controller
         $filename = 'services-gallery/' . uniqid() . '.' . $file->getClientOriginalExtension();
 
         return $file->storeAs('', $filename, 'public');
+    }
+
+    private function normalizeStoragePath(string $path): string
+    {
+        if ($path === '') {
+            return '';
+        }
+
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            $parsed = parse_url($path);
+            $path = is_array($parsed) ? ($parsed['path'] ?? '') : '';
+        }
+
+        $path = ltrim($path, '/');
+
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, strlen('storage/'));
+        }
+
+        return $path;
+    }
+
+    private function resolveSectionUrls(array $sections): array
+    {
+        if (! isset($sections['gallery']['items']) || ! is_array($sections['gallery']['items'])) {
+            return $sections;
+        }
+
+        $sections['gallery']['items'] = array_values(array_filter(array_map(function ($item) {
+            if (! is_array($item)) {
+                return null;
+            }
+
+            $src = $item['src'] ?? '';
+            if (! $src) {
+                return null;
+            }
+
+            if (! filter_var($src, FILTER_VALIDATE_URL)) {
+                $normalizedPath = ltrim($src, '/');
+                $item['src'] = Storage::disk('public')->url($normalizedPath);
+            }
+
+            return $item;
+        }, $sections['gallery']['items'])));
+
+        return $sections;
     }
 
     private function deleteSlideFiles($slides): void
