@@ -143,20 +143,20 @@ class BillplzCallbackController extends Controller
         $xSignatureKey = config('services.billplz.x_signature');
 
         $billplzPayload = $payload['billplz'] ?? $payload;
-        $signature = $billplzPayload['x_signature'] ?? null;
+        $signature = $billplzPayload['x_signature'] ?? $payload['x_signature'] ?? null;
 
         if (!$xSignatureKey || !$signature) {
             return false;
         }
 
         $components = [
-            'billplzid' => $billplzPayload['id'] ?? null,
-            'billplzpaid_at' => $billplzPayload['paid_at'] ?? null,
-            'billplzpaid' => $billplzPayload['paid'] ?? null,
-            'billplztransaction_id' => $billplzPayload['transaction_id'] ?? null,
-            'billplzamount' => $billplzPayload['amount'] ?? null,
-            'billplzcollection_id' => $billplzPayload['collection_id'] ?? null,
-            'billplzreference_1' => $billplzPayload['reference_1'] ?? null,
+            'billplzid' => $this->normalizeSignatureValue($billplzPayload['id'] ?? null),
+            'billplzpaid_at' => $this->normalizeSignatureValue($billplzPayload['paid_at'] ?? null),
+            'billplzpaid' => $this->normalizeSignatureValue($billplzPayload['paid'] ?? null),
+            'billplztransaction_id' => $this->normalizeSignatureValue($billplzPayload['transaction_id'] ?? null),
+            'billplzamount' => $this->normalizeSignatureValue($billplzPayload['amount'] ?? null),
+            'billplzcollection_id' => $this->normalizeSignatureValue($billplzPayload['collection_id'] ?? null),
+            'billplzreference_1' => $this->normalizeSignatureValue($billplzPayload['reference_1'] ?? null),
         ];
 
         $concatenated = collect($components)
@@ -188,12 +188,25 @@ class BillplzCallbackController extends Controller
         ksort($flat);
 
         $fallbackString = collect($flat)
-            ->map(fn($value, $key) => $key . $value)
+            ->map(fn($value, $key) => $key . $this->normalizeSignatureValue($value))
             ->implode('|');
 
         $fallbackExpected = hash_hmac('sha256', $fallbackString, $xSignatureKey);
 
         return hash_equals($fallbackExpected, $signature);
+    }
+
+    protected function normalizeSignatureValue(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        return (string) $value;
     }
 
     protected function clearOrderCart(Order $order): void
