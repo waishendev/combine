@@ -294,7 +294,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
         params.set("session_token", sessionToken);
       }
 
-      console.log("[ShopBrowser] products params:", params.toString());
+      // console.log("[ShopBrowser] products params:", params.toString());
       
       const res = await fetch(
         `/api/proxy/public/shop/products?${params.toString()}`,

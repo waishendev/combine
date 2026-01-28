@@ -56,8 +56,8 @@ async function handleRequest(
     const searchParams = request.nextUrl.searchParams.toString();
     const fullUrl = searchParams ? `${url}?${searchParams}` : url;
 
-    console.log("[Shop Proxy] Forwarding:", method, fullUrl);
-    console.log("[Shop Proxy DEBUG]", method, apiPath, "=>", fullUrl);
+    // console.log("[Shop Proxy] Forwarding:", method, fullUrl);
+    //console.log("[Shop Proxy DEBUG]", method, apiPath, "=>", fullUrl);
 
     // Forward cookies
     const allCookies = request.cookies.getAll();

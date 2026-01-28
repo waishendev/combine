@@ -88,22 +88,22 @@ async function handleRequest(
     const searchParams = request.nextUrl.searchParams.toString();
     const fullUrl = searchParams ? `${url}?${searchParams}` : url;
 
-    console.log(`[API Proxy] ==========================================`);
-    console.log(`[API Proxy] ${method} ${fullUrl}`);
-    console.log(`[API Proxy] Base URL: ${baseUrl}`);
-    console.log(`[API Proxy] API Path: ${apiPath}`);
-    console.log(`[API Proxy] Params:`, params.path);
+    // console.log(`[API Proxy] ==========================================`);
+    // console.log(`[API Proxy] ${method} ${fullUrl}`);
+    // console.log(`[API Proxy] Base URL: ${baseUrl}`);
+    // console.log(`[API Proxy] API Path: ${apiPath}`);
+    // console.log(`[API Proxy] Params:`, params.path);
 
     // Forward cookies from client to backend
     // Use Next.js cookies API to get all cookies
     const allCookies = request.cookies.getAll();
-    console.log(`[API Proxy] All cookies:`, allCookies.map(c => ({ name: c.name, value: c.value.substring(0, 50) + '...' })));
+    // console.log(`[API Proxy] All cookies:`, allCookies.map(c => ({ name: c.name, value: c.value.substring(0, 50) + '...' })));
     
     // Build cookie header - include all cookies, especially laravel-session
     const cookiePairs = allCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
     const cookieHeader = cookiePairs || request.headers.get('cookie') || '';
-    console.log(`[API Proxy] Cookie header length:`, cookieHeader.length);
-    console.log(`[API Proxy] Has laravel-session:`, cookieHeader.includes('laravel-session'));
+    // console.log(`[API Proxy] Cookie header length:`, cookieHeader.length);
+    //console.log(`[API Proxy] Has laravel-session:`, cookieHeader.includes('laravel-session'));
 
     // Get request body for POST, PUT, PATCH requests
     let body: string | undefined;
@@ -142,16 +142,16 @@ async function handleRequest(
       throw new Error(`Failed to fetch from backend: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
     }
 
-    console.log(`[API Proxy] Backend response status:`, response.status);
-    console.log(`[API Proxy] Backend response headers:`, Object.fromEntries(response.headers.entries()));
+   // console.log(`[API Proxy] Backend response status:`, response.status);
+    //console.log(`[API Proxy] Backend response headers:`, Object.fromEntries(response.headers.entries()));
 
     // Try to parse JSON, but handle non-JSON responses
     let data: unknown;
     const contentType = response.headers.get('content-type') || '';
-    console.log(`[API Proxy] Response Content-Type: ${contentType}`);
+    //console.log(`[API Proxy] Response Content-Type: ${contentType}`);
     
     const responseText = await response.text();
-    console.log(`[API Proxy] Response text length: ${responseText.length}`);
+   // console.log(`[API Proxy] Response text length: ${responseText.length}`);
     console.log(`[API Proxy] Response text (first 1000 chars):`, responseText.substring(0, 1000));
     
     if (contentType.includes('application/json') || responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
@@ -173,7 +173,7 @@ async function handleRequest(
       }
     } else {
       // If not JSON, return as error
-      console.log(`[API Proxy] Non-JSON response received`);
+      // console.log(`[API Proxy] Non-JSON response received`);
       return NextResponse.json(
         { 
           error: 'Backend returned non-JSON response',
@@ -246,8 +246,8 @@ async function handleRequest(
       });
     }
 
-    console.log(`[API Proxy] Returning response with status: ${nextResponse.status}`);
-    console.log(`[API Proxy] ==========================================`);
+    // console.log(`[API Proxy] Returning response with status: ${nextResponse.status}`);
+    // console.log(`[API Proxy] ==========================================`);
     return nextResponse;
   } catch (error) {
     console.error('[API Proxy] Error:', error);

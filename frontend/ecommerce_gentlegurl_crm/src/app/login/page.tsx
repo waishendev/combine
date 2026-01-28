@@ -17,22 +17,22 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      console.log('Attempting login...');
+      //console.log('Attempting login...');
       const response = await apiFetch('/api/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
-      console.log('Login successful, response:', response);
+     // console.log('Login successful, response:', response);
 
       // Small delay to ensure cookies are set
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Use router.refresh() to ensure cookies are updated before navigation
       router.refresh();
-      console.log('Navigating to /dashboard...');
+     // console.log('Navigating to /dashboard...');
       router.push('/dashboard');
     } catch (err) {
-      console.error('Login error:', err);
+     // console.error('Login error:', err);
       if (err instanceof Error) {
         // Check for CORS or network errors
         if (

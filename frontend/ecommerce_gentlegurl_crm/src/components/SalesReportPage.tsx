@@ -296,9 +296,9 @@ export default function SalesReportPage({
         setTops(data.tops ?? [])
         if (data.meta) {
           setMeta(data.meta)
-          if (process.env.NODE_ENV !== 'production') {
-            console.log(`[Sales Report ${reportType}] meta`, data.meta)
-          }
+          // if (process.env.NODE_ENV !== 'production') {
+          //   console.log(`[Sales Report ${reportType}] meta`, data.meta)
+          // }
         }
         setPagination({
           total: data.pagination?.total ?? 0,

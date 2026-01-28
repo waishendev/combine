@@ -88,21 +88,21 @@ async function handleRequest(
     const searchParams = request.nextUrl.searchParams.toString();
     const fullUrl = searchParams ? `${url}?${searchParams}` : url;
 
-    console.log(`[Proxy API] ==========================================`);
-    console.log(`[Proxy API] ${method} ${fullUrl}`);
-    console.log(`[Proxy API] Base URL: ${baseUrl}`);
-    console.log(`[Proxy API] API Path: ${apiPath}`);
-    console.log(`[Proxy API] Params:`, params.path);
+    // console.log(`[Proxy API] ==========================================`);
+    // console.log(`[Proxy API] ${method} ${fullUrl}`);
+    // console.log(`[Proxy API] Base URL: ${baseUrl}`);
+    // console.log(`[Proxy API] API Path: ${apiPath}`);
+    // console.log(`[Proxy API] Params:`, params.path);
 
     // Forward cookies from client to backend
     const allCookies = request.cookies.getAll();
-    console.log(`[Proxy API] All cookies:`, allCookies.map(c => ({ name: c.name, value: c.value.substring(0, 50) + '...' })));
+    // console.log(`[Proxy API] All cookies:`, allCookies.map(c => ({ name: c.name, value: c.value.substring(0, 50) + '...' })));
     
     // Build cookie header - include all cookies, especially laravel-session
     const cookiePairs = allCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
     const cookieHeader = cookiePairs || request.headers.get('cookie') || '';
-    console.log(`[Proxy API] Cookie header length:`, cookieHeader.length);
-    console.log(`[Proxy API] Has laravel-session:`, cookieHeader.includes('laravel-session'));
+    // console.log(`[Proxy API] Cookie header length:`, cookieHeader.length);
+    // console.log(`[Proxy API] Has laravel-session:`, cookieHeader.includes('laravel-session'));
 
     // Get request body for POST, PUT, PATCH requests
     let body: string | FormData | undefined;
@@ -141,9 +141,9 @@ async function handleRequest(
         fetchHeaders['Cookie'] = cookieHeader;
       }
       
-      console.log(`[Proxy API] Fetch headers:`, Object.keys(fetchHeaders));
-      console.log(`[Proxy API] Cookie header being sent:`, cookieHeader ? cookieHeader.substring(0, 200) + '...' : 'None');
-      console.log(`[Proxy API] Is FormData:`, isFormData);
+      // console.log(`[Proxy API] Fetch headers:`, Object.keys(fetchHeaders));
+      // console.log(`[Proxy API] Cookie header being sent:`, cookieHeader ? cookieHeader.substring(0, 200) + '...' : 'None');
+      // console.log(`[Proxy API] Is FormData:`, isFormData);
       
       response = await fetch(fullUrl, {
         method,
@@ -151,17 +151,17 @@ async function handleRequest(
         ...(body && { body }),
       });
     } catch (fetchError) {
-      console.error('[Proxy API] Fetch failed:', fetchError);
+      // console.error('[Proxy API] Fetch failed:', fetchError);
       throw new Error(`Failed to fetch from backend: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
     }
 
-    console.log(`[Proxy API] Backend response status:`, response.status);
-    console.log(`[Proxy API] Backend response headers:`, Object.fromEntries(response.headers.entries()));
+    // console.log(`[Proxy API] Backend response status:`, response.status);
+    // console.log(`[Proxy API] Backend response headers:`, Object.fromEntries(response.headers.entries()));
 
     // Try to parse JSON, but handle non-JSON responses
     let data: unknown;
     const responseContentType = response.headers.get('content-type') || '';
-    console.log(`[Proxy API] Response Content-Type: ${responseContentType}`);
+   // console.log(`[Proxy API] Response Content-Type: ${responseContentType}`);
 
     if (
       responseContentType.includes('application/pdf') ||
@@ -184,8 +184,8 @@ async function handleRequest(
     }
 
     const responseText = await response.text();
-    console.log(`[Proxy API] Response text length: ${responseText.length}`);
-    console.log(`[Proxy API] Response text (first 1000 chars):`, responseText.substring(0, 1000));
+    // console.log(`[Proxy API] Response text length: ${responseText.length}`);
+    // console.log(`[Proxy API] Response text (first 1000 chars):`, responseText.substring(0, 1000));
 
     if (
       responseContentType.includes('application/json') ||
@@ -194,10 +194,10 @@ async function handleRequest(
     ) {
       try {
         data = responseText ? JSON.parse(responseText) : {};
-        console.log(`[Proxy API] Successfully parsed JSON`);
+       // console.log(`[Proxy API] Successfully parsed JSON`);
       } catch (parseError) {
-        console.error('[Proxy API] JSON parse error:', parseError);
-        console.error('[Proxy API] Response text that failed to parse:', responseText);
+        // console.error('[Proxy API] JSON parse error:', parseError);
+        // console.error('[Proxy API] Response text that failed to parse:', responseText);
         return NextResponse.json(
           {
             error: 'Failed to parse JSON response from backend',
@@ -208,7 +208,7 @@ async function handleRequest(
         );
       }
     } else {
-      console.log(`[Proxy API] Non-JSON response received`);
+     // console.log(`[Proxy API] Non-JSON response received`);
       return NextResponse.json(
         {
           error: 'Backend returned non-JSON response',
@@ -281,14 +281,14 @@ async function handleRequest(
       });
     }
 
-    console.log(`[Proxy API] Returning response with status: ${nextResponse.status}`);
-    console.log(`[Proxy API] ==========================================`);
+    // console.log(`[Proxy API] Returning response with status: ${nextResponse.status}`);
+    // console.log(`[Proxy API] ==========================================`);
     return nextResponse;
   } catch (error) {
-    console.error('[Proxy API] Error:', error);
+    //console.error('[Proxy API] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error('[Proxy API] Error details:', { errorMessage, errorStack });
+   // console.error('[Proxy API] Error details:', { errorMessage, errorStack });
     
     return NextResponse.json(
       { 

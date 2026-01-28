@@ -20,9 +20,9 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json().catch(() => ({}));
 
-    console.log('Backend response status:', response.status);
-    console.log('Backend response data:', data);
-    console.log('Set-Cookie header:', response.headers.get('set-cookie'));
+    // console.log('Backend response status:', response.status);
+    // console.log('Backend response data:', data);
+    // console.log('Set-Cookie header:', response.headers.get('set-cookie'));
 
     // Create response with forwarded data
     const nextResponse = NextResponse.json(data, {
@@ -45,8 +45,8 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log('[Login API] Set-Cookie headers count:', setCookieHeaders.length);
-    console.log('[Login API] Set-Cookie headers:', setCookieHeaders);
+    // console.log('[Login API] Set-Cookie headers count:', setCookieHeaders.length);
+    // console.log('[Login API] Set-Cookie headers:', setCookieHeaders);
     
     if (setCookieHeaders.length > 0) {
       setCookieHeaders.forEach(cookieString => {
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
             }
           });
           
-          console.log(`[Login API] Setting cookie: ${name} with path=${path}, httpOnly=${httpOnly}, sameSite=${sameSite}`);
+          // console.log(`[Login API] Setting cookie: ${name} with path=${path}, httpOnly=${httpOnly}, sameSite=${sameSite}`);
           
           nextResponse.cookies.set(name.trim(), value.trim(), {
             httpOnly,

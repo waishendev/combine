@@ -59,12 +59,12 @@ export default async function RootLayout({
   const theme = colorMode === "2" ? "cream" : "soft";
   
   // Debug: Log theme selection (remove in production)
-  if (process.env.NODE_ENV === "development") {
-    console.log("[Theme Debug] COLOR env:", process.env.COLOR);
-    console.log("[Theme Debug] NEXT_PUBLIC_COLOR env:", process.env.NEXT_PUBLIC_COLOR);
-    console.log("[Theme Debug] colorMode:", colorMode);
-    console.log("[Theme Debug] selected theme:", theme);
-  }
+  // if (process.env.NODE_ENV === "development") {
+  //   console.log("[Theme Debug] COLOR env:", process.env.COLOR);
+  //   console.log("[Theme Debug] NEXT_PUBLIC_COLOR env:", process.env.NEXT_PUBLIC_COLOR);
+  //   console.log("[Theme Debug] colorMode:", colorMode);
+  //   console.log("[Theme Debug] selected theme:", theme);
+  // }
   const headerList = await headers();
   const pathname = headerList.get("x-pathname") ?? "";
   const isAuthRoute = pathname === "/login" || pathname === "/register";
