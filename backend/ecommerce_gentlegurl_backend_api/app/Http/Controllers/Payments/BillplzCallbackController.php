@@ -157,11 +157,12 @@ class BillplzCallbackController extends Controller
             'billplzamount' => $billplzPayload['amount'] ?? null,
             'billplzcollection_id' => $billplzPayload['collection_id'] ?? null,
             'billplzreference_1' => $billplzPayload['reference_1'] ?? null,
+            'billplzreference_2' => $billplzPayload['reference_2'] ?? null,
         ];
 
         $concatenated = collect($components)
             ->filter(fn($value) => $value !== null && $value !== '')
-            ->map(fn($value, $key) => $key . $value)
+            ->map(fn($value, $key) => $key . $this->normalizeSignatureValue($value))
             ->implode('');
 
         if ($concatenated) {
@@ -173,7 +174,7 @@ class BillplzCallbackController extends Controller
 
         $withPipes = collect($components)
             ->filter(fn($value) => $value !== null && $value !== '')
-            ->map(fn($value, $key) => $key . $value)
+            ->map(fn($value, $key) => $key . $this->normalizeSignatureValue($value))
             ->implode('|');
 
         if ($withPipes) {
@@ -188,12 +189,38 @@ class BillplzCallbackController extends Controller
         ksort($flat);
 
         $fallbackString = collect($flat)
-            ->map(fn($value, $key) => $key . $value)
+            ->filter(fn($value) => $value !== null && $value !== '')
+            ->map(fn($value, $key) => 'billplz' . $key . $this->normalizeSignatureValue($value))
             ->implode('|');
 
-        $fallbackExpected = hash_hmac('sha256', $fallbackString, $xSignatureKey);
+        if ($fallbackString) {
+            $fallbackExpected = hash_hmac('sha256', $fallbackString, $xSignatureKey);
+            if (hash_equals($fallbackExpected, $signature)) {
+                return true;
+            }
+        }
 
-        return hash_equals($fallbackExpected, $signature);
+        $legacyFallbackString = collect($flat)
+            ->filter(fn($value) => $value !== null && $value !== '')
+            ->map(fn($value, $key) => $key . $this->normalizeSignatureValue($value))
+            ->implode('|');
+
+        if (!$legacyFallbackString) {
+            return false;
+        }
+
+        $legacyFallbackExpected = hash_hmac('sha256', $legacyFallbackString, $xSignatureKey);
+
+        return hash_equals($legacyFallbackExpected, $signature);
+    }
+
+    protected function normalizeSignatureValue(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        return (string) $value;
     }
 
     protected function clearOrderCart(Order $order): void
