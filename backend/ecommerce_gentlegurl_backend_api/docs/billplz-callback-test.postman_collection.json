@@ -1,0 +1,446 @@
+{
+  "info": {
+    "name": "Billplz Callback Test",
+    "description": "Postman collection for testing Billplz webhook callback signature verification.\n\nIMPORTANT: Before using, set the 'x_signature_key' variable with your actual X Signature Key from .env file (BILLPLZ_X_SIGNATURE_KEY).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api",
+      "type": "string"
+    },
+    {
+      "key": "x_signature_key",
+      "value": "YOUR_X_SIGNATURE_KEY_HERE",
+      "type": "string",
+      "description": "Your Billplz X Signature Key from .env file (BILLPLZ_X_SIGNATURE_KEY)"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Billplz Callback - Test with Original Signature",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response is OK', function () {",
+              "    pm.expect(pm.response.text()).to.include('OK');",
+              "});",
+              "",
+              "// Check logs to see which signature method worked",
+              "console.log('Check your Laravel logs to see signature verification details');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": \"fdc428fa53d7e874\",\n    \"collection_id\": \"dpiytx7r\",\n    \"paid\": \"true\",\n    \"state\": \"paid\",\n    \"amount\": \"100\",\n    \"paid_amount\": \"100\",\n    \"due_at\": \"2026-1-26\",\n    \"email\": \"waishendev@gmail.com\",\n    \"mobile\": \"+60124482125\",\n    \"name\": \"TEOH WAI SHEN\",\n    \"url\": \"https://www.billplz.com/bills/fdc428fa53d7e874\",\n    \"paid_at\": \"2026-01-26 01:30:58 +0800\",\n    \"transaction_id\": \"1B2EA3BD4BC06B2DB439\",\n    \"transaction_status\": \"completed\",\n    \"x_signature\": \"f716309650c144d45776470cfe410ac527fd9c28dc9fa36016c3fb090cda57e7\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/public/payments/billplz/callback",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "public",
+            "payments",
+            "billplz",
+            "callback"
+          ]
+        },
+        "description": "Test with the original signature from your logs. This will help identify which signature format Billplz uses by checking the debug logs."
+      }
+    },
+    {
+      "name": "2. Billplz Callback - Generate Signature (Method 1: All Fields)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Method 1: All fields with prefix (including empty reference_1)",
+              "const payload = {",
+              "    id: 'fdc428fa53d7e874',",
+              "    collection_id: 'dpiytx7r',",
+              "    paid: 'true',",
+              "    state: 'paid',",
+              "    amount: '100',",
+              "    paid_at: '2026-01-26 01:30:58 +0800',",
+              "    transaction_id: '1B2EA3BD4BC06B2DB439'",
+              "};",
+              "",
+              "const xSignatureKey = pm.variables.get('x_signature_key');",
+              "",
+              "if (!xSignatureKey || xSignatureKey === 'YOUR_X_SIGNATURE_KEY_HERE') {",
+              "    console.error('ERROR: Please set x_signature_key variable with your actual X Signature Key!');",
+              "    throw new Error('x_signature_key not set');",
+              "}",
+              "",
+              "// Method 1: All fields with prefix (including empty reference_1)",
+              "const allComponents = [",
+              "    'billplzid' + (payload.id || ''),",
+              "    'billplzpaid_at' + (payload.paid_at || ''),",
+              "    'billplzpaid' + (payload.paid || ''),",
+              "    'billplztransaction_id' + (payload.transaction_id || ''),",
+              "    'billplzamount' + (payload.amount || ''),",
+              "    'billplzcollection_id' + (payload.collection_id || ''),",
+              "    'billplzreference_1' + (payload.reference_1 || '')",
+              "];",
+              "",
+              "const withPipesAll = allComponents.join('|');",
+              "",
+              "// Use Postman's built-in crypto",
+              "const signature = CryptoJS.HmacSHA256(withPipesAll, xSignatureKey).toString();",
+              "",
+              "payload.x_signature = signature;",
+              "",
+              "pm.variables.set('test_payload', JSON.stringify(payload));",
+              "",
+              "console.log('Method 1 - Signature string:', withPipesAll);",
+              "console.log('Method 1 - Generated signature:', signature);",
+              "console.log('Original signature from log:', 'f716309650c144d45776470cfe410ac527fd9c28dc9fa36016c3fb090cda57e7');",
+              "console.log('Match:', signature === 'f716309650c144d45776470cfe410ac527fd9c28dc9fa36016c3fb090cda57e7' ? 'YES!' : 'NO');"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response is OK', function () {",
+              "    pm.expect(pm.response.text()).to.include('OK');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{{test_payload}}"
+        },
+        "url": {
+          "raw": "{{base_url}}/public/payments/billplz/callback",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "public",
+            "payments",
+            "billplz",
+            "callback"
+          ]
+        },
+        "description": "Test with signature generated using Method 1: All fields with prefix (including empty reference_1). Check console to see if signature matches."
+      }
+    },
+    {
+      "name": "3. Billplz Callback - Generate Signature (Method 2: Non-Empty Only)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Method 2: Only non-empty fields with prefix",
+              "const payload = {",
+              "    id: 'fdc428fa53d7e874',",
+              "    collection_id: 'dpiytx7r',",
+              "    paid: 'true',",
+              "    state: 'paid',",
+              "    amount: '100',",
+              "    paid_at: '2026-01-26 01:30:58 +0800',",
+              "    transaction_id: '1B2EA3BD4BC06B2DB439'",
+              "};",
+              "",
+              "const xSignatureKey = pm.variables.get('x_signature_key');",
+              "",
+              "if (!xSignatureKey || xSignatureKey === 'YOUR_X_SIGNATURE_KEY_HERE') {",
+              "    console.error('ERROR: Please set x_signature_key variable with your actual X Signature Key!');",
+              "    throw new Error('x_signature_key not set');",
+              "}",
+              "",
+              "// Method 2: Only non-empty fields with prefix",
+              "const components = [];",
+              "if (payload.id) components.push('billplzid' + payload.id);",
+              "if (payload.paid_at) components.push('billplzpaid_at' + payload.paid_at);",
+              "if (payload.paid) components.push('billplzpaid' + payload.paid);",
+              "if (payload.transaction_id) components.push('billplztransaction_id' + payload.transaction_id);",
+              "if (payload.amount) components.push('billplzamount' + payload.amount);",
+              "if (payload.collection_id) components.push('billplzcollection_id' + payload.collection_id);",
+              "if (payload.reference_1) components.push('billplzreference_1' + payload.reference_1);",
+              "",
+              "const withPipes = components.join('|');",
+              "const signature = CryptoJS.HmacSHA256(withPipes, xSignatureKey).toString();",
+              "",
+              "payload.x_signature = signature;",
+              "",
+              "pm.variables.set('test_payload', JSON.stringify(payload));",
+              "",
+              "console.log('Method 2 - Signature string:', withPipes);",
+              "console.log('Method 2 - Generated signature:', signature);",
+              "console.log('Original signature from log:', 'f716309650c144d45776470cfe410ac527fd9c28dc9fa36016c3fb090cda57e7');",
+              "console.log('Match:', signature === 'f716309650c144d45776470cfe410ac527fd9c28dc9fa36016c3fb090cda57e7' ? 'YES!' : 'NO');"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response is OK', function () {",
+              "    pm.expect(pm.response.text()).to.include('OK');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{{test_payload}}"
+        },
+        "url": {
+          "raw": "{{base_url}}/public/payments/billplz/callback",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "public",
+            "payments",
+            "billplz",
+            "callback"
+          ]
+        },
+        "description": "Test with signature generated using Method 2: Only non-empty fields with prefix. Check console to see if signature matches."
+      }
+    },
+    {
+      "name": "4. Billplz Callback - Generate Signature (Method 3: Values Only)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Method 3: Values only (no prefix)",
+              "const payload = {",
+              "    id: 'fdc428fa53d7e874',",
+              "    collection_id: 'dpiytx7r',",
+              "    paid: 'true',",
+              "    state: 'paid',",
+              "    amount: '100',",
+              "    paid_at: '2026-01-26 01:30:58 +0800',",
+              "    transaction_id: '1B2EA3BD4BC06B2DB439'",
+              "};",
+              "",
+              "const xSignatureKey = pm.variables.get('x_signature_key');",
+              "",
+              "if (!xSignatureKey || xSignatureKey === 'YOUR_X_SIGNATURE_KEY_HERE') {",
+              "    console.error('ERROR: Please set x_signature_key variable with your actual X Signature Key!');",
+              "    throw new Error('x_signature_key not set');",
+              "}",
+              "",
+              "// Method 3: Values only (no prefix)",
+              "const valueComponents = [];",
+              "if (payload.id) valueComponents.push(payload.id);",
+              "if (payload.paid_at) valueComponents.push(payload.paid_at);",
+              "if (payload.paid) valueComponents.push(payload.paid);",
+              "if (payload.transaction_id) valueComponents.push(payload.transaction_id);",
+              "if (payload.amount) valueComponents.push(payload.amount);",
+              "if (payload.collection_id) valueComponents.push(payload.collection_id);",
+              "if (payload.reference_1) valueComponents.push(payload.reference_1);",
+              "",
+              "const valueString = valueComponents.join('|');",
+              "const signature = CryptoJS.HmacSHA256(valueString, xSignatureKey).toString();",
+              "",
+              "payload.x_signature = signature;",
+              "",
+              "pm.variables.set('test_payload', JSON.stringify(payload));",
+              "",
+              "console.log('Method 3 - Signature string:', valueString);",
+              "console.log('Method 3 - Generated signature:', signature);",
+              "console.log('Original signature from log:', 'f716309650c144d45776470cfe410ac527fd9c28dc9fa36016c3fb090cda57e7');",
+              "console.log('Match:', signature === 'f716309650c144d45776470cfe410ac527fd9c28dc9fa36016c3fb090cda57e7' ? 'YES!' : 'NO');"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response is OK', function () {",
+              "    pm.expect(pm.response.text()).to.include('OK');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{{test_payload}}"
+        },
+        "url": {
+          "raw": "{{base_url}}/public/payments/billplz/callback",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "public",
+            "payments",
+            "billplz",
+            "callback"
+          ]
+        },
+        "description": "Test with signature generated using Method 3: Values only (no prefix). Check console to see if signature matches."
+      }
+    },
+    {
+      "name": "5. Billplz Callback - With reference_1",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Test with reference_1 field included",
+              "const payload = {",
+              "    id: 'fdc428fa53d7e874',",
+              "    collection_id: 'dpiytx7r',",
+              "    paid: 'true',",
+              "    state: 'paid',",
+              "    amount: '100',",
+              "    paid_at: '2026-01-26 01:30:58 +0800',",
+              "    transaction_id: '1B2EA3BD4BC06B2DB439',",
+              "    reference_1: 'ORD20260126013023387'",
+              "};",
+              "",
+              "const xSignatureKey = pm.variables.get('x_signature_key');",
+              "",
+              "if (!xSignatureKey || xSignatureKey === 'YOUR_X_SIGNATURE_KEY_HERE') {",
+              "    console.error('ERROR: Please set x_signature_key variable with your actual X Signature Key!');",
+              "    throw new Error('x_signature_key not set');",
+              "}",
+              "",
+              "// Method 1: All fields with prefix",
+              "const allComponents = [",
+              "    'billplzid' + (payload.id || ''),",
+              "    'billplzpaid_at' + (payload.paid_at || ''),",
+              "    'billplzpaid' + (payload.paid || ''),",
+              "    'billplztransaction_id' + (payload.transaction_id || ''),",
+              "    'billplzamount' + (payload.amount || ''),",
+              "    'billplzcollection_id' + (payload.collection_id || ''),",
+              "    'billplzreference_1' + (payload.reference_1 || '')",
+              "];",
+              "",
+              "const withPipesAll = allComponents.join('|');",
+              "const signature = CryptoJS.HmacSHA256(withPipesAll, xSignatureKey).toString();",
+              "",
+              "payload.x_signature = signature;",
+              "",
+              "pm.variables.set('test_payload', JSON.stringify(payload));",
+              "",
+              "console.log('With reference_1 - Signature string:', withPipesAll);",
+              "console.log('With reference_1 - Generated signature:', signature);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response is OK', function () {",
+              "    pm.expect(pm.response.text()).to.include('OK');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{{test_payload}}"
+        },
+        "url": {
+          "raw": "{{base_url}}/public/payments/billplz/callback",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "public",
+            "payments",
+            "billplz",
+            "callback"
+          ]
+        },
+        "description": "Test with reference_1 field included (order number)"
+      }
+    }
+  ]
+}
