@@ -130,7 +130,7 @@ function normalizeMenuItems(input: unknown): ServicesMenuItem[] {
   return []
 }
 
-function ensureSections(sections: Partial<ServicesPagePayload['sections']> | undefined) {
+function ensureSections(sections: Partial<ServicesPagePayload['sections']> | undefined): ServicesPagePayload['sections'] {
   const mergeHeading = (heading: Partial<SectionHeading> | undefined, fallback: SectionHeading) => ({
     ...fallback,
     ...(heading ?? {}),
@@ -138,15 +138,13 @@ function ensureSections(sections: Partial<ServicesPagePayload['sections']> | und
 
   const mergeSection = <T,>(
     section: (ServicesSection<T> & { heading?: SectionHeading } & Record<string, unknown>) | undefined,
-    fallback: ServicesSection<T> & { heading?: SectionHeading } & Record<string, unknown>,
-  ) => {
+    fallback: ServicesSection<T> & { heading: SectionHeading } & Record<string, unknown>,
+  ): ServicesSection<T> & { heading: SectionHeading } => {
     const merged = {
       ...fallback,
       ...(section ?? {}),
       items: Array.isArray(section?.items) ? section.items : fallback.items,
-    }
-    if (fallback.heading) {
-      merged.heading = mergeHeading(section?.heading, fallback.heading)
+      heading: mergeHeading(section?.heading, fallback.heading),
     }
     return merged
   }
