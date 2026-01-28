@@ -63,6 +63,7 @@ type ServicesPageLayoutProps = {
   galleryHeading?: SectionHeading;
   galleryFooterText?: string;
   galleryFooterAlign?: "left" | "center" | "right";
+  galleryLayout?: "auto" | "fixed";
   pricingHeading?: SectionHeading;
   faqHeading?: SectionHeading;
   notesHeading?: SectionHeading;
@@ -91,6 +92,7 @@ export function ServicesPageLayout({
   galleryHeading,
   galleryFooterText,
   galleryFooterAlign = "center",
+  galleryLayout = "fixed",
   pricingHeading,
   faqHeading,
   notesHeading,
@@ -646,7 +648,13 @@ export function ServicesPageLayout({
         {showGallerySection && (
           <section className="space-y-6">
             {renderSectionHeading(resolvedGalleryHeading, "accent")}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] xl:grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
+            <div
+              className={
+                galleryLayout === "fixed"
+                  ? "grid grid-cols-2 gap-4 sm:grid-cols-4"
+                  : "grid grid-cols-2 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] xl:grid-cols-[repeat(auto-fit,minmax(240px,1fr))]"
+              }
+            >
               {gallery.map((image, index) => {
                 const altText = image.alt ?? image.caption ?? `Gallery image ${index + 1}`;
                 return (

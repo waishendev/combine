@@ -203,6 +203,9 @@ class ServicesPageController extends Controller
         if (isset($gallery['footerAlign'])) {
             $gallery['footerAlign'] = $this->normalizeAlignment($gallery['footerAlign']);
         }
+        if (isset($gallery['layout'])) {
+            $gallery['layout'] = $this->normalizeGalleryLayout($gallery['layout']);
+        }
         $sections['gallery'] = $gallery;
 
         return $sections;
@@ -378,6 +381,15 @@ class ServicesPageController extends Controller
         return 'left';
     }
 
+    private function normalizeGalleryLayout($layout): string
+    {
+        $value = is_string($layout) ? strtolower($layout) : 'fixed';
+        if (in_array($value, ['auto', 'fixed'], true)) {
+            return $value;
+        }
+        return 'fixed';
+    }
+
     private function defaultSections(): array
     {
         return [
@@ -404,6 +416,7 @@ class ServicesPageController extends Controller
                 ],
                 'footerText' => '',
                 'footerAlign' => 'center',
+                'layout' => 'fixed',
             ],
             'pricing' => [
                 'is_active' => true,
@@ -470,6 +483,9 @@ class ServicesPageController extends Controller
             }
             if ($key === 'gallery' && isset($sections[$key]['footerAlign'])) {
                 $sections[$key]['footerAlign'] = $this->normalizeAlignment($sections[$key]['footerAlign']);
+            }
+            if ($key === 'gallery' && isset($sections[$key]['layout'])) {
+                $sections[$key]['layout'] = $this->normalizeGalleryLayout($sections[$key]['layout']);
             }
         }
 

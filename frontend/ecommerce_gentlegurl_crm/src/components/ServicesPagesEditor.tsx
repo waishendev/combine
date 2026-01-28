@@ -56,6 +56,7 @@ type ServicesPagePayload = {
       heading: SectionHeading
       footerText: string
       footerAlign: 'left' | 'center' | 'right'
+      layout: 'auto' | 'fixed'
     }
     pricing: ServicesSection<PricingItem> & { heading: SectionHeading }
     faqs: ServicesSection<FaqItem> & { heading: SectionHeading }
@@ -85,6 +86,7 @@ const emptySections: ServicesPagePayload['sections'] = {
     heading: { label: 'Service Menu', title: 'Click to view services and pricing', align: 'center' },
     footerText: '',
     footerAlign: 'center',
+    layout: 'fixed',
   },
   pricing: {
     is_active: true,
@@ -161,6 +163,7 @@ function ensureSections(sections: Partial<ServicesPagePayload['sections']> | und
       })),
       footerText: sections?.gallery?.footerText ?? emptySections.gallery.footerText,
       footerAlign: sections?.gallery?.footerAlign ?? emptySections.gallery.footerAlign,
+      layout: sections?.gallery?.layout ?? emptySections.gallery.layout,
     },
     pricing: mergeSection(sections?.pricing, emptySections.pricing),
     faqs: mergeSection(sections?.faqs, emptySections.faqs),
@@ -1105,6 +1108,23 @@ export default function ServicesPagesEditor({
                   </select>
                 </label>
               </div>
+              <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+                <span className="font-medium">Grid layout</span>
+                <select
+                  value={page.sections.gallery.layout}
+                  onChange={(e) =>
+                    updateSection<GalleryItem>('gallery', (section) => ({
+                      ...section,
+                      layout: e.target.value as ServicesPagePayload['sections']['gallery']['layout'],
+                    }))
+                  }
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  disabled={!canUpdate}
+                >
+                  <option value="fixed">Fixed 4 per row</option>
+                  <option value="auto">Auto responsive</option>
+                </select>
+              </label>
               {page.sections.gallery.items.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
                   No images yet. Add up to 16 images to build the gallery grid.

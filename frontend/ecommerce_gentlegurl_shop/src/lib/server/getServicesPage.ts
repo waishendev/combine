@@ -58,6 +58,7 @@ export type ServicesGallerySection = {
   heading?: ServicesSectionHeading;
   footerText?: string;
   footerAlign?: "left" | "center" | "right";
+  layout?: "auto" | "fixed";
 };
 
 export type ServicesPageData = {

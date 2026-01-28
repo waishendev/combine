@@ -27,6 +27,7 @@ const defaultSections: ServicesSections = {
     },
     footerText: "",
     footerAlign: "center",
+    layout: "fixed",
   },
   pricing: {
     is_active: true,
@@ -84,6 +85,7 @@ function mergeSections(sections: ServicesSections | undefined): ServicesSections
     ...mergeSection(sections.gallery, defaultSections.gallery),
     footerText: sections.gallery?.footerText ?? defaultSections.gallery.footerText,
     footerAlign: sections.gallery?.footerAlign ?? defaultSections.gallery.footerAlign,
+    layout: sections.gallery?.layout ?? defaultSections.gallery.layout,
   };
 
   return {
@@ -138,6 +140,7 @@ export default async function ServicesDetailPage({
       galleryHeading={sections.gallery.heading ?? defaultSections.gallery.heading}
       galleryFooterText={sections.gallery.footerText ?? defaultSections.gallery.footerText}
       galleryFooterAlign={sections.gallery.footerAlign ?? defaultSections.gallery.footerAlign}
+      galleryLayout={sections.gallery.layout ?? defaultSections.gallery.layout}
       pricingHeading={sections.pricing.heading ?? defaultSections.pricing.heading}
       faqHeading={sections.faqs.heading ?? defaultSections.faqs.heading}
       notesHeading={sections.notes.heading ?? defaultSections.notes.heading}
