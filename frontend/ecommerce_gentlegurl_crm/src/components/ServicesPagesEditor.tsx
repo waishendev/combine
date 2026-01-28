@@ -1656,7 +1656,7 @@ function EditableList<T>({
         type="button"
         onClick={onAdd}
         disabled={!canUpdate}
-        className="inline-flex items-center gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
+        className="inline-flex items-center mt-2 gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
       >
         <i className="fa-solid fa-plus" />
         Add item
