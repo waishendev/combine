@@ -38,7 +38,7 @@ services:
       - /app/.next/cache:size=256m,mode=1777
 
     # 安全最小化
-    user: "node"
+    # user: "node"
     security_opt:
       - no-new-privileges:true
     cap_drop:

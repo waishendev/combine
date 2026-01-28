@@ -213,7 +213,6 @@ export default function ServicesPagesEditor({
   const [slideMobileFiles, setSlideMobileFiles] = useState<(File | null)[]>([])
   const [slidePreviews, setSlidePreviews] = useState<(string | null)[]>([])
   const [slideMobilePreviews, setSlideMobilePreviews] = useState<(string | null)[]>([])
-  const initialSlidesRef = useRef<{ id?: number; src: string; mobileSrc: string }[]>([])
   const [galleryFiles, setGalleryFiles] = useState<(File | null)[]>([])
   const [galleryPreviews, setGalleryPreviews] = useState<(string | null)[]>([])
   const desktopImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
@@ -292,11 +291,6 @@ export default function ServicesPagesEditor({
           hero_slides: slides,
           sections,
         })
-        initialSlidesRef.current = slides.map((slide) => ({
-          id: slide.id,
-          src: slide.src,
-          mobileSrc: slide.mobileSrc,
-        }))
         const slideCount = slides.length
         setSlideFiles(Array(slideCount).fill(null))
         setSlideMobileFiles(Array(slideCount).fill(null))
@@ -598,11 +592,14 @@ export default function ServicesPagesEditor({
       formData.append('is_active', page.is_active ? '1' : '0')
       formData.append('sections', JSON.stringify(page.sections))
 
-      const findOriginalSlide = (slide: HeroSlide, index: number) => {
-        if (slide.id != null) {
-          return initialSlidesRef.current.find((entry) => entry.id === slide.id)
+      const normalizeImagePath = (value: string) => {
+        if (!value) return ''
+        try {
+          const url = new URL(value)
+          return `${url.pathname}${url.search}${url.hash}`
+        } catch {
+          return value
         }
-        return initialSlidesRef.current[index]
       }
 
       page.hero_slides.forEach((slide, index) => {
@@ -612,19 +609,18 @@ export default function ServicesPagesEditor({
         formData.append(`hero_slides[${index}][buttonLabel]`, slide.buttonLabel)
         formData.append(`hero_slides[${index}][buttonHref]`, slide.buttonHref)
 
-        const original = findOriginalSlide(slide, index)
         const imageFile = slideFiles[index]
         if (imageFile) {
           formData.append(`hero_slides[${index}][image_file]`, imageFile)
-        } else if (!original || original.src !== slide.src) {
-          formData.append(`hero_slides[${index}][src]`, slide.src)
+        } else {
+          formData.append(`hero_slides[${index}][src]`, normalizeImagePath(slide.src))
         }
 
         const mobileImageFile = slideMobileFiles[index]
         if (mobileImageFile) {
           formData.append(`hero_slides[${index}][mobile_image_file]`, mobileImageFile)
-        } else if (!original || original.mobileSrc !== slide.mobileSrc) {
-          formData.append(`hero_slides[${index}][mobileSrc]`, slide.mobileSrc)
+        } else {
+          formData.append(`hero_slides[${index}][mobileSrc]`, normalizeImagePath(slide.mobileSrc))
         }
       })
 
@@ -659,11 +655,6 @@ export default function ServicesPagesEditor({
         hero_slides: slides,
         sections,
       })
-      initialSlidesRef.current = slides.map((slide) => ({
-        id: slide.id,
-        src: slide.src,
-        mobileSrc: slide.mobileSrc,
-      }))
       const slideCount = slides.length
       setSlideFiles(Array(slideCount).fill(null))
       setSlideMobileFiles(Array(slideCount).fill(null))
