@@ -32,7 +32,7 @@ services:
     restart: unless-stopped
 
     # 只读根FS + 必要可写点
-    read_only: true
+    # read_only: true
     tmpfs:
       - /tmp:size=64m,nr_inodes=4096,mode=1777,noexec,nosuid,nodev
       - /app/.next/cache:size=256m,mode=1777
