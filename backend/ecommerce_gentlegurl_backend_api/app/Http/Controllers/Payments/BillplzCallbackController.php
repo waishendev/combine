@@ -16,8 +16,20 @@ class BillplzCallbackController extends Controller
     {
         $payload = $request->all();
         $billplzPayload = $payload['billplz'] ?? $payload;
+        $signaturePayload = $payload;
 
-        if (!$this->verifySignature($payload)) {
+        if (!$this->verifySignature($signaturePayload)) {
+            $headerSignature = $request->header('X-Signature') ?? $request->header('x-signature');
+            if ($headerSignature) {
+                if (isset($signaturePayload['billplz']) && is_array($signaturePayload['billplz'])) {
+                    $signaturePayload['billplz']['x_signature'] = $signaturePayload['billplz']['x_signature'] ?? $headerSignature;
+                } else {
+                    $signaturePayload['x_signature'] = $signaturePayload['x_signature'] ?? $headerSignature;
+                }
+            }
+        }
+
+        if (!$this->verifySignature($signaturePayload)) {
             Log::warning('Billplz callback invalid signature', $payload);
             return response('invalid signature', 400);
         }
