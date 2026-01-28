@@ -282,8 +282,11 @@ export default function ServicesPagesEditor({
         if (!payload) {
           throw new Error('Services page payload missing.')
         }
-        const slides = ensureSlides(payload.hero_slides)
+        let slides = ensureSlides(payload.hero_slides)
         const sections = ensureSections(payload.sections)
+        if (sections.hero.is_active && slides.length === 0) {
+          slides = [{ ...emptySlide, sort_order: 1 }]
+        }
         setPage({
           ...payload,
           menu_item_id: payload.menu_item_id ?? menuId,
@@ -525,9 +528,23 @@ export default function ServicesPagesEditor({
       setSlidePreviews((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
       setSlideMobilePreviews((prevFiles) => prevFiles.filter((_, idx) => idx !== index))
       setCollapsedSlides({})
+      const nextSlides = resequenceSlides(prev.hero_slides.filter((_, idx) => idx !== index))
+      if (nextSlides.length === 0) {
+        return {
+          ...prev,
+          hero_slides: [],
+          sections: {
+            ...prev.sections,
+            hero: {
+              ...prev.sections.hero,
+              is_active: false,
+            },
+          },
+        }
+      }
       return {
         ...prev,
-        hero_slides: resequenceSlides(prev.hero_slides.filter((_, idx) => idx !== index)),
+        hero_slides: nextSlides,
       }
     })
   }
@@ -537,6 +554,21 @@ export default function ServicesPagesEditor({
       ...prev,
       [sectionKey]: !prev[sectionKey],
     }))
+  }
+
+  const moveGalleryItem = (index: number, direction: -1 | 1) => {
+    updateSection<GalleryItem>('gallery', (section) => {
+      const targetIndex = index + direction
+      if (targetIndex < 0 || targetIndex >= section.items.length) {
+        return section
+      }
+      const items = [...section.items]
+      const [moved] = items.splice(index, 1)
+      items.splice(targetIndex, 0, moved)
+      setGalleryFiles((prevFiles) => reorderFiles(prevFiles, index, targetIndex))
+      setGalleryPreviews((prevPreviews) => reorderFiles(prevPreviews, index, targetIndex))
+      return { ...section, items }
+    })
   }
 
   const handleSave = async () => {
@@ -604,8 +636,11 @@ export default function ServicesPagesEditor({
       }
 
       const payload = json.data
-      const slides = ensureSlides(payload.hero_slides)
+      let slides = ensureSlides(payload.hero_slides)
       const sections = ensureSections(payload.sections)
+      if (sections.hero.is_active && slides.length === 0) {
+        slides = [{ ...emptySlide, sort_order: 1 }]
+      }
       setPage({
         ...payload,
         hero_slides: slides,
@@ -1072,6 +1107,25 @@ export default function ServicesPagesEditor({
                   updateSection<GalleryItem>('gallery', (section) => ({ ...section, heading }))
                 }
                 canUpdate={canUpdate}
+                extraField={
+                  <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+                    <span className="font-medium">Grid layout</span>
+                    <select
+                      value={page.sections.gallery.layout}
+                      onChange={(e) =>
+                        updateSection<GalleryItem>('gallery', (section) => ({
+                          ...section,
+                          layout: e.target.value as ServicesPagePayload['sections']['gallery']['layout'],
+                        }))
+                      }
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      disabled={!canUpdate}
+                    >
+                      <option value="fixed">Fixed 4 per row</option>
+                      <option value="auto">Auto responsive</option>
+                    </select>
+                  </label>
+                }
               />
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
@@ -1108,23 +1162,6 @@ export default function ServicesPagesEditor({
                   </select>
                 </label>
               </div>
-              <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
-                <span className="font-medium">Grid layout</span>
-                <select
-                  value={page.sections.gallery.layout}
-                  onChange={(e) =>
-                    updateSection<GalleryItem>('gallery', (section) => ({
-                      ...section,
-                      layout: e.target.value as ServicesPagePayload['sections']['gallery']['layout'],
-                    }))
-                  }
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={!canUpdate}
-                >
-                  <option value="fixed">Fixed 4 per row</option>
-                  <option value="auto">Auto responsive</option>
-                </select>
-              </label>
               {page.sections.gallery.items.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
                   No images yet. Add up to 16 images to build the gallery grid.
@@ -1133,16 +1170,36 @@ export default function ServicesPagesEditor({
                 <div className="grid gap-4 md:grid-cols-2">
                   {page.sections.gallery.items.map((item, index) => (
                     <div key={`gallery-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-gray-900">Image {index + 1}</p>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveGalleryItem(index)}
-                          disabled={!canUpdate}
-                          className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          <i className="fa-solid fa-trash" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => moveGalleryItem(index, -1)}
+                            disabled={!canUpdate || index === 0}
+                            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            aria-label="Move image up"
+                          >
+                            <i className="fa-solid fa-arrow-up" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveGalleryItem(index, 1)}
+                            disabled={!canUpdate || index === page.sections.gallery.items.length - 1}
+                            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            aria-label="Move image down"
+                          >
+                            <i className="fa-solid fa-arrow-down" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveGalleryItem(index)}
+                            disabled={!canUpdate}
+                            className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-3 space-y-3">
                         <div
@@ -1197,7 +1254,7 @@ export default function ServicesPagesEditor({
                             </div>
                           )}
                         </div>
-                        <div className="space-y-2">
+                        <div className="grid gap-2 md:grid-cols-2">
                           <input
                             value={item.caption}
                             onChange={(e) =>
@@ -1212,41 +1269,25 @@ export default function ServicesPagesEditor({
                             className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             disabled={!canUpdate}
                           />
-                          <div className="grid gap-2 md:grid-cols-2">
-                            <input
-                              value={item.alt}
-                              onChange={(e) =>
-                                updateSection<GalleryItem>('gallery', (section) => ({
-                                  ...section,
-                                  items: section.items.map((entry, idx) =>
-                                    idx === index ? { ...entry, alt: e.target.value } : entry,
-                                  ),
-                                }))
-                              }
-                              placeholder="Alt text"
-                              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              disabled={!canUpdate}
-                            />
-                            <select
-                              value={item.captionAlign}
-                              onChange={(e) =>
-                                updateSection<GalleryItem>('gallery', (section) => ({
-                                  ...section,
-                                  items: section.items.map((entry, idx) =>
-                                    idx === index
-                                      ? { ...entry, captionAlign: e.target.value as GalleryItem['captionAlign'] }
-                                      : entry,
-                                  ),
-                                }))
-                              }
-                              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              disabled={!canUpdate}
-                            >
-                              <option value="left">Caption left</option>
-                              <option value="center">Caption center</option>
-                              <option value="right">Caption right</option>
-                            </select>
-                          </div>
+                          <select
+                            value={item.captionAlign}
+                            onChange={(e) =>
+                              updateSection<GalleryItem>('gallery', (section) => ({
+                                ...section,
+                                items: section.items.map((entry, idx) =>
+                                  idx === index
+                                    ? { ...entry, captionAlign: e.target.value as GalleryItem['captionAlign'] }
+                                    : entry,
+                                ),
+                              }))
+                            }
+                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            disabled={!canUpdate}
+                          >
+                            <option value="left">Caption left</option>
+                            <option value="center">Caption center</option>
+                            <option value="right">Caption right</option>
+                          </select>
                         </div>
                       </div>
                     </div>
@@ -1531,13 +1572,15 @@ function SectionHeadingFields({
   heading,
   onChange,
   canUpdate,
+  extraField,
 }: {
   heading: SectionHeading
   onChange: (heading: SectionHeading) => void
   canUpdate: boolean
+  extraField?: ReactNode
 }) {
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className={`grid gap-3 ${extraField ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
       <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
         <span className="font-medium">Label</span>
         <input
@@ -1571,6 +1614,7 @@ function SectionHeadingFields({
           <option value="right">Right</option>
         </select>
       </label>
+      {extraField}
     </div>
   )
 }
