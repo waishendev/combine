@@ -179,6 +179,11 @@ class PublicHomepageController extends Controller
                     'config',
                 ]);
 
+            $branding = SettingService::get('branding', [
+                'shop_logo_path' => null,
+                'crm_logo_path' => null,
+            ]);
+
             return [
                 'sliders' => $sliders,
                 'marquees' => $marquees,
@@ -191,6 +196,7 @@ class PublicHomepageController extends Controller
                 'seo' => $seo,
                 'contact' => $settings['shop_contact_widget'],
                 'settings' => $settings,
+                'shop_logo_url' => $this->resolveLogoUrl($branding['shop_logo_path'] ?? null),
                 'payment_gateways' => $paymentGateways,
             ];
         });
@@ -212,6 +218,24 @@ class PublicHomepageController extends Controller
             'success' => true,
             'message' => null,
         ]);
+    }
+
+    protected function resolveLogoUrl(?string $path): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+
+        $normalizedPath = ltrim($path, '/');
+        if (! $normalizedPath) {
+            return null;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->url($normalizedPath);
     }
 
     protected function defaultShopContactWidget(): array

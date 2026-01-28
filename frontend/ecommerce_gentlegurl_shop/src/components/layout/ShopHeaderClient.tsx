@@ -18,9 +18,10 @@ import { getPrimaryProductImage } from "@/lib/productMedia";
 type ShopHeaderClientProps = {
   shopMenu: HomepageShopMenuItem[];
   servicesMenu: HomepageServicesMenuItem[];
+  logoUrl?: string | null;
 };
 
-export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientProps) {
+export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeaderClientProps) {
   const { customer, logout, isLoading } = useAuth();
   const { items, resetAfterLogout } = useCart();
   const [shopOpen, setShopOpen] = useState(false);
@@ -50,11 +51,35 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchImageErrors, setSearchImageErrors] = useState<Set<string>>(new Set());
+  const fallbackLogo = "/images/logo.png";
+  const storageKey = "branding.shop_logo_url";
+  const [resolvedLogoUrl, setResolvedLogoUrl] = useState(logoUrl || fallbackLogo);
+  const [logoLoaded, setLogoLoaded] = useState(resolvedLogoUrl !== fallbackLogo);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
   const hasShopMenu = shopMenu.length > 0;
   const hasServicesMenu = servicesMenu.length > 0;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const cachedLogo = window.sessionStorage.getItem(storageKey);
+    if (cachedLogo && !logoUrl) {
+      setResolvedLogoUrl(cachedLogo);
+    }
+  }, [logoUrl]);
+
+  useEffect(() => {
+    if (!logoUrl) return;
+    setResolvedLogoUrl(logoUrl);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(storageKey, logoUrl);
+    }
+  }, [logoUrl]);
+
+  useEffect(() => {
+    setLogoLoaded(resolvedLogoUrl !== fallbackLogo);
+  }, [resolvedLogoUrl, fallbackLogo]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -235,14 +260,28 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
           <div className="flex items-center gap-6">
             {/* Logo - Desktop */}
             <Link href="/" className="hidden items-center md:flex">
-              <Image
-                src="/images/logo.png"
-                alt="Gentlegurl Shop"
-                width={120}
-                height={40}
-                className="h-8 w-auto object-contain"
-                priority
-              />
+              <span
+                className="flex h-8 w-[120px] items-center justify-center bg-center bg-no-repeat"
+                style={{
+                  backgroundImage:
+                    resolvedLogoUrl === fallbackLogo ? `url(${fallbackLogo})` : "none",
+                  backgroundSize: resolvedLogoUrl === fallbackLogo ? "contain" : undefined,
+                }}
+              >
+                <Image
+                  src={resolvedLogoUrl}
+                  alt="Gentlegurl Shop"
+                  width={120}
+                  height={40}
+                  className={`h-8 w-auto object-contain ${logoLoaded ? "opacity-100" : "opacity-0"}`}
+                  priority
+                  onLoadingComplete={() => setLogoLoaded(true)}
+                  onError={() => {
+                    setResolvedLogoUrl(fallbackLogo);
+                    setLogoLoaded(true);
+                  }}
+                />
+              </span>
             </Link>
 
             {/* Desktop Navigation */}
@@ -402,14 +441,28 @@ export function ShopHeaderClient({ shopMenu, servicesMenu }: ShopHeaderClientPro
 
             {/* Logo - Mobile */}
             <Link href="/" className="flex items-center">
-              <Image
-                src="/images/logo.png"
-                alt="Gentlegurl Shop"
-                width={120}
-                height={40}
-                className="h-7 w-auto object-contain"
-                priority
-              />
+              <span
+                className="flex h-7 w-[120px] items-center justify-center bg-center bg-no-repeat"
+                style={{
+                  backgroundImage:
+                    resolvedLogoUrl === fallbackLogo ? `url(${fallbackLogo})` : "none",
+                  backgroundSize: resolvedLogoUrl === fallbackLogo ? "contain" : undefined,
+                }}
+              >
+                <Image
+                  src={resolvedLogoUrl}
+                  alt="Gentlegurl Shop"
+                  width={120}
+                  height={40}
+                  className={`h-7 w-auto object-contain ${logoLoaded ? "opacity-100" : "opacity-0"}`}
+                  priority
+                  onLoadingComplete={() => setLogoLoaded(true)}
+                  onError={() => {
+                    setResolvedLogoUrl(fallbackLogo);
+                    setLogoLoaded(true);
+                  }}
+                />
+              </span>
             </Link>
 
             {/* Mobile Right Side: User/Cart */}

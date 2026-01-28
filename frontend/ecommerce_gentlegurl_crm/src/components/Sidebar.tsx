@@ -325,7 +325,29 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/seo-settings',
             requiredPermission: 'ecommerce.seo.view',
           },
+          {
+            key: 'shop-logo',
+            label: 'Upload Logo',
+            href: '/shop-logo',
+            requiredPermission: 'ecommerce.settings.view',
+          },
 
+        ],
+      },
+      // ======================
+      // Settings
+      // ======================
+      {
+        key: 'crm-settings',
+        label: 'Settings',
+        icon: 'fa-solid fa-sliders',
+        children: [
+          {
+            key: 'crm-logo',
+            label: 'Upload Logo (CRM)',
+            href: '/crm-logo',
+            requiredPermission: 'ecommerce.settings.view',
+          },
         ],
       },
 

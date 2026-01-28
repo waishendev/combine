@@ -15,7 +15,9 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
   const { t } = useI18n()
   const [accountOpen, setAccountOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const accountRef = useRef<HTMLDivElement | null>(null)
+  const storageKey = 'branding.crm_logo_url'
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -26,6 +28,62 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const loadBranding = async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch(`/api/proxy/ecommerce/branding?ts=${Date.now()}`, {
+        cache: 'no-store',
+        signal,
+      })
+
+      if (!response.ok) {
+        return
+      }
+
+      const payload = await response.json()
+      const crmLogo = payload?.data?.crm_logo_url ?? null
+
+      setLogoUrl(crmLogo)
+      if (typeof window !== 'undefined' && crmLogo) {
+        window.sessionStorage.setItem(storageKey, crmLogo)
+      }
+    } catch (error) {
+      if (signal?.aborted) return
+    }
+  }
+
+  useEffect(() => {
+    let abort = false
+    const controller = new AbortController()
+    if (typeof window !== 'undefined') {
+      const cachedLogo = window.sessionStorage.getItem(storageKey)
+      if (cachedLogo) {
+        setLogoUrl(cachedLogo)
+      }
+    }
+    loadBranding(controller.signal)
+
+    const handleBrandingUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ logoKey?: string; logoUrl?: string | null }>).detail
+      if (detail?.logoKey === 'crm_logo_url' && detail.logoUrl) {
+        setLogoUrl(detail.logoUrl)
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(storageKey, detail.logoUrl)
+        }
+        return
+      }
+      if (!abort) {
+        loadBranding(controller.signal)
+      }
+    }
+    window.addEventListener('branding:updated', handleBrandingUpdate)
+
+    return () => {
+      abort = true
+      controller.abort()
+      window.removeEventListener('branding:updated', handleBrandingUpdate)
+    }
   }, [])
 
   const handleLogout = async () => {
@@ -50,7 +108,15 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
           <i className="fa-solid fa-bars text-lg" />
         </button>
         <div className="flex items-center gap-3">
-          <Image src="/images/logo.png" alt="95BALL" width={100} height={100} priority />
+          <Image
+            src={logoUrl || '/images/logo.png'}
+            alt="CRM Logo"
+            width={120}
+            height={40}
+            className="h-8 w-auto object-contain"
+            priority
+            onError={() => setLogoUrl(null)}
+          />
         </div>
       </div>
 
