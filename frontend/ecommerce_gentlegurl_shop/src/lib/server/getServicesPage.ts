@@ -115,8 +115,33 @@ export async function getServicesPage(slug: string): Promise<ServicesPageData | 
 
     const json = await res.json();
     const payload = json?.data ?? json;
+    const data = payload as ServicesPageData;
+    const normalizeImageUrl = (value?: string | null) => {
+      if (!value) return value ?? undefined;
+      if (value.startsWith("http://")) {
+        return `https://${value.slice("http://".length)}`;
+      }
+      return value;
+    };
 
-    return payload as ServicesPageData;
+    return {
+      ...data,
+      hero_slides: (data.hero_slides ?? []).map((slide) => ({
+        ...slide,
+        src: normalizeImageUrl(slide.src) ?? slide.src,
+        mobileSrc: normalizeImageUrl(slide.mobileSrc) ?? slide.mobileSrc,
+      })),
+      sections: {
+        ...data.sections,
+        gallery: {
+          ...data.sections.gallery,
+          items: data.sections.gallery.items.map((item) => ({
+            ...item,
+            src: normalizeImageUrl(item.src) ?? item.src,
+          })),
+        },
+      },
+    };
   } catch (error) {
     console.error("[getServicesPage]", error);
     return null;
