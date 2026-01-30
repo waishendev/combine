@@ -51,7 +51,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
   const [mode, setMode] = useState<PreviewMode>('desktop')
 
   useEffect(() => {
-    const stored = sessionStorage.getItem(previewKey(menuId))
+    const stored = localStorage.getItem(previewKey(menuId))
     if (!stored) {
       setError('No preview data found. Please return to the editor and click Preview again.')
       return

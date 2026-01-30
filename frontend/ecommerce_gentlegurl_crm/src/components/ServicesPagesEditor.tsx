@@ -271,7 +271,7 @@ export default function ServicesPagesEditor({
       notesHeading: page.sections.notes.heading,
     }
 
-    sessionStorage.setItem(`services-page-preview-${menuId}`, JSON.stringify(previewData))
+    localStorage.setItem(`services-page-preview-${menuId}`, JSON.stringify(previewData))
     window.open(`/services-pages/${menuId}/preview`, '_blank', 'noopener,noreferrer')
   }
 
