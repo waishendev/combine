@@ -29,7 +29,24 @@ class PublicServicesController extends Controller
             ->with(['menuItem:id,name,slug,is_active', 'slides'])
             ->where('slug', $slug)
             ->where('is_active', true)
-            ->firstOrFail();
+            ->first();
+
+        if (! $page) {
+            $menuItem = ServicesMenuItem::query()
+                ->where('slug', $slug)
+                ->where('is_active', true)
+                ->firstOrFail();
+
+            return $this->respond([
+                'id' => null,
+                'menu_item_id' => $menuItem->id,
+                'title' => $menuItem->name,
+                'slug' => $menuItem->slug,
+                'subtitle' => null,
+                'hero_slides' => [],
+                'sections' => $this->defaultSections(),
+            ]);
+        }
 
         if (! $page->menuItem?->is_active) {
             abort(404);
@@ -71,6 +88,64 @@ class PublicServicesController extends Controller
             'hero_slides' => $heroSlides,
             'sections' => $sections,
         ]);
+    }
+
+    private function defaultSections(): array
+    {
+        return [
+            'hero' => [
+                'is_active' => true,
+                'items' => [],
+            ],
+            'services' => [
+                'is_active' => true,
+                'items' => [],
+                'heading' => [
+                    'label' => 'Services',
+                    'title' => "What's Included",
+                    'align' => 'left',
+                ],
+            ],
+            'gallery' => [
+                'is_active' => true,
+                'items' => [],
+                'heading' => [
+                    'label' => 'Service Menu',
+                    'title' => 'Click to view services and pricing',
+                    'align' => 'center',
+                ],
+                'footerText' => '',
+                'footerAlign' => 'center',
+                'layout' => 'fixed',
+            ],
+            'pricing' => [
+                'is_active' => true,
+                'items' => [],
+                'heading' => [
+                    'label' => 'Pricing',
+                    'title' => 'Transparent rates',
+                    'align' => 'left',
+                ],
+            ],
+            'faqs' => [
+                'is_active' => true,
+                'items' => [],
+                'heading' => [
+                    'label' => 'FAQ',
+                    'title' => 'You might be wondering',
+                    'align' => 'left',
+                ],
+            ],
+            'notes' => [
+                'is_active' => true,
+                'items' => [],
+                'heading' => [
+                    'label' => 'Notes',
+                    'title' => 'Policy & care',
+                    'align' => 'left',
+                ],
+            ],
+        ];
     }
 
     private function extractPathFromUrl(?string $urlOrPath): ?string
