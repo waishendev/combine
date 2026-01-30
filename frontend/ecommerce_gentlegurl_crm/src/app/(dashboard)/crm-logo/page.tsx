@@ -46,13 +46,25 @@ export default async function CrmLogoPage() {
         </div>
       </div>
 
-      <LogoUploadForm
-        canEdit={canEdit}
-        title="CRM Logo"
-        description="Upload a logo for the Ecommerce CRM header."
-        logoKey="crm_logo_url"
-        uploadEndpoint="/api/proxy/ecommerce/branding/crm-logo"
-      />
+      <div className="space-y-6">
+        <LogoUploadForm
+          canEdit={canEdit}
+          title="CRM Logo"
+          description="Upload a logo for the Ecommerce CRM header."
+          logoKey="crm_logo_url"
+          uploadEndpoint="/api/proxy/ecommerce/branding/crm-logo"
+        />
+
+        <LogoUploadForm
+          canEdit={canEdit}
+          title="Favicon"
+          description="Upload a favicon used for browser tabs and bookmarks."
+          logoKey="favicon_url"
+          uploadEndpoint="/api/proxy/ecommerce/branding/favicon"
+          fileLabel="Upload new favicon"
+          previewAlt="Favicon preview"
+        />
+      </div>
     </div>
   )
 }

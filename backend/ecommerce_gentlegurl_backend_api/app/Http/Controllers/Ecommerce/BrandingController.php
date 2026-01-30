@@ -23,6 +23,7 @@ class BrandingController extends Controller
             'data' => [
                 'shop_logo_url' => $this->resolveLogoUrl($branding['shop_logo_path'] ?? null),
                 'crm_logo_url' => $this->resolveLogoUrl($branding['crm_logo_path'] ?? null),
+                'favicon_url' => $this->resolveLogoUrl($branding['favicon_path'] ?? null),
             ],
             'message' => null,
         ]);
@@ -30,18 +31,47 @@ class BrandingController extends Controller
 
     public function uploadShopLogo(Request $request): JsonResponse
     {
-        return $this->uploadLogo($request, 'shop_logo_path', 'shop-logo');
+        return $this->uploadBrandingFile(
+            $request,
+            'shop_logo_path',
+            'shop-logo',
+            ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+            'Logo updated successfully.'
+        );
     }
 
     public function uploadCrmLogo(Request $request): JsonResponse
     {
-        return $this->uploadLogo($request, 'crm_logo_path', 'crm-logo');
+        return $this->uploadBrandingFile(
+            $request,
+            'crm_logo_path',
+            'crm-logo',
+            ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+            'Logo updated successfully.'
+        );
     }
 
-    private function uploadLogo(Request $request, string $key, string $prefix): JsonResponse
+    public function uploadFavicon(Request $request): JsonResponse
+    {
+        return $this->uploadBrandingFile(
+            $request,
+            'favicon_path',
+            'favicon',
+            ['required', 'mimes:jpeg,jpg,png,webp,ico', 'max:2048'],
+            'Favicon updated successfully.'
+        );
+    }
+
+    private function uploadBrandingFile(
+        Request $request,
+        string $key,
+        string $prefix,
+        array $rules,
+        string $successMessage
+    ): JsonResponse
     {
         $validated = $request->validate([
-            'logo_file' => ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+            'logo_file' => $rules,
         ]);
 
         $branding = SettingService::get(self::BRANDING_KEY, $this->defaultBranding());
@@ -68,10 +98,11 @@ class BrandingController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Logo updated successfully.',
+            'message' => $successMessage,
             'data' => [
                 'shop_logo_url' => $this->resolveLogoUrl($branding['shop_logo_path'] ?? null),
                 'crm_logo_url' => $this->resolveLogoUrl($branding['crm_logo_path'] ?? null),
+                'favicon_url' => $this->resolveLogoUrl($branding['favicon_path'] ?? null),
             ],
         ]);
     }
@@ -81,6 +112,7 @@ class BrandingController extends Controller
         return [
             'shop_logo_path' => null,
             'crm_logo_path' => null,
+            'favicon_path' => null,
         ];
     }
 

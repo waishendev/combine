@@ -46,13 +46,25 @@ export default async function ShopLogoPage() {
         </div>
       </div>
 
-      <LogoUploadForm
-        canEdit={canEdit}
-        title="Ecommerce Shop Logo"
-        description="Upload a clean, high-resolution logo for the storefront."
-        logoKey="shop_logo_url"
-        uploadEndpoint="/api/proxy/ecommerce/branding/shop-logo"
-      />
+      <div className="space-y-6">
+        <LogoUploadForm
+          canEdit={canEdit}
+          title="Ecommerce Shop Logo"
+          description="Upload a clean, high-resolution logo for the storefront."
+          logoKey="shop_logo_url"
+          uploadEndpoint="/api/proxy/ecommerce/branding/shop-logo"
+        />
+
+        <LogoUploadForm
+          canEdit={canEdit}
+          title="Favicon"
+          description="Upload a favicon used for browser tabs and bookmarks."
+          logoKey="favicon_url"
+          uploadEndpoint="/api/proxy/ecommerce/branding/favicon"
+          fileLabel="Upload new favicon"
+          previewAlt="Favicon preview"
+        />
+      </div>
     </div>
   )
 }

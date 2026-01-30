@@ -670,6 +670,9 @@ $protectedRoutes = function () {
         Route::post('/branding/crm-logo', [BrandingController::class, 'uploadCrmLogo'])
             ->middleware('permission:ecommerce.settings.update');
 
+        Route::post('/branding/favicon', [BrandingController::class, 'uploadFavicon'])
+            ->middleware('permission:ecommerce.settings.update');
+
         // Promotions Admin
         Route::get('/promotions', [PromotionController::class, 'index'])
             ->middleware('permission:ecommerce.promotions.view');
