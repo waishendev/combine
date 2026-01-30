@@ -34,6 +34,13 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: {
       canonical: siteUrl,
     },
+    ...(homepage?.shop_favicon_url
+      ? {
+          icons: {
+            icon: homepage.shop_favicon_url,
+          },
+        }
+      : {}),
     openGraph: {
       ...(baseMetadata.openGraph ?? {}),
       title: resolvedTitle,

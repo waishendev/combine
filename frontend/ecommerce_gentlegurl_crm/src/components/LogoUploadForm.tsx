@@ -7,6 +7,8 @@ import { IMAGE_ACCEPT } from './mediaAccept'
 type BrandingPayload = {
   shop_logo_url?: string | null
   crm_logo_url?: string | null
+  shop_favicon_url?: string | null
+  crm_favicon_url?: string | null
 }
 
 type BrandingResponse = {
@@ -24,8 +26,13 @@ type LogoUploadFormProps = {
   canEdit: boolean
   title: string
   description: string
-  logoKey: 'shop_logo_url' | 'crm_logo_url'
+  logoKey: 'shop_logo_url' | 'crm_logo_url' | 'shop_favicon_url' | 'crm_favicon_url'
   uploadEndpoint: string
+  helperText?: string
+  recommendation?: string
+  fileLabel?: string
+  previewAlt?: string
+  accept?: string
 }
 
 export default function LogoUploadForm({
@@ -34,6 +41,11 @@ export default function LogoUploadForm({
   description,
   logoKey,
   uploadEndpoint,
+  helperText,
+  recommendation,
+  fileLabel,
+  previewAlt,
+  accept,
 }: LogoUploadFormProps) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -46,11 +58,31 @@ export default function LogoUploadForm({
 
   const currentLogo = previewUrl ?? logoUrl
 
-  const helperText = useMemo(() => {
-    return logoKey === 'shop_logo_url'
-      ? 'Upload a storefront logo that appears on the Ecommerce Shop header.'
-      : 'Upload a CRM logo that appears in the admin header.'
-  }, [logoKey])
+  const resolvedHelperText = useMemo(() => {
+    if (helperText) {
+      return helperText
+    }
+
+    if (logoKey === 'shop_logo_url') {
+      return 'Upload a storefront logo that appears on the Ecommerce Shop header.'
+    }
+    if (logoKey === 'shop_favicon_url' || logoKey === 'crm_favicon_url') {
+      return 'Upload a favicon used in browser tabs and bookmarks.'
+    }
+    return 'Upload a CRM logo that appears in the admin header.'
+  }, [helperText, logoKey])
+
+  const recommendationText = useMemo(() => {
+    if (recommendation) {
+      return recommendation
+    }
+
+    if (logoKey === 'shop_favicon_url' || logoKey === 'crm_favicon_url') {
+      return 'Recommended size: 64x64px or 128x128px. Only PNG or ICO is supported.'
+    }
+
+    return 'Recommended size: 240x80px. PNG or WebP with transparent background looks best.'
+  }, [logoKey, recommendation])
 
   useEffect(() => {
     let abort = false
@@ -193,7 +225,7 @@ export default function LogoUploadForm({
         <div>
           <h3 className="text-xl font-semibold text-slate-900">{title}</h3>
           <p className="mt-2 text-sm text-slate-500">{description}</p>
-          <p className="mt-3 text-xs text-slate-400">{helperText}</p>
+          <p className="mt-3 text-xs text-slate-400">{resolvedHelperText}</p>
         </div>
       </div>
 
@@ -203,7 +235,7 @@ export default function LogoUploadForm({
             {currentLogo ? (
               <img
                 src={currentLogo}
-                alt="Logo preview"
+                alt={previewAlt ?? 'Logo preview'}
                 className="h-full w-full object-contain"
               />
             ) : (
@@ -215,20 +247,17 @@ export default function LogoUploadForm({
 
           <div className="space-y-3">
             <label className="block text-sm font-medium text-slate-700">
-              Upload new logo
+              {fileLabel ?? 'Upload new logo'}
             </label>
             <input
               ref={inputRef}
               type="file"
-              accept={IMAGE_ACCEPT}
+              accept={accept ?? IMAGE_ACCEPT}
               onChange={handleFileChange}
               disabled={!canEdit}
               className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
             />
-            <p className="text-xs text-slate-400">
-              Recommended size: 240x80px. PNG or WebP with transparent background
-              looks best.
-            </p>
+            <p className="text-xs text-slate-400">{recommendationText}</p>
           </div>
         </div>
 
