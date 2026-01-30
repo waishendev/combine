@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 
 import Header from '@/components/Header'
 import Sidebar from '@/components/Sidebar'
+import { LogoLoader } from '@/components/LogoLoader'
 
 type ProfileResponse = {
   success?: boolean
@@ -185,7 +186,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <>
+    <LogoLoader>
       <Header
         userEmail={userEmail}
         onLogout={handleLogout}
@@ -195,6 +196,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <Sidebar collapsed={collapsed} permissions={permissions} onToggleSidebar={toggleSidebar} />
         <main className="flex-1 overflow-y-auto bg-slate-100">{children}</main>
       </div>
-    </>
+    </LogoLoader>
   )
 }

@@ -15,9 +15,14 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
   const { t } = useI18n()
   const [accountOpen, setAccountOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const [logoUrl, setLogoUrl] = useState<string | null>(null)
-  const accountRef = useRef<HTMLDivElement | null>(null)
   const storageKey = 'branding.crm_logo_url'
+  // 在初始状态时就从 sessionStorage 同步读取，避免初始为 null 导致的闪烁
+  const getInitialLogoUrl = (): string | null => {
+    if (typeof window === 'undefined') return null
+    return window.sessionStorage.getItem(storageKey)
+  }
+  const [logoUrl, setLogoUrl] = useState<string | null>(getInitialLogoUrl())
+  const accountRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -108,15 +113,17 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
           <i className="fa-solid fa-bars text-lg" />
         </button>
         <div className="flex items-center gap-3">
-          <Image
-            src={logoUrl || '/images/logo.png'}
-            alt="CRM Logo"
-            width={120}
-            height={40}
-            className="h-8 w-auto object-contain"
-            priority
-            onError={() => setLogoUrl(null)}
-          />
+          <div className="h-8 w-[120px] flex items-center justify-center shrink-0">
+            <Image
+              src={logoUrl || '/images/logo.png'}
+              alt="CRM Logo"
+              width={120}
+              height={40}
+              className="h-8 w-auto object-contain"
+              priority
+              onError={() => setLogoUrl(null)}
+            />
+          </div>
         </div>
       </div>
 

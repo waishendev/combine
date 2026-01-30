@@ -7,6 +7,7 @@ import WhatsappButton from "@/components/home/WhatsappButton";
 import CursorTrail from "@/components/visual/CursorTrail";
 import { ShopProviders } from "@/components/providers/ShopProviders";
 import { ShopFooter } from "@/components/layout/ShopFooter";
+import { LogoLoader } from "@/components/layout/LogoLoader";
 import { headers } from "next/headers";
 import { getHomepage } from "@/lib/server/getHomepage";
 import { getUser } from "@/lib/server/getUser";
@@ -80,25 +81,35 @@ export default async function RootLayout({
           crossOrigin="anonymous"
           referrerPolicy="no-referrer"
         />
+        {homepage?.shop_logo_url && (
+          <link
+            rel="preload"
+            href={homepage.shop_logo_url}
+            as="image"
+            fetchPriority="high"
+          />
+        )}
       </head>
       <body data-theme={theme}>
-        <CursorTrail />
-        <ShopProviders
-          initialCustomer={initialCustomer}
-          shippingSetting={homepage?.settings?.shipping}
-        >
-          {homepage?.marquees && homepage.marquees.length > 0 && (
-            <Marquee items={homepage.marquees} />
-          )}
-          <ShopHeader />
-          <main className="min-h-[70vh] bg-[var(--background-soft)]/70">{children}</main>
-          <ShopFooter footer={homepage?.settings?.footer} />
-          <WhatsappButton
-            enabled={homepage?.contact?.whatsapp?.enabled}
-            phone={homepage?.contact?.whatsapp?.phone}
-            defaultMessage={homepage?.contact?.whatsapp?.default_message}
-          />
-        </ShopProviders>
+        <LogoLoader logoUrl={homepage?.shop_logo_url ?? null}>
+          <CursorTrail />
+          <ShopProviders
+            initialCustomer={initialCustomer}
+            shippingSetting={homepage?.settings?.shipping}
+          >
+            {homepage?.marquees && homepage.marquees.length > 0 && (
+              <Marquee items={homepage.marquees} />
+            )}
+            <ShopHeader />
+            <main className="min-h-[70vh] bg-[var(--background-soft)]/70">{children}</main>
+            <ShopFooter footer={homepage?.settings?.footer} />
+            <WhatsappButton
+              enabled={homepage?.contact?.whatsapp?.enabled}
+              phone={homepage?.contact?.whatsapp?.phone}
+              defaultMessage={homepage?.contact?.whatsapp?.default_message}
+            />
+          </ShopProviders>
+        </LogoLoader>
       </body>
     </html>
   );
