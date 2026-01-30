@@ -182,7 +182,8 @@ class PublicHomepageController extends Controller
             $branding = SettingService::get('branding', [
                 'shop_logo_path' => null,
                 'crm_logo_path' => null,
-                'favicon_path' => null,
+                'shop_favicon_path' => null,
+                'crm_favicon_path' => null,
             ]);
 
             return [
@@ -198,7 +199,7 @@ class PublicHomepageController extends Controller
                 'contact' => $settings['shop_contact_widget'],
                 'settings' => $settings,
                 'shop_logo_url' => $this->resolveLogoUrl($branding['shop_logo_path'] ?? null),
-                'favicon_url' => $this->resolveLogoUrl($branding['favicon_path'] ?? null),
+                'shop_favicon_url' => $this->resolveLogoUrl($branding['shop_favicon_path'] ?? null),
                 'payment_gateways' => $paymentGateways,
             ];
         });

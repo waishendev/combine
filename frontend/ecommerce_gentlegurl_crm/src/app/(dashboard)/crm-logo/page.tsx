@@ -59,8 +59,8 @@ export default async function CrmLogoPage() {
           canEdit={canEdit}
           title="Favicon"
           description="Upload a favicon used for browser tabs and bookmarks."
-          logoKey="favicon_url"
-          uploadEndpoint="/api/proxy/ecommerce/branding/favicon"
+          logoKey="crm_favicon_url"
+          uploadEndpoint="/api/proxy/ecommerce/branding/crm-favicon"
           fileLabel="Upload new favicon"
           previewAlt="Favicon preview"
         />

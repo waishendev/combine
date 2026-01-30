@@ -34,10 +34,10 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: {
       canonical: siteUrl,
     },
-    ...(homepage?.favicon_url
+    ...(homepage?.shop_favicon_url
       ? {
           icons: {
-            icon: homepage.favicon_url,
+            icon: homepage.shop_favicon_url,
           },
         }
       : {}),

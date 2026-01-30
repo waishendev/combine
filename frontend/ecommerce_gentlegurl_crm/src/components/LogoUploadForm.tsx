@@ -7,7 +7,8 @@ import { IMAGE_ACCEPT } from './mediaAccept'
 type BrandingPayload = {
   shop_logo_url?: string | null
   crm_logo_url?: string | null
-  favicon_url?: string | null
+  shop_favicon_url?: string | null
+  crm_favicon_url?: string | null
 }
 
 type BrandingResponse = {
@@ -25,7 +26,7 @@ type LogoUploadFormProps = {
   canEdit: boolean
   title: string
   description: string
-  logoKey: 'shop_logo_url' | 'crm_logo_url' | 'favicon_url'
+  logoKey: 'shop_logo_url' | 'crm_logo_url' | 'shop_favicon_url' | 'crm_favicon_url'
   uploadEndpoint: string
   helperText?: string
   recommendation?: string
@@ -63,7 +64,7 @@ export default function LogoUploadForm({
     if (logoKey === 'shop_logo_url') {
       return 'Upload a storefront logo that appears on the Ecommerce Shop header.'
     }
-    if (logoKey === 'favicon_url') {
+    if (logoKey === 'shop_favicon_url' || logoKey === 'crm_favicon_url') {
       return 'Upload a favicon used in browser tabs and bookmarks.'
     }
     return 'Upload a CRM logo that appears in the admin header.'
@@ -74,7 +75,7 @@ export default function LogoUploadForm({
       return recommendation
     }
 
-    if (logoKey === 'favicon_url') {
+    if (logoKey === 'shop_favicon_url' || logoKey === 'crm_favicon_url') {
       return 'Recommended size: 64x64px or 128x128px. PNG or ICO works best.'
     }
 

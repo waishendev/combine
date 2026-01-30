@@ -59,8 +59,8 @@ export default async function ShopLogoPage() {
           canEdit={canEdit}
           title="Favicon"
           description="Upload a favicon used for browser tabs and bookmarks."
-          logoKey="favicon_url"
-          uploadEndpoint="/api/proxy/ecommerce/branding/favicon"
+          logoKey="shop_favicon_url"
+          uploadEndpoint="/api/proxy/ecommerce/branding/shop-favicon"
           fileLabel="Upload new favicon"
           previewAlt="Favicon preview"
         />

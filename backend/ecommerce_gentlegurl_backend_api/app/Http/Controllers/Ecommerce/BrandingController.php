@@ -23,7 +23,8 @@ class BrandingController extends Controller
             'data' => [
                 'shop_logo_url' => $this->resolveLogoUrl($branding['shop_logo_path'] ?? null),
                 'crm_logo_url' => $this->resolveLogoUrl($branding['crm_logo_path'] ?? null),
-                'favicon_url' => $this->resolveLogoUrl($branding['favicon_path'] ?? null),
+                'shop_favicon_url' => $this->resolveLogoUrl($branding['shop_favicon_path'] ?? null),
+                'crm_favicon_url' => $this->resolveLogoUrl($branding['crm_favicon_path'] ?? null),
             ],
             'message' => null,
         ]);
@@ -51,14 +52,25 @@ class BrandingController extends Controller
         );
     }
 
-    public function uploadFavicon(Request $request): JsonResponse
+    public function uploadShopFavicon(Request $request): JsonResponse
     {
         return $this->uploadBrandingFile(
             $request,
-            'favicon_path',
-            'favicon',
+            'shop_favicon_path',
+            'shop-favicon',
             ['required', 'mimes:jpeg,jpg,png,webp,ico', 'max:2048'],
-            'Favicon updated successfully.'
+            'Shop favicon updated successfully.'
+        );
+    }
+
+    public function uploadCrmFavicon(Request $request): JsonResponse
+    {
+        return $this->uploadBrandingFile(
+            $request,
+            'crm_favicon_path',
+            'crm-favicon',
+            ['required', 'mimes:jpeg,jpg,png,webp,ico', 'max:2048'],
+            'CRM favicon updated successfully.'
         );
     }
 
@@ -102,7 +114,8 @@ class BrandingController extends Controller
             'data' => [
                 'shop_logo_url' => $this->resolveLogoUrl($branding['shop_logo_path'] ?? null),
                 'crm_logo_url' => $this->resolveLogoUrl($branding['crm_logo_path'] ?? null),
-                'favicon_url' => $this->resolveLogoUrl($branding['favicon_path'] ?? null),
+                'shop_favicon_url' => $this->resolveLogoUrl($branding['shop_favicon_path'] ?? null),
+                'crm_favicon_url' => $this->resolveLogoUrl($branding['crm_favicon_path'] ?? null),
             ],
         ]);
     }
@@ -112,7 +125,8 @@ class BrandingController extends Controller
         return [
             'shop_logo_path' => null,
             'crm_logo_path' => null,
-            'favicon_path' => null,
+            'shop_favicon_path' => null,
+            'crm_favicon_path' => null,
         ];
     }
 
