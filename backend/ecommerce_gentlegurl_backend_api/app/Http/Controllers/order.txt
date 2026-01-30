@@ -2,9 +2,11 @@ TASK: PAGE
 
 Repo root: combine/
 Frontend Ecommerce CRM (Next.js): frontend/ecommerce_gentlegurl_crm
+Frontend Ecommerce Shop (Next.js): frontend/ecommerce_gentlegurl_shop
 Backend (Laravel): backend/ecommerce_gentlegurl_backend_api
-Ingore OTHER PROJECT/ FILE  
 
+C:\Users\WS\Desktop\test\ccc\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\crm-logo\page.tsx
+C:\Users\WS\Desktop\test\ccc\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\shop-logo\page.tsx
 
 billplz_fpx
 billplz_card

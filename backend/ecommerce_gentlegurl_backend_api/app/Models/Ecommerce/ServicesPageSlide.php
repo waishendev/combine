@@ -48,11 +48,7 @@ class ServicesPageSlide extends Model
 
         $normalizedPath = ltrim($this->image_path, '/');
 
-        if (Storage::disk('public')->exists($normalizedPath)) {
-            return Storage::disk('public')->url($normalizedPath);
-        }
-
-        return url('storage/' . $normalizedPath);
+        return Storage::disk('public')->url($normalizedPath);
     }
 
     public function getMobileImageUrlAttribute(): ?string
@@ -67,10 +63,6 @@ class ServicesPageSlide extends Model
 
         $normalizedPath = ltrim($this->mobile_image_path, '/');
 
-        if (Storage::disk('public')->exists($normalizedPath)) {
-            return Storage::disk('public')->url($normalizedPath);
-        }
-
-        return url('storage/' . $normalizedPath);
+        return Storage::disk('public')->url($normalizedPath);
     }
 }

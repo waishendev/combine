@@ -36,9 +36,13 @@ class PublicServicesController extends Controller
         }
 
         $heroSlides = array_map(function (array $slide) {
+            // Extract path from URL if it's a full URL, to ensure consistent URL generation
+            $srcPath = $this->extractPathFromUrl($slide['src'] ?? null);
+            $mobileSrcPath = $this->extractPathFromUrl($slide['mobileSrc'] ?? null);
+            
             return array_merge($slide, [
-                'src' => $this->resolvePublicUrl($slide['src'] ?? null),
-                'mobileSrc' => $this->resolvePublicUrl($slide['mobileSrc'] ?? null),
+                'src' => $this->resolvePublicUrl($srcPath),
+                'mobileSrc' => $this->resolvePublicUrl($mobileSrcPath),
             ]);
         }, $page->hero_slides ?? []);
 
@@ -48,7 +52,9 @@ class PublicServicesController extends Controller
                 if (! is_array($item)) {
                     return null;
                 }
-                $item['src'] = $this->resolvePublicUrl($item['src'] ?? null);
+                // Extract path from URL if it's a full URL, to ensure consistent URL generation
+                $srcPath = $this->extractPathFromUrl($item['src'] ?? null);
+                $item['src'] = $this->resolvePublicUrl($srcPath);
                 if ($item['src'] === '') {
                     return null;
                 }
@@ -67,14 +73,39 @@ class PublicServicesController extends Controller
         ]);
     }
 
+    private function extractPathFromUrl(?string $urlOrPath): ?string
+    {
+        if (! $urlOrPath) {
+            return null;
+        }
+
+        // If it's a full URL, extract the path part
+        if (filter_var($urlOrPath, FILTER_VALIDATE_URL)) {
+            $parsed = parse_url($urlOrPath);
+            if (is_array($parsed) && isset($parsed['path'])) {
+                $path = $parsed['path'];
+                // Remove '/storage' prefix if present
+                if (str_starts_with($path, '/storage/')) {
+                    return substr($path, strlen('/storage/'));
+                }
+                // Remove leading slash
+                return ltrim($path, '/');
+            }
+        }
+
+        // If it's already a path, normalize it
+        $path = ltrim($urlOrPath, '/');
+        if (str_starts_with($path, 'storage/')) {
+            return substr($path, strlen('storage/'));
+        }
+
+        return $path;
+    }
+
     private function resolvePublicUrl(?string $path): string
     {
         if (! $path) {
             return '';
-        }
-
-        if (filter_var($path, FILTER_VALIDATE_URL)) {
-            return $path;
         }
 
         $normalizedPath = ltrim($path, '/');
