@@ -58,7 +58,7 @@ class BrandingController extends Controller
             $request,
             'shop_favicon_path',
             'shop-favicon',
-            ['required', 'mimes:jpeg,jpg,png,webp,ico', 'max:2048'],
+            ['required', 'mimes:png,ico', 'max:2048'],
             'Shop favicon updated successfully.'
         );
     }
@@ -69,7 +69,7 @@ class BrandingController extends Controller
             $request,
             'crm_favicon_path',
             'crm-favicon',
-            ['required', 'mimes:jpeg,jpg,png,webp,ico', 'max:2048'],
+            ['required', 'mimes:png,ico', 'max:2048'],
             'CRM favicon updated successfully.'
         );
     }

@@ -63,6 +63,7 @@ export default async function ShopLogoPage() {
           uploadEndpoint="/api/proxy/ecommerce/branding/shop-favicon"
           fileLabel="Upload new favicon"
           previewAlt="Favicon preview"
+          accept="image/png,image/x-icon,image/vnd.microsoft.icon,.png,.ico"
         />
       </div>
     </div>

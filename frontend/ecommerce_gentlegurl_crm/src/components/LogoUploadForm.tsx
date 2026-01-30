@@ -32,6 +32,7 @@ type LogoUploadFormProps = {
   recommendation?: string
   fileLabel?: string
   previewAlt?: string
+  accept?: string
 }
 
 export default function LogoUploadForm({
@@ -44,6 +45,7 @@ export default function LogoUploadForm({
   recommendation,
   fileLabel,
   previewAlt,
+  accept,
 }: LogoUploadFormProps) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -76,7 +78,7 @@ export default function LogoUploadForm({
     }
 
     if (logoKey === 'shop_favicon_url' || logoKey === 'crm_favicon_url') {
-      return 'Recommended size: 64x64px or 128x128px. PNG or ICO works best.'
+      return 'Recommended size: 64x64px or 128x128px. Only PNG or ICO is supported.'
     }
 
     return 'Recommended size: 240x80px. PNG or WebP with transparent background looks best.'
@@ -250,7 +252,7 @@ export default function LogoUploadForm({
             <input
               ref={inputRef}
               type="file"
-              accept={IMAGE_ACCEPT}
+              accept={accept ?? IMAGE_ACCEPT}
               onChange={handleFileChange}
               disabled={!canEdit}
               className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
