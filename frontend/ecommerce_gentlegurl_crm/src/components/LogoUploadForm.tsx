@@ -172,12 +172,37 @@ export default function LogoUploadForm({
         body: formData,
       })
 
-      const payload: BrandingResponse = await response.json().catch(() => ({
+      const payload: BrandingResponse & {
+        errors?: Record<string, string[] | string>
+      } = await response.json().catch(() => ({
         success: false,
         message: 'Unable to parse response from server.',
       }))
 
       if (!response.ok || payload?.success === false) {
+        // Check for validation errors
+        if (payload?.errors && typeof payload.errors === 'object') {
+          const errorMessages: string[] = []
+          
+          // Iterate through all error fields
+          for (const [field, messages] of Object.entries(payload.errors)) {
+            if (Array.isArray(messages)) {
+              // If it's an array of messages, add all of them
+              errorMessages.push(...messages)
+            } else if (typeof messages === 'string') {
+              // If it's a single string, add it
+              errorMessages.push(messages)
+            }
+          }
+          
+          // Join all error messages with newlines or show the first one
+          const errorMessage = errorMessages.length > 0
+            ? errorMessages.join('\n')
+            : payload?.message || 'Failed to upload logo.'
+          
+          throw new Error(errorMessage)
+        }
+        
         throw new Error(payload?.message || 'Failed to upload logo.')
       }
 
@@ -269,7 +294,7 @@ export default function LogoUploadForm({
                 : 'border border-red-200 bg-red-50 text-red-700'
             }`}
           >
-            {feedback.message}
+            <div className="whitespace-pre-line">{feedback.message}</div>
           </div>
         )}
 
