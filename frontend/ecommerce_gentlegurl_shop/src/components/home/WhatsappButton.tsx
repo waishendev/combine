@@ -29,11 +29,10 @@ export default function WhatsappButton({ phone, defaultMessage, enabled = true }
         aria-label="Chat with us on WhatsApp"
       >
         <Image
-          src="/images/whatapps-icon.png"
+          src="/images/whatapps-icon2.png"
           alt="WhatsApp"
-          width={60}
-          height={60}
-          className="rounded-full shadow-lg"
+          width={70}
+          height={70}
         />
       </Link>
     </div>
