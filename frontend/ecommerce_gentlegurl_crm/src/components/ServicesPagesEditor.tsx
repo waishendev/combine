@@ -220,6 +220,61 @@ export default function ServicesPagesEditor({
   const galleryImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
   const router = useRouter()
 
+  const resolveOptionalValue = (value?: string | null) => {
+    if (!value) return undefined
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
+  }
+
+  const handlePreview = () => {
+    if (!page) return
+
+    const resolvedSlides = page.hero_slides.map((slide, index) => ({
+      src: slidePreviews[index] ?? slide.src,
+      mobileSrc: resolveOptionalValue(slideMobilePreviews[index] ?? slide.mobileSrc),
+      alt: resolveOptionalValue(slide.title) ?? resolveOptionalValue(page.title),
+      title: resolveOptionalValue(slide.title),
+      subtitle: resolveOptionalValue(page.subtitle),
+      description: resolveOptionalValue(slide.description),
+      buttonLabel: resolveOptionalValue(slide.buttonLabel),
+      buttonHref: resolveOptionalValue(slide.buttonHref),
+      sort_order: slide.sort_order,
+    }))
+
+    const resolvedGallery = page.sections.gallery.items.map((item, index) => ({
+      ...item,
+      src: galleryPreviews[index] ?? item.src,
+    }))
+
+    const previewData = {
+      title: page.title,
+      subtitle: page.subtitle ?? '',
+      services: page.sections.services.items,
+      gallery: resolvedGallery,
+      pricing: page.sections.pricing.items,
+      faqs: page.sections.faqs.items,
+      notes: page.sections.notes.items,
+      servicesActive: page.sections.services.is_active,
+      galleryActive: page.sections.gallery.is_active,
+      pricingActive: page.sections.pricing.is_active,
+      faqsActive: page.sections.faqs.is_active,
+      notesActive: page.sections.notes.is_active,
+      heroActive: page.sections.hero.is_active,
+      heroSlides: resolvedSlides,
+      servicesHeading: page.sections.services.heading,
+      galleryHeading: page.sections.gallery.heading,
+      galleryFooterText: page.sections.gallery.footerText,
+      galleryFooterAlign: page.sections.gallery.footerAlign,
+      galleryLayout: page.sections.gallery.layout,
+      pricingHeading: page.sections.pricing.heading,
+      faqHeading: page.sections.faqs.heading,
+      notesHeading: page.sections.notes.heading,
+    }
+
+    localStorage.setItem(`services-page-preview-${menuId}`, JSON.stringify(previewData))
+    window.open(`/services-pages/${menuId}/preview`, '_blank', 'noopener,noreferrer')
+  }
+
   useEffect(() => {
     const controller = new AbortController()
     const loadMenus = async () => {
@@ -1500,6 +1555,15 @@ export default function ServicesPagesEditor({
           </SectionCard>
 
           <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={handlePreview}
+              disabled={!page || loadingPage}
+              className="inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <i className="fa-solid fa-eye" />
+              Preview
+            </button>
             <button
               type="button"
               onClick={handleSave}
