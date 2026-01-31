@@ -108,8 +108,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
 
   return (
     <div className="min-h-screen bg-[var(--background-soft)]">
-      <PreviewHeader />
-      <div className="sticky top-0 z-20 border-b border-[var(--card-border)] bg-[var(--background)]/90 backdrop-blur">
+      <div className="sticky top-0 z-30 border-b border-[var(--card-border)] bg-[var(--background)]/90 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-[var(--text-muted)]">Preview</p>
@@ -152,6 +151,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
           </div>
         </div>
       </div>
+      <PreviewHeader />
       <div className="mx-auto w-full max-w-6xl px-4 py-8">
         <div className={previewContainerClass}>
           <ServicesPageLayout

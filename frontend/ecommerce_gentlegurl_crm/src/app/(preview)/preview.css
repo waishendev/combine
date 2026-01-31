@@ -90,6 +90,15 @@
   min-height: 100vh;
 }
 
+html,
+body {
+  height: 100%;
+}
+
+body {
+  overflow: auto !important;
+}
+
 @keyframes marquee {
   0% {
     transform: translateX(0);
