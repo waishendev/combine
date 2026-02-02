@@ -97,7 +97,6 @@ export async function getServicesPage(slug: string): Promise<ServicesPageData | 
 
     const qs = searchParams.toString();
     const url = `${siteUrl}/api/proxy/public/services/pages/${slug}${qs ? `?${qs}` : ""}`;
-
     const res = await fetch(url, {
       method: "GET",
       headers: cookieHeader
@@ -116,32 +115,9 @@ export async function getServicesPage(slug: string): Promise<ServicesPageData | 
     const json = await res.json();
     const payload = json?.data ?? json;
     const data = payload as ServicesPageData;
-    const normalizeImageUrl = (value?: string | null) => {
-      if (!value) return value ?? undefined;
-      if (value.startsWith("http://")) {
-        return `https://${value.slice("http://".length)}`;
-      }
-      return value;
-    };
 
-    return {
-      ...data,
-      hero_slides: (data.hero_slides ?? []).map((slide) => ({
-        ...slide,
-        src: normalizeImageUrl(slide.src) ?? slide.src,
-        mobileSrc: normalizeImageUrl(slide.mobileSrc) ?? slide.mobileSrc,
-      })),
-      sections: {
-        ...data.sections,
-        gallery: {
-          ...data.sections.gallery,
-          items: data.sections.gallery.items.map((item) => ({
-            ...item,
-            src: normalizeImageUrl(item.src) ?? item.src,
-          })),
-        },
-      },
-    };
+    // 不再在服务器端强制转换协议，让客户端组件根据当前页面协议处理
+    return data;
   } catch (error) {
     console.error("[getServicesPage]", error);
     return null;
