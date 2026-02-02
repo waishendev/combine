@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Permission;
 use App\Models\Role;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -32,6 +33,30 @@ class RoleController extends Controller
             $query->with('permissions');
         }
     
+        return $this->respond(
+            $query->paginate($request->integer('per_page', 15))
+        );
+    }
+
+    public function indexAll(Request $request)
+    {
+        $query = Role::query();
+
+        if ($request->has('is_active')) {
+            $query->where(
+                'is_active',
+                $request->boolean('is_active')
+            );
+        }
+
+        if ($request->filled('name')) {
+            $query->where('name', 'like', '%' . $request->input('name') . '%');
+        }
+
+        if ($request->boolean('showPermission', true)) {
+            $query->with('permissions');
+        }
+
         return $this->respond(
             $query->paginate($request->integer('per_page', 15))
         );
@@ -75,16 +100,16 @@ class RoleController extends Controller
         return $this->respond($role->load('permissions'), __('Role created successfully.'));
     }
 
-    public function show(Role $role)
+    public function show(Request $request, Role $role)
     {
-        $this->ensureNotSystemRole($role);
+        $this->ensureNotSystemRole($role, $request->user(), true);
 
         return $this->respond($role->load('permissions'));
     }
 
     public function edit(Request $request, Role $role)
     {
-        $this->ensureNotSystemRole($role);
+        $this->ensureNotSystemRole($role, $request->user(), true);
 
         $user = $request->user();
         $delegatable = $user->delegatablePermissions();
@@ -106,7 +131,7 @@ class RoleController extends Controller
 
     public function update(Request $request, Role $role)
     {
-        $this->ensureNotSystemRole($role);
+        $this->ensureNotSystemRole($role, $request->user(), true);
 
         $validated = $request->validate([
             'name' => [
@@ -169,9 +194,12 @@ class RoleController extends Controller
         return $this->respond(null, __('Role deleted successfully.'));
     }
 
-    private function ensureNotSystemRole(Role $role): void
+    private function ensureNotSystemRole(Role $role, ?User $user = null, bool $allowSuperAdmin = false): void
     {
         if ($role->is_system) {
+            if ($allowSuperAdmin && $user && $user->isSuperAdmin()) {
+                return;
+            }
             abort(404);
         }
     }
