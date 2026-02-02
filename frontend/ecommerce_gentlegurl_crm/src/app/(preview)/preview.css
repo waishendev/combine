@@ -103,6 +103,24 @@ body {
   contain: layout style;
 }
 
+/* Ensure inner layout uses the device width in mobile preview */
+.mobile-preview-container .max-w-6xl,
+.mobile-preview-container .max-w-5xl,
+.mobile-preview-container .max-w-2xl,
+.mobile-preview-container .max-w-xl,
+.mobile-preview-container .max-w-md {
+  max-width: 100% !important;
+}
+
+.mobile-preview-container .mx-auto.max-w-6xl,
+.mobile-preview-container .mx-auto.max-w-5xl,
+.mobile-preview-container .mx-auto.max-w-2xl,
+.mobile-preview-container .mx-auto.max-w-xl,
+.mobile-preview-container .mx-auto.max-w-md {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
 /* Override responsive breakpoints - force mobile layout regardless of screen size */
 /* sm: breakpoint (640px) - force mobile styles */
 @media (min-width: 640px) {
