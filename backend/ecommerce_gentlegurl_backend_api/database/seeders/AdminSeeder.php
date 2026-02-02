@@ -58,6 +58,7 @@ class AdminSeeder extends Seeder
             'ecommerce.services-pages.create',
             'ecommerce.services-pages.update',
             'ecommerce.services-pages.delete',
+            'ecommerce.services-pages.preview',
             'ecommerce.marquees.view',
             'ecommerce.marquees.create',
             'ecommerce.marquees.update',

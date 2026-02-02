@@ -418,6 +418,9 @@ $protectedRoutes = function () {
         Route::get('/services-pages', [ServicesPageController::class, 'index'])
             ->middleware('permission:ecommerce.services-pages.view');
 
+        Route::get('/services-pages/preview-config', [ServicesPageController::class, 'previewConfig'])
+            ->middleware('permission:ecommerce.services-pages.preview');
+
         Route::get('/services-pages/{servicesMenuItem}', [ServicesPageController::class, 'show'])
             ->middleware('permission:ecommerce.services-pages.view');
 

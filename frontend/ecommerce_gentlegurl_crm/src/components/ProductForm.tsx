@@ -1884,16 +1884,17 @@ export default function ProductForm({
             bundleItems: [],
           }
         }
-        const nextItems = variants
+        const nextItems: BundleItemFormValue[] = variants
           .map((variant, variantIdx) => {
             const variantKey = getVariantKey(variant)
             if (!variantKey) return null
-            return {
+            const item: BundleItemFormValue = {
               componentVariantId: variant.id ?? null,
               componentSku: variant.id ? undefined : variant.sku,
               quantity: '1',
               sortOrder: variantIdx,
             }
+            return item
           })
           .filter((item): item is BundleItemFormValue => item !== null)
 
@@ -3458,8 +3459,10 @@ export default function ProductForm({
               <h3 className="text-lg font-semibold text-gray-900">Variants</h3>
               <p className="text-sm text-gray-500 mt-1">Manage variant options, pricing, and stock.</p>
             </div>
-            <div className="flex flex-col gap-3 md:items-end md:w-auto w-full">
-              <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+            <div className="flex flex-col sm:flex-row gap-2 md:items-center md:w-auto w-full">
+              <label 
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 md:w-auto w-full
+              ">
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded border-gray-300 text-blue-600"
@@ -3469,25 +3472,23 @@ export default function ProductForm({
                 />
                 Select all ({selectedVariantCount})
               </label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddVariant}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 md:w-auto w-full"
-                >
-                  <i className="fa-solid fa-plus" />
-                  Add Variant
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsVariantBulkUpdateOpen(true)}
-                  disabled={selectedVariantCount === 0}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 md:w-auto w-full"
-                >
-                  <i className="fa-solid fa-pen-to-square" />
-                  Bulk Update
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleAddVariant}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 md:w-auto w-full"
+              >
+                <i className="fa-solid fa-plus" />
+                Add Variant
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsVariantBulkUpdateOpen(true)}
+                disabled={selectedVariantCount === 0}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 md:w-auto w-full"
+              >
+                <i className="fa-solid fa-pen-to-square" />
+                Bulk Update
+              </button>
             </div>
           </div>
           {variants.length === 0 && (
@@ -3513,20 +3514,23 @@ export default function ProductForm({
             return (
             <div key={variant.id ?? index} className="rounded-lg border border-gray-200 p-4 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Variant #{index + 1}</p>
-                </div>
+              <div className="flex items-center gap-2">
+                <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                    checked={selectedVariants[index] ?? false}
+                    onChange={(event) => handleToggleVariantSelect(index, event.target.checked)}
+                    aria-label={`Select variant ${index + 1}`}
+                  />
+                </label>
+
+                <p className="text-sm font-semibold text-gray-900">
+                  Variant #{index + 1}
+                </p>
+              </div>
+
                 <div className="flex items-center gap-2">
-                  <label className="inline-flex items-center gap-2 text-xs text-gray-600">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                      checked={selectedVariants[index] ?? false}
-                      onChange={(event) => handleToggleVariantSelect(index, event.target.checked)}
-                      aria-label={`Select variant ${index + 1}`}
-                    />
-                    Select
-                  </label>
                   <button
                     type="button"
                     onClick={() => handleVariantReorder(index, 'up')}

@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
@@ -10,8 +10,6 @@ type ServicesMenuItem = {
   name: string
   slug: string
   is_active: boolean
-  sort_order: number
-  page?: { id?: number; slug?: string } | null
 }
 
 type SectionHeading = { label: string; title: string; align: 'left' | 'center' | 'right' }
@@ -46,6 +44,8 @@ type HeroSlide = {
 type ServicesPagePayload = {
   id?: number
   menu_item_id: number
+  menu_item?: ServicesMenuItem | null
+  menu_slug?: string
   title: string
   slug: string
   subtitle: string | null
@@ -116,19 +116,12 @@ const emptySlide: HeroSlide = {
   buttonHref: '',
 }
 
-function normalizeMenuItems(input: unknown): ServicesMenuItem[] {
-  if (!input || typeof input !== 'object') return []
-  const payload = input as {
-    data?: unknown
-  }
-
-  const raw = payload.data
-  if (Array.isArray(raw)) return raw as ServicesMenuItem[]
-  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: unknown }).data)) {
-    return (raw as { data: ServicesMenuItem[] }).data
-  }
-  return []
-}
+const resolveMenuInfo = (payload: ServicesPagePayload) => ({
+  id: payload.menu_item?.id ?? payload.menu_item_id,
+  name: payload.menu_item?.name ?? payload.title ?? '',
+  slug: payload.menu_item?.slug ?? payload.menu_slug ?? payload.slug ?? '',
+  is_active: payload.menu_item?.is_active ?? payload.is_active ?? true,
+})
 
 function ensureSections(sections: Partial<ServicesPagePayload['sections']> | undefined): ServicesPagePayload['sections'] {
   const mergeHeading = (heading: Partial<SectionHeading> | undefined, fallback: SectionHeading) => ({
@@ -200,10 +193,9 @@ export default function ServicesPagesEditor({
   menuId: number
 }) {
   const canUpdate = permissions.includes('ecommerce.services-pages.update')
+  const canPreview = permissions.includes('ecommerce.services-pages.preview')
 
-  const [menuItems, setMenuItems] = useState<ServicesMenuItem[]>([])
   const [page, setPage] = useState<ServicesPagePayload | null>(null)
-  const [loadingMenus, setLoadingMenus] = useState(true)
   const [loadingPage, setLoadingPage] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -274,48 +266,6 @@ export default function ServicesPagesEditor({
     localStorage.setItem(`services-page-preview-${menuId}`, JSON.stringify(previewData))
     window.open(`/services-pages/${menuId}/preview`, '_blank', 'noopener,noreferrer')
   }
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const loadMenus = async () => {
-      setLoadingMenus(true)
-      setError(null)
-      try {
-        const qs = new URLSearchParams({ per_page: '200' })
-        const res = await fetch(`/api/proxy/ecommerce/services-menu-items?${qs.toString()}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        if (!res.ok) {
-          throw new Error('Failed to load services menu items.')
-        }
-        const json: ApiResponse<unknown> = await res.json().catch(() => ({}))
-        const items = normalizeMenuItems(json)
-        setMenuItems(items)
-      } catch (err) {
-        if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          setError(err instanceof Error ? err.message : 'Failed to load services menu items.')
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoadingMenus(false)
-        }
-      }
-    }
-
-    loadMenus()
-    return () => controller.abort()
-  }, [])
-
-  const sortedMenus = useMemo(
-    () => [...menuItems].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
-    [menuItems],
-  )
-
-  const selectedMenu = useMemo(
-    () => sortedMenus.find((item) => item.id === menuId) ?? null,
-    [sortedMenus, menuId],
-  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -625,10 +575,15 @@ export default function ServicesPagesEditor({
   }
 
   const handleSave = async () => {
-    if (!page || !selectedMenu) return
+    if (!page) return
     setSaving(true)
     setError(null)
     try {
+      const menuInfo = resolveMenuInfo(page)
+      if (!menuInfo.name || !menuInfo.slug) {
+        throw new Error('Services menu details are missing.')
+      }
+
       const heroActive = page.sections.hero.is_active
       const hasMissingImages =
         heroActive &&
@@ -641,8 +596,8 @@ export default function ServicesPagesEditor({
 
       const formData = new FormData()
       formData.append('_method', 'PUT')
-      formData.append('title', selectedMenu.name)
-      formData.append('slug', selectedMenu.slug)
+      formData.append('title', menuInfo.name)
+      formData.append('slug', menuInfo.slug)
       formData.append('subtitle', page.subtitle ?? '')
       formData.append('is_active', page.is_active ? '1' : '0')
       formData.append('sections', JSON.stringify(page.sections))
@@ -731,31 +686,12 @@ export default function ServicesPagesEditor({
       setGalleryFiles(Array(galleryCount).fill(null))
       setGalleryPreviews(Array(galleryCount).fill(null))
 
-      setMenuItems((prev) =>
-        prev.map((item) =>
-          item.id === menuId
-            ? { ...item, is_active: payload.is_active }
-            : item,
-        ),
-      )
       router.push('/services-pages')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save services page.')
     } finally {
       setSaving(false)
     }
-  }
-
-  if (loadingMenus) {
-    return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading services menus...</div>
-  }
-
-  if (!sortedMenus.length) {
-    return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-        Create at least one Services Menu item before editing pages.
-      </div>
-    )
   }
 
   return (
@@ -784,11 +720,14 @@ export default function ServicesPagesEditor({
                   className="w-full rounded border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-600 focus:outline-none"
                   disabled
                 >
-                  {selectedMenu && (
-                    <option value={selectedMenu.id}>
-                      {selectedMenu.name} ({selectedMenu.slug})
-                    </option>
-                  )}
+                  {page && (() => {
+                    const menuInfo = resolveMenuInfo(page)
+                    return (
+                      <option value={menuInfo.id}>
+                        {menuInfo.name} ({menuInfo.slug})
+                      </option>
+                    )
+                  })()}
                 </select>
                 <p className="text-[11px] text-gray-400">Services Menu cannot be changed here.</p>
               </label>
@@ -1087,8 +1026,7 @@ export default function ServicesPagesEditor({
                     type="button"
                     onClick={addSlide}
                     disabled={!canUpdate}
-                    className="inline-flex items-center gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
-                  >
+                    className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
                     <i className="fa-solid fa-plus" />
                     Add slide
                   </button>
@@ -1373,8 +1311,7 @@ export default function ServicesPagesEditor({
                   type="button"
                   onClick={addGalleryItem}
                   disabled={!canUpdate || page.sections.gallery.items.length >= 16}
-                  className="inline-flex items-center gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
-                >
+                  className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
                   <i className="fa-solid fa-plus" />
                   Add image
                 </button>
@@ -1555,15 +1492,19 @@ export default function ServicesPagesEditor({
           </SectionCard>
 
           <div className="flex items-center justify-end gap-2">
-            <button
+            {canPreview ? (
+              <button
               type="button"
               onClick={handlePreview}
               disabled={!page || loadingPage}
-              className="inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <i className="fa-solid fa-eye" />
               Preview
             </button>
+            ) : (
+             null
+            )}
             <button
               type="button"
               onClick={handleSave}
@@ -1742,8 +1683,7 @@ function EditableList<T>({
         type="button"
         onClick={onAdd}
         disabled={!canUpdate}
-        className="inline-flex items-center mt-2 gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
-      >
+        className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
         <i className="fa-solid fa-plus" />
         Add item
       </button>

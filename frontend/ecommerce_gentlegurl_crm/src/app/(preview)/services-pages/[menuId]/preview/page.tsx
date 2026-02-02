@@ -17,7 +17,7 @@ export default async function ServicesPagePreviewPage({
   }
 
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'ecommerce.services-pages.view',
+    (perm) => perm === 'ecommerce.services-pages.preview',
   )
 
   if (!hasPermission) {

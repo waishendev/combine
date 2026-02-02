@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Ecommerce\ServicesMenuItem;
 use App\Models\Ecommerce\ServicesPage;
+use App\Models\Ecommerce\ShopMenuItem;
+use App\Services\SettingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -42,6 +44,47 @@ class ServicesPageController extends Controller
         $page->sections = $this->resolveSectionUrls($page->sections ?? []);
 
         return $this->respond($page);
+    }
+
+    public function previewConfig()
+    {
+        $shopMenu = ShopMenuItem::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get([
+                'id',
+                'name as label',
+                'slug',
+                'sort_order',
+            ]);
+
+        $servicesMenu = ServicesMenuItem::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get([
+                'id',
+                'name as label',
+                'slug',
+                'sort_order',
+            ]);
+
+        $branding = SettingService::get('branding', [
+            'shop_logo_path' => null,
+            'crm_logo_path' => null,
+            'shop_favicon_path' => null,
+            'crm_favicon_path' => null,
+        ]);
+
+        $footer = SettingService::get('footer', $this->defaultFooterSetting());
+
+        return $this->respond([
+            'header' => [
+                'shop_menu' => $shopMenu,
+                'services_menu' => $servicesMenu,
+            ],
+            'header_logo' => $this->resolveLogoUrl($branding['shop_logo_path'] ?? null),
+            'footer' => $footer,
+        ]);
     }
 
     public function upsert(Request $request, ServicesMenuItem $servicesMenuItem)
@@ -209,6 +252,47 @@ class ServicesPageController extends Controller
         $sections['gallery'] = $gallery;
 
         return $sections;
+    }
+
+    private function resolveLogoUrl(?string $path): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+
+        $normalizedPath = ltrim($path, '/');
+        if (! $normalizedPath) {
+            return null;
+        }
+
+        return Storage::disk('public')->url($normalizedPath);
+    }
+
+    private function defaultFooterSetting(): array
+    {
+        return [
+            'enabled' => true,
+            'about_text' => null,
+            'contact' => [
+                'whatsapp' => null,
+                'email' => null,
+                'address' => null,
+            ],
+            'social' => [
+                'instagram' =>'',
+                'facebook' => '',
+                'tiktok' => '',
+            ],
+            'links' => [
+                'shipping_policy' => '/shipping-policy',
+                'return_refund' => '/return-refund',
+                'privacy' => '/privacy-policy',
+            ],
+        ];
     }
 
     private function normalizeSlides(Request $request, array $slides): array
