@@ -239,8 +239,8 @@ $protectedRoutes = function () {
         ->middleware('permission:users.delete');
 
     // Roles
-    Route::get('/roles/all', [RoleController::class, 'indexAll'])
-        ->middleware('permission:roles.view-all');
+    // Route::get('/roles/all', [RoleController::class, 'indexAll'])
+    //     ->middleware('permission:roles.view-all');
 
     Route::get('/roles', [RoleController::class, 'index'])
         ->middleware('permission:roles.view');

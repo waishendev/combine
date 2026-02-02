@@ -24,11 +24,11 @@ export default async function RolePage() {
     redirect('/dashboard')
   }
 
-  const roleNames = Array.isArray(user.roles)
-    ? user.roles.map((role) => (typeof role === 'string' ? role : role.name))
-    : []
+  // const roleNames = Array.isArray(user.roles)
+  //   ? user.roles.map((role) => (typeof role === 'string' ? role : role.name))
+  //   : []
 
-  const isSuperAdmin = roleNames.includes('infra_core_x1')
+  // const isSuperAdmin = roleNames.includes('infra_core_x1')
 
   // Default to EN for now, can be extended later for multi-language support
   const lang: LangCode = 'EN'
@@ -51,7 +51,7 @@ export default async function RolePage() {
       </h2>
       <RoleTable
         permissions={user.permissions}
-        isSuperAdmin={isSuperAdmin}
+        // isSuperAdmin={isSuperAdmin}
       />
     </div>
   )

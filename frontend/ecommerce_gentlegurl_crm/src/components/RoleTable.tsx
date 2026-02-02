@@ -24,7 +24,7 @@ import type { PermissionOption } from './RoleCreateModal'
 
 interface RoleTableProps {
   permissions: string[]
-  isSuperAdmin?: boolean
+  // isSuperAdmin?: boolean
 }
 
 type Meta = {
@@ -64,7 +64,7 @@ type PermissionApiResponse = {
 
 export default function RoleTable({
   permissions,
-  isSuperAdmin = false,
+  // isSuperAdmin = false,
 }: RoleTableProps) {
   const { t } = useI18n()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
@@ -176,8 +176,13 @@ export default function RoleTable({
           qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
         }
 
-        const endpoint = isSuperAdmin ? '/api/proxy/roles/all' : '/api/proxy/roles'
-        const res = await fetch(`${endpoint}?${qs.toString()}`, {
+        // const endpoint = isSuperAdmin ? '/api/proxy/roles/all' : '/api/proxy/roles'
+        // const res = await fetch(`${endpoint}?${qs.toString()}`, {
+        //   cache: 'no-store',
+        //   signal: controller.signal,
+        // })
+
+        const res = await fetch(`/api/proxy/roles?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -251,7 +256,8 @@ export default function RoleTable({
 
     fetchRoles()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize, isSuperAdmin])
+  }, [filters, currentPage, pageSize])
+  // }, [filters, currentPage, pageSize, isSuperAdmin])
 
   useEffect(() => {
     if (isCreateModalOpen || editingRoleId !== null) {
