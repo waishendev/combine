@@ -139,10 +139,7 @@ const createEmptyBundle = (sortOrder = 0): BundleFormValue => ({
   trackStock: true,
   stock: '0',
   lowStockThreshold: '0',
-  bundleItems: [
-    { componentVariantId: null, componentSku: undefined, quantity: '1', sortOrder: 0 },
-    { componentVariantId: null, componentSku: undefined, quantity: '1', sortOrder: 1 },
-  ],
+  bundleItems: [],
 })
 
 type RewardFormValues = {
@@ -196,6 +193,18 @@ const resolveComponentVariant = (
   if (item.componentSku) {
     return variants.find((variant) => variant.sku === item.componentSku) ?? null
   }
+  return null
+}
+
+const getVariantKey = (variant: VariantFormValue) => {
+  if (variant.id) return `id:${variant.id}`
+  if (variant.sku) return `sku:${variant.sku}`
+  return null
+}
+
+const getBundleItemKey = (item: BundleItemFormValue) => {
+  if (item.componentVariantId) return `id:${item.componentVariantId}`
+  if (item.componentSku) return `sku:${item.componentSku}`
   return null
 }
 
@@ -1698,6 +1707,75 @@ export default function ProductForm({
             ...item,
             sortOrder: itemIdx,
           })),
+        }
+      }),
+    )
+  }
+
+  const handleToggleBundleComponent = (
+    bundleIndex: number,
+    variant: VariantFormValue,
+    checked: boolean,
+  ) => {
+    const variantKey = getVariantKey(variant)
+    if (!variantKey) return
+
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== bundleIndex) return bundle
+        let nextItems = bundle.bundleItems
+        if (checked) {
+          if (!nextItems.some((item) => getBundleItemKey(item) === variantKey)) {
+            nextItems = [
+              ...nextItems,
+              {
+                componentVariantId: variant.id ?? null,
+                componentSku: variant.id ? undefined : variant.sku,
+                quantity: '1',
+                sortOrder: nextItems.length,
+              },
+            ]
+          }
+        } else {
+          nextItems = nextItems.filter((item) => getBundleItemKey(item) !== variantKey)
+        }
+        return {
+          ...bundle,
+          bundleItems: nextItems.map((item, itemIdx) => ({
+            ...item,
+            sortOrder: itemIdx,
+          })),
+        }
+      }),
+    )
+  }
+
+  const handleToggleBundleSelectAll = (bundleIndex: number, checked: boolean) => {
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== bundleIndex) return bundle
+        if (!checked) {
+          return {
+            ...bundle,
+            bundleItems: [],
+          }
+        }
+        const nextItems = variants
+          .map((variant, variantIdx) => {
+            const variantKey = getVariantKey(variant)
+            if (!variantKey) return null
+            return {
+              componentVariantId: variant.id ?? null,
+              componentSku: variant.id ? undefined : variant.sku,
+              quantity: '1',
+              sortOrder: variantIdx,
+            }
+          })
+          .filter((item): item is BundleItemFormValue => item !== null)
+
+        return {
+          ...bundle,
+          bundleItems: nextItems,
         }
       }),
     )
@@ -3608,6 +3686,15 @@ export default function ProductForm({
               })
             }
             const derivedQty = calculateBundleDerivedQty(bundle, variants)
+            const selectableVariants = variants.filter((variant) => getVariantKey(variant))
+            const allBundleVariantsSelected =
+              selectableVariants.length > 0 &&
+              selectableVariants.every((variant) => {
+                const key = getVariantKey(variant)
+                return key
+                  ? bundle.bundleItems.some((item) => getBundleItemKey(item) === key)
+                  : false
+              })
 
             return (
               <div key={bundle.id ?? index} className="rounded-lg border border-gray-200 p-4 space-y-4">
@@ -3889,17 +3976,65 @@ export default function ProductForm({
                       </div>
 
                       <div className="space-y-3">
+                        <div className="rounded border border-gray-200 bg-white p-3">
+                          <div className="flex items-center gap-2 text-xs font-medium text-gray-700">
+                            <input
+                              id={`bundle-select-all-${index}`}
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                              checked={allBundleVariantsSelected}
+                              onChange={(event) =>
+                                handleToggleBundleSelectAll(index, event.target.checked)
+                              }
+                              disabled={selectableVariants.length === 0}
+                            />
+                            <label htmlFor={`bundle-select-all-${index}`}>Select all variants</label>
+                          </div>
+                          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {variants.map((variant, variantIndex) => {
+                              const variantKey = getVariantKey(variant)
+                              const isSelected = variantKey
+                                ? bundle.bundleItems.some(
+                                    (item) => getBundleItemKey(item) === variantKey,
+                                  )
+                                : false
+                              return (
+                                <label
+                                  key={variant.id ?? variant.sku ?? variantIndex}
+                                  className={`flex items-center gap-2 rounded border px-3 py-2 text-xs ${
+                                    variantKey
+                                      ? 'border-gray-200 bg-gray-50 text-gray-700'
+                                      : 'border-gray-200 bg-gray-100 text-gray-400'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                                    checked={isSelected}
+                                    onChange={(event) =>
+                                      handleToggleBundleComponent(
+                                        index,
+                                        variant,
+                                        event.target.checked,
+                                      )
+                                    }
+                                    disabled={!variantKey}
+                                  />
+                                  <span className="truncate">
+                                    {variant.name || 'Unnamed variant'}
+                                    {variant.sku ? ` (${variant.sku})` : ''}
+                                  </span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+
                         {bundle.bundleItems.map((item, itemIndex) => {
                           const selectedKeys = new Set(
                             bundle.bundleItems
                               .filter((_, idx) => idx !== itemIndex)
-                              .map((bundleItem) =>
-                                bundleItem.componentVariantId
-                                  ? `id:${bundleItem.componentVariantId}`
-                                  : bundleItem.componentSku
-                                    ? `sku:${bundleItem.componentSku}`
-                                    : '',
-                              )
+                              .map((bundleItem) => getBundleItemKey(bundleItem))
                               .filter(Boolean),
                           )
 

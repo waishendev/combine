@@ -1,10 +1,10 @@
 interface Props {
-  label: string;
-  value?: string; // e.g. "2025-06-29 15:00:00" or just "15:00:00"
-  onChange: (val: string) => void;
-  showDate?: boolean;
-  borderColor?: string;
-  required?: boolean;
+  label: string
+  value?: string // e.g. "2025-06-29 15:00:00" or just "15:00:00"
+  onChange: (val: string) => void
+  showDate?: boolean
+  borderColor?: string
+  required?: boolean
 }
 
 export default function CustomDateTimePicker({
@@ -15,32 +15,32 @@ export default function CustomDateTimePicker({
   borderColor = 'gray-300',
   required = true,
 }: Props) {
-  const pad = (n: number) => n.toString().padStart(2, '0');
+  const pad = (n: number) => n.toString().padStart(2, '0')
 
   const [datePart, timePart] = value.includes(' ')
     ? value.split(' ')
-    : ['', value];
+    : ['', value]
 
   const [hour = 0, minute = 0, second = 0] = (timePart || '00:00:00')
     .split(':')
-    .map((v) => Number(v));
+    .map((v) => Number(v))
 
-  const today = new Date();
-  const dateDefault = datePart || today.toISOString().slice(0, 10);
+  const today = new Date()
+  const dateDefault = datePart || today.toISOString().slice(0, 10)
 
-  const inputClass = `border rounded-md p-2 text-sm border-${borderColor}`;
+  const inputClass = `border rounded-md p-2 text-sm border-${borderColor}`
 
   const handlePartChange = (part: 'hour' | 'minute' | 'second' | 'date', newVal: string) => {
-    const newHour = part === 'hour' ? newVal : pad(hour);
-    const newMinute = part === 'minute' ? newVal : pad(minute);
-    const newSecond = part === 'second' ? newVal : pad(second);
-    const newDate = part === 'date' ? newVal : dateDefault;
+    const newHour = part === 'hour' ? newVal : pad(hour)
+    const newMinute = part === 'minute' ? newVal : pad(minute)
+    const newSecond = part === 'second' ? newVal : pad(second)
+    const newDate = part === 'date' ? newVal : dateDefault
 
     const result = showDate
       ? `${newDate} ${newHour}:${newMinute}:${newSecond}`
-      : `${newHour}:${newMinute}:${newSecond}`;
-    onChange(result);
-  };
+      : `${newHour}:${newMinute}:${newSecond}`
+    onChange(result)
+  }
 
   return (
     <>
@@ -93,5 +93,5 @@ export default function CustomDateTimePicker({
         </select>
       </div>
     </>
-  );
+  )
 }
