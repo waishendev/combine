@@ -38,12 +38,9 @@ export default async function ServicesPagesPage() {
           {t('catalog.servicesPages')}
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-2">
+      <h2 className="text-3xl font-semibold mb-6">
         {t('catalog.servicesPages')}
       </h2>
-      <p className="mb-6 text-sm text-gray-500">
-        Start from a table, then create or edit each services page.
-      </p>
       <ServicesPagesTable permissions={user.permissions} />
     </div>
   )
