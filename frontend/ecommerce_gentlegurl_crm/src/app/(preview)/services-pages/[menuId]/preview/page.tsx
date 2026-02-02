@@ -42,7 +42,10 @@ export default async function ServicesPagePreviewPage({
           box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35);
           background: var(--background-soft) !important;
           padding-top: 40px;
-          overflow: visible !important;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
         }
 
         .mobile-preview-container > * {
@@ -70,7 +73,7 @@ export default async function ServicesPagePreviewPage({
             linear-gradient(#cbd5e1, #cbd5e1) right 10px center / 18px 8px
               no-repeat,
             rgba(255, 255, 255, 0.95);
-          border-radius: 30px 30px 18px 18px;
+          border-radius: 0;
           box-shadow: inset 0 -1px 0 rgba(148, 163, 184, 0.35);
           pointer-events: none;
         }
