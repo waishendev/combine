@@ -51,6 +51,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
   const [previewData, setPreviewData] = useState<ServicesPagePreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<PreviewMode>('desktop')
+  const isMobile = mode === 'mobile'
 
   useEffect(() => {
     const stored = localStorage.getItem(previewKey(menuId))
@@ -67,18 +68,18 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
   }, [menuId])
 
   const previewContainerClass = useMemo(() => {
-    if (mode === 'mobile') {
-      return 'mx-auto w-full max-w-[420px] overflow-hidden rounded-[32px] border border-black/10 bg-[var(--background-soft)]/70 shadow-xl mobile-preview-container'
+    if (isMobile) {
+      return 'mx-auto w-full max-w-[375px] overflow-hidden rounded-[32px] border border-black/10 bg-[var(--background-soft)]/70 shadow-xl mobile-preview-container'
     }
     return 'w-full'
-  }, [mode])
+  }, [isMobile])
 
   const previewWrapperClass = useMemo(() => {
-    if (mode === 'mobile') {
-      return 'mx-auto w-full max-w-full px-0 py-8'
+    if (isMobile) {
+      return 'mx-auto w-full max-w-full px-4 py-8 sm:px-6'
     }
     return 'mx-auto w-full max-w-6xl px-4 py-8'
-  }, [mode])
+  }, [isMobile])
 
   const previewToolbarClass =
     'sticky top-0 z-30 border-b border-black/10 bg-white text-black backdrop-blur'
@@ -162,37 +163,73 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
           </div>
         </div>
       </div>
-      <PreviewHeader mode={mode} />
-      <div className={previewWrapperClass}>
-        <div className={previewContainerClass}>
-          <ServicesPageLayout
-            title={previewData.title}
-            subtitle={previewData.subtitle}
-            services={previewData.services}
-            gallery={previewData.gallery}
-            pricing={previewData.pricing}
-            faqs={previewData.faqs}
-            notes={previewData.notes}
-            servicesActive={previewData.servicesActive}
-            galleryActive={previewData.galleryActive}
-            pricingActive={previewData.pricingActive}
-            faqsActive={previewData.faqsActive}
-            notesActive={previewData.notesActive}
-            heroActive={previewData.heroActive}
-            heroImage={previewData.heroImage}
-            heroSlides={previewData.heroSlides}
-            servicesHeading={previewData.servicesHeading}
-            galleryHeading={previewData.galleryHeading}
-            galleryFooterText={previewData.galleryFooterText}
-            galleryFooterAlign={previewData.galleryFooterAlign}
-            galleryLayout={previewData.galleryLayout}
-            pricingHeading={previewData.pricingHeading}
-            faqHeading={previewData.faqHeading}
-            notesHeading={previewData.notesHeading}
-          />
+      {isMobile ? (
+        <div className={previewWrapperClass}>
+          <div className={previewContainerClass}>
+            <PreviewHeader mode={mode} />
+            <ServicesPageLayout
+              title={previewData.title}
+              subtitle={previewData.subtitle}
+              services={previewData.services}
+              gallery={previewData.gallery}
+              pricing={previewData.pricing}
+              faqs={previewData.faqs}
+              notes={previewData.notes}
+              servicesActive={previewData.servicesActive}
+              galleryActive={previewData.galleryActive}
+              pricingActive={previewData.pricingActive}
+              faqsActive={previewData.faqsActive}
+              notesActive={previewData.notesActive}
+              heroActive={previewData.heroActive}
+              heroImage={previewData.heroImage}
+              heroSlides={previewData.heroSlides}
+              servicesHeading={previewData.servicesHeading}
+              galleryHeading={previewData.galleryHeading}
+              galleryFooterText={previewData.galleryFooterText}
+              galleryFooterAlign={previewData.galleryFooterAlign}
+              galleryLayout={previewData.galleryLayout}
+              pricingHeading={previewData.pricingHeading}
+              faqHeading={previewData.faqHeading}
+              notesHeading={previewData.notesHeading}
+            />
+            <PreviewFooter />
+          </div>
         </div>
-      </div>
-      <PreviewFooter />
+      ) : (
+        <>
+          <PreviewHeader mode={mode} />
+          <div className={previewWrapperClass}>
+            <div className={previewContainerClass}>
+              <ServicesPageLayout
+                title={previewData.title}
+                subtitle={previewData.subtitle}
+                services={previewData.services}
+                gallery={previewData.gallery}
+                pricing={previewData.pricing}
+                faqs={previewData.faqs}
+                notes={previewData.notes}
+                servicesActive={previewData.servicesActive}
+                galleryActive={previewData.galleryActive}
+                pricingActive={previewData.pricingActive}
+                faqsActive={previewData.faqsActive}
+                notesActive={previewData.notesActive}
+                heroActive={previewData.heroActive}
+                heroImage={previewData.heroImage}
+                heroSlides={previewData.heroSlides}
+                servicesHeading={previewData.servicesHeading}
+                galleryHeading={previewData.galleryHeading}
+                galleryFooterText={previewData.galleryFooterText}
+                galleryFooterAlign={previewData.galleryFooterAlign}
+                galleryLayout={previewData.galleryLayout}
+                pricingHeading={previewData.pricingHeading}
+                faqHeading={previewData.faqHeading}
+                notesHeading={previewData.notesHeading}
+              />
+            </div>
+          </div>
+          <PreviewFooter />
+        </>
+      )}
     </div>
   )
 }

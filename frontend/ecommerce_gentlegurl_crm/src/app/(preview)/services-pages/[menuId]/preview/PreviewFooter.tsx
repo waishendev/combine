@@ -143,7 +143,7 @@ export default function PreviewFooter() {
 
   return (
     <footer className="bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto w-full max-w-6xl px-6 pt-14">
+      <div className="mx-auto w-full max-w-6xl px-4 pt-14 sm:px-6 lg:px-8">
         {/* Top */}
         <div className="grid gap-12 md:grid-cols-12">
           {/* Brand */}
