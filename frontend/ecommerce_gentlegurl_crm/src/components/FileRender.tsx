@@ -15,6 +15,7 @@ interface Props {
   onChange: (val: any) => void
   allValues?: Record<string, any>
   setValues?: Dispatch<SetStateAction<Record<string, any>>>
+  categories?: Array<{ id: number; name: string }>
 }
 
 const clampPercent = (value: number) => Math.min(Math.max(value, 0), 100)
@@ -30,6 +31,7 @@ export default function FieldRenderer({
   onChange,
   allValues,
   setValues,
+  categories,
 }: Props) {
   if (field.type === 'boolean') {
     return (
@@ -81,6 +83,26 @@ export default function FieldRenderer({
           showDate
           required={false}
         />
+      </div>
+    )
+  }
+
+  if (field.type === 'select') {
+    return (
+      <div>
+        <label className="text-sm font-medium text-gray-700 block mb-1">{field.label}</label>
+        <select
+          value={value ?? ''}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+        >
+          <option value="">Select</option>
+          {(field.key === 'category_id' ? categories : [])?.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </select>
       </div>
     )
   }

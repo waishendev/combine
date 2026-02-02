@@ -1,6 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import FieldRenderer, { FieldConfig, FieldType } from './FileRender'
-import { swalWithComfirmButton } from '@/utils/notify'
 
 const FIELD_CONFIG: FieldConfig[] = [
   { key: 'price', label: 'Price', type: 'number' },
@@ -11,6 +10,7 @@ const FIELD_CONFIG: FieldConfig[] = [
   { key: 'sale_price_end_at', label: 'End At', type: 'datetime' },
   { key: 'stock', label: 'Stock', type: 'number' },
   { key: 'low_stock_threshold', label: 'Low Stock Threshold', type: 'number' },
+  { key: 'category_id', label: 'Category', type: 'select' },
 ]
 
 interface Product {
@@ -21,16 +21,47 @@ interface Props {
   selectedProducts: Product[]
   onClose: () => void
   fetchProducts: () => void
+  onSuccess: () => void
 }
 
 export default function MultiFieldForm({
   selectedProducts,
   onClose,
   fetchProducts,
+  onSuccess,
 }: Props) {
   const [selectedFields, setSelectedFields] = useState<string[]>([])
   const [values, setValues] = useState<Record<string, any>>({})
   const [errorMessages, setErrorMessages] = useState<string[]>([])
+  const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch(
+          '/api/proxy/ecommerce/categories?is_active=1&per_page=500',
+          {
+            cache: 'no-store',
+            signal: controller.signal,
+          },
+        )
+        if (!res.ok) return
+        const json = await res.json()
+        const items = Array.isArray(json?.data?.data) ? json.data.data : []
+        setCategories(items.map((item: { id: number; name: string }) => ({
+          id: item.id,
+          name: item.name,
+        })))
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setErrorMessages(['Failed to fetch categories.'])
+        }
+      }
+    }
+    fetchCategories()
+    return () => controller.abort()
+  }, [])
 
   const getDefaultValue = (type: FieldType) => {
     switch (type) {
@@ -108,6 +139,12 @@ export default function MultiFieldForm({
       if (key === 'discount_percent') {
         continue
       }
+      if (key === 'category_id') {
+        if (values[key]) {
+          payload.category_ids = [values[key]]
+        }
+        continue
+      }
       if (values[key] !== undefined) {
         payload[key] = values[key]
       }
@@ -128,12 +165,8 @@ export default function MultiFieldForm({
         setErrorMessages(errs as string[])
         return
       }
-      swalWithComfirmButton(
-        'Bulk Update Success',
-        'Products have been updated successfully',
-        'success',
-      )
       fetchProducts()
+      onSuccess()
       onClose()
     } catch (err) {
       setErrorMessages(['An unknown error occurred'])
@@ -214,6 +247,7 @@ export default function MultiFieldForm({
                 onChange={(val) => handleChange(key, val)}
                 allValues={values}
                 setValues={setValues}
+                categories={categories}
               />
             )
           })}

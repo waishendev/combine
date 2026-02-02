@@ -257,12 +257,18 @@ class ProductController extends Controller
             'cost_price' => ['nullable', 'numeric'],
             'stock' => ['nullable', 'integer'],
             'low_stock_threshold' => ['nullable', 'integer'],
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer', 'exists:categories,id'],
         ]);
 
         $products = Product::whereIn('id', $validated['ids'])->get();
         $payload = collect($validated)->except('ids')->toArray();
 
         foreach ($products as $product) {
+            if (array_key_exists('category_ids', $payload)) {
+                $product->categories()->sync($payload['category_ids'] ?? []);
+            }
+
             if (array_key_exists('sale_price', $payload)) {
                 $price = array_key_exists('price', $payload)
                     ? (float) $payload['price']
@@ -291,7 +297,7 @@ class ProductController extends Controller
             }
 
             if (! empty($payload)) {
-                $product->fill($payload);
+                $product->fill(collect($payload)->except('category_ids')->toArray());
                 $product->save();
             }
         }
