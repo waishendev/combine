@@ -33,7 +33,7 @@ export default async function ServicesPagePreviewPage({
   return (
     <>
       <PreviewClient menuId={numericMenuId} />
-      <style jsx global>{`
+      <style>{`
         .mobile-preview-container {
           position: relative;
           border-radius: 28px;
