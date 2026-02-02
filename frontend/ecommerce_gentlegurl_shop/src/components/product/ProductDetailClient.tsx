@@ -363,9 +363,9 @@ export default function ProductDetailClient({
     : [];
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8">
-      <div className="grid gap-8 md:grid-cols-2">
-        <div className="relative">
+    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <div className="grid gap-6 md:gap-8 md:grid-cols-2">
+        <div className="relative w-full overflow-hidden">
           <ProductGallery
             media={galleryMedia}
             initialIndex={initialIndex >= 0 ? initialIndex : 0}
