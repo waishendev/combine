@@ -138,7 +138,7 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
         <p className="text-xs text-gray-500">You must select a Services Menu item before continuing.</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col items-start gap-2">
         {canCreateMenu && (
           <button
             type="button"
@@ -149,6 +149,7 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
             Create Services Menu
           </button>
         )}
+
         {!availableMenus.length && (
           <span className="text-xs text-amber-700">
             All Services Menu items already have pages. Create a new menu item first.

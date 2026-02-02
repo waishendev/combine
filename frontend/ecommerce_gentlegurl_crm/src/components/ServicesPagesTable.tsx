@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import ServicesPagesDeleteModal from './ServicesPagesDeleteModal'
 import { useI18n } from '@/lib/i18n'
+import StatusBadge from './StatusBadge'
 
 type ServicesMenuItem = {
   id: number
@@ -165,13 +166,10 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
                     <td className="px-4 py-2 font-medium text-gray-900">{item.name}</td>
                     <td className="px-4 py-2 text-gray-600">{item.slug}</td>
                     <td className="px-4 py-2">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          item.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'
-                        }`}
-                      >
-                        {item.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                      <StatusBadge
+                        status={item.is_active  ? 'active' : 'inactive'}
+                        label={item.is_active  ? t('common.active') : t('common.inactive')}
+                      />
                     </td>
                     <td className="px-4 py-2 text-gray-600">
                       <span className={hasPage ? 'text-emerald-700' : 'text-amber-600'}>{pageLabel}</span>
@@ -194,7 +192,7 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
                         ) : canCreate ? (
                           <Link
                             href={`/services-pages/${item.id}`}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-700 hover:border-blue-200 hover:text-blue-700"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-500 text-white hover:bg-emerald-600"
                             aria-label="Create services page"
                             title="Create services page"
                           >
