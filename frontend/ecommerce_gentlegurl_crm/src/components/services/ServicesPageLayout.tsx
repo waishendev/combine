@@ -561,7 +561,7 @@ export function ServicesPageLayout({
                 </>
               )} */}
 
-              <div className="relative aspect-[16/10] w-full overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
+              <div className="relative aspect-[16/10] w-full overflow-hidden rounded- xl border border-white/10 bg-black/40 shadow-2xl">
                 {slides.map((slide, index) => (
                   <div
                     key={`${slide.src}-lightbox-${index}`}
@@ -624,7 +624,7 @@ export function ServicesPageLayout({
                 </>
               )}
 
-              <div className="relative aspect-[16/10] w-full overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
+              <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-2xl">
                 {gallery.map((image, index) => {
                   const altText = image.alt ?? image.caption ?? `Gallery image ${index + 1}`;
                   return (
