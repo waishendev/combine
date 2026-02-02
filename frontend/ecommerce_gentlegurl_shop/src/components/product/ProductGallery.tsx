@@ -165,7 +165,7 @@ export function ProductGallery({
         {isVideoActive ? (
           <>
             <video
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
               src={activeMedia.url ?? undefined}
               poster={poster}
               controls
@@ -181,7 +181,7 @@ export function ProductGallery({
           <img
             src={getImageSrc(activeMedia.url ?? "")}
             alt={alt}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
             onError={() => handleImageError(activeMedia.url ?? "")}
           />
         )}

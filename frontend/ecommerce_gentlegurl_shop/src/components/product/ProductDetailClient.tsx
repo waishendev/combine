@@ -498,7 +498,7 @@ export default function ProductDetailClient({
           )}
 
           {product.description && (
-            <div className="prose max-w-none text-sm text-[color:var(--text-muted)]">
+            <div className="prose max-w-none whitespace-pre-line text-sm text-[color:var(--text-muted)]">
               {product.description}
             </div>
           )}
