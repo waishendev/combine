@@ -12,10 +12,12 @@ type HomepageShopMenuItem = {
 
 type HomepageServicesMenuItem = HomepageShopMenuItem
 
-type HomepageData = {
-  shop_menu: HomepageShopMenuItem[]
-  services_menu?: HomepageServicesMenuItem[]
-  shop_logo_url?: string | null
+type PreviewConfig = {
+  header?: {
+    shop_menu?: HomepageShopMenuItem[]
+    services_menu?: HomepageServicesMenuItem[]
+  } | null
+  header_logo?: string | null
 }
 
 type PreviewMode = 'desktop' | 'mobile'
@@ -37,9 +39,9 @@ export default function PreviewHeader({ mode }: PreviewHeaderProps) {
   const hasServicesMenu = servicesMenu.length > 0
 
   useEffect(() => {
-    const loadHomepage = async () => {
+    const loadPreviewConfig = async () => {
       try {
-        const response = await fetch(`/api/proxy/public/shop/homepage?ts=${Date.now()}`, {
+        const response = await fetch(`/api/proxy/ecommerce/services-pages/preview-config?ts=${Date.now()}`, {
           cache: 'no-store',
         })
 
@@ -48,19 +50,19 @@ export default function PreviewHeader({ mode }: PreviewHeaderProps) {
         }
 
         const json = await response.json()
-        const payload = (json.data as HomepageData) ?? null
+        const payload = (json.data as PreviewConfig) ?? null
 
         if (payload) {
-          setLogoUrl(payload.shop_logo_url ?? null)
-          setShopMenu(payload.shop_menu ?? [])
-          setServicesMenu(payload.services_menu ?? [])
+          setLogoUrl(payload.header_logo ?? null)
+          setShopMenu(payload.header?.shop_menu ?? [])
+          setServicesMenu(payload.header?.services_menu ?? [])
         }
       } catch (error) {
-        console.error('[PreviewHeader] Failed to load homepage:', error)
+        console.error('[PreviewHeader] Failed to load preview config:', error)
       }
     }
 
-    loadHomepage()
+    loadPreviewConfig()
   }, [])
 
   useEffect(() => {

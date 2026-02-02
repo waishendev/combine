@@ -24,11 +24,9 @@ type HomepageFooter = {
   } | null
 }
 
-type HomepageData = {
-  settings?: {
-    footer?: HomepageFooter | null
-  } | null
-  shop_logo_url?: string | null
+type PreviewConfig = {
+  footer?: HomepageFooter | null
+  header_logo?: string | null
 }
 
 function SocialIcon({
@@ -102,9 +100,9 @@ export default function PreviewFooter() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    const loadHomepage = async () => {
+    const loadPreviewConfig = async () => {
       try {
-        const response = await fetch(`/api/proxy/public/shop/homepage?ts=${Date.now()}`, {
+        const response = await fetch(`/api/proxy/ecommerce/services-pages/preview-config?ts=${Date.now()}`, {
           cache: 'no-store',
         })
 
@@ -113,18 +111,18 @@ export default function PreviewFooter() {
         }
 
         const json = await response.json()
-        const payload = (json.data as HomepageData) ?? null
+        const payload = (json.data as PreviewConfig) ?? null
 
         if (payload) {
-          setFooter(payload.settings?.footer ?? null)
-          setLogoUrl(payload.shop_logo_url ?? null)
+          setFooter(payload.footer ?? null)
+          setLogoUrl(payload.header_logo ?? null)
         }
       } catch (error) {
-        console.error('[PreviewFooter] Failed to load homepage:', error)
+        console.error('[PreviewFooter] Failed to load preview config:', error)
       }
     }
 
-    loadHomepage()
+    loadPreviewConfig()
   }, [])
 
   if (!footer || footer.enabled === false) return null

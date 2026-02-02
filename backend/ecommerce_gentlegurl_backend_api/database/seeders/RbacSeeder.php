@@ -81,7 +81,7 @@ class RbacSeeder extends Seeder
             'ecommerce.products' => ['view', 'create', 'update', 'delete'],
             'ecommerce.shop-menu' => ['view', 'create', 'update', 'delete'],
             'ecommerce.services-menu' => ['view', 'create', 'update', 'delete'],
-            'ecommerce.services-pages' => ['view', 'create', 'update', 'delete'],
+            'ecommerce.services-pages' => ['view', 'create', 'update', 'delete', 'preview'],
             'ecommerce.marquees' => ['view', 'create', 'update', 'delete'],
             'ecommerce.sliders' => ['view', 'create', 'update', 'delete'],
             'ecommerce.stores' => ['view', 'create', 'update', 'delete'],
