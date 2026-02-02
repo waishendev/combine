@@ -30,5 +30,42 @@ export default async function ServicesPagePreviewPage({
     redirect('/services-pages')
   }
 
-  return <PreviewClient menuId={numericMenuId} />
+  return (
+    <>
+      <PreviewClient menuId={numericMenuId} />
+      <style jsx global>{`
+        .mobile-preview-container {
+          position: relative;
+          border-radius: 28px;
+          border-color: rgba(15, 23, 42, 0.12);
+          box-shadow: 0 30px 70px -45px rgba(15, 23, 42, 0.35), 0 18px 40px -30px rgba(15, 23, 42, 0.25);
+          overflow: visible !important;
+          background: rgba(255, 255, 255, 0.9);
+        }
+
+        .mobile-preview-container::before {
+          content: '';
+          position: absolute;
+          inset: -12px;
+          border-radius: 36px;
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          box-shadow: 0 8px 28px rgba(15, 23, 42, 0.2);
+          pointer-events: none;
+        }
+
+        .mobile-preview-container::after {
+          content: '';
+          position: absolute;
+          top: 10px;
+          left: 50%;
+          width: 84px;
+          height: 7px;
+          transform: translateX(-50%);
+          border-radius: 9999px;
+          background: rgba(15, 23, 42, 0.12);
+          pointer-events: none;
+        }
+      `}</style>
+    </>
+  )
 }
