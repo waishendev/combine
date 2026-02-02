@@ -17,7 +17,7 @@ export default function PreviewLayout({ children }: { children: ReactNode }) {
   }, [theme])
 
   return (
-    <div className="preview-root min-h-screen overflow-y-auto bg-[var(--background-soft)]/70 text-[var(--foreground)]">
+    <div className="preview-root min-h-screen overflow-y-auto bg-[var(--background-soft)] text-[var(--foreground)]">
       {children}
     </div>
   )

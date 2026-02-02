@@ -68,7 +68,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
 
   const previewContainerClass = useMemo(() => {
     if (mode === 'mobile') {
-      return 'mx-auto w-full max-w-[420px] overflow-hidden rounded-[32px] border border-black/10 bg-white shadow-xl mobile-preview-container'
+      return 'mx-auto w-full max-w-[420px] overflow-hidden rounded-[32px] border border-black/10 bg-[var(--background-soft)]/70 shadow-xl mobile-preview-container'
     }
     return 'w-full'
   }, [mode])
@@ -118,7 +118,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background-soft)">
+    <div className="min-h-screen bg-[var(--background-soft)]/70">
       <div className={previewToolbarClass}>
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div>
