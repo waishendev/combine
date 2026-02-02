@@ -1026,8 +1026,7 @@ export default function ServicesPagesEditor({
                     type="button"
                     onClick={addSlide}
                     disabled={!canUpdate}
-                    className="inline-flex items-center gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
-                  >
+                    className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
                     <i className="fa-solid fa-plus" />
                     Add slide
                   </button>
@@ -1312,8 +1311,7 @@ export default function ServicesPagesEditor({
                   type="button"
                   onClick={addGalleryItem}
                   disabled={!canUpdate || page.sections.gallery.items.length >= 16}
-                  className="inline-flex items-center gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
-                >
+                  className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
                   <i className="fa-solid fa-plus" />
                   Add image
                 </button>
@@ -1496,16 +1494,16 @@ export default function ServicesPagesEditor({
           <div className="flex items-center justify-end gap-2">
             {canPreview ? (
               <button
-                type="button"
-                onClick={handlePreview}
-                disabled={!page || loadingPage}
-                className="inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <i className="fa-solid fa-eye" />
-                Preview
-              </button>
+              type="button"
+              onClick={handlePreview}
+              disabled={!page || loadingPage}
+              className="inline-flex items-center gap-2 rounded border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <i className="fa-solid fa-eye" />
+              Preview
+            </button>
             ) : (
-              <span className="text-xs text-gray-400">Preview access required.</span>
+             null
             )}
             <button
               type="button"
@@ -1685,8 +1683,7 @@ function EditableList<T>({
         type="button"
         onClick={onAdd}
         disabled={!canUpdate}
-        className="inline-flex items-center mt-2 gap-2 rounded border border-dashed border-blue-300 px-3 py-2 text-xs font-medium text-blue-700 hover:border-blue-400 hover:text-blue-800 disabled:opacity-50"
-      >
+        className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
         <i className="fa-solid fa-plus" />
         Add item
       </button>
