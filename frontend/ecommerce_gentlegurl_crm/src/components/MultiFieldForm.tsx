@@ -114,7 +114,7 @@ export default function MultiFieldForm({
     }
 
     try {
-      const res = await fetch('/api/proxy/ecommerce/products/bulk', {
+      const res = await fetch('/api/proxy/v1/products/bulk', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
