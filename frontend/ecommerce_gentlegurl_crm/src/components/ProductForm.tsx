@@ -1835,7 +1835,7 @@ export default function ProductForm({
         if (!bundle.name.trim() || !bundle.sku.trim() || !bundle.price) {
           return true
         }
-        if (bundle.bundleItems.length < 2) {
+        if (bundle.bundleItems.length < 1) {
           return true
         }
         const componentKeys = new Set<string>()
