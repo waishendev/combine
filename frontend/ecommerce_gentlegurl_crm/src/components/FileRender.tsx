@@ -1,5 +1,4 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { Switch } from '@headlessui/react'
 import CustomDateTimePicker from './CustomDateTimePicker'
 
 export type FieldType = 'number' | 'boolean' | 'time' | 'select' | 'datetime' | 'discount'
@@ -36,19 +35,15 @@ export default function FieldRenderer({
     return (
       <div className="flex flex-col items-start gap-4">
         <span className="text-sm">{field.label}</span>
-        <Switch
-          checked={!!value}
-          onChange={onChange}
-          className={`${
-            value ? 'bg-green-500' : 'bg-gray-300'
-          } relative inline-flex h-6 w-11 items-center rounded-full`}
-        >
-          <span
-            className={`${
-              value ? 'translate-x-6' : 'translate-x-1'
-            } inline-block h-4 w-4 transform rounded-full bg-white transition`}
+        <label className="inline-flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={!!value}
+            onChange={(event) => onChange(event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-emerald-600"
           />
-        </Switch>
+          <span className="text-xs text-gray-500">{value ? 'Yes' : 'No'}</span>
+        </label>
       </div>
     )
   }

@@ -88,6 +88,9 @@ interface ProductRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  showSelection?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (product: ProductRowData, selected: boolean) => void
   onEdit?: (product: ProductRowData) => void
   onDelete?: (product: ProductRowData) => void
 }
@@ -98,6 +101,9 @@ export default function ProductRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  showSelection = false,
+  isSelected = false,
+  onToggleSelect,
   onEdit,
   onDelete,
 }: ProductRowProps) {
@@ -130,6 +136,17 @@ export default function ProductRow({
 
   return (
     <tr className="text-sm">
+      {showSelection && (
+        <td className="px-4 py-2 border border-gray-200">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 text-blue-600"
+            checked={isSelected}
+            onChange={(event) => onToggleSelect?.(product, event.target.checked)}
+            aria-label={`Select ${product.name}`}
+          />
+        </td>
+      )}
       <td className="px-4 py-2 border border-gray-200">
         <div className="flex items-center gap-3">
           {mainImage?.url ? (

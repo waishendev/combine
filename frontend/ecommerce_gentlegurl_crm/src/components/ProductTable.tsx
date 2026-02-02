@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
@@ -11,6 +11,7 @@ import ProductRow, { type ProductRowData } from './ProductRow'
 import { ProductFilterValues, emptyProductFilters } from './ProductFilters'
 import ProductFiltersWrapper from './ProductFiltersWrapper'
 import { mapProductApiItemToRow, type ProductApiItem } from './productUtils'
+import BulkUpdateModal from './BulkUpdateModal'
 import { useI18n } from '@/lib/i18n'
 
 interface ProductTableProps {
@@ -58,6 +59,8 @@ export default function ProductTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [sortColumn, setSortColumn] = useState<keyof ProductRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false)
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
     last_page: 1,
@@ -72,92 +75,102 @@ export default function ProductTable({
   const canDelete = permissions.includes('ecommerce.products.delete')
   const showActions = canUpdate || canDelete
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const fetchProducts = async () => {
-      setLoading(true)
-      try {
-        const qs = new URLSearchParams()
-        qs.set('page', String(currentPage))
-        qs.set('per_page', String(pageSize))
-        if (filters.search) qs.set('name', filters.search)
-        if (filters.sku) qs.set('sku', filters.sku)
-        if (filters.status) {
-          qs.set('is_active', filters.status === 'active' ? 'true' : 'false')
-        }
-        if (rewardOnly) {
-          qs.set('is_reward_only', 'true')
-        }
+  const fetchProducts = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams()
+      qs.set('page', String(currentPage))
+      qs.set('per_page', String(pageSize))
+      if (filters.search) qs.set('name', filters.search)
+      if (filters.sku) qs.set('sku', filters.sku)
+      if (filters.status) {
+        qs.set('is_active', filters.status === 'active' ? 'true' : 'false')
+      }
+      if (rewardOnly) {
+        qs.set('is_reward_only', 'true')
+      }
 
-        const res = await fetch(`/api/proxy/ecommerce/products?${qs.toString()}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
+      const res = await fetch(`/api/proxy/ecommerce/products?${qs.toString()}`, {
+        cache: 'no-store',
+        signal,
+      })
 
-        if (!res.ok) {
-          setRows([])
-          setMeta((prev) => ({ ...prev, total: 0 }))
-          return
-        }
+      if (!res.ok) {
+        setRows([])
+        setMeta((prev) => ({ ...prev, total: 0 }))
+        return
+      }
 
-        const response: ProductApiResponse = await res.json().catch(() => ({} as ProductApiResponse))
-        if (response?.success === false && response?.message === 'Unauthorized') {
-          window.location.replace('/dashboard')
-          return
-        }
+      const response: ProductApiResponse = await res.json().catch(() => ({} as ProductApiResponse))
+      if (response?.success === false && response?.message === 'Unauthorized') {
+        window.location.replace('/dashboard')
+        return
+      }
 
-        let productItems: ProductApiItem[] = []
-        let paginationData: Partial<Meta> = {}
+      let productItems: ProductApiItem[] = []
+      let paginationData: Partial<Meta> = {}
 
-        if (response?.data) {
-          if (Array.isArray(response.data)) {
-            productItems = response.data
-          } else if (typeof response.data === 'object' && 'data' in response.data) {
-            const nestedData = response.data as {
-              data?: ProductApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            productItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
+      if (response?.data) {
+        if (Array.isArray(response.data)) {
+          productItems = response.data
+        } else if (typeof response.data === 'object' && 'data' in response.data) {
+          const nestedData = response.data as {
+            data?: ProductApiItem[]
+            current_page?: number
+            last_page?: number
+            per_page?: number
+            total?: number
+          }
+          productItems = Array.isArray(nestedData.data) ? nestedData.data : []
+          paginationData = {
+            current_page: nestedData.current_page,
+            last_page: nestedData.last_page,
+            per_page: nestedData.per_page,
+            total: nestedData.total,
           }
         }
-
-        if (response?.meta) {
-          paginationData = { ...paginationData, ...response.meta }
-        }
-
-        const list = productItems.map((item) => mapProductApiItemToRow(item))
-
-        setRows(list)
-        setMeta({
-          current_page: Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setRows([])
-          setMeta((prev) => ({ ...prev, total: 0 }))
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false)
-        }
       }
-    }
 
-    fetchProducts()
+      if (response?.meta) {
+        paginationData = { ...paginationData, ...response.meta }
+      }
+
+      const list = productItems.map((item) => mapProductApiItemToRow(item))
+
+      setRows(list)
+      setMeta({
+        current_page: Number(paginationData.current_page ?? currentPage) || 1,
+        last_page: Number(paginationData.last_page ?? 1) || 1,
+        per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
+        total: Number(paginationData.total ?? list.length) || list.length,
+      })
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        setRows([])
+        setMeta((prev) => ({ ...prev, total: 0 }))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [currentPage, filters, pageSize, rewardOnly])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchProducts(controller.signal)
     return () => controller.abort()
-  }, [filters, currentPage, pageSize, rewardOnly])
+  }, [fetchProducts])
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set<number>()
+      rows.forEach((row) => {
+        if (prev.has(row.id)) {
+          next.add(row.id)
+        }
+      })
+      return next
+    })
+  }, [rows])
 
   const handleSort = (column: keyof ProductRowData) => {
     if (sortColumn === column) {
@@ -239,7 +252,52 @@ export default function ProductTable({
     { key: 'stock', label: 'Stock' },
     { key: 'isActive', label: t('common.status') },
   ] as const
-  const colCount = columns.length + (showActions ? 1 : 0)
+  const showSelection = canUpdate
+  const colCount = columns.length + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
+
+  const visibleRowIds = useMemo(() => sortedRows.map((row) => row.id), [sortedRows])
+  const allVisibleSelected =
+    visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedIds.has(id))
+  const hasSelection = selectedIds.size > 0
+
+  const handleToggleSelectAll = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        visibleRowIds.forEach((id) => next.add(id))
+      } else {
+        visibleRowIds.forEach((id) => next.delete(id))
+      }
+      return next
+    })
+  }
+
+  const handleToggleSelect = (product: ProductRowData, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        next.add(product.id)
+      } else {
+        next.delete(product.id)
+      }
+      return next
+    })
+  }
+
+  const selectedProducts = useMemo(() => {
+    const selectedMap = new Set(selectedIds)
+    return rows
+      .filter((row) => selectedMap.has(row.id))
+      .map((row) => {
+        const mainImage = row.images.find((image) => image.isMain) ?? row.images[0]
+        return {
+          id: row.id,
+          name: row.name,
+          stock: row.stock,
+          thumbnail_url: mainImage?.url,
+        }
+      })
+  }, [rows, selectedIds])
 
   const totalPages = meta.last_page || 1
 
@@ -310,6 +368,14 @@ export default function ProductTable({
 
   return (
     <div>
+      {isBulkUpdateOpen && (
+        <BulkUpdateModal
+          show={isBulkUpdateOpen}
+          onClose={() => setIsBulkUpdateOpen(false)}
+          selectedProducts={selectedProducts}
+          fetchProducts={() => fetchProducts()}
+        />
+      )}
       {isFilterModalOpen && (
         <ProductFiltersWrapper
           inputs={inputs}
@@ -341,6 +407,17 @@ export default function ProductTable({
             <i className="fa-solid fa-filter" />
             {t('common.filter')}
           </button>
+
+          {showSelection && (
+            <button
+              className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+              onClick={() => setIsBulkUpdateOpen(true)}
+              disabled={!hasSelection}
+            >
+              <i className="fa-solid fa-pen-to-square" />
+              Bulk Update
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -367,6 +444,17 @@ export default function ProductTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {showSelection && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                    checked={allVisibleSelected}
+                    onChange={(event) => handleToggleSelectAll(event.target.checked)}
+                    aria-label="Select all products on this page"
+                  />
+                </th>
+              )}
               {columns.map(({ key, label }) => (
                 <th
                   key={key}
@@ -404,6 +492,9 @@ export default function ProductTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  showSelection={showSelection}
+                  isSelected={selectedIds.has(product.id)}
+                  onToggleSelect={handleToggleSelect}
                   onEdit={() => {
                     if (canUpdate) {
                       router.push(`${basePath}/${product.id}/edit`)

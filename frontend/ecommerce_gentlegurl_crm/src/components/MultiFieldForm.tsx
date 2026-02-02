@@ -19,14 +19,12 @@ interface Product {
 
 interface Props {
   selectedProducts: Product[]
-  userToken?: string
   onClose: () => void
   fetchProducts: () => void
 }
 
 export default function MultiFieldForm({
   selectedProducts,
-  userToken,
   onClose,
   fetchProducts,
 }: Props) {
@@ -116,17 +114,13 @@ export default function MultiFieldForm({
     }
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/products/bulk`,
-        {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${userToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
+      const res = await fetch('/api/proxy/ecommerce/products/bulk', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      )
+        body: JSON.stringify(payload),
+      })
 
       if (!res.ok) {
         const json = await res.json()

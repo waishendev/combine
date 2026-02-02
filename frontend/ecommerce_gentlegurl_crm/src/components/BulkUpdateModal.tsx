@@ -1,28 +1,26 @@
-import { resolveImageUrl } from "@/utils/resolveImageUrl";
-import MultiFieldForm from "./MultiFieldForm";
+import { resolveImageUrl } from '@/utils/resolveImageUrl'
+import MultiFieldForm from './MultiFieldForm'
 
 interface Product {
-  id: number;
-  name: string;
-  en_name?: string;
-  stock: number;
-  thumbnail_url?: string;
-  selected?: boolean;
+  id: number
+  name: string
+  en_name?: string
+  stock: number
+  thumbnail_url?: string
+  selected?: boolean
 }
 
 interface BulkUpdateModalProps {
-  show: boolean;
-  onClose: () => void;
-  selectedProducts: Product[];
-  userToken: string | undefined;
-  fetchProducts: () => void;
+  show: boolean
+  onClose: () => void
+  selectedProducts: Product[]
+  fetchProducts: () => void
 }
 
 export default function BulkUpdateModal({
   show,
   onClose,
   selectedProducts,
-  userToken,
   fetchProducts,
 }: BulkUpdateModalProps) {
   return show ? (
@@ -35,7 +33,7 @@ export default function BulkUpdateModal({
           {selectedProducts.map((p) => (
             <div key={p.id} className="flex items-start gap-3 mb-3">
               <img
-                src={resolveImageUrl(p.thumbnail_url || "/images/noimage.jpg")}
+                src={resolveImageUrl(p.thumbnail_url || '/images/noimage.jpg')}
                 alt={p.name}
                 className="w-10 h-10 object-cover rounded"
               />
@@ -52,11 +50,10 @@ export default function BulkUpdateModal({
         {/* ✅ 表单区域 */}
         <MultiFieldForm
           selectedProducts={selectedProducts}
-          userToken={userToken}
           onClose={onClose}
           fetchProducts={fetchProducts}
         />
       </div>
     </div>
-  ) : null;
+  ) : null
 }
