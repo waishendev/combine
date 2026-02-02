@@ -167,7 +167,6 @@ export default function MultiFieldForm({
       }
       fetchProducts()
       onSuccess()
-      onClose()
     } catch (err) {
       setErrorMessages(['An unknown error occurred'])
     }

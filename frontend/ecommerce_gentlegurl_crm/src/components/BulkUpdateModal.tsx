@@ -69,7 +69,10 @@ export default function BulkUpdateModal({
             </p>
             <button
               type="button"
-              onClick={() => setShowSuccess(false)}
+              onClick={() => {
+                setShowSuccess(false)
+                onClose()
+              }}
               className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
             >
               OK
