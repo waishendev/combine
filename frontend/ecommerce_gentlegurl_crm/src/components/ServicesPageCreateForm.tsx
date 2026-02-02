@@ -3,6 +3,9 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
+import ServicesMenuCreateModal from './ServicesMenuCreateModal'
+import type { ServicesMenuRowData } from './ServicesMenuRow'
+
 type ServicesMenuItem = {
   id: number
   name: string
@@ -30,12 +33,14 @@ function normalizeMenuItems(response: ApiResponse): ServicesMenuItem[] {
 export default function ServicesPageCreateForm({ permissions }: { permissions: string[] }) {
   const router = useRouter()
   const canCreate = permissions.includes('ecommerce.services-pages.create')
+  const canCreateMenu = permissions.includes('ecommerce.services-menu.create')
 
   const [menuItems, setMenuItems] = useState<ServicesMenuItem[]>([])
   const [menuId, setMenuId] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -97,23 +102,58 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
     router.push(`/services-pages/${selectedMenu.id}`)
   }
 
+  const handleServicesMenuCreated = (servicesMenu: ServicesMenuRowData) => {
+    setMenuItems((prev) => [
+      {
+        id: servicesMenu.id,
+        name: servicesMenu.name,
+        slug: servicesMenu.slug,
+        sort_order: servicesMenu.sortOrder ?? 0,
+        is_active: servicesMenu.isActive,
+        page: null,
+      },
+      ...prev,
+    ])
+    setMenuId(String(servicesMenu.id))
+    setError(null)
+  }
+
   if (loading) {
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading services menus...</div>
   }
 
-  if (!availableMenus.length) {
-    return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-        All Services Menu items already have pages. Create a new menu item first.
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
+      {isCreateModalOpen && (
+        <ServicesMenuCreateModal
+          onClose={() => setIsCreateModalOpen(false)}
+          onSuccess={(servicesMenu) => {
+            setIsCreateModalOpen(false)
+            handleServicesMenuCreated(servicesMenu)
+          }}
+        />
+      )}
       <div>
         <h3 className="text-base font-semibold text-gray-900">Create Services Page</h3>
         <p className="text-xs text-gray-500">You must select a Services Menu item before continuing.</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {canCreateMenu && (
+          <button
+            type="button"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+            onClick={() => setIsCreateModalOpen(true)}
+          >
+            <i className="fa-solid fa-plus" />
+            Create Services Menu
+          </button>
+        )}
+        {!availableMenus.length && (
+          <span className="text-xs text-amber-700">
+            All Services Menu items already have pages. Create a new menu item first.
+          </span>
+        )}
       </div>
 
       <label className="space-y-1 text-sm text-gray-700">
@@ -122,7 +162,7 @@ export default function ServicesPageCreateForm({ permissions }: { permissions: s
           value={menuId}
           onChange={(e) => setMenuId(e.target.value)}
           className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={!canCreate || saving}
+          disabled={!canCreate || saving || !availableMenus.length}
         >
           <option value="">Select a services menu...</option>
           {availableMenus.map((item) => (
