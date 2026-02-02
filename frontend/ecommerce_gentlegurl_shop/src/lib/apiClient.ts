@@ -376,7 +376,9 @@ async function apiRequest<T>(path: string, method: HttpMethod, options: ApiReque
   if (includeSessionToken) {
     const token = getOrCreateSessionToken();
     if (token) {
-      if (isGetRequest) {
+      const shouldUseQuery =
+        isGetRequest || (method === "DELETE" && jsonBody === undefined && body === undefined);
+      if (shouldUseQuery) {
         url.searchParams.set("session_token", token);
       } else if (jsonBody && typeof jsonBody === "object" && !Array.isArray(jsonBody)) {
         jsonBody = { ...(jsonBody as Record<string, unknown>), session_token: token };
