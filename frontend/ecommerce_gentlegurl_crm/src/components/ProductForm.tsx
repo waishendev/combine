@@ -1884,16 +1884,17 @@ export default function ProductForm({
             bundleItems: [],
           }
         }
-        const nextItems = variants
+        const nextItems: BundleItemFormValue[] = variants
           .map((variant, variantIdx) => {
             const variantKey = getVariantKey(variant)
             if (!variantKey) return null
-            return {
+            const item: BundleItemFormValue = {
               componentVariantId: variant.id ?? null,
               componentSku: variant.id ? undefined : variant.sku,
               quantity: '1',
               sortOrder: variantIdx,
             }
+            return item
           })
           .filter((item): item is BundleItemFormValue => item !== null)
 
