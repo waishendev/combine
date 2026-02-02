@@ -67,10 +67,20 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
 
   const previewContainerClass = useMemo(() => {
     if (mode === 'mobile') {
-      return 'mx-auto w-full max-w-[420px] overflow-hidden rounded-[32px] border border-[var(--card-border)] bg-white shadow-xl'
+      return 'mx-auto w-full max-w-[420px] overflow-hidden rounded-[32px] border border-black/10 bg-white shadow-xl'
     }
     return 'w-full'
   }, [mode])
+
+  const previewWrapperClass = useMemo(() => {
+    if (mode === 'mobile') {
+      return 'mx-auto w-full max-w-full px-0 py-8'
+    }
+    return 'mx-auto w-full max-w-6xl px-4 py-8'
+  }, [mode])
+
+  const previewToolbarClass =
+    'sticky top-0 z-30 border-b border-black/10 bg-white text-black backdrop-blur'
 
   if (error) {
     return (
@@ -108,21 +118,21 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
 
   return (
     <div className="min-h-screen bg-[var(--background-soft)]">
-      <div className="sticky top-0 z-30 border-b border-[var(--card-border)] bg-[var(--background)]/90 backdrop-blur">
+      <div className={previewToolbarClass}>
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-[var(--text-muted)]">Preview</p>
-            <h1 className="text-lg font-semibold text-[var(--foreground)]">{previewData.title}</h1>
+            <p className="text-xs uppercase tracking-wide text-black/70">Preview</p>
+            <h1 className="text-lg font-semibold text-black">{previewData.title}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center rounded-lg border border-[var(--card-border)] bg-white p-1">
+            <div className="inline-flex items-center rounded-lg border border-black/10 bg-white p-1">
               <button
                 type="button"
                 onClick={() => setMode('desktop')}
                 className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition ${
                   mode === 'desktop'
-                    ? 'bg-[var(--foreground)] text-white'
-                    : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
+                    ? 'bg-black text-white'
+                    : 'text-black/70 hover:text-black'
                 }`}
               >
                 <i className="fa-solid fa-desktop" />
@@ -133,8 +143,8 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
                 onClick={() => setMode('mobile')}
                 className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition ${
                   mode === 'mobile'
-                    ? 'bg-[var(--foreground)] text-white'
-                    : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
+                    ? 'bg-black text-white'
+                    : 'text-black/70 hover:text-black'
                 }`}
               >
                 <i className="fa-solid fa-mobile-screen" />
@@ -143,7 +153,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
             </div>
             <Link
               href={`/services-pages/${menuId}`}
-              className="inline-flex items-center gap-2 rounded border border-[var(--card-border)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--background-soft)]"
+              className="inline-flex items-center gap-2 rounded border border-black/20 px-3 py-2 text-xs font-semibold text-black transition hover:bg-black/5"
             >
               <i className="fa-solid fa-pen" />
               Back to editor
@@ -152,7 +162,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
         </div>
       </div>
       <PreviewHeader />
-      <div className="mx-auto w-full max-w-6xl px-4 py-8">
+      <div className={previewWrapperClass}>
         <div className={previewContainerClass}>
           <ServicesPageLayout
             title={previewData.title}
