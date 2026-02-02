@@ -38,29 +38,29 @@ class RoleController extends Controller
         );
     }
 
-    public function indexAll(Request $request)
-    {
-        $query = Role::query();
+    // public function indexAll(Request $request)
+    // {
+    //     $query = Role::query();
 
-        if ($request->has('is_active')) {
-            $query->where(
-                'is_active',
-                $request->boolean('is_active')
-            );
-        }
+    //     if ($request->has('is_active')) {
+    //         $query->where(
+    //             'is_active',
+    //             $request->boolean('is_active')
+    //         );
+    //     }
 
-        if ($request->filled('name')) {
-            $query->where('name', 'like', '%' . $request->input('name') . '%');
-        }
+    //     if ($request->filled('name')) {
+    //         $query->where('name', 'like', '%' . $request->input('name') . '%');
+    //     }
 
-        if ($request->boolean('showPermission', true)) {
-            $query->with('permissions');
-        }
+    //     if ($request->boolean('showPermission', true)) {
+    //         $query->with('permissions');
+    //     }
 
-        return $this->respond(
-            $query->paginate($request->integer('per_page', 15))
-        );
-    }
+    //     return $this->respond(
+    //         $query->paginate($request->integer('per_page', 15))
+    //     );
+    // }
     
 
     public function store(Request $request)
