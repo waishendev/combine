@@ -595,6 +595,34 @@ export function ServicesPageLayout({
               >
                 <span aria-hidden>✕</span>
               </button>
+              {gallery.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setGalleryLightboxIndex((prev) =>
+                        prev === null ? prev : (prev - 1 + gallery.length) % gallery.length,
+                      )
+                    }
+                    className="absolute left-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
+                    aria-label="Previous image"
+                  >
+                    <i className="fa-solid fa-chevron-left" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setGalleryLightboxIndex((prev) =>
+                        prev === null ? prev : (prev + 1) % gallery.length,
+                      )
+                    }
+                    className="absolute right-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
+                    aria-label="Next image"
+                  >
+                    <i className="fa-solid fa-chevron-right" aria-hidden />
+                  </button>
+                </>
+              )}
 
               <div className="relative aspect-[16/10] w-full overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
                 {gallery.map((image, index) => {
