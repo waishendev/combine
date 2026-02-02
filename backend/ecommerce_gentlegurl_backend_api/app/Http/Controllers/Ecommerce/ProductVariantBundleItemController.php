@@ -46,7 +46,7 @@ class ProductVariantBundleItemController extends Controller
         }
 
         $validated = $request->validate([
-            'items' => ['required', 'array', 'min:2'],
+            'items' => ['required', 'array', 'min:1'],
             'items.*.component_variant_id' => ['required', 'integer', 'exists:product_variants,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.sort_order' => ['nullable', 'integer'],

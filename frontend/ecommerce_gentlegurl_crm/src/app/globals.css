@@ -19,6 +19,16 @@
   animation: marquee 20s linear infinite;
 }
 
+@supports (-webkit-touch-callout: none) {
+  @media (hover: none) and (pointer: coarse) {
+    input,
+    textarea,
+    select,
+    .ios-input {
+      font-size: 16px;
+    }
+  }
+}
 
 body {
   color: var(--foreground);
