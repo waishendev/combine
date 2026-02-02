@@ -604,10 +604,10 @@ export function ServicesPageLayout({
                         prev === null ? prev : (prev - 1 + gallery.length) % gallery.length,
                       )
                     }
-                    className="absolute left-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
+                    className="absolute left-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
                     aria-label="Previous image"
                   >
-                    <span aria-hidden>←</span>
+                    <i className="fa-solid fa-chevron-left" aria-hidden />
                   </button>
                   <button
                     type="button"
@@ -616,10 +616,10 @@ export function ServicesPageLayout({
                         prev === null ? prev : (prev + 1) % gallery.length,
                       )
                     }
-                    className="absolute right-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
+                    className="absolute right-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
                     aria-label="Next image"
                   >
-                    <span aria-hidden>→</span>
+                    <i className="fa-solid fa-chevron-right" aria-hidden />
                   </button>
                 </>
               )}
