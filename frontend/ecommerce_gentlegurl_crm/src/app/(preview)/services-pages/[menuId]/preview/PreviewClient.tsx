@@ -69,7 +69,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
 
   const previewContainerClass = useMemo(() => {
     if (isMobile) {
-      return 'mx-auto w-full max-w-[375px] overflow-hidden rounded-[32px] border border-black/10 bg-[var(--background-soft)]/70 shadow-xl mobile-preview-container'
+      return 'mx-auto w-full max-w-[375px] overflow-hidden rounded-[32px] border border-black/10 shadow-xl mobile-preview-container'
     }
     return 'w-full'
   }, [isMobile])

@@ -40,7 +40,7 @@ export default async function ServicesPagePreviewPage({
           border-radius: 32px;
           border: 2px solid rgba(226, 232, 240, 0.6);
           box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35);
-          background: rgba(248, 250, 252, 0.9);
+          background: var(--background-soft) !important;
           padding-top: 40px;
           overflow: visible !important;
         }
