@@ -65,6 +65,24 @@ export function getPrimaryProductImage(
   source: ProductMediaSource,
   options: { allowVideoPoster?: boolean } = {},
 ): string {
+  const mediaImages = source.media?.filter((item) => item.type === "image") ?? [];
+  if (mediaImages.length > 0) {
+    const sorted = sortByOrder(mediaImages);
+    const url = normalizeMediaUrl(sorted[0]?.url ?? sorted[0]?.image_path ?? null);
+    if (url) {
+      return url;
+    }
+  }
+
+  const images = source.images ?? [];
+  if (images.length > 0) {
+    const sorted = sortByOrder(images);
+    const url = normalizeMediaUrl(sorted[0]?.url ?? sorted[0]?.image_path ?? null);
+    if (url) {
+      return url;
+    }
+  }
+
   const direct =
     source.cover_image_url ??
     source.product_image ??
@@ -74,22 +92,6 @@ export function getPrimaryProductImage(
 
   if (direct) {
     return resolveLegacyImage(direct) || PLACEHOLDER_IMAGE;
-  }
-
-  const mediaImages =
-    source.media?.filter((item) => item.type === "image") ?? [];
-
-  if (mediaImages.length > 0) {
-    const sorted = sortByOrder(mediaImages);
-    const url = normalizeMediaUrl(sorted[0]?.url ?? sorted[0]?.image_path ?? null);
-    return url || PLACEHOLDER_IMAGE;
-  }
-
-  const images = source.images ?? [];
-  if (images.length > 0) {
-    const sorted = sortByOrder(images);
-    const url = normalizeMediaUrl(sorted[0]?.url ?? sorted[0]?.image_path ?? null);
-    return url || PLACEHOLDER_IMAGE;
   }
 
   if (options.allowVideoPoster !== false) {
