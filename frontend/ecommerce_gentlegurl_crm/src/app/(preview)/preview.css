@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-[data-theme="soft"] {
+:root[data-theme="soft"] {
   --background: #fff8f5;
   --background-soft: #ffeef3;
   --some-button: #ffeef3;
@@ -45,7 +45,7 @@
     }
   }
 }
-[data-theme="cream"] {
+:root[data-theme="cream"] {
   --background: #f0dfd5;
   --badge-background: #f0dfd5;
   --background-soft: #fefbe8;
@@ -80,7 +80,7 @@
   --myorder-background: #fffdf1;
 }
 
-.preview-root {
+body {
   color: var(--foreground);
   font-family: "Inter", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: radial-gradient(circle at 15% 20%, rgba(var(--accent-rgb), 0.25), transparent 26%),
@@ -88,15 +88,152 @@
     radial-gradient(circle at 20% 75%, rgba(var(--background-soft-rgb), 0.8), transparent 32%),
     var(--background);
   min-height: 100vh;
-}
-
-html,
-body {
   height: 100%;
+  overflow: auto !important;
 }
 
-body {
-  overflow: auto !important;
+.preview-root {
+  min-height: 100vh;
+}
+
+/* Force mobile styles inside mobile preview container */
+/* This simulates a mobile viewport by overriding responsive breakpoints */
+.mobile-preview-container {
+  /* Create a mobile viewport context */
+  contain: layout style;
+}
+
+/* Override responsive breakpoints - force mobile layout regardless of screen size */
+/* sm: breakpoint (640px) - force mobile styles */
+@media (min-width: 640px) {
+  .mobile-preview-container .sm\:text-3xl {
+    font-size: 1.5rem !important; /* Keep text-2xl */
+  }
+  
+  .mobile-preview-container .sm\:text-4xl {
+    font-size: 1.875rem !important; /* Keep text-3xl */
+  }
+  
+  .mobile-preview-container .sm\:px-6 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  
+  .mobile-preview-container .sm\:grid-cols-2 {
+    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+  }
+  
+  .mobile-preview-container .sm\:flex-row {
+    flex-direction: column !important;
+  }
+  
+  .mobile-preview-container .sm\:items-center {
+    align-items: flex-start !important;
+  }
+  
+  .mobile-preview-container .sm\:min-h-\[280px\] {
+    min-height: 260px !important;
+  }
+}
+
+/* md: breakpoint (768px) - force mobile styles */
+@media (min-width: 768px) {
+  .mobile-preview-container .md\:min-h-\[420px\] {
+    min-height: 340px !important;
+  }
+  
+  .mobile-preview-container .md\:gap-10 {
+    gap: 2rem !important;
+  }
+  
+  .mobile-preview-container .md\:p-10 {
+    padding: 1.5rem !important;
+  }
+  
+  .mobile-preview-container .md\:hidden {
+    display: block !important; /* Show mobile images */
+  }
+  
+  .mobile-preview-container .md\:block {
+    display: none !important; /* Hide desktop images */
+  }
+  
+  .mobile-preview-container .md\:aspect-\[16\/10\] {
+    aspect-ratio: 4 / 3 !important;
+  }
+}
+
+/* lg: breakpoint (1024px) - force mobile styles */
+@media (min-width: 1024px) {
+  .mobile-preview-container .lg\:px-8 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  
+  .mobile-preview-container .lg\:grid-cols-\[1\.1fr_1fr\] {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .mobile-preview-container .lg\:grid-cols-3 {
+    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+  }
+  
+  .mobile-preview-container .lg\:text-5xl {
+    font-size: 1.875rem !important; /* text-3xl */
+  }
+  
+  .mobile-preview-container .lg\:text-xl {
+    font-size: 1rem !important; /* text-base */
+  }
+  
+  .mobile-preview-container .lg\:order-1 {
+    order: 2 !important;
+  }
+  
+  .mobile-preview-container .lg\:order-2 {
+    order: 1 !important;
+  }
+  
+  .mobile-preview-container .lg\:items-center {
+    align-items: flex-start !important;
+  }
+  
+  .mobile-preview-container .lg\:justify-end {
+    justify-content: center !important;
+  }
+  
+  .mobile-preview-container .lg\:min-h-\[320px\] {
+    min-height: 260px !important;
+  }
+}
+
+/* Footer mobile preview overrides */
+@media (min-width: 768px) {
+  .mobile-preview-container .md\:grid-cols-12 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .mobile-preview-container .md\:col-span-4,
+  .mobile-preview-container .md\:col-span-5,
+  .mobile-preview-container .md\:col-span-3 {
+    grid-column: span 1 / span 1 !important;
+  }
+  
+  .mobile-preview-container .md\:flex-row {
+    flex-direction: column !important;
+  }
+  
+  .mobile-preview-container .md\:items-center {
+    align-items: flex-start !important;
+  }
+  
+  .mobile-preview-container .md\:justify-between {
+    justify-content: flex-start !important;
+  }
+  
+  .mobile-preview-container .md\:text-left {
+    text-align: center !important;
+  }
 }
 
 @keyframes marquee {

@@ -139,10 +139,7 @@ const createEmptyBundle = (sortOrder = 0): BundleFormValue => ({
   trackStock: true,
   stock: '0',
   lowStockThreshold: '0',
-  bundleItems: [
-    { componentVariantId: null, componentSku: undefined, quantity: '1', sortOrder: 0 },
-    { componentVariantId: null, componentSku: undefined, quantity: '1', sortOrder: 1 },
-  ],
+  bundleItems: [],
 })
 
 type RewardFormValues = {
@@ -198,6 +195,31 @@ const resolveComponentVariant = (
   }
   return null
 }
+
+const getVariantKey = (variant: VariantFormValue) => {
+  if (variant.id) return `id:${variant.id}`
+  if (variant.sku) return `sku:${variant.sku}`
+  return null
+}
+
+const getBundleItemKey = (item: BundleItemFormValue) => {
+  if (item.componentVariantId) return `id:${item.componentVariantId}`
+  if (item.componentSku) return `sku:${item.componentSku}`
+  return null
+}
+
+const VARIANT_BULK_FIELDS = [
+  { key: 'price', label: 'Price', type: 'number' },
+  { key: 'costPrice', label: 'Cost Price', type: 'number' },
+  { key: 'discountPercent', label: 'Apply Discount', type: 'discount' },
+  { key: 'salePrice', label: 'Sale Price', type: 'number' },
+  { key: 'salePriceStartAt', label: 'Start At', type: 'datetime' },
+  { key: 'salePriceEndAt', label: 'End At', type: 'datetime' },
+  { key: 'stock', label: 'Stock', type: 'number' },
+  { key: 'lowStockThreshold', label: 'Low Stock Threshold', type: 'number' },
+] as const
+
+type VariantBulkFieldKey = (typeof VARIANT_BULK_FIELDS)[number]['key']
 
 const calculateBundleDerivedQty = (
   bundle: VariantFormValue,
@@ -344,6 +366,10 @@ export default function ProductForm({
   const [collapsedVariants, setCollapsedVariants] = useState<boolean[]>(
     () => Array.from({ length: variants.length }, () => false),
   )
+  const [selectedVariants, setSelectedVariants] = useState<boolean[]>(
+    () => Array.from({ length: variants.length }, () => false),
+  )
+  const [isVariantBulkUpdateOpen, setIsVariantBulkUpdateOpen] = useState(false)
   const [bundles, setBundles] = useState<BundleFormValue[]>(() => {
     if (mode === 'edit' && product?.variants?.length) {
       return product.variants
@@ -392,6 +418,8 @@ export default function ProductForm({
   const [collapsedBundles, setCollapsedBundles] = useState<boolean[]>(
     () => Array.from({ length: bundles.length }, () => false),
   )
+  const [variantBulkFields, setVariantBulkFields] = useState<VariantBulkFieldKey[]>([])
+  const [variantBulkValues, setVariantBulkValues] = useState<Record<string, string>>({})
   const pendingImagesRef = useRef<PendingImageUpload[]>([])
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
   const [draggingType, setDraggingType] = useState<'new' | 'existing' | null>(null)
@@ -468,6 +496,14 @@ export default function ProductForm({
       return next.slice(0, variants.length)
     })
     setCollapsedVariants((prev) => {
+      if (prev.length === variants.length) return prev
+      const next = [...prev]
+      while (next.length < variants.length) {
+        next.push(false)
+      }
+      return next.slice(0, variants.length)
+    })
+    setSelectedVariants((prev) => {
       if (prev.length === variants.length) return prev
       const next = [...prev]
       while (next.length < variants.length) {
@@ -1373,6 +1409,7 @@ export default function ProductForm({
     setCollapsedVariants([])
     setCollapsedBundles([])
     setBundleDiscountPercentInputs([])
+    setSelectedVariants([])
   }
 
   const handleCancel = () => {
@@ -1400,12 +1437,14 @@ export default function ProductForm({
     setVariants((prev) => [...prev, emptyVariant(prev.length)])
     setVariantDiscountPercentInputs((prev) => [...prev, ''])
     setCollapsedVariants((prev) => [...prev, false])
+    setSelectedVariants((prev) => [...prev, false])
   }
 
   const handleRemoveVariant = (index: number) => {
     setVariants((prev) => prev.filter((_, idx) => idx !== index))
     setVariantDiscountPercentInputs((prev) => prev.filter((_, idx) => idx !== index))
     setCollapsedVariants((prev) => prev.filter((_, idx) => idx !== index))
+    setSelectedVariants((prev) => prev.filter((_, idx) => idx !== index))
   }
 
   const handleVariantChange = (
@@ -1572,6 +1611,100 @@ export default function ProductForm({
       next.splice(targetIndex, 0, moved)
       return next
     })
+    setSelectedVariants((prev) => {
+      const next = [...prev]
+      const targetIndex = direction === 'up' ? index - 1 : index + 1
+      if (targetIndex < 0 || targetIndex >= next.length) {
+        return prev
+      }
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+  }
+
+  const selectedVariantCount = selectedVariants.filter(Boolean).length
+  const allVariantsSelected = variants.length > 0 && selectedVariants.every(Boolean)
+
+  const handleToggleVariantSelectAll = (checked: boolean) => {
+    setSelectedVariants(variants.map(() => checked))
+  }
+
+  const handleToggleVariantSelect = (index: number, checked: boolean) => {
+    setSelectedVariants((prev) => prev.map((value, idx) => (idx === index ? checked : value)))
+  }
+
+  const handleToggleVariantBulkField = (key: VariantBulkFieldKey) => {
+    setVariantBulkFields((prev) => {
+      if (prev.includes(key)) {
+        return prev.filter((item) => item !== key)
+      }
+      return [...prev, key]
+    })
+    setVariantBulkValues((prev) => {
+      if (key === 'discountPercent') {
+        return { ...prev, discountPercent: prev.discountPercent ?? '' }
+      }
+      return { ...prev, [key]: prev[key] ?? '' }
+    })
+  }
+
+  const handleVariantBulkValueChange = (key: VariantBulkFieldKey, value: string) => {
+    setVariantBulkValues((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleVariantBulkApplyDiscount = () => {
+    const priceValue = parsePriceValue(variantBulkValues.price ?? '')
+    const percentValue = parsePriceValue(variantBulkValues.discountPercent ?? '')
+    if (!priceValue || percentValue === null) return
+    const clampedPercent = Math.min(Math.max(percentValue, 0), 100)
+    const nextSalePrice = priceValue * (1 - clampedPercent / 100)
+    setVariantBulkValues((prev) => ({
+      ...prev,
+      salePrice: formatPriceValue(Math.max(nextSalePrice, 0)),
+    }))
+  }
+
+  const handleApplyVariantBulkUpdate = () => {
+    if (variantBulkFields.length === 0) {
+      setIsVariantBulkUpdateOpen(false)
+      return
+    }
+    setVariants((prev) =>
+      prev.map((variant, index) => {
+        if (!selectedVariants[index]) return variant
+        let nextVariant = { ...variant }
+        variantBulkFields.forEach((field) => {
+          if (field === 'discountPercent') {
+            const priceValue = parsePriceValue(
+              variantBulkValues.price ? variantBulkValues.price : variant.price,
+            )
+            const percentValue = parsePriceValue(variantBulkValues.discountPercent ?? '')
+            if (!priceValue || percentValue === null) {
+              return
+            }
+            const clampedPercent = Math.min(Math.max(percentValue, 0), 100)
+            const nextSalePrice = priceValue * (1 - clampedPercent / 100)
+            nextVariant = {
+              ...nextVariant,
+              salePrice: formatPriceValue(Math.max(nextSalePrice, 0)),
+            }
+            return
+          }
+
+          const value = variantBulkValues[field]
+          if (value === undefined) return
+          nextVariant = {
+            ...nextVariant,
+            [field]: value,
+          }
+        })
+        return nextVariant
+      }),
+    )
+    setIsVariantBulkUpdateOpen(false)
+    setVariantBulkFields([])
+    setVariantBulkValues({})
   }
 
   const handleAddBundle = () => {
@@ -1698,6 +1831,75 @@ export default function ProductForm({
             ...item,
             sortOrder: itemIdx,
           })),
+        }
+      }),
+    )
+  }
+
+  const handleToggleBundleComponent = (
+    bundleIndex: number,
+    variant: VariantFormValue,
+    checked: boolean,
+  ) => {
+    const variantKey = getVariantKey(variant)
+    if (!variantKey) return
+
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== bundleIndex) return bundle
+        let nextItems = bundle.bundleItems
+        if (checked) {
+          if (!nextItems.some((item) => getBundleItemKey(item) === variantKey)) {
+            nextItems = [
+              ...nextItems,
+              {
+                componentVariantId: variant.id ?? null,
+                componentSku: variant.id ? undefined : variant.sku,
+                quantity: '1',
+                sortOrder: nextItems.length,
+              },
+            ]
+          }
+        } else {
+          nextItems = nextItems.filter((item) => getBundleItemKey(item) !== variantKey)
+        }
+        return {
+          ...bundle,
+          bundleItems: nextItems.map((item, itemIdx) => ({
+            ...item,
+            sortOrder: itemIdx,
+          })),
+        }
+      }),
+    )
+  }
+
+  const handleToggleBundleSelectAll = (bundleIndex: number, checked: boolean) => {
+    setBundles((prev) =>
+      prev.map((bundle, idx) => {
+        if (idx !== bundleIndex) return bundle
+        if (!checked) {
+          return {
+            ...bundle,
+            bundleItems: [],
+          }
+        }
+        const nextItems = variants
+          .map((variant, variantIdx) => {
+            const variantKey = getVariantKey(variant)
+            if (!variantKey) return null
+            return {
+              componentVariantId: variant.id ?? null,
+              componentSku: variant.id ? undefined : variant.sku,
+              quantity: '1',
+              sortOrder: variantIdx,
+            }
+          })
+          .filter((item): item is BundleItemFormValue => item !== null)
+
+        return {
+          ...bundle,
+          bundleItems: nextItems,
         }
       }),
     )
@@ -3256,14 +3458,37 @@ export default function ProductForm({
               <h3 className="text-lg font-semibold text-gray-900">Variants</h3>
               <p className="text-sm text-gray-500 mt-1">Manage variant options, pricing, and stock.</p>
             </div>
-            <button
-              type="button"
-              onClick={handleAddVariant}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 md:w-auto w-full"
-            >
-              <i className="fa-solid fa-plus" />
-              Add Variant
-            </button>
+            <div className="flex flex-col gap-3 md:items-end md:w-auto w-full">
+              <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  checked={allVariantsSelected}
+                  onChange={(event) => handleToggleVariantSelectAll(event.target.checked)}
+                  aria-label="Select all variants"
+                />
+                Select all ({selectedVariantCount})
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddVariant}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 md:w-auto w-full"
+                >
+                  <i className="fa-solid fa-plus" />
+                  Add Variant
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsVariantBulkUpdateOpen(true)}
+                  disabled={selectedVariantCount === 0}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 md:w-auto w-full"
+                >
+                  <i className="fa-solid fa-pen-to-square" />
+                  Bulk Update
+                </button>
+              </div>
+            </div>
           </div>
           {variants.length === 0 && (
             <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
@@ -3292,6 +3517,16 @@ export default function ProductForm({
                   <p className="text-sm font-semibold text-gray-900">Variant #{index + 1}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                      checked={selectedVariants[index] ?? false}
+                      onChange={(event) => handleToggleVariantSelect(index, event.target.checked)}
+                      aria-label={`Select variant ${index + 1}`}
+                    />
+                    Select
+                  </label>
                   <button
                     type="button"
                     onClick={() => handleVariantReorder(index, 'up')}
@@ -3570,6 +3805,155 @@ export default function ProductForm({
         </div>
       )}
 
+      {isVariantBulkUpdateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-lg p-6 w-[90%] max-w-4xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold">Bulk Update Variants</h2>
+              <button
+                type="button"
+                onClick={() => setIsVariantBulkUpdateOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
+                aria-label="Close bulk update"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="border rounded p-3 bg-gray-50 max-h-[150px] overflow-y-auto text-sm text-gray-700">
+              {variants.map((variant, index) =>
+                selectedVariants[index] ? (
+                  <div key={`${variant.sku}-${index}`} className="flex items-center gap-3 mb-2">
+                    <span className="font-medium text-gray-800">
+                      {variant.name || `Variant #${index + 1}`}
+                    </span>
+                    {variant.sku && <span className="text-xs text-gray-500">({variant.sku})</span>}
+                  </div>
+                ) : null,
+              )}
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-md font-semibold text-gray-800 mb-3">
+                  Select Fields to Update{' '}
+                  <span className="text-gray-500">(you can choose more than one)</span>
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {VARIANT_BULK_FIELDS.map((field) => {
+                    const isSelected = variantBulkFields.includes(field.key)
+                    return (
+                      <button
+                        key={field.key}
+                        onClick={() => handleToggleVariantBulkField(field.key)}
+                        type="button"
+                        className={`group flex items-center gap-3 p-4 rounded-xl border transition shadow-sm ${
+                          isSelected
+                            ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300'
+                            : 'bg-white hover:bg-gray-50 border-gray-300'
+                        }`}
+                      >
+                        <div
+                          className={`w-6 h-6 flex items-center justify-center rounded-full text-white text-xs font-bold ${
+                            isSelected ? 'bg-indigo-500' : 'bg-gray-300 group-hover:bg-gray-400'
+                          }`}
+                        >
+                          ✓
+                        </div>
+                        <span className="text-sm font-medium text-gray-800">{field.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {variantBulkFields.map((key) => {
+                  if (key === 'discountPercent') {
+                    return (
+                      <div key={key} className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Apply Discount
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={variantBulkValues.discountPercent ?? ''}
+                            onChange={(event) =>
+                              handleVariantBulkValueChange('discountPercent', event.target.value)
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="%"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleVariantBulkApplyDiscount}
+                            className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  if (key === 'salePriceStartAt' || key === 'salePriceEndAt') {
+                    return (
+                      <div key={key} className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          {key === 'salePriceStartAt' ? 'Start At' : 'End At'}
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={variantBulkValues[key] ?? ''}
+                          onChange={(event) => handleVariantBulkValueChange(key, event.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        />
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div key={key} className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        {VARIANT_BULK_FIELDS.find((field) => field.key === key)?.label}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={variantBulkValues[key] ?? ''}
+                        onChange={(event) => handleVariantBulkValueChange(key, event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsVariantBulkUpdateOpen(false)}
+                  className="px-4 py-2 text-sm border rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyVariantBulkUpdate}
+                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {form.type === 'variant' && showBundles && (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between pb-2 border-b border-gray-100">
@@ -3608,6 +3992,15 @@ export default function ProductForm({
               })
             }
             const derivedQty = calculateBundleDerivedQty(bundle, variants)
+            const selectableVariants = variants.filter((variant) => getVariantKey(variant))
+            const allBundleVariantsSelected =
+              selectableVariants.length > 0 &&
+              selectableVariants.every((variant) => {
+                const key = getVariantKey(variant)
+                return key
+                  ? bundle.bundleItems.some((item) => getBundleItemKey(item) === key)
+                  : false
+              })
 
             return (
               <div key={bundle.id ?? index} className="rounded-lg border border-gray-200 p-4 space-y-4">
@@ -3889,17 +4282,65 @@ export default function ProductForm({
                       </div>
 
                       <div className="space-y-3">
+                        <div className="rounded border border-gray-200 bg-white p-3">
+                          <div className="flex items-center gap-2 text-xs font-medium text-gray-700">
+                            <input
+                              id={`bundle-select-all-${index}`}
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                              checked={allBundleVariantsSelected}
+                              onChange={(event) =>
+                                handleToggleBundleSelectAll(index, event.target.checked)
+                              }
+                              disabled={selectableVariants.length === 0}
+                            />
+                            <label htmlFor={`bundle-select-all-${index}`}>Select all variants</label>
+                          </div>
+                          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {variants.map((variant, variantIndex) => {
+                              const variantKey = getVariantKey(variant)
+                              const isSelected = variantKey
+                                ? bundle.bundleItems.some(
+                                    (item) => getBundleItemKey(item) === variantKey,
+                                  )
+                                : false
+                              return (
+                                <label
+                                  key={variant.id ?? variant.sku ?? variantIndex}
+                                  className={`flex items-center gap-2 rounded border px-3 py-2 text-xs ${
+                                    variantKey
+                                      ? 'border-gray-200 bg-gray-50 text-gray-700'
+                                      : 'border-gray-200 bg-gray-100 text-gray-400'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                                    checked={isSelected}
+                                    onChange={(event) =>
+                                      handleToggleBundleComponent(
+                                        index,
+                                        variant,
+                                        event.target.checked,
+                                      )
+                                    }
+                                    disabled={!variantKey}
+                                  />
+                                  <span className="truncate">
+                                    {variant.name || 'Unnamed variant'}
+                                    {variant.sku ? ` (${variant.sku})` : ''}
+                                  </span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+
                         {bundle.bundleItems.map((item, itemIndex) => {
                           const selectedKeys = new Set(
                             bundle.bundleItems
                               .filter((_, idx) => idx !== itemIndex)
-                              .map((bundleItem) =>
-                                bundleItem.componentVariantId
-                                  ? `id:${bundleItem.componentVariantId}`
-                                  : bundleItem.componentSku
-                                    ? `sku:${bundleItem.componentSku}`
-                                    : '',
-                              )
+                              .map((bundleItem) => getBundleItemKey(bundleItem))
                               .filter(Boolean),
                           )
 

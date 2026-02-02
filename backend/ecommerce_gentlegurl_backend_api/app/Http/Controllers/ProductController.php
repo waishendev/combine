@@ -245,6 +245,66 @@ class ProductController extends Controller
         return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Product updated successfully.'));
     }
 
+    public function bulkUpdate(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:products,id'],
+            'price' => ['nullable', 'numeric', 'gt:0'],
+            'sale_price' => ['nullable', 'numeric', 'gte:0'],
+            'sale_price_start_at' => ['nullable', 'date'],
+            'sale_price_end_at' => ['nullable', 'date'],
+            'cost_price' => ['nullable', 'numeric'],
+            'stock' => ['nullable', 'integer'],
+            'low_stock_threshold' => ['nullable', 'integer'],
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer', 'exists:categories,id'],
+        ]);
+
+        $products = Product::whereIn('id', $validated['ids'])->get();
+        $payload = collect($validated)->except('ids')->toArray();
+
+        foreach ($products as $product) {
+            if (array_key_exists('category_ids', $payload)) {
+                $product->categories()->sync($payload['category_ids'] ?? []);
+            }
+
+            if (array_key_exists('sale_price', $payload)) {
+                $price = array_key_exists('price', $payload)
+                    ? (float) $payload['price']
+                    : (float) $product->price;
+                $salePrice = $payload['sale_price'];
+
+                if ($salePrice !== null && (! $price || (float) $salePrice >= $price)) {
+                    throw ValidationException::withMessages([
+                        'sale_price' => __('Sale price must be less than original price.'),
+                    ])->status(422);
+                }
+            }
+
+            if (
+                array_key_exists('sale_price_start_at', $payload)
+                || array_key_exists('sale_price_end_at', $payload)
+            ) {
+                $startAt = $payload['sale_price_start_at'] ?? $product->sale_price_start_at;
+                $endAt = $payload['sale_price_end_at'] ?? $product->sale_price_end_at;
+
+                if ($startAt && $endAt && Carbon::parse($startAt)->gt(Carbon::parse($endAt))) {
+                    throw ValidationException::withMessages([
+                        'sale_price_start_at' => __('Sale price start must be before end time.'),
+                    ])->status(422);
+                }
+            }
+
+            if (! empty($payload)) {
+                $product->fill(collect($payload)->except('category_ids')->toArray());
+                $product->save();
+            }
+        }
+
+        return $this->respond($products, __('Products updated successfully.'));
+    }
+
     public function destroy(Product $product)
     {
         // 删除产品时，同时删除所有媒体文件

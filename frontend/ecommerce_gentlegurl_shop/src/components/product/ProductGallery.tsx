@@ -208,7 +208,7 @@ export function ProductGallery({
       </div>
 
       {safeMedia.length > 1 && (
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
           {safeMedia.map((item, index) => {
             const isVideo = item.type === "video";
             let thumbnailSrc: string | null = null;

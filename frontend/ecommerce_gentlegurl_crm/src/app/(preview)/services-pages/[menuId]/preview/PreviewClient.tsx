@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { ServicesPageLayout } from '@/components/services/ServicesPageLayout'
 import PreviewHeader from './PreviewHeader'
+import PreviewFooter from './PreviewFooter'
 
 const previewKey = (menuId: number) => `services-page-preview-${menuId}`
 
@@ -67,7 +68,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
 
   const previewContainerClass = useMemo(() => {
     if (mode === 'mobile') {
-      return 'mx-auto w-full max-w-[420px] overflow-hidden rounded-[32px] border border-black/10 bg-white shadow-xl'
+      return 'mx-auto w-full max-w-[420px] overflow-hidden rounded-[32px] border border-black/10 bg-white shadow-xl mobile-preview-container'
     }
     return 'w-full'
   }, [mode])
@@ -84,8 +85,8 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[var(--background-soft)]">
-        <PreviewHeader />
+      <div className="min-h-screen bg-[var(--background-soft)]/70">
+        <PreviewHeader mode={mode} />
         <div className="px-6 py-10">
           <div className="mx-auto max-w-2xl rounded-lg border border-[var(--card-border)] bg-white p-6 shadow-sm">
             <h1 className="text-xl font-semibold text-[var(--foreground)]">Preview unavailable</h1>
@@ -105,8 +106,8 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
 
   if (!previewData) {
     return (
-      <div className="min-h-screen bg-[var(--background-soft)]">
-        <PreviewHeader />
+      <div className="min-h-screen bg-[var(--background-soft)]/70">
+        <PreviewHeader mode={mode} />
         <div className="px-6 py-10">
           <div className="mx-auto max-w-2xl rounded-lg border border-[var(--card-border)] bg-white p-6 shadow-sm">
             <p className="text-sm text-[var(--text-muted)]">Loading preview...</p>
@@ -117,7 +118,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background-soft)]">
+    <div className="min-h-screen bg-[var(--background-soft)">
       <div className={previewToolbarClass}>
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div>
@@ -161,7 +162,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
           </div>
         </div>
       </div>
-      <PreviewHeader />
+      <PreviewHeader mode={mode} />
       <div className={previewWrapperClass}>
         <div className={previewContainerClass}>
           <ServicesPageLayout
@@ -191,6 +192,7 @@ export default function PreviewClient({ menuId }: { menuId: number }) {
           />
         </div>
       </div>
+      <PreviewFooter />
     </div>
   )
 }

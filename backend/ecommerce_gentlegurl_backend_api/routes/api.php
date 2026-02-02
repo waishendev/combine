@@ -342,6 +342,9 @@ $protectedRoutes = function () {
         Route::post('/products', [ProductController::class, 'store'])
             ->middleware('permission:ecommerce.products.create');
 
+        Route::put('/products/bulk', [ProductController::class, 'bulkUpdate'])
+            ->middleware('permission:ecommerce.products.update');
+
         Route::get('/products/{product}', [ProductController::class, 'show'])
             ->middleware('permission:ecommerce.products.view');
 
