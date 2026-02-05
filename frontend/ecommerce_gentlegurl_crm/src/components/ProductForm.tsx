@@ -436,6 +436,8 @@ export default function ProductForm({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
   const metaOgImageFileInputRef = useRef<HTMLInputElement>(null)
+  const videoUploadPromiseRef = useRef<Promise<void> | null>(null)
+  const videoUploadTokenRef = useRef(0)
   const [metaOgImagePreview, setMetaOgImagePreview] = useState<string | null>(null)
   const metaOgImagePreviewRef = useRef<string | null>(null)
   const [previewImage, setPreviewImage] = useState<{
@@ -1307,32 +1309,55 @@ export default function ProductForm({
         })
     })
 
+    let videoUpload: Promise<void> = Promise.resolve()
+
     if (pendingVideo) {
-      setPendingVideo({ ...pendingVideo, status: 'uploading' })
+      if (pendingVideo.status === 'uploading' && videoUploadPromiseRef.current) {
+        videoUpload = videoUploadPromiseRef.current
+      } else {
+        videoUpload = startVideoUpload(pendingVideo, productId)
+      }
     }
 
-    const videoUpload = pendingVideo
-      ? uploadMediaFile(
-          'video',
-          pendingVideo.file,
-          (progress) => {
-            setPendingVideo((prev) => (prev ? { ...prev, progress } : prev))
-          },
-          productId,
-        )
-          .then((response) => {
-            const videoItem = buildVideoFromResponse(response as { data?: unknown })
-            if (videoItem) {
-              setExistingVideo(videoItem)
-            }
-            setPendingVideo(null)
-          })
-          .catch(() => {
-            setPendingVideo((prev) => (prev ? { ...prev, status: 'failed' } : prev))
-          })
-      : Promise.resolve()
-
     await Promise.all([...imageUploads, videoUpload])
+  }
+
+  const startVideoUpload = (video: PendingVideoUpload, productId: number) => {
+    const uploadToken = (videoUploadTokenRef.current += 1)
+    setPendingVideo({ ...video, status: 'uploading', progress: 0 })
+
+    const uploadPromise = uploadMediaFile(
+      'video',
+      video.file,
+      (progress) => {
+        setPendingVideo((prev) => (prev ? { ...prev, progress, status: 'uploading' } : prev))
+      },
+      productId,
+    )
+      .then((response) => {
+        if (videoUploadTokenRef.current !== uploadToken) {
+          return
+        }
+        const videoItem = buildVideoFromResponse(response as { data?: unknown })
+        if (videoItem) {
+          setExistingVideo(videoItem)
+        }
+        setPendingVideo(null)
+      })
+      .catch(() => {
+        if (videoUploadTokenRef.current !== uploadToken) {
+          return
+        }
+        setPendingVideo((prev) => (prev ? { ...prev, status: 'failed' } : prev))
+      })
+      .finally(() => {
+        if (videoUploadTokenRef.current === uploadToken) {
+          videoUploadPromiseRef.current = null
+        }
+      })
+
+    videoUploadPromiseRef.current = uploadPromise
+    return uploadPromise
   }
 
   const handleVideoChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1354,10 +1379,6 @@ export default function ProductForm({
       URL.revokeObjectURL(pendingVideo.preview)
     }
 
-    if (existingVideo) {
-      setExistingVideo(null)
-    }
-
     const newVideo: PendingVideoUpload = {
       file,
       preview: URL.createObjectURL(file),
@@ -1365,16 +1386,22 @@ export default function ProductForm({
       status: 'pending',
     }
 
-    setPendingVideo(newVideo)
+    if (activeProductId) {
+      void startVideoUpload(newVideo, activeProductId)
+    } else {
+      setPendingVideo(newVideo)
+    }
   }
 
   const handleVideoRemove = () => {
+    videoUploadTokenRef.current += 1
+    videoUploadPromiseRef.current = null
     if (pendingVideo?.preview) {
       URL.revokeObjectURL(pendingVideo.preview)
     }
-    setPendingVideo(null)
-
-    if (existingVideo && activeProductId) {
+    if (pendingVideo) {
+      setPendingVideo(null)
+    } else if (existingVideo && activeProductId) {
       void fetch(`/api/proxy/ecommerce/products/${activeProductId}/media/${existingVideo.id}`, {
         method: 'DELETE',
       })
@@ -2815,20 +2842,20 @@ export default function ProductForm({
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="h-30 w-38 overflow-hidden rounded-md bg-gray-100">
-                      {existingVideo ? (
-                        <video
-                          src={existingVideo.url}
-                          className="h-full w-full object-cover"
-                          controls
-                          preload="metadata"
-                        />
-                      ) : pendingVideo ? (
+                      {pendingVideo ? (
                         <video
                           src={pendingVideo.preview}
                           className="h-full w-full object-cover"
                           controls
                           preload="metadata"
                           muted
+                        />
+                      ) : existingVideo ? (
+                        <video
+                          src={existingVideo.url}
+                          className="h-full w-full object-cover"
+                          controls
+                          preload="metadata"
                         />
                       ) : null}
                     </div>
