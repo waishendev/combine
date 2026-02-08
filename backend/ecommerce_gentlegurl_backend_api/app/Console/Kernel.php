@@ -2,7 +2,9 @@
 
 namespace App\Console;
 
+use App\Jobs\SendDailyOrderSummaryEmailJob;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use Illuminate\Console\Scheduling\Schedule;
 
 class Kernel extends ConsoleKernel
 {
@@ -11,6 +13,14 @@ class Kernel extends ConsoleKernel
         Commands\ExpirePendingOrders::class,
         Commands\ExpireApprovedReturns::class,
     ];
+
+    protected function schedule(Schedule $schedule): void
+    {
+        $schedule->job(new SendDailyOrderSummaryEmailJob())
+            ->dailyAt('10:00')
+            ->onOneServer()
+            ->withoutOverlapping();
+    }
 
     protected function commands(): void
     {
