@@ -525,11 +525,19 @@ export default function PosPageContent() {
 
                 <div className="grid max-h-[32rem] grid-cols-1 gap-3 overflow-auto p-3 md:grid-cols-2">
                   {products.map((item, idx) => (
-                    <button
+                    <div
                       key={`${item.id}-${idx}`}
+                      role="button"
+                      tabIndex={0}
                       className={`overflow-hidden rounded-lg border text-left text-sm ${idx === productHighlighted ? 'border-black bg-gray-100' : 'hover:bg-gray-50'}`}
                       onMouseEnter={() => setProductHighlighted(idx)}
                       onClick={() => void onSelectProduct(item)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          void onSelectProduct(item)
+                        }
+                      }}
                     >
                       <div className="aspect-square w-full bg-gray-100">
                         {item.thumbnail_url ? (
@@ -556,7 +564,7 @@ export default function PosPageContent() {
                           </button>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   ))}
 
                   {!productLoading && products.length === 0 && <p className="p-4 text-sm text-gray-500">No products found.</p>}
