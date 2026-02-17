@@ -22,29 +22,37 @@ class PosController extends Controller
     public function memberSearch(Request $request)
     {
         $query = trim((string) $request->query('q', ''));
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
 
-        if ($query === '') {
-            return $this->respond([]);
-        }
+        $builder = Customer::query();
 
-        $members = Customer::query()
-            ->where(function ($builder) use ($query) {
-                $builder->where('name', 'like', "%{$query}%")
+        if ($query !== '') {
+            $builder->where(function ($queryBuilder) use ($query) {
+                $queryBuilder->where('name', 'like', "%{$query}%")
                     ->orWhere('phone', 'like', "%{$query}%")
                     ->orWhere('email', 'like', "%{$query}%")
-                    ->orWhere('id', $query);
-            })
-            ->limit(20)
-            ->get(['id', 'name', 'phone', 'email'])
-            ->map(fn (Customer $member) => [
+                    ->orWhereRaw('CAST(id AS TEXT) = ?', [$query]);
+            });
+        }
+
+        $paginator = $builder
+            ->orderBy('id', 'desc')
+            ->paginate($perPage, ['id', 'name', 'phone', 'email'], 'page', $page);
+
+        return $this->respond([
+            'data' => collect($paginator->items())->map(fn (Customer $member) => [
                 'id' => $member->id,
                 'name' => $member->name,
                 'phone' => $member->phone,
                 'member_code' => (string) $member->id,
                 'email' => $member->email,
-            ]);
-
-        return $this->respond($members);
+            ])->values(),
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+        ]);
     }
 
     public function addByBarcode(Request $request)
@@ -106,9 +114,17 @@ class PosController extends Controller
     public function productSearch(Request $request)
     {
         $query = trim((string) $request->query('q', ''));
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
 
         if ($query === '') {
-            return $this->respond([]);
+            return $this->respond([
+                'data' => [],
+                'current_page' => $page,
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0,
+            ]);
         }
 
         $exact = mb_strtolower($query);
@@ -130,11 +146,10 @@ class PosController extends Controller
             ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND LOWER(p.sku) = ?) THEN 0 ELSE 1 END', [$exact])
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->limit(20)
-            ->get();
+            ->paginate($perPage, ['*'], 'page', $page);
 
-        return $this->respond(
-            $variants->map(function (ProductVariant $variant) {
+        return $this->respond([
+            'data' => collect($variants->items())->map(function (ProductVariant $variant) {
                 $product = $variant->product;
                 $pricing = ProductPricing::build($product, $variant);
 
@@ -146,8 +161,12 @@ class PosController extends Controller
                     'price' => (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
                     'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
                 ];
-            })->values()
-        );
+            })->values(),
+            'current_page' => $variants->currentPage(),
+            'last_page' => $variants->lastPage(),
+            'per_page' => $variants->perPage(),
+            'total' => $variants->total(),
+        ]);
     }
 
     public function updateCartItem(Request $request, int $itemId)

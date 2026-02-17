@@ -19,14 +19,7 @@ type Cart = {
   grand_total: number
 }
 
-type Member = {
-  id: number
-  name: string
-  phone?: string | null
-  member_code?: string | null
-}
-
-type ProductSearchItem = {
+type ProductOption = {
   id: number
   name: string
   sku: string
@@ -35,20 +28,96 @@ type ProductSearchItem = {
   thumbnail_url?: string | null
 }
 
+type Member = {
+  id: number
+  name: string
+  phone?: string | null
+  email?: string | null
+  member_code?: string | null
+}
+
+type PageResponse<T> = {
+  data: T[]
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+type ProductApiItem = {
+  id: number
+  name?: string
+  sku?: string
+  price?: number | string
+  cover_image_url?: string | null
+  variants?: Array<{
+    id?: number
+    sku?: string | null
+    price?: number | string | null
+    sale_price?: number | string | null
+    image_url?: string | null
+    is_active?: boolean | string | number
+  }>
+}
+
+function extractPaged<T>(json: unknown): PageResponse<T> {
+  const payload = typeof json === 'object' && json !== null && "data" in json ? (json as { data?: unknown }).data : undefined
+
+  if (payload && Array.isArray(payload.data)) {
+    return {
+      data: payload.data as T[],
+      current_page: Number(payload.current_page ?? 1),
+      last_page: Number(payload.last_page ?? 1),
+      per_page: Number(payload.per_page ?? payload.data.length ?? 0),
+      total: Number(payload.total ?? payload.data.length ?? 0),
+    }
+  }
+
+  if (payload && Array.isArray(payload)) {
+    return {
+      data: payload as T[],
+      current_page: 1,
+      last_page: 1,
+      per_page: payload.length,
+      total: payload.length,
+    }
+  }
+
+  return {
+    data: [],
+    current_page: 1,
+    last_page: 1,
+    per_page: 0,
+    total: 0,
+  }
+}
+
 export default function PosPageContent() {
-  const productInputRef = useRef<HTMLInputElement | null>(null)
-  const [query, setQuery] = useState('')
+  const scannerInputRef = useRef<HTMLInputElement | null>(null)
+
   const [message, setMessage] = useState<string | null>(null)
   const [cart, setCart] = useState<Cart | null>(null)
+
+  const [productOpen, setProductOpen] = useState(false)
+  const [productQuery, setProductQuery] = useState('')
+  const [products, setProducts] = useState<ProductOption[]>([])
+  const [productPage, setProductPage] = useState(1)
+  const [productLastPage, setProductLastPage] = useState(1)
+  const [productLoading, setProductLoading] = useState(false)
+  const [productHighlighted, setProductHighlighted] = useState(0)
+  const [productInitialLoaded, setProductInitialLoaded] = useState(false)
+
+  const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
   const [members, setMembers] = useState<Member[]>([])
+  const [memberPage, setMemberPage] = useState(1)
+  const [memberLastPage, setMemberLastPage] = useState(1)
+  const [memberLoading, setMemberLoading] = useState(false)
+  const [memberInitialLoaded, setMemberInitialLoaded] = useState(false)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
+
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
-  const [loading, setLoading] = useState(false)
   const [checkingOut, setCheckingOut] = useState(false)
-  const [searchResults, setSearchResults] = useState<ProductSearchItem[]>([])
-  const [highlightedIndex, setHighlightedIndex] = useState(0)
-  const [browseOpen, setBrowseOpen] = useState(false)
   const [checkoutResult, setCheckoutResult] = useState<null | {
     order_number: string
     receipt_public_url: string | null
@@ -60,6 +129,18 @@ export default function PosPageContent() {
   const cartTotal = Number(cart?.grand_total ?? 0)
   const discount = Math.max(0, cartSubtotal - cartTotal)
 
+  const focusScanner = () => {
+    scannerInputRef.current?.focus()
+  }
+
+  const clearScannerInput = () => {
+    if (scannerInputRef.current) {
+      scannerInputRef.current.value = ''
+    }
+  }
+
+  const showMsg = (text: string) => setMessage(text)
+
   async function loadCart() {
     const res = await fetch('/api/proxy/pos/cart', { cache: 'no-store' })
     const json = await res.json()
@@ -68,47 +149,107 @@ export default function PosPageContent() {
     }
   }
 
-  async function searchProducts(keyword: string) {
-    const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword)}`)
-    const json = await res.json()
-    if (res.ok) {
-      const items = (json.data ?? []) as ProductSearchItem[]
-      setSearchResults(items)
-      setHighlightedIndex(0)
-    }
-  }
-
   async function addByBarcode(barcode: string) {
+    const trimmed = barcode.trim()
+    if (!trimmed) return false
+
     const res = await fetch('/api/proxy/pos/cart/add-by-barcode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ barcode: barcode.trim(), qty: 1 }),
+      body: JSON.stringify({ barcode: trimmed, qty: 1 }),
     })
     const json = await res.json()
 
     if (res.ok) {
       setCart(json.data.cart)
-      setMessage('Item added to POS cart.')
-      setQuery('')
-      setSearchResults([])
-      setHighlightedIndex(0)
-      productInputRef.current?.focus()
+      showMsg('Item added to POS cart.')
       return true
     }
 
     if (res.status === 404) {
+      showMsg('Barcode not found')
       return false
     }
 
-    setMessage(json?.message ?? 'Unable to add item.')
-    return true
+    showMsg(json?.message ?? 'Unable to add item.')
+    return false
   }
 
-  async function addBySelectedSearchItem(item: ProductSearchItem) {
-    const ok = await addByBarcode(item.sku)
-    if (!ok) {
-      setMessage('Product not found')
+  async function fetchProductPage(page: number, keyword: string, append: boolean) {
+    setProductLoading(true)
+
+    let mapped: ProductOption[] = []
+    let currentPage = page
+    let lastPage = page
+
+    if (keyword.trim()) {
+      const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
+      const json = await res.json()
+      const paged = extractPaged<ProductOption>(json)
+      mapped = paged.data
+      currentPage = paged.current_page
+      lastPage = paged.last_page
+    } else {
+      const params = new URLSearchParams()
+      params.set('page', String(page))
+      params.set('per_page', '100')
+      params.set('is_active', 'true')
+
+      const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
+      const json = await res.json()
+      const paged = extractPaged<ProductApiItem>(json)
+
+      mapped = paged.data
+        .map((item): ProductOption | null => {
+          const activeVariant = Array.isArray(item.variants)
+            ? item.variants.find((v) => v && (v.is_active === true || v.is_active === '1' || v.is_active === 1 || v.is_active === 'true')) ?? item.variants[0]
+            : null
+
+          const sku = activeVariant?.sku || item.sku || ''
+          if (!sku) return null
+
+          const priceRaw = activeVariant?.sale_price ?? activeVariant?.price ?? item.price ?? 0
+          const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
+
+          return {
+            id: Number(activeVariant?.id ?? item.id),
+            name: item.name ?? '-',
+            sku,
+            barcode: sku,
+            price: Number.isFinite(price) ? price : 0,
+            thumbnail_url: activeVariant?.image_url ?? item.cover_image_url ?? null,
+          }
+        })
+        .filter((item): item is ProductOption => Boolean(item))
+
+      currentPage = paged.current_page
+      lastPage = paged.last_page
     }
+
+    setProducts((prev) => (append ? [...prev, ...mapped] : mapped))
+    setProductPage(currentPage)
+    setProductLastPage(lastPage)
+    setProductHighlighted(0)
+    setProductLoading(false)
+  }
+
+  async function fetchMemberPage(page: number, keyword: string, append: boolean) {
+    setMemberLoading(true)
+    const params = new URLSearchParams()
+    params.set('page', String(page))
+    params.set('per_page', '100')
+    if (keyword.trim()) {
+      params.set('q', keyword.trim())
+    }
+
+    const res = await fetch(`/api/proxy/pos/members/search?${params.toString()}`)
+    const json = await res.json()
+    const paged = extractPaged<Member>(json)
+
+    setMembers((prev) => (append ? [...prev, ...paged.data] : paged.data))
+    setMemberPage(paged.current_page)
+    setMemberLastPage(paged.last_page)
+    setMemberLoading(false)
   }
 
   const updateQty = async (itemId: number, qty: number) => {
@@ -132,65 +273,50 @@ export default function PosPageContent() {
     }
   }
 
-  async function searchMembers(keyword: string) {
-    const res = await fetch(`/api/proxy/pos/members/search?q=${encodeURIComponent(keyword)}`)
-    const json = await res.json()
-    if (res.ok) {
-      setMembers(json.data ?? [])
-    }
-  }
-
   useEffect(() => {
-    productInputRef.current?.focus()
+    focusScanner()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadCart()
   }, [])
 
   useEffect(() => {
-    const handle = setTimeout(() => {
-      const value = query.trim()
-      if (value.length < 2) {
-        setSearchResults([])
-        setHighlightedIndex(0)
-        return
-      }
-      void searchProducts(value)
-    }, 250)
+    if (!productOpen) return
 
-    return () => clearTimeout(handle)
-  }, [query])
-
-  useEffect(() => {
     const handle = setTimeout(() => {
-      const value = memberQuery.trim()
-      if (value.length < 2) {
-        setMembers([])
-        return
-      }
-      void searchMembers(value)
+      void fetchProductPage(1, productQuery, false)
     }, 300)
 
     return () => clearTimeout(handle)
-  }, [memberQuery])
+  }, [productQuery, productOpen])
 
-  const onPressEnter = async () => {
-    const value = query.trim()
-    if (!value || loading) return
+  useEffect(() => {
+    if (!memberOpen) return
 
-    setLoading(true)
-    setMessage(null)
+    const handle = setTimeout(() => {
+      void fetchMemberPage(1, memberQuery, false)
+    }, 300)
 
-    const consumed = await addByBarcode(value)
-    if (!consumed) {
-      const highlighted = searchResults[highlightedIndex] ?? searchResults[0]
-      if (highlighted) {
-        await addBySelectedSearchItem(highlighted)
-      } else {
-        setMessage('Product not found')
-      }
+    return () => clearTimeout(handle)
+  }, [memberQuery, memberOpen])
+
+  const onScannerEnter = async () => {
+    const value = scannerInputRef.current?.value ?? ''
+    clearScannerInput()
+
+    if (!value.trim()) {
+      focusScanner()
+      return
     }
 
-    setLoading(false)
+    await addByBarcode(value)
+    focusScanner()
+  }
+
+  const onSelectProduct = async (item: ProductOption) => {
+    await addByBarcode(item.barcode || item.sku)
+    setProductOpen(false)
+    setProductQuery('')
+    focusScanner()
   }
 
   const checkout = async () => {
@@ -198,6 +324,7 @@ export default function PosPageContent() {
 
     setCheckingOut(true)
     setMessage(null)
+
     const res = await fetch('/api/proxy/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -206,7 +333,7 @@ export default function PosPageContent() {
     const json = await res.json()
 
     if (!res.ok) {
-      setMessage(json?.message ?? 'Checkout failed.')
+      showMsg(json?.message ?? 'Checkout failed.')
       setCheckingOut(false)
       return
     }
@@ -217,12 +344,28 @@ export default function PosPageContent() {
       total: Number(json.data.order.grand_total ?? 0),
     })
     setSelectedMember(null)
-    setMembers([])
     setMemberQuery('')
+    setMembers([])
     setCart({ id: cart.id, items: [], subtotal: 0, grand_total: 0 })
-    setMessage('Checkout successful.')
+    showMsg('Checkout successful.')
     setCheckingOut(false)
-    productInputRef.current?.focus()
+    focusScanner()
+  }
+
+  const openProductDropdown = async () => {
+    setProductOpen(true)
+    if (!productInitialLoaded) {
+      setProductInitialLoaded(true)
+      await fetchProductPage(1, '', false)
+    }
+  }
+
+  const openMemberDropdown = async () => {
+    setMemberOpen(true)
+    if (!memberInitialLoaded) {
+      setMemberInitialLoaded(true)
+      await fetchMemberPage(1, '', false)
+    }
   }
 
   return (
@@ -233,80 +376,124 @@ export default function PosPageContent() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
           <div className="rounded-xl border p-4 shadow-sm">
-            <label className="mb-2 block text-sm font-medium">Scan / Search product</label>
-            <div className="flex gap-2">
-              <input
-                ref={productInputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault()
-                    setHighlightedIndex((prev) => Math.min(prev + 1, Math.max(0, searchResults.length - 1)))
-                    return
-                  }
-                  if (e.key === 'ArrowUp') {
-                    e.preventDefault()
-                    setHighlightedIndex((prev) => Math.max(prev - 1, 0))
-                    return
-                  }
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    void onPressEnter()
-                  }
-                }}
-                className="w-full rounded-lg border px-3 py-2"
-                placeholder="Scan barcode OR type name/SKU then press Enter"
-              />
-              <button onClick={() => setBrowseOpen(true)} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Browse products</button>
-            </div>
+            <label className="mb-2 block text-sm font-medium">Scanner input</label>
+            <input
+              ref={scannerInputRef}
+              className="w-full rounded-lg border px-3 py-2"
+              placeholder="Scan barcode and press Enter"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void onScannerEnter()
+                }
+              }}
+            />
+            <p className="mt-1 text-xs text-gray-500">Auto-focused. Barcode text is cleared immediately after add.</p>
+          </div>
 
-            {searchResults.length > 0 && (
-              <div className="mt-2 max-h-72 overflow-auto rounded-lg border bg-white">
-                {searchResults.map((item, idx) => (
-                  <button
-                    key={item.id}
-                    className={`flex w-full items-center justify-between gap-3 border-b p-3 text-left last:border-b-0 ${idx === highlightedIndex ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'}`}
-                    onMouseEnter={() => setHighlightedIndex(idx)}
-                    onClick={() => void addBySelectedSearchItem(item)}
-                  >
-                    <div className="flex items-center gap-3">
-                      {item.thumbnail_url ? (
-                        <img src={item.thumbnail_url} alt={item.name} className="h-10 w-10 rounded object-cover" />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded bg-gray-100 text-xs text-gray-500">No img</div>
-                      )}
+          <div className="rounded-xl border p-4 shadow-sm">
+            <label className="mb-2 block text-sm font-medium">Select product (manual fallback)</label>
+            <button onClick={() => void openProductDropdown()} className="mb-2 w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-gray-50">
+              {productOpen ? 'Close product dropdown' : 'Open product dropdown'}
+            </button>
+
+            {productOpen && (
+              <div className="rounded-lg border bg-white">
+                <div className="border-b p-2">
+                  <input
+                    value={productQuery}
+                    onChange={(e) => setProductQuery(e.target.value)}
+                    className="w-full rounded border px-3 py-2 text-sm"
+                    placeholder="Type to search product (debounced 300ms)"
+                  />
+                </div>
+
+                <div className="max-h-72 overflow-auto">
+                  {products.map((item, idx) => (
+                    <button
+                      key={`${item.id}-${idx}`}
+                      className={`flex w-full items-center justify-between border-b p-3 text-left text-sm last:border-b-0 ${idx === productHighlighted ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
+                      onMouseEnter={() => setProductHighlighted(idx)}
+                      onClick={() => void onSelectProduct(item)}
+                    >
                       <div>
-                        <p className="text-sm font-medium">{item.name}</p>
+                        <p className="font-semibold">{item.name}</p>
                         <p className="text-xs text-gray-500">{item.sku || item.barcode}</p>
                       </div>
-                    </div>
-                    <p className="text-sm font-semibold">RM {Number(item.price ?? 0).toFixed(2)}</p>
+                      <span className="font-semibold">RM {Number(item.price ?? 0).toFixed(2)}</span>
+                    </button>
+                  ))}
+
+                  {!productLoading && products.length === 0 && <p className="p-4 text-sm text-gray-500">No products found.</p>}
+                </div>
+
+                <div className="flex items-center justify-between border-t p-2">
+                  <span className="text-xs text-gray-500">Page {productPage} / {productLastPage}</span>
+                  <button
+                    className="rounded border px-3 py-1 text-sm disabled:opacity-40"
+                    disabled={productLoading || productPage >= productLastPage}
+                    onClick={() => void fetchProductPage(productPage + 1, productQuery, true)}
+                  >
+                    {productLoading ? 'Loading...' : 'See more'}
                   </button>
-                ))}
+                </div>
               </div>
             )}
           </div>
 
           <div className="rounded-xl border p-4 shadow-sm">
-            <h3 className="mb-3 text-lg font-semibold">Member assignment (optional)</h3>
-            <input
-              value={memberQuery}
-              onChange={(e) => setMemberQuery(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2"
-              placeholder="Search by phone, member code, name"
-            />
-            <div className="mt-3 space-y-2">
-              {members.map((member) => (
-                <button key={member.id} className="block w-full rounded-lg border p-2 text-left hover:bg-gray-50" onClick={() => setSelectedMember(member)}>
-                  {member.name} ({member.phone ?? '-'})
-                </button>
-              ))}
-            </div>
+            <h3 className="mb-2 text-lg font-semibold">Member assignment (optional)</h3>
+            <button onClick={() => void openMemberDropdown()} className="mb-2 w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-gray-50">
+              {memberOpen ? 'Close member dropdown' : 'Open member dropdown'}
+            </button>
+
+            {memberOpen && (
+              <div className="rounded-lg border bg-white">
+                <div className="border-b p-2">
+                  <input
+                    value={memberQuery}
+                    onChange={(e) => setMemberQuery(e.target.value)}
+                    className="w-full rounded border px-3 py-2 text-sm"
+                    placeholder="Search by phone, email, member code, name"
+                  />
+                </div>
+
+                <div className="max-h-72 overflow-auto">
+                  {members.map((member) => (
+                    <button
+                      key={member.id}
+                      className="block w-full border-b p-3 text-left text-sm last:border-b-0 hover:bg-gray-50"
+                      onClick={() => {
+                        setSelectedMember(member)
+                        setMemberOpen(false)
+                        focusScanner()
+                      }}
+                    >
+                      <p className="font-semibold">{member.name}</p>
+                      <p className="text-xs text-gray-500">{member.phone ?? '-'} · {member.email ?? '-'}</p>
+                    </button>
+                  ))}
+
+                  {!memberLoading && members.length === 0 && <p className="p-4 text-sm text-gray-500">No members found.</p>}
+                </div>
+
+                <div className="flex items-center justify-between border-t p-2">
+                  <span className="text-xs text-gray-500">Page {memberPage} / {memberLastPage}</span>
+                  <button
+                    className="rounded border px-3 py-1 text-sm disabled:opacity-40"
+                    disabled={memberLoading || memberPage >= memberLastPage}
+                    onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
+                  >
+                    {memberLoading ? 'Loading...' : 'See more'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {selectedMember && (
               <div className="mt-3 flex items-center justify-between rounded-lg bg-green-50 p-2 text-sm text-green-800">
                 <span>Selected: {selectedMember.name}</span>
-                <button onClick={() => setSelectedMember(null)} className="underline">Clear</button>
+                <button onClick={() => setSelectedMember(null)} className="underline">Clear / Unassign</button>
               </div>
             )}
           </div>
@@ -315,6 +502,7 @@ export default function PosPageContent() {
         <div className="space-y-5 lg:col-span-2">
           <div className="rounded-xl border p-4 shadow-sm lg:sticky lg:top-5">
             <h3 className="mb-3 text-lg font-semibold">Cart Summary</h3>
+
             <div className="space-y-2">
               {cart?.items.length ? (
                 cart.items.map((item) => (
@@ -360,7 +548,7 @@ export default function PosPageContent() {
 
             <button
               onClick={() => void checkout()}
-              disabled={checkingOut || loading || !cart?.items.length}
+              disabled={checkingOut || !cart?.items.length}
               className="mt-4 w-full rounded-lg bg-black px-4 py-3 text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkingOut ? 'Processing...' : 'Checkout'}
@@ -372,17 +560,9 @@ export default function PosPageContent() {
                 <p className="text-sm">Order No: {checkoutResult.order_number}</p>
                 <p className="text-sm">Total: RM {checkoutResult.total.toFixed(2)}</p>
                 {checkoutResult.receipt_public_url && (
-                  <div className="mt-2">
-                    <p className="text-xs font-medium">Guest Receipt QR</p>
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`}
-                      alt="Guest receipt QR"
-                      className="mt-2 h-40 w-40"
-                    />
-                    <a href={checkoutResult.receipt_public_url} target="_blank" rel="noreferrer" className="block break-all text-xs text-blue-600 underline">
-                      {checkoutResult.receipt_public_url}
-                    </a>
-                  </div>
+                  <a href={checkoutResult.receipt_public_url} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-blue-600 underline">
+                    {checkoutResult.receipt_public_url}
+                  </a>
                 )}
               </div>
             )}
@@ -391,45 +571,6 @@ export default function PosPageContent() {
           </div>
         </div>
       </div>
-
-      {browseOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Browse products</h3>
-              <button onClick={() => setBrowseOpen(false)} className="rounded border px-2 py-1 text-sm">Close</button>
-            </div>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="mb-3 w-full rounded-lg border px-3 py-2"
-              placeholder="Search products..."
-            />
-            <div className="max-h-[55vh] overflow-auto rounded-lg border">
-              {searchResults.length === 0 ? (
-                <p className="p-4 text-sm text-gray-500">Type at least 2 characters to search.</p>
-              ) : (
-                searchResults.map((item) => (
-                  <button
-                    key={`browse-${item.id}`}
-                    className="flex w-full items-center justify-between border-b p-3 text-left last:border-b-0 hover:bg-gray-50"
-                    onClick={() => {
-                      void addBySelectedSearchItem(item)
-                      setBrowseOpen(false)
-                    }}
-                  >
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-xs text-gray-500">{item.sku}</p>
-                    </div>
-                    <span className="text-sm font-semibold">RM {Number(item.price ?? 0).toFixed(2)}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
