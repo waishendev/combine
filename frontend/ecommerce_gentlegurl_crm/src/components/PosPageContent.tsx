@@ -106,6 +106,9 @@ export default function PosPageContent() {
   const [productLoading, setProductLoading] = useState(false)
   const [productHighlighted, setProductHighlighted] = useState(0)
   const [productInitialLoaded, setProductInitialLoaded] = useState(false)
+  const [productSelectModalOpen, setProductSelectModalOpen] = useState(false)
+  const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
+  const [selectedProductQty, setSelectedProductQty] = useState(1)
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -149,14 +152,14 @@ export default function PosPageContent() {
     }
   }
 
-  async function addByBarcode(barcode: string) {
+  async function addByBarcode(barcode: string, qty = 1) {
     const trimmed = barcode.trim()
     if (!trimmed) return false
 
     const res = await fetch('/api/proxy/pos/cart/add-by-barcode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ barcode: trimmed, qty: 1 }),
+      body: JSON.stringify({ barcode: trimmed, qty }),
     })
     const json = await res.json()
 
@@ -312,8 +315,18 @@ export default function PosPageContent() {
     focusScanner()
   }
 
-  const onSelectProduct = async (item: ProductOption) => {
-    await addByBarcode(item.barcode || item.sku)
+  const onSelectProduct = (item: ProductOption) => {
+    setSelectedProduct(item)
+    setSelectedProductQty(1)
+    setProductSelectModalOpen(true)
+  }
+
+  const confirmAddSelectedProduct = async () => {
+    if (!selectedProduct) return
+
+    await addByBarcode(selectedProduct.barcode || selectedProduct.sku, selectedProductQty)
+    setProductSelectModalOpen(false)
+    setSelectedProduct(null)
     setProductOpen(false)
     setProductQuery('')
     focusScanner()
@@ -571,6 +584,58 @@ export default function PosPageContent() {
           </div>
         </div>
       </div>
+
+      {productSelectModalOpen && selectedProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl">
+            <h4 className="text-lg font-semibold">Add product to cart</h4>
+            <p className="mt-1 text-sm font-medium">{selectedProduct.name}</p>
+            <p className="text-xs text-gray-500">{selectedProduct.sku || selectedProduct.barcode}</p>
+            <p className="mt-1 text-sm">RM {Number(selectedProduct.price ?? 0).toFixed(2)}</p>
+
+            <div className="mt-4">
+              <label className="mb-1 block text-sm font-medium">Quantity</label>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded border px-3 py-1"
+                  onClick={() => setSelectedProductQty((prev) => Math.max(1, prev - 1))}
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  value={selectedProductQty}
+                  onChange={(e) => setSelectedProductQty(Math.max(1, Number(e.target.value || 1)))}
+                  className="w-24 rounded border px-2 py-1 text-center"
+                />
+                <button
+                  className="rounded border px-3 py-1"
+                  onClick={() => setSelectedProductQty((prev) => prev + 1)}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="rounded border px-3 py-2 text-sm"
+                onClick={() => {
+                  setProductSelectModalOpen(false)
+                  setSelectedProduct(null)
+                }}
+              >
+                Cancel
+              </button>
+              <button className="rounded bg-black px-3 py-2 text-sm text-white" onClick={() => void confirmAddSelectedProduct()}>
+                Add to cart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
