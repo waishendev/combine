@@ -325,6 +325,7 @@ $protectedRoutes = function () {
 
     Route::prefix('pos')->middleware('permission:ecommerce.orders.create')->group(function () {
         Route::get('/members/search', [PosController::class, 'memberSearch']);
+        Route::get('/products/search', [PosController::class, 'productSearch']);
         Route::get('/cart', [PosController::class, 'cart']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);

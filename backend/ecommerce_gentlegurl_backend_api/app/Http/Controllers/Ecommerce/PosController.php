@@ -71,7 +71,7 @@ class PosController extends Controller
         }
 
         if (!$variant || !$variant->product || !$variant->product->is_active || !$variant->is_active || $variant->product->is_reward_only) {
-            return $this->respondError(__('Barcode not found or not sellable.'), 422);
+            return $this->respondError(__('Barcode not found or not sellable.'), 404);
         }
 
         $qty = (int) ($validated['qty'] ?? 1);
@@ -101,6 +101,53 @@ class PosController extends Controller
         return $this->respond([
             'cart' => $this->serializeCart($cart->fresh()->load('items.variant.product')),
         ]);
+    }
+
+    public function productSearch(Request $request)
+    {
+        $query = trim((string) $request->query('q', ''));
+
+        if ($query === '') {
+            return $this->respond([]);
+        }
+
+        $exact = mb_strtolower($query);
+
+        $variants = ProductVariant::query()
+            ->with(['product', 'product.images'])
+            ->where('is_active', true)
+            ->whereHas('product', fn ($builder) => $builder->where('is_active', true)->where('is_reward_only', false))
+            ->where(function ($builder) use ($query) {
+                $builder->whereRaw('LOWER(sku) = ?', [mb_strtolower($query)])
+                    ->orWhere('sku', 'like', "%{$query}%")
+                    ->orWhereHas('product', function ($productQuery) use ($query) {
+                        $productQuery->whereRaw('LOWER(sku) = ?', [mb_strtolower($query)])
+                            ->orWhere('sku', 'like', "%{$query}%")
+                            ->orWhere('name', 'like', "%{$query}%");
+                    });
+            })
+            ->orderByRaw('CASE WHEN LOWER(sku) = ? THEN 0 ELSE 1 END', [$exact])
+            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND LOWER(p.sku) = ?) THEN 0 ELSE 1 END', [$exact])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->limit(20)
+            ->get();
+
+        return $this->respond(
+            $variants->map(function (ProductVariant $variant) {
+                $product = $variant->product;
+                $pricing = ProductPricing::build($product, $variant);
+
+                return [
+                    'id' => $variant->id,
+                    'name' => $product?->name,
+                    'sku' => $variant->sku,
+                    'barcode' => $variant->sku,
+                    'price' => (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
+                    'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
+                ];
+            })->values()
+        );
     }
 
     public function updateCartItem(Request $request, int $itemId)
