@@ -194,6 +194,26 @@ export default function PosPageContent() {
     return false
   }
 
+  async function addByVariantId(variantId: number, qty = 1) {
+    if (!Number.isFinite(variantId) || variantId <= 0) return false
+
+    const res = await fetch('/api/proxy/pos/cart/add-by-variant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant_id: variantId, qty }),
+    })
+    const json = await res.json()
+
+    if (res.ok) {
+      setCart(json.data.cart)
+      showMsg('Item added to POS cart.')
+      return true
+    }
+
+    showMsg(json?.message ?? 'Unable to add selected product.')
+    return false
+  }
+
   async function fetchProductPage(page: number, keyword: string, append: boolean) {
     setProductLoading(true)
 
@@ -340,13 +360,7 @@ export default function PosPageContent() {
   const confirmAddSelectedProduct = async () => {
     if (!selectedProduct) return
 
-    const identifier = (selectedProduct.barcode || selectedProduct.sku || '').trim()
-    if (!identifier) {
-      showMsg('Selected product has no barcode/SKU for POS add.')
-      return
-    }
-
-    const success = await addByBarcode(identifier, selectedProductQty)
+    const success = await addByVariantId(selectedProduct.id, selectedProductQty)
     if (!success) return
 
     setProductSelectModalOpen(false)
@@ -357,13 +371,7 @@ export default function PosPageContent() {
   }
 
   const quickAddProduct = async (item: ProductOption) => {
-    const identifier = (item.barcode || item.sku || '').trim()
-    if (!identifier) {
-      showMsg('This product cannot be added because barcode/SKU is missing.')
-      return
-    }
-
-    await addByBarcode(identifier, 1)
+    await addByVariantId(item.id, 1)
   }
 
   const cashReceivedAmount = Number(cashReceived || 0)

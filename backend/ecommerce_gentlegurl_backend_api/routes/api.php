@@ -328,6 +328,7 @@ $protectedRoutes = function () {
         Route::get('/products/search', [PosController::class, 'productSearch']);
         Route::get('/cart', [PosController::class, 'cart']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
+        Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
         Route::post('/checkout', [PosController::class, 'checkout']);
