@@ -33,6 +33,8 @@ use App\Http\Controllers\Ecommerce\PublicReturnController;
 use App\Http\Controllers\Ecommerce\PublicWishlistController;
 use App\Http\Controllers\Ecommerce\PublicStoreLocationController;
 use App\Http\Controllers\Ecommerce\PromotionController;
+use App\Http\Controllers\Ecommerce\PosController;
+use App\Http\Controllers\Ecommerce\PublicReceiptController;
 use App\Http\Controllers\Ecommerce\PublicVoucherController;
 use App\Http\Controllers\Ecommerce\ProductVariantBundleItemController;
 use App\Http\Controllers\Ecommerce\ReturnRequestController;
@@ -103,6 +105,7 @@ Route::prefix('/public/shop/auth')->group(function () {
 
 Route::post('/public/payments/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/public/payments/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
+Route::get('/public/receipt/{token}', [PublicReceiptController::class, 'show']);
 // Backwards compatibility for previous callback URLs
 Route::post('/payment/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/payment/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
@@ -319,6 +322,15 @@ $protectedRoutes = function () {
 
     Route::post('/customers/{customer}/verify-email', [CustomerController::class, 'verifyEmail'])
         ->middleware('permission:customers.verify');
+
+    Route::prefix('pos')->middleware('permission:ecommerce.orders.create')->group(function () {
+        Route::get('/members/search', [PosController::class, 'memberSearch']);
+        Route::get('/cart', [PosController::class, 'cart']);
+        Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
+        Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
+        Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
+        Route::post('/checkout', [PosController::class, 'checkout']);
+    });
 
     // Ecommerce Admin APIs
     Route::prefix('ecommerce')->group(function () {

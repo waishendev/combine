@@ -107,6 +107,12 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
             href: '/returns',
             requiredPermission: 'ecommerce.returns.view',
           },
+          {
+            key: 'orders-pos',
+            label: 'POS Checkout',
+            href: '/pos',
+            requiredPermission: 'ecommerce.orders.create',
+          },
         ],
       },
   
