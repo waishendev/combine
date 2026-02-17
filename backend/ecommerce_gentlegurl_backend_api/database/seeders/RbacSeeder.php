@@ -59,6 +59,7 @@ class RbacSeeder extends Seeder
             'ecommerce.notifications.templates' => 'Ecommerce Notification Templates',
             'ecommerce.dashboard' => 'Ecommerce Dashboard',
             'ecommerce.settings' => 'Ecommerce Settings',
+            'ecommerce.orders' => 'Ecommerce Orders',
         ];
 
         $groupModels = [];
@@ -98,6 +99,7 @@ class RbacSeeder extends Seeder
             'ecommerce.reports.sales' => ['view', 'export'],
             'ecommerce.dashboard' => ['view'],
             'ecommerce.settings' => ['view', 'update'],
+            'ecommerce.orders' => ['view', 'create', 'update', 'confirm-payment'],
         ];
 
         $allPermissionIds = [];
@@ -122,5 +124,35 @@ class RbacSeeder extends Seeder
         $superAdminRole->permissions()->sync($allPermissionIds);
 
         $superAdminUser->roles()->syncWithoutDetaching([$superAdminRole->id]);
+
+
+        $staffRole = Role::firstOrCreate(
+            ['name' => 'staff'],
+            [
+                'description' => 'POS staff role',
+                'is_active' => true,
+            ]
+        );
+
+        $staffPermissionIds = Permission::whereIn('slug', [
+            'ecommerce.orders.create',
+            'ecommerce.orders.view',
+            'customers.view',
+            'ecommerce.products.view',
+        ])->pluck('id')->all();
+
+        $staffRole->permissions()->sync($staffPermissionIds);
+
+        $staffUser = User::firstOrCreate(
+            ['email' => 'staff@example.com'],
+            [
+                'name' => 'POS Staff',
+                'username' => 'pos_staff',
+                'password' => Hash::make('password'),
+                'is_active' => true,
+            ]
+        );
+
+        $staffUser->roles()->syncWithoutDetaching([$staffRole->id]);
     }
 }

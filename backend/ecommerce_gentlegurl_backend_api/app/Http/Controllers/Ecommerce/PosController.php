@@ -57,8 +57,18 @@ class PosController extends Controller
         $variant = ProductVariant::query()
             ->with('product')
             ->where('sku', $validated['barcode'])
-            ->orWhereHas('product', fn ($query) => $query->where('sku', $validated['barcode']))
+            ->where('is_active', true)
             ->first();
+
+        if (! $variant) {
+            $variant = ProductVariant::query()
+                ->with('product')
+                ->where('is_active', true)
+                ->whereHas('product', fn ($query) => $query->where('sku', $validated['barcode']))
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->first();
+        }
 
         if (!$variant || !$variant->product || !$variant->product->is_active || !$variant->is_active || $variant->product->is_reward_only) {
             return $this->respondError(__('Barcode not found or not sellable.'), 422);

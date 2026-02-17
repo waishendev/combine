@@ -71,7 +71,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.bank-accounts' => ['view', 'create', 'update', 'delete'],
             'ecommerce.payment-gateways' => ['view', 'create', 'update', 'delete'],
             'ecommerce.announcements' => ['view', 'create', 'update', 'delete'],
-            'ecommerce.orders' => ['view', 'update','confirm-payment'],
+            'ecommerce.orders' => ['view', 'create', 'update', 'confirm-payment'],
             'ecommerce.returns' => ['view', 'update'],
             'ecommerce.loyalty' => ['settings', 'tiers'],
             'ecommerce.loyalty.settings' => ['view', 'create', 'update', 'delete', 'settings', 'tiers'],

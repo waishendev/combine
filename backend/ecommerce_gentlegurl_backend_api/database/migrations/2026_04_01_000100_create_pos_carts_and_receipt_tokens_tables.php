@@ -19,7 +19,8 @@ return new class extends Migration
         Schema::create('pos_cart_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('pos_cart_id')->constrained('pos_carts')->cascadeOnDelete();
-            $table->foreignId('variant_id')->constrained('product_variants')->cascadeOnDelete();
+            $table->unsignedBigInteger('variant_id');
+            $table->index('variant_id');
             $table->unsignedInteger('qty')->default(1);
             $table->decimal('price_snapshot', 12, 2);
             $table->timestamps();
