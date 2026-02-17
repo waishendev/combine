@@ -111,6 +111,52 @@ class PosController extends Controller
         ]);
     }
 
+    public function addByVariant(Request $request)
+    {
+        $validated = $request->validate([
+            'variant_id' => ['required', 'integer', 'exists:product_variants,id'],
+            'qty' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $variant = ProductVariant::query()
+            ->with('product')
+            ->where('id', $validated['variant_id'])
+            ->where('is_active', true)
+            ->first();
+
+        if (! $variant || ! $variant->product || ! $variant->product->is_active || $variant->product->is_reward_only) {
+            return $this->respondError(__('Product is not sellable.'), 404);
+        }
+
+        $qty = (int) ($validated['qty'] ?? 1);
+
+        if ($variant->track_stock && (int) $variant->stock < $qty) {
+            return $this->respondError(__('Insufficient stock.'), 422);
+        }
+
+        $cart = $this->resolveCart((int) $request->user()->id);
+
+        $pricing = ProductPricing::build($variant->product, $variant);
+        $unitPrice = (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0);
+
+        $item = PosCartItem::firstOrNew([
+            'pos_cart_id' => $cart->id,
+            'variant_id' => $variant->id,
+        ]);
+        $item->qty = (int) ($item->exists ? $item->qty : 0) + $qty;
+        $item->price_snapshot = $unitPrice;
+
+        if ($variant->track_stock && $item->qty > (int) $variant->stock) {
+            return $this->respondError(__('Insufficient stock.'), 422);
+        }
+
+        $item->save();
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load('items.variant.product')),
+        ]);
+    }
+
     public function productSearch(Request $request)
     {
         $query = trim((string) $request->query('q', ''));

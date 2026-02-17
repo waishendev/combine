@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 
 type CartItem = {
   id: number
@@ -26,6 +26,11 @@ type ProductOption = {
   barcode: string
   price: number
   thumbnail_url?: string | null
+}
+
+type CheckoutMeta = {
+  paid_amount: number
+  change_amount: number
 }
 
 type Member = {
@@ -94,6 +99,9 @@ function extractPaged<T>(json: unknown): PageResponse<T> {
 
 export default function PosPageContent() {
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
+  const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
+  const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
+  const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
 
   const [message, setMessage] = useState<string | null>(null)
   const [cart, setCart] = useState<Cart | null>(null)
@@ -120,11 +128,19 @@ export default function PosPageContent() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
+  const [cashReceived, setCashReceived] = useState('')
+  const [checkoutMeta, setCheckoutMeta] = useState<CheckoutMeta | null>(null)
+  const [confirmCashOpen, setConfirmCashOpen] = useState(false)
+  const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
+  const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutResult, setCheckoutResult] = useState<null | {
     order_number: string
     receipt_public_url: string | null
     total: number
+    payment_method: 'cash' | 'qrpay'
+    paid_amount: number
+    change_amount: number
   }>(null)
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
@@ -175,6 +191,26 @@ export default function PosPageContent() {
     }
 
     showMsg(json?.message ?? 'Unable to add item.')
+    return false
+  }
+
+  async function addByVariantId(variantId: number, qty = 1) {
+    if (!Number.isFinite(variantId) || variantId <= 0) return false
+
+    const res = await fetch('/api/proxy/pos/cart/add-by-variant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant_id: variantId, qty }),
+    })
+    const json = await res.json()
+
+    if (res.ok) {
+      setCart(json.data.cart)
+      showMsg('Item added to POS cart.')
+      return true
+    }
+
+    showMsg(json?.message ?? 'Unable to add selected product.')
     return false
   }
 
@@ -324,7 +360,9 @@ export default function PosPageContent() {
   const confirmAddSelectedProduct = async () => {
     if (!selectedProduct) return
 
-    await addByBarcode(selectedProduct.barcode || selectedProduct.sku, selectedProductQty)
+    const success = await addByVariantId(selectedProduct.id, selectedProductQty)
+    if (!success) return
+
     setProductSelectModalOpen(false)
     setSelectedProduct(null)
     setProductOpen(false)
@@ -332,7 +370,14 @@ export default function PosPageContent() {
     focusScanner()
   }
 
-  const checkout = async () => {
+  const quickAddProduct = async (item: ProductOption) => {
+    await addByVariantId(item.id, 1)
+  }
+
+  const cashReceivedAmount = Number(cashReceived || 0)
+  const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
+
+  const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || cart.items.length === 0 || checkingOut) return
 
     setCheckingOut(true)
@@ -355,17 +400,54 @@ export default function PosPageContent() {
       order_number: json.data.order.order_number,
       receipt_public_url: json.data.receipt_public_url,
       total: Number(json.data.order.grand_total ?? 0),
+      payment_method: paymentMethod,
+      paid_amount: meta.paid_amount,
+      change_amount: meta.change_amount,
     })
     setSelectedMember(null)
     setMemberQuery('')
     setMembers([])
     setCart({ id: cart.id, items: [], subtotal: 0, grand_total: 0 })
+    setCashReceived('')
+    setCheckoutMeta(null)
+    if (qrProofPreviewUrl) {
+      URL.revokeObjectURL(qrProofPreviewUrl)
+    }
+    setQrProofPreviewUrl(null)
+    setQrProofFileName(null)
     showMsg('Checkout successful.')
     setCheckingOut(false)
     focusScanner()
   }
 
-  const openProductDropdown = async () => {
+  const checkout = async () => {
+    if (!cart || cart.items.length === 0 || checkingOut) return
+
+    if (paymentMethod === 'qrpay') {
+      if (!qrProofFileName) {
+        showMsg('Please upload QR payment proof before checkout.')
+        return
+      }
+
+      await finalizeCheckout({ paid_amount: cartTotal, change_amount: 0 })
+      return
+    }
+
+    if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < cartTotal) {
+      showMsg('Cash received must be equal or more than total.')
+      return
+    }
+
+    setCheckoutMeta({ paid_amount: cashReceivedAmount, change_amount: cashChange })
+    setConfirmCashOpen(true)
+  }
+
+  const toggleProductDropdown = async () => {
+    if (productOpen) {
+      setProductOpen(false)
+      return
+    }
+
     setProductOpen(true)
     if (!productInitialLoaded) {
       setProductInitialLoaded(true)
@@ -373,12 +455,39 @@ export default function PosPageContent() {
     }
   }
 
-  const openMemberDropdown = async () => {
+  const toggleMemberDropdown = async () => {
+    if (memberOpen) {
+      setMemberOpen(false)
+      return
+    }
+
     setMemberOpen(true)
     if (!memberInitialLoaded) {
       setMemberInitialLoaded(true)
       await fetchMemberPage(1, '', false)
     }
+  }
+
+  const onSelectQrProof: ChangeEventHandler<HTMLInputElement> = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (qrProofPreviewUrl) {
+      URL.revokeObjectURL(qrProofPreviewUrl)
+    }
+
+    const url = URL.createObjectURL(file)
+    setQrProofFileName(file.name)
+    setQrProofPreviewUrl(url)
+    event.currentTarget.value = ''
+  }
+
+  const clearQrProof = () => {
+    if (qrProofPreviewUrl) {
+      URL.revokeObjectURL(qrProofPreviewUrl)
+    }
+    setQrProofPreviewUrl(null)
+    setQrProofFileName(null)
   }
 
   return (
@@ -388,11 +497,12 @@ export default function PosPageContent() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
-          <div className="rounded-xl border p-4 shadow-sm">
-            <label className="mb-2 block text-sm font-medium">Scanner input</label>
+          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 shadow-sm">
+            <label className="mb-2 block text-sm font-medium text-blue-800">Scanner ready</label>
+            <p className="text-sm text-blue-700">Scanner listens in background. Just scan the product barcode directly.</p>
             <input
               ref={scannerInputRef}
-              className="w-full rounded-lg border px-3 py-2"
+              className="sr-only"
               placeholder="Scan barcode and press Enter"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -401,13 +511,13 @@ export default function PosPageContent() {
                 }
               }}
             />
-            <p className="mt-1 text-xs text-gray-500">Auto-focused. Barcode text is cleared immediately after add.</p>
+            <p className="mt-1 text-xs text-blue-700/80">Manual typing input is hidden to reduce clutter.</p>
           </div>
 
           <div className="rounded-xl border p-4 shadow-sm">
             <label className="mb-2 block text-sm font-medium">Select product (manual fallback)</label>
-            <button onClick={() => void openProductDropdown()} className="mb-2 w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-gray-50">
-              {productOpen ? 'Close product dropdown' : 'Open product dropdown'}
+            <button onClick={() => void toggleProductDropdown()} className="mb-2 w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-gray-50">
+              {productOpen ? 'Hide product browser' : 'Open product browser'}
             </button>
 
             {productOpen && (
@@ -421,20 +531,48 @@ export default function PosPageContent() {
                   />
                 </div>
 
-                <div className="max-h-72 overflow-auto">
+                <div className="grid max-h-[32rem] grid-cols-1 gap-3 overflow-auto p-3 md:grid-cols-2">
                   {products.map((item, idx) => (
-                    <button
+                    <div
                       key={`${item.id}-${idx}`}
-                      className={`flex w-full items-center justify-between border-b p-3 text-left text-sm last:border-b-0 ${idx === productHighlighted ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
+                      role="button"
+                      tabIndex={0}
+                      className={`overflow-hidden rounded-lg border text-left text-sm ${idx === productHighlighted ? 'border-black bg-gray-100' : 'hover:bg-gray-50'}`}
                       onMouseEnter={() => setProductHighlighted(idx)}
                       onClick={() => void onSelectProduct(item)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          void onSelectProduct(item)
+                        }
+                      }}
                     >
-                      <div>
+                      <div className="aspect-square w-full bg-gray-100">
+                        {item.thumbnail_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.thumbnail_url} alt={item.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-xs text-gray-500">No image</div>
+                        )}
+                      </div>
+                      <div className="space-y-2 p-3">
                         <p className="font-semibold">{item.name}</p>
                         <p className="text-xs text-gray-500">{item.sku || item.barcode}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="block font-semibold">RM {Number(item.price ?? 0).toFixed(2)}</span>
+                          <button
+                            type="button"
+                            className="rounded bg-black px-2 py-1 text-xs text-white"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void quickAddProduct(item)
+                            }}
+                          >
+                            Add 1x
+                          </button>
+                        </div>
                       </div>
-                      <span className="font-semibold">RM {Number(item.price ?? 0).toFixed(2)}</span>
-                    </button>
+                    </div>
                   ))}
 
                   {!productLoading && products.length === 0 && <p className="p-4 text-sm text-gray-500">No products found.</p>}
@@ -456,8 +594,8 @@ export default function PosPageContent() {
 
           <div className="rounded-xl border p-4 shadow-sm">
             <h3 className="mb-2 text-lg font-semibold">Member assignment (optional)</h3>
-            <button onClick={() => void openMemberDropdown()} className="mb-2 w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-gray-50">
-              {memberOpen ? 'Close member dropdown' : 'Open member dropdown'}
+            <button onClick={() => void toggleMemberDropdown()} className="mb-2 w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-gray-50">
+              {memberOpen ? 'Hide member search' : 'Open member search'}
             </button>
 
             {memberOpen && (
@@ -556,7 +694,50 @@ export default function PosPageContent() {
                 <label className="flex items-center gap-2"><input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} /> CASH</label>
                 <label className="flex items-center gap-2"><input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} /> QRPAY</label>
               </div>
-              {paymentMethod === 'qrpay' && <p className="mt-2 text-xs text-amber-700">Customer transfers by QR, staff confirms received.</p>}
+              {paymentMethod === 'cash' && (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-xs font-medium text-gray-600">Cash received</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={cashReceived}
+                    onChange={(e) => setCashReceived(e.target.value)}
+                    className="w-full rounded border px-3 py-2 text-sm"
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-gray-600">Change: RM {cashChange.toFixed(2)}</p>
+                </div>
+              )}
+              {paymentMethod === 'qrpay' && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-amber-700">Choose how to attach QR payment proof:</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrUploadInputRef.current?.click()}>
+                      Upload Existing
+                    </button>
+                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrCameraBackInputRef.current?.click()}>
+                      Take Photo (Back Cam)
+                    </button>
+                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrCameraFrontInputRef.current?.click()}>
+                      Take Photo (Front Cam)
+                    </button>
+                  </div>
+                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
+                  {qrProofFileName && (
+                    <div className="flex items-center justify-between rounded border bg-gray-50 px-2 py-1">
+                      <p className="truncate pr-2 text-xs text-gray-600">Selected: {qrProofFileName}</p>
+                      <button type="button" className="text-xs text-red-600 underline" onClick={clearQrProof}>Clear</button>
+                    </div>
+                  )}
+                  {qrProofPreviewUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={qrProofPreviewUrl} alt="QR payment proof" className="max-h-40 w-full rounded border object-contain" />
+                  )}
+                </div>
+              )}
             </div>
 
             <button
@@ -572,10 +753,22 @@ export default function PosPageContent() {
                 <h3 className="text-sm font-semibold">Order completed</h3>
                 <p className="text-sm">Order No: {checkoutResult.order_number}</p>
                 <p className="text-sm">Total: RM {checkoutResult.total.toFixed(2)}</p>
+                <p className="text-sm">Paid: RM {checkoutResult.paid_amount.toFixed(2)}</p>
+                <p className="text-sm">Change: RM {checkoutResult.change_amount.toFixed(2)}</p>
                 {checkoutResult.receipt_public_url && (
-                  <a href={checkoutResult.receipt_public_url} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-blue-600 underline">
-                    {checkoutResult.receipt_public_url}
-                  </a>
+                  <>
+                    <div className="mt-2 rounded border bg-white p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`}
+                        alt="Receipt QR code"
+                        className="mx-auto h-40 w-40"
+                      />
+                    </div>
+                    <a href={checkoutResult.receipt_public_url} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-blue-600 underline">
+                      {checkoutResult.receipt_public_url}
+                    </a>
+                  </>
                 )}
               </div>
             )}
@@ -630,6 +823,31 @@ export default function PosPageContent() {
               </button>
               <button className="rounded bg-black px-3 py-2 text-sm text-white" onClick={() => void confirmAddSelectedProduct()}>
                 Add to cart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmCashOpen && checkoutMeta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl">
+            <h4 className="text-lg font-semibold">Confirm cash payment</h4>
+            <div className="mt-3 space-y-1 text-sm">
+              <p>Total: RM {cartTotal.toFixed(2)}</p>
+              <p>Customer paid: RM {checkoutMeta.paid_amount.toFixed(2)}</p>
+              <p>Change: RM {checkoutMeta.change_amount.toFixed(2)}</p>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button className="rounded border px-3 py-2 text-sm" onClick={() => setConfirmCashOpen(false)}>Cancel</button>
+              <button
+                className="rounded bg-black px-3 py-2 text-sm text-white"
+                onClick={() => {
+                  setConfirmCashOpen(false)
+                  void finalizeCheckout(checkoutMeta)
+                }}
+              >
+                Confirm & Checkout
               </button>
             </div>
           </div>
