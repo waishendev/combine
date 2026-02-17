@@ -99,6 +99,9 @@ function extractPaged<T>(json: unknown): PageResponse<T> {
 
 export default function PosPageContent() {
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
+  const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
+  const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
+  const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
 
   const [message, setMessage] = useState<string | null>(null)
   const [cart, setCart] = useState<Cart | null>(null)
@@ -337,12 +340,30 @@ export default function PosPageContent() {
   const confirmAddSelectedProduct = async () => {
     if (!selectedProduct) return
 
-    await addByBarcode(selectedProduct.barcode || selectedProduct.sku, selectedProductQty)
+    const identifier = (selectedProduct.barcode || selectedProduct.sku || '').trim()
+    if (!identifier) {
+      showMsg('Selected product has no barcode/SKU for POS add.')
+      return
+    }
+
+    const success = await addByBarcode(identifier, selectedProductQty)
+    if (!success) return
+
     setProductSelectModalOpen(false)
     setSelectedProduct(null)
     setProductOpen(false)
     setProductQuery('')
     focusScanner()
+  }
+
+  const quickAddProduct = async (item: ProductOption) => {
+    const identifier = (item.barcode || item.sku || '').trim()
+    if (!identifier) {
+      showMsg('This product cannot be added because barcode/SKU is missing.')
+      return
+    }
+
+    await addByBarcode(identifier, 1)
   }
 
   const cashReceivedAmount = Number(cashReceived || 0)
@@ -450,6 +471,15 @@ export default function PosPageContent() {
     const url = URL.createObjectURL(file)
     setQrProofFileName(file.name)
     setQrProofPreviewUrl(url)
+    event.currentTarget.value = ''
+  }
+
+  const clearQrProof = () => {
+    if (qrProofPreviewUrl) {
+      URL.revokeObjectURL(qrProofPreviewUrl)
+    }
+    setQrProofPreviewUrl(null)
+    setQrProofFileName(null)
   }
 
   return (
@@ -509,10 +539,22 @@ export default function PosPageContent() {
                           <div className="flex h-full w-full items-center justify-center text-xs text-gray-500">No image</div>
                         )}
                       </div>
-                      <div className="space-y-1 p-3">
+                      <div className="space-y-2 p-3">
                         <p className="font-semibold">{item.name}</p>
                         <p className="text-xs text-gray-500">{item.sku || item.barcode}</p>
-                        <span className="block font-semibold">RM {Number(item.price ?? 0).toFixed(2)}</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="block font-semibold">RM {Number(item.price ?? 0).toFixed(2)}</span>
+                          <button
+                            type="button"
+                            className="rounded bg-black px-2 py-1 text-xs text-white"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void quickAddProduct(item)
+                            }}
+                          >
+                            Add 1x
+                          </button>
+                        </div>
                       </div>
                     </button>
                   ))}
@@ -653,9 +695,27 @@ export default function PosPageContent() {
               )}
               {paymentMethod === 'qrpay' && (
                 <div className="mt-3 space-y-2">
-                  <p className="text-xs text-amber-700">Upload payment proof screenshot/photo before checkout.</p>
-                  <input type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="block w-full text-xs" />
-                  {qrProofFileName && <p className="text-xs text-gray-600">Selected: {qrProofFileName}</p>}
+                  <p className="text-xs text-amber-700">Choose how to attach QR payment proof:</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrUploadInputRef.current?.click()}>
+                      Upload Existing
+                    </button>
+                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrCameraBackInputRef.current?.click()}>
+                      Take Photo (Back Cam)
+                    </button>
+                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrCameraFrontInputRef.current?.click()}>
+                      Take Photo (Front Cam)
+                    </button>
+                  </div>
+                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
+                  {qrProofFileName && (
+                    <div className="flex items-center justify-between rounded border bg-gray-50 px-2 py-1">
+                      <p className="truncate pr-2 text-xs text-gray-600">Selected: {qrProofFileName}</p>
+                      <button type="button" className="text-xs text-red-600 underline" onClick={clearQrProof}>Clear</button>
+                    </div>
+                  )}
                   {qrProofPreviewUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={qrProofPreviewUrl} alt="QR payment proof" className="max-h-40 w-full rounded border object-contain" />
