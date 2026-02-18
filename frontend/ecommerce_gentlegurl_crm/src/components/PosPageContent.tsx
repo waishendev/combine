@@ -7,6 +7,8 @@ type CartItem = {
   qty: number
   unit_price: number
   line_total: number
+  product_id?: number | null
+  variant_id?: number | null
   product_name?: string | null
   variant_name?: string | null
   variant_sku?: string | null
@@ -61,6 +63,20 @@ type PageResponse<T> = {
   last_page: number
   per_page: number
   total: number
+}
+
+
+type VariantPayload = {
+  id?: number | string
+  title?: string | null
+  name?: string | null
+  sku?: string | null
+  price?: number | string | null
+  sale_price?: number | string | null
+  image_url?: string | null
+  is_active?: boolean | string | number
+  track_stock?: boolean | string | number | null
+  stock?: number | string | null
 }
 
 type ProductApiItem = {
@@ -150,6 +166,9 @@ export default function PosPageContent() {
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
   const [checkingOut, setCheckingOut] = useState(false)
+
+  const [cartVariantOptions, setCartVariantOptions] = useState<Record<number, ProductVariantOption[]>>({})
+  const [cartVariantLoading, setCartVariantLoading] = useState<Record<number, boolean>>({})
   const [checkoutResult, setCheckoutResult] = useState<null | {
     order_number: string
     receipt_public_url: string | null
@@ -230,6 +249,20 @@ export default function PosPageContent() {
     return false
   }
 
+  const resolveVariantIdFromPayload = (payload: unknown): number | null => {
+    if (!payload || typeof payload !== 'object' || !('variants' in payload)) return null
+
+    const payloadWithVariants = payload as { variants?: unknown }
+    if (!Array.isArray(payloadWithVariants.variants)) return null
+
+    const variants = payloadWithVariants.variants as VariantPayload[]
+    const activeVariant = variants.find((variant) => variant && (variant.is_active === true || variant.is_active === '1' || variant.is_active === 1 || variant.is_active === 'true'))
+    const fallbackVariant = variants[0]
+    const variantId = Number((activeVariant ?? fallbackVariant)?.id)
+
+    return Number.isFinite(variantId) && variantId > 0 ? variantId : null
+  }
+
 
   const normalizeProductFromApi = (item: ProductApiItem): ProductOption | null => {
     const productId = Number(item.id)
@@ -247,7 +280,7 @@ export default function PosPageContent() {
             const priceRaw = variant?.sale_price ?? variant?.price ?? item.price ?? 0
             const parsedPrice = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
 
-            const variantAny = variant as any
+            const variantAny = variant as VariantPayload
             return {
               id: variantId,
               name: variant?.name?.trim() || `Variant #${variantId}`,
@@ -486,40 +519,35 @@ export default function PosPageContent() {
   const confirmAddSelectedProduct = async () => {
     if (!selectedProduct) return
 
-    // Determine the variant_id to use
     let variantIdToUse: number | null = null
-    
-    // If product has variants, use selected variant
+
     if (selectedProduct.variants.length > 0) {
-      if (!selectedVariantId) {
-        showMsg('Please choose a variant before adding to cart.')
-        return
-      }
-      variantIdToUse = selectedVariantId
-    } else {
-      // For products without variants, try to get variant_id from fullProductData
-      if (fullProductData?.variants && Array.isArray(fullProductData.variants) && fullProductData.variants.length > 0) {
-        const firstVariant = fullProductData.variants[0]
-        const variantId = Number(firstVariant?.id)
-        if (Number.isFinite(variantId) && variantId > 0) {
-          variantIdToUse = variantId
+      variantIdToUse = selectedVariantId ?? selectedProduct.variants[0]?.id ?? null
+    }
+
+    if (!variantIdToUse) {
+      variantIdToUse = resolveVariantIdFromPayload(fullProductData)
+    }
+
+    if (!variantIdToUse) {
+      const productId = Number(selectedProduct.product_id || selectedProduct.id)
+      if (Number.isFinite(productId) && productId > 0) {
+        try {
+          const res = await fetch(`/api/proxy/ecommerce/products/${productId}`, { cache: 'no-store' })
+          const json = await res.json()
+          if (res.ok) {
+            const payload = json?.data?.product ?? json?.data ?? json?.product
+            variantIdToUse = resolveVariantIdFromPayload(payload)
+            if (payload) setFullProductData(payload)
+          }
+        } catch {
+          // no-op
         }
-      }
-      
-      // If still no variant_id, try using selectedProduct.id if it's not the product_id
-      if (!variantIdToUse && selectedProduct.id > 0 && selectedProduct.id !== selectedProduct.product_id) {
-        variantIdToUse = selectedProduct.id
-      }
-      
-      // Last resort: if id is actually a variant_id (not product_id), use it
-      if (!variantIdToUse) {
-        showMsg('Unable to determine variant. Please try again.')
-        return
       }
     }
 
     if (!variantIdToUse || variantIdToUse <= 0) {
-      showMsg('Invalid variant ID. Please try again.')
+      showMsg('Unable to determine variant. Please try again.')
       return
     }
 
@@ -563,12 +591,7 @@ export default function PosPageContent() {
         return
       }
 
-      // Get the first variant from the product
-      let variantId: number | null = null
-      if (Array.isArray(payload.variants) && payload.variants.length > 0) {
-        const firstVariant = payload.variants[0]
-        variantId = Number(firstVariant?.id)
-      }
+      const variantId = resolveVariantIdFromPayload(payload)
 
       if (!variantId || variantId <= 0) {
         showMsg('Product variant not found. Please select the product manually.')
@@ -576,9 +599,69 @@ export default function PosPageContent() {
       }
 
       await addByVariantId(variantId, 1)
-    } catch (error) {
+    } catch {
       showMsg('Unable to add product. Please try again.')
     }
+  }
+
+
+  const fetchCartItemVariants = async (item: CartItem) => {
+    if (!item.product_id || cartVariantOptions[item.id]?.length) return
+
+    setCartVariantLoading((prev) => ({ ...prev, [item.id]: true }))
+
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/products/${item.product_id}`, { cache: 'no-store' })
+      const json = await res.json()
+      const payload = json?.data?.product ?? json?.data ?? json?.product
+
+      const options: ProductVariantOption[] = Array.isArray(payload?.variants)
+        ? payload.variants
+            .map((variant: VariantPayload): ProductVariantOption | null => {
+              const id = Number(variant?.id)
+              const sku = variant?.sku?.trim() || ''
+              const price = Number(variant?.sale_price ?? variant?.price ?? 0)
+              if (!Number.isFinite(id) || id <= 0 || !sku) return null
+
+              return {
+                id,
+                name: variant?.title?.trim() || variant?.name?.trim() || sku,
+                sku,
+                barcode: sku,
+                price: Number.isFinite(price) ? price : 0,
+                thumbnail_url: variant?.image_url ?? payload?.cover_image_url ?? null,
+                is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
+                track_stock: variant?.track_stock === true || variant?.track_stock === '1' || variant?.track_stock === 1 || variant?.track_stock === 'true' || null,
+                stock: typeof variant?.stock === 'number' ? variant.stock : Number(variant?.stock || 0) || null,
+              }
+            })
+            .filter((variant): variant is ProductVariantOption => Boolean(variant))
+        : []
+
+      setCartVariantOptions((prev) => ({ ...prev, [item.id]: options }))
+    } finally {
+      setCartVariantLoading((prev) => ({ ...prev, [item.id]: false }))
+    }
+  }
+
+  const updateItemVariant = async (item: CartItem, variantId: number) => {
+    if (!Number.isFinite(variantId) || variantId <= 0 || item.variant_id === variantId) return
+
+    const res = await fetch(`/api/proxy/pos/cart/items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant_id: variantId }),
+    })
+    const json = await res.json()
+
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to change variant.')
+      return
+    }
+
+    setCart(json.data.cart)
+    showMsg('Variant updated.')
+    setCartVariantOptions((prev) => ({ ...prev, [item.id]: [] }))
   }
 
   const cashReceivedAmount = Number(cashReceived || 0)
@@ -810,6 +893,26 @@ export default function PosPageContent() {
                   <div key={item.id} className="rounded-lg border p-3">
                     <p className="text-sm font-medium">{item.product_name}</p>
                     <p className="text-xs text-gray-500">{item.variant_name} · {item.variant_sku}</p>
+                    {!!item.product_id && (
+                      <div className="mt-1">
+                        <select
+                          className="w-full rounded border px-2 py-1 text-xs"
+                          value={Number(item.variant_id ?? 0)}
+                          onFocus={() => void fetchCartItemVariants(item)}
+                          onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
+                          disabled={cartVariantLoading[item.id]}
+                        >
+                          <option value={Number(item.variant_id ?? 0)}>
+                            {cartVariantLoading[item.id] ? 'Loading variants...' : 'Change variant'}
+                          </option>
+                          {(cartVariantOptions[item.id] ?? []).map((variant) => (
+                            <option key={variant.id} value={variant.id}>
+                              {variant.name} ({variant.sku})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="mt-2 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <button onClick={() => void updateQty(item.id, item.qty - 1)} className="rounded border px-2">-</button>
