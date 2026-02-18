@@ -17,6 +17,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class PosController extends Controller
 {
@@ -63,16 +64,18 @@ class PosController extends Controller
             'qty' => ['nullable', 'integer', 'min:1'],
         ]);
 
+        $barcode = trim((string) $validated['barcode']);
+
         $variant = ProductVariant::query()
             ->with('product')
-            ->where('sku', $validated['barcode'])
+            ->whereRaw('LOWER(sku) = ?', [mb_strtolower($barcode)])
             ->where('is_active', true)
             ->first();
 
         if (! $variant) {
             // Try to find by product SKU (for SINGLE type products)
             $product = Product::query()
-                ->where('sku', $validated['barcode'])
+                ->whereRaw('LOWER(sku) = ?', [mb_strtolower($barcode)])
                 ->where('is_active', true)
                 ->where('is_reward_only', false)
                 ->first();
@@ -89,7 +92,7 @@ class PosController extends Controller
                 
                 // If no variant found and product type is single, try to find any variant (even inactive)
                 // This handles cases where SINGLE products might not have active variants
-                if (!$variant && $product->type === 'single') {
+                if (!$variant && $this->isSingleType($product)) {
                     $variant = ProductVariant::query()
                         ->with('product')
                         ->where('product_id', $product->id)
@@ -102,14 +105,17 @@ class PosController extends Controller
                 $variant = ProductVariant::query()
                     ->with('product')
                     ->where('is_active', true)
-                    ->whereHas('product', fn ($query) => $query->where('sku', $validated['barcode']))
+                    ->whereHas('product', fn ($query) => $query->whereRaw('LOWER(sku) = ?', [mb_strtolower($barcode)]))
                     ->orderBy('sort_order')
                     ->orderBy('id')
                     ->first();
             }
         }
 
-        if (!$variant || !$variant->product || !$variant->product->is_active || !$variant->is_active || $variant->product->is_reward_only) {
+        $isSingleType = $this->isSingleType($variant?->product);
+        $variantIsSellable = $variant?->is_active || $isSingleType;
+
+        if (!$variant || !$variant->product || !$variant->product->is_active || !$variantIsSellable || $variant->product->is_reward_only) {
             return $this->respondError(__('Barcode not found or not sellable.'), 404);
         }
 
@@ -152,10 +158,12 @@ class PosController extends Controller
         $variant = ProductVariant::query()
             ->with('product')
             ->where('id', $validated['variant_id'])
-            ->where('is_active', true)
             ->first();
 
-        if (! $variant || ! $variant->product || ! $variant->product->is_active || $variant->product->is_reward_only) {
+        $isSingleType = $this->isSingleType($variant?->product);
+        $variantIsSellable = $variant?->is_active || $isSingleType;
+
+        if (! $variant || ! $variant->product || ! $variant->product->is_active || ! $variantIsSellable || $variant->product->is_reward_only) {
             return $this->respondError(__('Product is not sellable.'), 404);
         }
 
@@ -232,11 +240,23 @@ class PosController extends Controller
 
                 return [
                     'id' => $variant->id,
+                    'product_id' => $product?->id,
                     'name' => $product?->name,
                     'sku' => $variant->sku,
                     'barcode' => $variant->sku,
                     'price' => (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
                     'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
+                    'variants' => [[
+                        'id' => $variant->id,
+                        'name' => $variant->title ?: $variant->sku,
+                        'sku' => $variant->sku,
+                        'barcode' => $variant->sku,
+                        'price' => (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
+                        'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
+                        'is_active' => (bool) $variant->is_active,
+                        'track_stock' => (bool) $variant->track_stock,
+                        'stock' => $variant->stock,
+                    ]],
                 ];
             })->values(),
             'current_page' => $variants->currentPage(),
@@ -249,17 +269,52 @@ class PosController extends Controller
     public function updateCartItem(Request $request, int $itemId)
     {
         $validated = $request->validate([
-            'qty' => ['required', 'integer', 'min:1'],
+            'qty' => ['sometimes', 'integer', 'min:1'],
+            'variant_id' => ['sometimes', 'integer', Rule::exists('product_variants', 'id')],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id);
-        $item = $cart->items()->with('variant')->findOrFail($itemId);
-
-        if ($item->variant?->track_stock && $validated['qty'] > (int) $item->variant->stock) {
-            return $this->respondError(__('Insufficient stock.'), 422);
+        if (!array_key_exists('qty', $validated) && !array_key_exists('variant_id', $validated)) {
+            return $this->respondError(__('Nothing to update.'), 422);
         }
 
-        $item->qty = $validated['qty'];
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->items()->with('variant.product')->findOrFail($itemId);
+
+        if (array_key_exists('variant_id', $validated)) {
+            $newVariant = ProductVariant::query()
+                ->with('product')
+                ->where('id', $validated['variant_id'])
+                ->first();
+
+            $isSingleType = $this->isSingleType($newVariant?->product);
+            $variantIsSellable = $newVariant?->is_active || $isSingleType;
+
+            if (! $newVariant || ! $newVariant->product || ! $newVariant->product->is_active || ! $variantIsSellable || $newVariant->product->is_reward_only) {
+                return $this->respondError(__('Product is not sellable.'), 404);
+            }
+
+            if ((int) $newVariant->product_id !== (int) ($item->variant?->product_id ?? 0)) {
+                return $this->respondError(__('Variant must belong to the same product.'), 422);
+            }
+
+            $qtyForStock = (int) ($validated['qty'] ?? $item->qty);
+            if ($newVariant->track_stock && $qtyForStock > (int) $newVariant->stock) {
+                return $this->respondError(__('Insufficient stock.'), 422);
+            }
+
+            $pricing = ProductPricing::build($newVariant->product, $newVariant);
+            $item->variant_id = $newVariant->id;
+            $item->price_snapshot = (float) ($pricing['unit_price'] ?? $newVariant->sale_price ?? $newVariant->price ?? 0);
+        }
+
+        if (array_key_exists('qty', $validated)) {
+            $targetVariant = $item->relationLoaded('variant') && $item->variant ? $item->variant : $item->variant()->first();
+            if ($targetVariant?->track_stock && $validated['qty'] > (int) $targetVariant->stock) {
+                return $this->respondError(__('Insufficient stock.'), 422);
+            }
+            $item->qty = $validated['qty'];
+        }
+
         $item->save();
 
         return $this->respond([
@@ -402,6 +457,7 @@ class PosController extends Controller
                 'variant_id' => $variant?->id,
                 'variant_name' => $variant?->title,
                 'variant_sku' => $variant?->sku,
+                'product_id' => $variant?->product?->id,
                 'product_name' => $variant?->product?->name,
             ];
         })->values();
@@ -412,6 +468,16 @@ class PosController extends Controller
             'subtotal' => $items->sum('line_total'),
             'grand_total' => $items->sum('line_total'),
         ];
+    }
+
+
+    protected function isSingleType(?Product $product): bool
+    {
+        if (! $product) {
+            return false;
+        }
+
+        return mb_strtolower((string) $product->type) !== 'variant';
     }
 
     protected function generateOrderNumber(): string
