@@ -606,7 +606,7 @@ export default function PosPageContent() {
 
 
   const fetchCartItemVariants = async (item: CartItem) => {
-    if (!item.product_id || cartVariantOptions[item.id]?.length) return
+    if (!item.product_id || cartVariantOptions[item.id]?.length || cartVariantLoading[item.id]) return
 
     setCartVariantLoading((prev) => ({ ...prev, [item.id]: true }))
 
@@ -663,6 +663,22 @@ export default function PosPageContent() {
     showMsg('Variant updated.')
     setCartVariantOptions((prev) => ({ ...prev, [item.id]: [] }))
   }
+
+
+  useEffect(() => {
+    if (!cart?.items?.length) return
+
+    const itemsToPrefetch = cart.items.filter((item) => {
+      if (!item.product_id) return false
+      if (cartVariantOptions[item.id]?.length) return false
+      if (cartVariantLoading[item.id]) return false
+      return true
+    })
+
+    itemsToPrefetch.forEach((item) => {
+      void fetchCartItemVariants(item)
+    })
+  }, [cart, cartVariantOptions, cartVariantLoading])
 
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
@@ -903,7 +919,7 @@ export default function PosPageContent() {
                           disabled={cartVariantLoading[item.id]}
                         >
                           <option value={Number(item.variant_id ?? 0)}>
-                            {cartVariantLoading[item.id] ? 'Loading variants...' : 'Change variant'}
+                            {cartVariantLoading[item.id] ? 'Loading variants...' : (cartVariantOptions[item.id]?.length ? 'Select variant' : 'Preparing variants...')}
                           </option>
                           {(cartVariantOptions[item.id] ?? []).map((variant) => (
                             <option key={variant.id} value={variant.id}>

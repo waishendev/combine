@@ -92,7 +92,7 @@ class PosController extends Controller
                 
                 // If no variant found and product type is single, try to find any variant (even inactive)
                 // This handles cases where SINGLE products might not have active variants
-                if (!$variant && $product->type === 'single') {
+                if (!$variant && $this->isSingleType($product)) {
                     $variant = ProductVariant::query()
                         ->with('product')
                         ->where('product_id', $product->id)
@@ -112,7 +112,7 @@ class PosController extends Controller
             }
         }
 
-        $isSingleType = $variant?->product?->type !== 'variant';
+        $isSingleType = $this->isSingleType($variant?->product);
         $variantIsSellable = $variant?->is_active || $isSingleType;
 
         if (!$variant || !$variant->product || !$variant->product->is_active || !$variantIsSellable || $variant->product->is_reward_only) {
@@ -158,10 +158,9 @@ class PosController extends Controller
         $variant = ProductVariant::query()
             ->with('product')
             ->where('id', $validated['variant_id'])
-            ->where('is_active', true)
             ->first();
 
-        $isSingleType = $variant?->product?->type !== 'variant';
+        $isSingleType = $this->isSingleType($variant?->product);
         $variantIsSellable = $variant?->is_active || $isSingleType;
 
         if (! $variant || ! $variant->product || ! $variant->product->is_active || ! $variantIsSellable || $variant->product->is_reward_only) {
@@ -287,7 +286,7 @@ class PosController extends Controller
                 ->where('id', $validated['variant_id'])
                 ->first();
 
-            $isSingleType = $newVariant?->product?->type !== 'variant';
+            $isSingleType = $this->isSingleType($newVariant?->product);
             $variantIsSellable = $newVariant?->is_active || $isSingleType;
 
             if (! $newVariant || ! $newVariant->product || ! $newVariant->product->is_active || ! $variantIsSellable || $newVariant->product->is_reward_only) {
@@ -469,6 +468,16 @@ class PosController extends Controller
             'subtotal' => $items->sum('line_total'),
             'grand_total' => $items->sum('line_total'),
         ];
+    }
+
+
+    protected function isSingleType(?Product $product): bool
+    {
+        if (! $product) {
+            return false;
+        }
+
+        return mb_strtolower((string) $product->type) !== 'variant';
     }
 
     protected function generateOrderNumber(): string
