@@ -241,7 +241,7 @@ export default function PosPageContent() {
       const paged = extractPaged<ProductOption>(json)
       mapped = paged.data.map((item) => {
         const itemId = Number(item.id)
-        const variants = Array.isArray(item.variants)
+        const variants = Array.isArray(item.variants) && item.variants.length > 0
           ? item.variants
               .map((variant) => {
                 const variantId = Number(variant?.id)
@@ -257,7 +257,14 @@ export default function PosPageContent() {
                 }
               })
               .filter((variant): variant is ProductVariantOption => Boolean(variant))
-          : []
+          : [{
+              id: itemId,
+              name: item.name || '-',
+              sku: item.sku || item.barcode || '',
+              price: Number(item.price ?? 0) || 0,
+              image_url: item.thumbnail_url ?? null,
+              is_active: true,
+            }]
 
         return {
           ...item,
@@ -423,9 +430,12 @@ export default function PosPageContent() {
     if (!selectedProduct) return
 
     const hasVariants = selectedProduct.variants.length > 0
-    const success = hasVariants
-      ? await addByVariantId(Number(selectedVariantId), selectedProductQty)
-      : await addByBarcode(selectedProduct.barcode || selectedProduct.sku, selectedProductQty)
+    if (!hasVariants || !selectedVariantId) {
+      showMsg('This product has no sellable variant for POS.')
+      return
+    }
+
+    const success = await addByVariantId(Number(selectedVariantId), selectedProductQty)
     if (!success) return
 
     setProductSelectModalOpen(false)
@@ -437,15 +447,13 @@ export default function PosPageContent() {
   }
 
   const quickAddProduct = async (item: ProductOption) => {
-    if (item.variants.length > 0) {
-      const preferredVariantId = item.variants.find((variant) => variant.is_active)?.id ?? item.variants[0]?.id
-      if (preferredVariantId) {
-        await addByVariantId(preferredVariantId, 1)
-      }
+    const preferredVariantId = item.variants.find((variant) => variant.is_active)?.id ?? item.variants[0]?.id
+    if (!preferredVariantId) {
+      showMsg('This product has no sellable variant for POS.')
       return
     }
 
-    await addByBarcode(item.barcode || item.sku, 1)
+    await addByVariantId(preferredVariantId, 1)
   }
 
   const cashReceivedAmount = Number(cashReceived || 0)
@@ -921,7 +929,11 @@ export default function PosPageContent() {
               >
                 Cancel
               </button>
-              <button className="rounded bg-black px-3 py-2 text-sm text-white" onClick={() => void confirmAddSelectedProduct()}>
+              <button
+                className="rounded bg-black px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={selectedProduct.variants.length > 0 && !selectedVariantId}
+                onClick={() => void confirmAddSelectedProduct()}
+              >
                 Add to cart
               </button>
             </div>
