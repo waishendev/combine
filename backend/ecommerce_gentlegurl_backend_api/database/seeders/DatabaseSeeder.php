@@ -14,33 +14,33 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
-            // PermissionSeeder::class,
-            // AdminSeeder::class,
-            // GlobalSeoSeedeer::class,
-            // SettingSeeder::class,
-            // ShippingSettingSeeder::class,
-            // InvoiceProfileSeeder::class,
-            // BankAccountSeeder::class,
-            // LoyaltySettingSeeder::class,
-            // MembershipTiersSeeder::class,
-            // LoyaltyRewardSeederReal::class,
-            // StoreLocationsSeederReal::class,
-            // FooterWidgetSeederReal::class,
-            // ServicesMenuAndPagesSeeder::class,
+            PermissionSeeder::class,
+            AdminSeeder::class,
+            GlobalSeoSeedeer::class,
+            SettingSeeder::class,
+            ShippingSettingSeeder::class,
+            InvoiceProfileSeeder::class,
+            BankAccountSeeder::class,
+            LoyaltySettingSeeder::class,
+            MembershipTiersSeeder::class,
+            LoyaltyRewardSeederReal::class,
+            StoreLocationsSeederReal::class,
+            FooterWidgetSeederReal::class,
+            ServicesMenuAndPagesSeeder::class,
 
-            // SuperAdminRoleSeeder::class,
-            // SuperAdminSeeder::class,
-            // PaymentGatewaySeeder::class,
+            SuperAdminRoleSeeder::class,
+            SuperAdminSeeder::class,
+            PaymentGatewaySeeder::class,
 
             // upper all should open , no command to avoid error seed
 
 
-            // FooterWidgetSeederTesting::class,
-            // FrontendTestDataSeeder::class,
-            // LoyaltyRewardSeederTesting::class,
-            // LoyaltyDemoCustomerSeederTesting::class,
-            // SelfPickupCompletedOrderSeeder::class,
-            // GuestCompletedOrderSeeder::class,
+            FooterWidgetSeederTesting::class,
+            FrontendTestDataSeeder::class,
+            LoyaltyRewardSeederTesting::class,
+            LoyaltyDemoCustomerSeederTesting::class,
+            SelfPickupCompletedOrderSeeder::class,
+            GuestCompletedOrderSeeder::class,
 
 
             //ReturnDemoSeeder::class,

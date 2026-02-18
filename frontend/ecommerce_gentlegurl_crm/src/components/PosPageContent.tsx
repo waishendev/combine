@@ -38,6 +38,8 @@ type ProductVariantOption = {
   price: number
   thumbnail_url?: string | null
   is_active: boolean
+  track_stock?: boolean | null
+  stock?: number | null
 }
 
 type CheckoutMeta = {
@@ -119,19 +121,18 @@ export default function PosPageContent() {
   const [message, setMessage] = useState<string | null>(null)
   const [cart, setCart] = useState<Cart | null>(null)
 
-  const [productOpen, setProductOpen] = useState(false)
   const [productQuery, setProductQuery] = useState('')
   const [products, setProducts] = useState<ProductOption[]>([])
   const [productPage, setProductPage] = useState(1)
   const [productLastPage, setProductLastPage] = useState(1)
   const [productLoading, setProductLoading] = useState(false)
   const [productHighlighted, setProductHighlighted] = useState(0)
-  const [productInitialLoaded, setProductInitialLoaded] = useState(false)
   const [productSelectModalOpen, setProductSelectModalOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null)
   const [productVariantLoading, setProductVariantLoading] = useState(false)
   const [selectedProductQty, setSelectedProductQty] = useState(1)
+  const [fullProductData, setFullProductData] = useState<any>(null)
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -246,6 +247,7 @@ export default function PosPageContent() {
             const priceRaw = variant?.sale_price ?? variant?.price ?? item.price ?? 0
             const parsedPrice = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
 
+            const variantAny = variant as any
             return {
               id: variantId,
               name: variant?.name?.trim() || `Variant #${variantId}`,
@@ -254,6 +256,8 @@ export default function PosPageContent() {
               price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
               thumbnail_url: variant?.image_url ?? item.cover_image_url ?? null,
               is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
+              track_stock: variantAny?.track_stock === true || variantAny?.track_stock === '1' || variantAny?.track_stock === 1 || variantAny?.track_stock === 'true' || null,
+              stock: typeof variantAny?.stock === 'number' ? variantAny.stock : Number(variantAny?.stock || 0) || null,
             }
           })
           .filter((variant): variant is ProductVariantOption => Boolean(variant))
@@ -267,8 +271,13 @@ export default function PosPageContent() {
     const priceRaw = activeVariant?.price ?? item.price ?? 0
     const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
 
+    // For products without variants, we need to use the first variant's id if available
+    // Otherwise, we'll need to fetch it later from fullProductData
+    // The id here should be the variant_id, not product_id
+    const variantId = activeVariant?.id ?? (variants.length > 0 ? variants[0].id : null)
+
     return {
-      id: Number(activeVariant?.id ?? productId),
+      id: variantId ?? 0, // Will be set properly when we have variant data from fullProductData
       product_id: productId,
       name: item.name ?? '-',
       sku,
@@ -294,18 +303,44 @@ export default function PosPageContent() {
       const payload = json?.data?.product ?? json?.data ?? json?.product
       if (!payload || typeof payload !== 'object') return
 
+      // Store full product data for the modal
+      setFullProductData(payload)
+
       const normalized = normalizeProductFromApi(payload as ProductApiItem)
       if (!normalized) return
 
+      // Update selected product with correct data, preserving the original product_id
       setSelectedProduct((current) => {
         if (!current) return current
         const currentProductId = Number(current.product_id || current.id)
         if (currentProductId !== productId) return current
-        return normalized
+        
+        // Merge normalized data but keep the original product_id
+        return {
+          ...normalized,
+          product_id: productId, // Ensure product_id is correct
+          name: payload.name ?? current.name, // Use payload name to ensure correctness
+        }
       })
+      
+      // Auto-select variant if there's only one, or if no variants and we need to find the first variant from payload
       setSelectedVariantId((currentVariantId) => {
         if (currentVariantId) return currentVariantId
-        return normalized.variants.length === 1 ? normalized.variants[0].id : null
+        
+        if (normalized.variants.length === 1) {
+          return normalized.variants[0].id
+        }
+        
+        // If no variants in normalized but payload has variants, use the first one
+        if (normalized.variants.length === 0 && Array.isArray(payload.variants) && payload.variants.length > 0) {
+          const firstVariant = payload.variants[0]
+          const variantId = Number(firstVariant?.id)
+          if (Number.isFinite(variantId) && variantId > 0) {
+            return variantId
+          }
+        }
+        
+        return null
       })
     } catch {
       // no-op; keep fallback product information
@@ -400,17 +435,17 @@ export default function PosPageContent() {
   useEffect(() => {
     focusScanner()
     void loadCart()
+    // Load products on initial mount
+    void fetchProductPage(1, '', false)
   }, [])
 
   useEffect(() => {
-    if (!productOpen) return
-
     const handle = setTimeout(() => {
       void fetchProductPage(1, productQuery, false)
     }, 300)
 
     return () => clearTimeout(handle)
-  }, [fetchProductPage, productQuery, productOpen])
+  }, [fetchProductPage, productQuery])
 
   useEffect(() => {
     if (!memberOpen) return
@@ -446,23 +481,51 @@ export default function PosPageContent() {
   const confirmAddSelectedProduct = async () => {
     if (!selectedProduct) return
 
-    const hasVariants = selectedProduct.variants.length > 0
-    if (hasVariants && !selectedVariantId) {
-      showMsg('Please choose a variant before adding to cart.')
+    // Determine the variant_id to use
+    let variantIdToUse: number | null = null
+    
+    // If product has variants, use selected variant
+    if (selectedProduct.variants.length > 0) {
+      if (!selectedVariantId) {
+        showMsg('Please choose a variant before adding to cart.')
+        return
+      }
+      variantIdToUse = selectedVariantId
+    } else {
+      // For products without variants, try to get variant_id from fullProductData
+      if (fullProductData?.variants && Array.isArray(fullProductData.variants) && fullProductData.variants.length > 0) {
+        const firstVariant = fullProductData.variants[0]
+        const variantId = Number(firstVariant?.id)
+        if (Number.isFinite(variantId) && variantId > 0) {
+          variantIdToUse = variantId
+        }
+      }
+      
+      // If still no variant_id, try using selectedProduct.id if it's not the product_id
+      if (!variantIdToUse && selectedProduct.id > 0 && selectedProduct.id !== selectedProduct.product_id) {
+        variantIdToUse = selectedProduct.id
+      }
+      
+      // Last resort: if id is actually a variant_id (not product_id), use it
+      if (!variantIdToUse) {
+        showMsg('Unable to determine variant. Please try again.')
+        return
+      }
+    }
+
+    if (!variantIdToUse || variantIdToUse <= 0) {
+      showMsg('Invalid variant ID. Please try again.')
       return
     }
 
-    const success = hasVariants
-      ? await addByVariantId(selectedVariantId ?? selectedProduct.id, selectedProductQty)
-      : await addByVariantId(selectedProduct.id, selectedProductQty)
+    const success = await addByVariantId(variantIdToUse, selectedProductQty)
     if (!success) return
 
     setProductSelectModalOpen(false)
     setSelectedProduct(null)
     setSelectedVariantId(null)
     setProductVariantLoading(false)
-    setProductOpen(false)
-    setProductQuery('')
+    setFullProductData(null)
     focusScanner()
   }
 
@@ -472,7 +535,45 @@ export default function PosPageContent() {
       return
     }
 
-    await addByVariantId(item.id, 1)
+    // For products without variants, we need to fetch the product to get the variant_id
+    // Since POS system requires variant_id, we need to get it from the product data
+    const productId = Number(item.product_id || item.id)
+    if (!Number.isFinite(productId) || productId <= 0) {
+      showMsg('Invalid product ID.')
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/products/${productId}`, { cache: 'no-store' })
+      const json = await res.json()
+
+      if (!res.ok) {
+        showMsg('Unable to load product details.')
+        return
+      }
+
+      const payload = json?.data?.product ?? json?.data ?? json?.product
+      if (!payload || typeof payload !== 'object') {
+        showMsg('Invalid product data.')
+        return
+      }
+
+      // Get the first variant from the product
+      let variantId: number | null = null
+      if (Array.isArray(payload.variants) && payload.variants.length > 0) {
+        const firstVariant = payload.variants[0]
+        variantId = Number(firstVariant?.id)
+      }
+
+      if (!variantId || variantId <= 0) {
+        showMsg('Product variant not found. Please select the product manually.')
+        return
+      }
+
+      await addByVariantId(variantId, 1)
+    } catch (error) {
+      showMsg('Unable to add product. Please try again.')
+    }
   }
 
   const cashReceivedAmount = Number(cashReceived || 0)
@@ -543,19 +644,6 @@ export default function PosPageContent() {
     setConfirmCashOpen(true)
   }
 
-  const toggleProductDropdown = async () => {
-    if (productOpen) {
-      setProductOpen(false)
-      return
-    }
-
-    setProductOpen(true)
-    if (!productInitialLoaded) {
-      setProductInitialLoaded(true)
-      await fetchProductPage(1, '', false)
-    }
-  }
-
   const toggleMemberDropdown = async () => {
     if (memberOpen) {
       setMemberOpen(false)
@@ -593,167 +681,123 @@ export default function PosPageContent() {
 
   return (
     <div className="space-y-5">
-      <h2 className="text-3xl font-semibold">POS Checkout</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-semibold">POS Checkout</h2>
+      </div>
       {message && <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">{message}</div>}
+
+      {/* Barcode Scanner Input - Always visible for POS */}
+      <div className="rounded-xl border bg-white p-4 shadow-sm">
+        <label className="mb-2 block text-sm font-semibold text-gray-700">Barcode Scanner</label>
+        <input
+          ref={scannerInputRef}
+          type="text"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void onScannerEnter()
+            }
+          }}
+          className="w-full rounded-lg border-2 border-gray-300 px-4 py-3 text-base font-mono focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10"
+          placeholder="Scan barcode or type manually, then press Enter..."
+          autoFocus
+        />
+        <p className="mt-2 text-xs text-gray-500">Press Enter after scanning to add item to cart</p>
+      </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
-          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 shadow-sm">
-            <label className="mb-2 block text-sm font-medium text-blue-800">Scanner ready</label>
-            <p className="text-sm text-blue-700">Scanner listens in background. Just scan the product barcode directly.</p>
-            <input
-              ref={scannerInputRef}
-              className="sr-only"
-              placeholder="Scan barcode and press Enter"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void onScannerEnter()
-                }
-              }}
-            />
-            <p className="mt-1 text-xs text-blue-700/80">Manual typing input is hidden to reduce clutter.</p>
-          </div>
+          {/* Products Section - Always Visible */}
+          <div className="rounded-xl border bg-white p-5 shadow-sm">
+            <h3 className="mb-4 text-xl font-semibold">Products</h3>
+            
+            {/* Search Bar */}
+            <div className="mb-4">
+              <input
+                value={productQuery}
+                onChange={(e) => setProductQuery(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10"
+                placeholder="Search products by name, SKU, or barcode..."
+              />
+            </div>
 
-          <div className="rounded-xl border p-4 shadow-sm">
-            <label className="mb-2 block text-sm font-medium">Select product (manual fallback)</label>
-            <button onClick={() => void toggleProductDropdown()} className="mb-2 w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-gray-50">
-              {productOpen ? 'Hide product browser' : 'Open product browser'}
-            </button>
-
-            {productOpen && (
-              <div className="rounded-lg border bg-white">
-                <div className="border-b p-2">
-                  <input
-                    value={productQuery}
-                    onChange={(e) => setProductQuery(e.target.value)}
-                    className="w-full rounded border px-3 py-2 text-sm"
-                    placeholder="Type to search product (debounced 300ms)"
-                  />
-                </div>
-
-                <div className="grid max-h-[32rem] grid-cols-1 gap-3 overflow-auto p-3 md:grid-cols-2">
-                  {products.map((item, idx) => (
-                    <div
-                      key={`${item.id}-${idx}`}
-                      role="button"
-                      tabIndex={0}
-                      className={`overflow-hidden rounded-lg border text-left text-sm ${idx === productHighlighted ? 'border-black bg-gray-100' : 'hover:bg-gray-50'}`}
-                      onMouseEnter={() => setProductHighlighted(idx)}
-                      onClick={() => void onSelectProduct(item)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          void onSelectProduct(item)
-                        }
-                      }}
-                    >
-                      <div className="aspect-square w-full bg-gray-100">
-                        {item.thumbnail_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={item.thumbnail_url} alt={item.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-xs text-gray-500">No image</div>
-                        )}
-                      </div>
-                      <div className="space-y-2 p-3">
-                        <p className="font-semibold">{item.name}</p>
-                        <p className="text-xs text-gray-500">{item.sku || item.barcode}</p>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="block font-semibold">RM {Number(item.price ?? 0).toFixed(2)}</span>
-                          <button
-                            type="button"
-                            className="rounded bg-black px-2 py-1 text-xs text-white"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void quickAddProduct(item)
-                            }}
-                          >
-                            Add 1x
-                          </button>
-                        </div>
-                      </div>
+            {/* Products Grid */}
+            <div className="grid max-h-[calc(100vh-20rem)] grid-cols-2 gap-4 overflow-auto p-1 sm:grid-cols-3 lg:grid-cols-4">
+              {products.map((item, idx) => (
+                <div
+                  key={`${item.id}-${idx}`}
+                  role="button"
+                  tabIndex={0}
+                  className={`group cursor-pointer overflow-hidden rounded-lg border-2 bg-white transition-all ${idx === productHighlighted ? 'border-black shadow-md' : 'border-gray-200 hover:border-gray-400 hover:shadow-md'}`}
+                  onMouseEnter={() => setProductHighlighted(idx)}
+                  onClick={() => void onSelectProduct(item)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      void onSelectProduct(item)
+                    }
+                  }}
+                >
+                  <div className="aspect-square w-full bg-gray-100">
+                    {item.thumbnail_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.thumbnail_url} alt={item.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">No image</div>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 p-3">
+                    <p className="line-clamp-2 text-sm font-semibold leading-tight">{item.name}</p>
+                    <p className="text-xs text-gray-500">{item.sku || item.barcode}</p>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <span className="text-sm font-bold text-black">RM {Number(item.price ?? 0).toFixed(2)}</span>
+                      <button
+                        type="button"
+                        className="rounded-md bg-black px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void quickAddProduct(item)
+                        }}
+                      >
+                        + Add
+                      </button>
                     </div>
-                  ))}
-
-                  {!productLoading && products.length === 0 && <p className="p-4 text-sm text-gray-500">No products found.</p>}
+                  </div>
                 </div>
+              ))}
 
-                <div className="flex items-center justify-between border-t p-2">
-                  <span className="text-xs text-gray-500">Page {productPage} / {productLastPage}</span>
-                  <button
-                    className="rounded border px-3 py-1 text-sm disabled:opacity-40"
-                    disabled={productLoading || productPage >= productLastPage}
-                    onClick={() => void fetchProductPage(productPage + 1, productQuery, true)}
-                  >
-                    {productLoading ? 'Loading...' : 'See more'}
-                  </button>
+              {!productLoading && products.length === 0 && (
+                <div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
+                  <div className="mb-2 text-4xl">📦</div>
+                  <p className="text-sm font-medium text-gray-600">No products found</p>
+                  <p className="mt-1 text-xs text-gray-500">Try adjusting your search</p>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
 
-          <div className="rounded-xl border p-4 shadow-sm">
-            <h3 className="mb-2 text-lg font-semibold">Member assignment (optional)</h3>
-            <button onClick={() => void toggleMemberDropdown()} className="mb-2 w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-gray-50">
-              {memberOpen ? 'Hide member search' : 'Open member search'}
-            </button>
+              {productLoading && products.length === 0 && (
+                <div className="col-span-full py-12 text-center text-sm text-gray-500">Loading products...</div>
+              )}
+            </div>
 
-            {memberOpen && (
-              <div className="rounded-lg border bg-white">
-                <div className="border-b p-2">
-                  <input
-                    value={memberQuery}
-                    onChange={(e) => setMemberQuery(e.target.value)}
-                    className="w-full rounded border px-3 py-2 text-sm"
-                    placeholder="Search by phone, email, member code, name"
-                  />
-                </div>
-
-                <div className="max-h-72 overflow-auto">
-                  {members.map((member) => (
-                    <button
-                      key={member.id}
-                      className="block w-full border-b p-3 text-left text-sm last:border-b-0 hover:bg-gray-50"
-                      onClick={() => {
-                        setSelectedMember(member)
-                        setMemberOpen(false)
-                        focusScanner()
-                      }}
-                    >
-                      <p className="font-semibold">{member.name}</p>
-                      <p className="text-xs text-gray-500">{member.phone ?? '-'} · {member.email ?? '-'}</p>
-                    </button>
-                  ))}
-
-                  {!memberLoading && members.length === 0 && <p className="p-4 text-sm text-gray-500">No members found.</p>}
-                </div>
-
-                <div className="flex items-center justify-between border-t p-2">
-                  <span className="text-xs text-gray-500">Page {memberPage} / {memberLastPage}</span>
-                  <button
-                    className="rounded border px-3 py-1 text-sm disabled:opacity-40"
-                    disabled={memberLoading || memberPage >= memberLastPage}
-                    onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
-                  >
-                    {memberLoading ? 'Loading...' : 'See more'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {selectedMember && (
-              <div className="mt-3 flex items-center justify-between rounded-lg bg-green-50 p-2 text-sm text-green-800">
-                <span>Selected: {selectedMember.name}</span>
-                <button onClick={() => setSelectedMember(null)} className="underline">Clear / Unassign</button>
+            {/* Pagination */}
+            {products.length > 0 && (
+              <div className="mt-4 flex items-center justify-between border-t pt-4">
+                <span className="text-xs text-gray-600">Page {productPage} of {productLastPage}</span>
+                <button
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={productLoading || productPage >= productLastPage}
+                  onClick={() => void fetchProductPage(productPage + 1, productQuery, true)}
+                >
+                  {productLoading ? 'Loading...' : 'Load More'}
+                </button>
               </div>
             )}
           </div>
         </div>
 
         <div className="space-y-5 lg:col-span-2">
-          <div className="rounded-xl border p-4 shadow-sm lg:sticky lg:top-5">
-            <h3 className="mb-3 text-lg font-semibold">Cart Summary</h3>
+          <div className="rounded-xl border bg-white p-5 shadow-sm lg:sticky lg:top-5">
+            <h3 className="mb-4 text-xl font-semibold">Cart Summary</h3>
 
             <div className="space-y-2">
               {cart?.items.length ? (
@@ -876,84 +920,258 @@ export default function PosPageContent() {
 
             <p className="mt-2 text-xs text-gray-500">Items: {totalItems}</p>
           </div>
+
+          {/* Member Assignment Section - Moved to Right Side */}
+          <div className="rounded-xl border bg-white p-5 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold">Member Assignment <span className="text-xs font-normal text-gray-500">(optional)</span></h3>
+            
+            {selectedMember ? (
+              <div className="mb-4 rounded-lg bg-green-50 border border-green-200 p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-green-900">{selectedMember.name}</p>
+                    <p className="text-xs text-green-700">{selectedMember.phone ?? '-'} · {selectedMember.email ?? '-'}</p>
+                    {selectedMember.member_code && (
+                      <p className="mt-1 text-xs text-green-600">Code: {selectedMember.member_code}</p>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => setSelectedMember(null)} 
+                    className="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => void toggleMemberDropdown()} 
+                className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-left text-sm font-medium transition-colors hover:bg-gray-50"
+              >
+                {memberOpen ? '▼ Hide member search' : '▶ Search member'}
+              </button>
+            )}
+
+            {memberOpen && (
+              <div className="rounded-lg border border-gray-200 bg-white">
+                <div className="border-b border-gray-200 p-3">
+                  <input
+                    value={memberQuery}
+                    onChange={(e) => setMemberQuery(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10"
+                    placeholder="Search by phone, email, member code, name..."
+                    autoFocus
+                  />
+                </div>
+
+                <div className="max-h-64 overflow-auto">
+                  {members.map((member) => (
+                    <button
+                      key={member.id}
+                      className="block w-full border-b border-gray-100 p-3 text-left text-sm transition-colors hover:bg-gray-50 last:border-b-0"
+                      onClick={() => {
+                        setSelectedMember(member)
+                        setMemberOpen(false)
+                        focusScanner()
+                      }}
+                    >
+                      <p className="font-semibold text-gray-900">{member.name}</p>
+                      <p className="mt-0.5 text-xs text-gray-600">{member.phone ?? '-'} · {member.email ?? '-'}</p>
+                      {member.member_code && (
+                        <p className="mt-0.5 text-xs text-gray-500">Code: {member.member_code}</p>
+                      )}
+                    </button>
+                  ))}
+
+                  {!memberLoading && members.length === 0 && (
+                    <div className="p-4 text-center text-sm text-gray-500">No members found</div>
+                  )}
+                </div>
+
+                {members.length > 0 && (
+                  <div className="flex items-center justify-between border-t border-gray-200 p-2">
+                    <span className="text-xs text-gray-500">Page {memberPage} / {memberLastPage}</span>
+                    <button
+                      className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={memberLoading || memberPage >= memberLastPage}
+                      onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
+                    >
+                      {memberLoading ? 'Loading...' : 'See more'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {productSelectModalOpen && selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl">
-            <h4 className="text-lg font-semibold">Add product to cart</h4>
-            <p className="mt-1 text-sm font-medium">{selectedProduct.name}</p>
-            <p className="text-xs text-gray-500">{selectedProduct.sku || selectedProduct.barcode}</p>
-            <p className="mt-1 text-sm">RM {Number(selectedProduct.price ?? 0).toFixed(2)}</p>
-
-            {productVariantLoading && (
-              <p className="mt-3 text-xs text-gray-500">Loading variants...</p>
-            )}
-
-            {selectedProduct.variants.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <label className="block text-sm font-medium">Choose variant</label>
-                <div className="grid max-h-52 gap-2 overflow-auto rounded border p-2">
-                  {selectedProduct.variants.map((variant) => {
-                    const selected = variant.id === selectedVariantId
-                    return (
-                      <button
-                        type="button"
-                        key={variant.id}
-                        onClick={() => setSelectedVariantId(variant.id)}
-                        className={`rounded border px-3 py-2 text-left text-sm ${selected ? 'border-black bg-gray-100' : 'hover:bg-gray-50'}`}
-                      >
-                        <p className="font-medium">{variant.name}</p>
-                        <p className="text-xs text-gray-500">{variant.sku}</p>
-                        <p className="text-xs font-semibold">RM {variant.price.toFixed(2)}</p>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-4">
-              <label className="mb-1 block text-sm font-medium">Quantity</label>
-              <div className="flex items-center gap-2">
-                <button
-                  className="rounded border px-3 py-1"
-                  onClick={() => setSelectedProductQty((prev) => Math.max(1, prev - 1))}
-                >
-                  -
-                </button>
-                <input
-                  type="number"
-                  min={1}
-                  value={selectedProductQty}
-                  onChange={(e) => setSelectedProductQty(Math.max(1, Number(e.target.value || 1)))}
-                  className="w-24 rounded border px-2 py-1 text-center"
-                />
-                <button
-                  className="rounded border px-3 py-1"
-                  onClick={() => setSelectedProductQty((prev) => prev + 1)}
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+          <div className="w-full max-w-4xl rounded-xl bg-white shadow-2xl my-8">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b p-4">
+              <h4 className="text-xl font-semibold">Product Details</h4>
               <button
-                className="rounded border px-3 py-2 text-sm"
                 onClick={() => {
                   setProductSelectModalOpen(false)
                   setSelectedProduct(null)
                   setSelectedVariantId(null)
                   setProductVariantLoading(false)
+                  setFullProductData(null)
                 }}
+                className="rounded-lg p-2 hover:bg-gray-100 transition-colors"
               >
-                Cancel
+                <span className="text-2xl leading-none">×</span>
               </button>
-              <button className="rounded bg-black px-3 py-2 text-sm text-white" onClick={() => void confirmAddSelectedProduct()}>
-                Add to cart
-              </button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6 p-6 max-h-[80vh] overflow-y-auto">
+              {/* Left: Product Images */}
+              <div className="space-y-4">
+                {productVariantLoading ? (
+                  <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
+                    <p className="text-sm text-gray-500">Loading...</p>
+                  </div>
+                ) : (
+                  <>
+                    {fullProductData?.images?.[0]?.url || fullProductData?.cover_image_url || selectedProduct.thumbnail_url ? (
+                      <div className="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={fullProductData?.images?.[0]?.url || fullProductData?.cover_image_url || selectedProduct.thumbnail_url || ''}
+                          alt={selectedProduct.name || ''}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="aspect-square w-full bg-gray-100 rounded-lg flex items-center justify-center">
+                        <p className="text-sm text-gray-400">No image</p>
+                      </div>
+                    )}
+                    {fullProductData?.images && fullProductData.images.length > 1 && (
+                      <div className="grid grid-cols-4 gap-2">
+                        {fullProductData.images.slice(0, 4).map((img: any, idx: number) => (
+                          <div key={idx} className="aspect-square bg-gray-100 rounded overflow-hidden">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={img.url || ''} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Right: Product Info */}
+              <div className="space-y-4">
+                <div>
+                  <h1 className="text-2xl font-semibold">{selectedProduct.name}</h1>
+                  <p className="text-sm text-gray-500 mt-1">{selectedProduct.sku || selectedProduct.barcode}</p>
+                </div>
+
+                {/* Price */}
+                <div className="rounded-lg border bg-gray-50 p-4">
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-3xl font-bold text-black">
+                      RM {selectedVariantId && selectedProduct.variants.length > 0
+                        ? Number(selectedProduct.variants.find(v => v.id === selectedVariantId)?.price ?? selectedProduct.price ?? 0).toFixed(2)
+                        : Number(selectedProduct.price ?? 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Variants */}
+                {productVariantLoading ? (
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm text-gray-500">Loading variants...</p>
+                  </div>
+                ) : selectedProduct.variants.length > 0 ? (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold">Select Variant</label>
+                    <div className="grid gap-2 max-h-64 overflow-y-auto">
+                      {selectedProduct.variants.map((variant) => {
+                        const selected = variant.id === selectedVariantId
+                        const isActive = variant.is_active !== false
+                        const outOfStock = (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0
+                        return (
+                          <button
+                            type="button"
+                            key={variant.id}
+                            onClick={() => isActive && !outOfStock && setSelectedVariantId(variant.id)}
+                            disabled={!isActive || outOfStock}
+                            className={`rounded-lg border-2 p-3 text-left transition-all ${
+                              selected
+                                ? 'border-black bg-gray-100'
+                                : !isActive || outOfStock
+                                  ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                                  : 'border-gray-200 hover:border-gray-400 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{variant.name}</p>
+                                <p className="text-xs text-gray-500 mt-0.5">{variant.sku}</p>
+                                <p className="text-sm font-semibold mt-1">RM {variant.price.toFixed(2)}</p>
+                              </div>
+                              {outOfStock && (
+                                <span className="text-xs text-red-600 font-medium">Out of Stock</span>
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Description */}
+                {fullProductData?.description && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold">Description</label>
+                    <div className="prose max-w-none text-sm text-gray-700 whitespace-pre-line">
+                      {fullProductData.description}
+                    </div>
+                  </div>
+                )}
+
+                {/* Quantity */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold">Quantity</label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      className="rounded-lg border-2 border-gray-300 w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                      onClick={() => setSelectedProductQty((prev) => Math.max(1, prev - 1))}
+                    >
+                      <span className="text-lg">−</span>
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      value={selectedProductQty}
+                      onChange={(e) => setSelectedProductQty(Math.max(1, Number(e.target.value || 1)))}
+                      className="w-24 rounded-lg border-2 border-gray-300 px-3 py-2 text-center font-semibold"
+                    />
+                    <button
+                      className="rounded-lg border-2 border-gray-300 w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                      onClick={() => setSelectedProductQty((prev) => prev + 1)}
+                    >
+                      <span className="text-lg">+</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Add to Cart Button */}
+                <div className="pt-4 border-t">
+                  <button
+                    className="w-full rounded-lg bg-black px-6 py-3 text-white font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => void confirmAddSelectedProduct()}
+                    disabled={selectedProduct.variants.length > 0 && !selectedVariantId}
+                  >
+                    Add to Cart
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

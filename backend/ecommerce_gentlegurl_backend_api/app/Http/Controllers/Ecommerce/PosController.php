@@ -9,6 +9,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCartItem;
+use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Support\Pricing\ProductPricing;
@@ -69,13 +70,43 @@ class PosController extends Controller
             ->first();
 
         if (! $variant) {
-            $variant = ProductVariant::query()
-                ->with('product')
+            // Try to find by product SKU (for SINGLE type products)
+            $product = Product::query()
+                ->where('sku', $validated['barcode'])
                 ->where('is_active', true)
-                ->whereHas('product', fn ($query) => $query->where('sku', $validated['barcode']))
-                ->orderBy('sort_order')
-                ->orderBy('id')
+                ->where('is_reward_only', false)
                 ->first();
+
+            if ($product) {
+                // For both SINGLE and VARIANT type products, get the first active variant
+                $variant = ProductVariant::query()
+                    ->with('product')
+                    ->where('product_id', $product->id)
+                    ->where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->first();
+                
+                // If no variant found and product type is single, try to find any variant (even inactive)
+                // This handles cases where SINGLE products might not have active variants
+                if (!$variant && $product->type === 'single') {
+                    $variant = ProductVariant::query()
+                        ->with('product')
+                        ->where('product_id', $product->id)
+                        ->orderBy('sort_order')
+                        ->orderBy('id')
+                        ->first();
+                }
+            } else {
+                // Last attempt: find variant by product SKU (fallback)
+                $variant = ProductVariant::query()
+                    ->with('product')
+                    ->where('is_active', true)
+                    ->whereHas('product', fn ($query) => $query->where('sku', $validated['barcode']))
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->first();
+            }
         }
 
         if (!$variant || !$variant->product || !$variant->product->is_active || !$variant->is_active || $variant->product->is_reward_only) {
