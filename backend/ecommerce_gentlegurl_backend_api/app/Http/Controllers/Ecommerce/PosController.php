@@ -63,16 +63,18 @@ class PosController extends Controller
             'qty' => ['nullable', 'integer', 'min:1'],
         ]);
 
+        $barcode = trim((string) $validated['barcode']);
+
         $variant = ProductVariant::query()
             ->with('product')
-            ->where('sku', $validated['barcode'])
+            ->where('sku', $barcode)
             ->where('is_active', true)
             ->first();
 
         if (! $variant) {
             // Try to find by product SKU (for SINGLE type products)
             $product = Product::query()
-                ->where('sku', $validated['barcode'])
+                ->where('sku', $barcode)
                 ->where('is_active', true)
                 ->where('is_reward_only', false)
                 ->first();
@@ -102,14 +104,17 @@ class PosController extends Controller
                 $variant = ProductVariant::query()
                     ->with('product')
                     ->where('is_active', true)
-                    ->whereHas('product', fn ($query) => $query->where('sku', $validated['barcode']))
+                    ->whereHas('product', fn ($query) => $query->where('sku', $barcode))
                     ->orderBy('sort_order')
                     ->orderBy('id')
                     ->first();
             }
         }
 
-        if (!$variant || !$variant->product || !$variant->product->is_active || !$variant->is_active || $variant->product->is_reward_only) {
+        $isSingleType = $variant?->product?->type !== 'variant';
+        $variantIsSellable = $variant?->is_active || $isSingleType;
+
+        if (!$variant || !$variant->product || !$variant->product->is_active || !$variantIsSellable || $variant->product->is_reward_only) {
             return $this->respondError(__('Barcode not found or not sellable.'), 404);
         }
 
@@ -232,11 +237,23 @@ class PosController extends Controller
 
                 return [
                     'id' => $variant->id,
+                    'product_id' => $product?->id,
                     'name' => $product?->name,
                     'sku' => $variant->sku,
                     'barcode' => $variant->sku,
                     'price' => (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
                     'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
+                    'variants' => [[
+                        'id' => $variant->id,
+                        'name' => $variant->title ?: $variant->sku,
+                        'sku' => $variant->sku,
+                        'barcode' => $variant->sku,
+                        'price' => (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
+                        'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
+                        'is_active' => (bool) $variant->is_active,
+                        'track_stock' => (bool) $variant->track_stock,
+                        'stock' => $variant->stock,
+                    ]],
                 ];
             })->values(),
             'current_page' => $variants->currentPage(),

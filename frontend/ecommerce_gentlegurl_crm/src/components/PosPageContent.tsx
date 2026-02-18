@@ -360,11 +360,15 @@ export default function PosPageContent() {
       const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
       const json = await res.json()
       const paged = extractPaged<ProductOption>(json)
-      mapped = paged.data.map((item) => ({
-        ...item,
-        product_id: Number(item.product_id ?? item.id),
-        variants: Array.isArray(item.variants) ? item.variants : [],
-      }))
+      mapped = paged.data.map((item) => {
+        const resolvedProductId = Number(item.product_id)
+
+        return {
+          ...item,
+          product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
+          variants: Array.isArray(item.variants) ? item.variants : [],
+        }
+      })
       currentPage = paged.current_page
       lastPage = paged.last_page
     } else {
@@ -471,6 +475,7 @@ export default function PosPageContent() {
   }
 
   const onSelectProduct = (item: ProductOption) => {
+    setFullProductData(null)
     setSelectedProduct(item)
     setSelectedVariantId(item.variants.length === 1 ? item.variants[0].id : null)
     setSelectedProductQty(1)
