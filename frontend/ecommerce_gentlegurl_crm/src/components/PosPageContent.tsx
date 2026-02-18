@@ -186,6 +186,9 @@ export default function PosPageContent() {
   const cartTotal = Number(cart?.grand_total ?? 0)
   const discount = Math.max(0, cartSubtotal - cartTotal)
 
+  const canCheckout = Boolean(cart?.items.length) && !checkingOut
+
+
   const focusScanner = () => {
     scannerInputRef.current?.focus()
   }
@@ -1013,66 +1016,99 @@ export default function PosPageContent() {
           <div className="rounded-xl border bg-white p-5 shadow-sm lg:sticky lg:top-5">
             <h3 className="mb-4 text-xl font-semibold">Cart Summary</h3>
 
-            <div className="space-y-2">
-              {cart?.items.length ? (
-                cart.items.map((item) => (
-                  <div key={item.id} className="rounded-lg border p-3">
-                    <p className="text-sm font-medium">{item.product_name}</p>
-                    <p className="text-xs text-gray-500">
-                      {item.variant_name || item.variant_sku
-                        ? `${item.variant_name ?? '-'} · ${item.variant_sku ?? '-'}`
-                        : 'Single product'}
-                    </p>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-lg font-semibold">Cart</h3>
+            {cart?.items.length ? (
+              <div className="mt-3 space-y-3">
+                {cart.items.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">{item.product_name}</p>
+                        <p className="text-xs text-slate-500">{item.variant_name || item.variant_sku || 'Single product'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => void updateQty(item.id, item.qty - 1)} className="h-8 w-8 rounded-lg border border-slate-300">-</button>
+                        <span className="w-6 text-center text-sm">{item.qty}</span>
+                        <button onClick={() => void updateQty(item.id, item.qty + 1)} className="h-8 w-8 rounded-lg border border-slate-300">+</button>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="min-w-[90px] text-right text-sm font-semibold">RM {Number(item.line_total).toFixed(2)}</span>
+                        <button onClick={() => void removeItem(item.id)} className="text-sm text-red-600">Remove</button>
+                      </div>
+                    </div>
                     {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) && (
-                      <div className="mt-1">
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Select variant</p>
+                      <div className="mt-2">
                         <select
-                          className="w-full rounded border px-2 py-1 text-xs"
+                          className="h-9 w-full rounded-lg border border-slate-300 px-2 text-xs"
                           value={item.variant_id ? String(item.variant_id) : ''}
-                          onFocus={() => {
-                            if (item.variant_id) {
-                              void fetchCartItemVariants(item)
-                            }
-                          }}
+                          onFocus={() => { if (item.variant_id) void fetchCartItemVariants(item) }}
                           onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
                           disabled={cartVariantLoading[item.id]}
                         >
-                          <option value="" disabled>
-                            {cartVariantLoading[item.id]
-                              ? 'Loading variants...'
-                              : cartVariantOptions[item.id]?.length
-                                ? 'Select variant'
-                                : 'Select variant'}
-                          </option>
-                          {(cartVariantOptions[item.id] ?? []).map((variant) => (
-                            <option key={variant.id} value={String(variant.id)}>
-                              {variant.name} ({variant.sku})
-                            </option>
-                          ))}
+                          <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
+                          {(cartVariantOptions[item.id] ?? []).map((variant) => <option key={variant.id} value={String(variant.id)}>{variant.name} ({variant.sku})</option>)}
                         </select>
                       </div>
                     )}
-                    <div className="mt-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => void updateQty(item.id, item.qty - 1)} className="rounded border px-2">-</button>
-                        <span className="text-sm">{item.qty}</span>
-                        <button onClick={() => void updateQty(item.id, item.qty + 1)} className="rounded border px-2">+</button>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-semibold">RM {Number(item.line_total).toFixed(2)}</span>
-                        <button onClick={() => void removeItem(item.id)} className="text-red-600">✕</button>
-                      </div>
-                    </div>
                   </div>
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-500">
-                  <div className="mb-2 text-2xl">🛒</div>
-                  <p>Cart is empty</p>
-                  <p className="text-xs">Scan or search to add items</p>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-xl border border-dashed border-slate-300 p-6 text-center">
+                <div className="text-3xl">🛒</div>
+                <p className="mt-2 text-sm font-semibold">Cart is empty</p>
+                <p className="text-sm text-slate-500">Scan or add products to start</p>
+              </div>
+            )}
+
+            <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-sm">
+              <div className="flex justify-between"><span>Subtotal</span><span>RM {cartSubtotal.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span>Discount</span><span>RM {discount.toFixed(2)}</span></div>
+              <div className="flex justify-between text-base font-semibold"><span>Total</span><span>RM {cartTotal.toFixed(2)}</span></div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-slate-200 p-4">
+              <h4 className="text-lg font-semibold">Payment</h4>
+              <div className="mt-3 space-y-2">
+                <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"><span>Cash</span><input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} /></label>
+                <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"><span>QRPay</span><input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} /></label>
+                {paymentMethod === 'qrpay' && <p className="text-xs text-slate-500">Customer transfers, staff confirms received.</p>}
+              </div>
+              {paymentMethod === 'cash' && (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-sm font-medium">Cash received</label>
+                  <input type="number" min="0" step="0.01" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" placeholder="0.00" />
+                  <p className="text-xs text-slate-500">Change: RM {cashChange.toFixed(2)}</p>
+                </div>
+              )}
+              {paymentMethod === 'qrpay' && (
+                <div className="mt-3 space-y-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <button type="button" className="h-10 rounded-lg border border-slate-300 px-2 text-xs hover:bg-slate-50" onClick={() => qrUploadInputRef.current?.click()}>Upload Existing</button>
+                    <button type="button" className="h-10 rounded-lg border border-slate-300 px-2 text-xs hover:bg-slate-50" onClick={() => qrCameraBackInputRef.current?.click()}>Take Photo (Back)</button>
+                    <button type="button" className="h-10 rounded-lg border border-slate-300 px-2 text-xs hover:bg-slate-50" onClick={() => qrCameraFrontInputRef.current?.click()}>Take Photo (Front)</button>
+                  </div>
+                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
+                  {qrProofFileName && <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2 py-1"><p className="truncate pr-2 text-xs text-slate-600">Selected: {qrProofFileName}</p><button type="button" className="text-xs text-red-600 underline" onClick={clearQrProof}>Clear</button></div>}
                 </div>
               )}
             </div>
+
+            <button onClick={() => void checkout()} disabled={!canCheckout} className="mt-4 h-12 w-full rounded-xl bg-black text-base font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">{checkingOut ? 'Processing checkout...' : 'Checkout'}</button>
+
+            {checkoutResult && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <h3 className="text-sm font-semibold">Order completed</h3>
+                <p className="text-sm">Order No: {checkoutResult.order_number}</p>
+                <p className="text-sm">Total: RM {checkoutResult.total.toFixed(2)}</p>
+              </div>
+            )}
+
+            <p className="mt-3 text-sm text-slate-500">Items: {totalItems}</p>
+          </div>
 
             <div className="mt-4 space-y-1 border-t pt-3 text-sm">
               <div className="flex justify-between"><span>Subtotal</span><span>RM {cartSubtotal.toFixed(2)}</span></div>
