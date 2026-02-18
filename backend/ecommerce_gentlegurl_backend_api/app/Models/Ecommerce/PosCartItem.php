@@ -8,6 +8,7 @@ class PosCartItem extends Model
 {
     protected $fillable = [
         'pos_cart_id',
+        'product_id',
         'variant_id',
         'qty',
         'price_snapshot',
@@ -29,5 +30,10 @@ class PosCartItem extends Model
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class, 'variant_id');
+    }
+
+    public function product()
+    {
+        return $this->belongsTo(Product::class, 'product_id');
     }
 }

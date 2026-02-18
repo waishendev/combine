@@ -231,13 +231,25 @@ export default function PosPageContent() {
     return false
   }
 
-  async function addByVariantId(variantId: number, qty = 1) {
-    if (!Number.isFinite(variantId) || variantId <= 0) return false
+  async function addBySelection(payload: { variant_id?: number; product_id?: number }, qty = 1) {
+    const variantId = Number(payload.variant_id)
+    const productId = Number(payload.product_id)
+
+    if ((!Number.isFinite(variantId) || variantId <= 0) && (!Number.isFinite(productId) || productId <= 0)) {
+      return false
+    }
+
+    const body: Record<string, number> = { qty }
+    if (Number.isFinite(variantId) && variantId > 0) {
+      body.variant_id = variantId
+    } else if (Number.isFinite(productId) && productId > 0) {
+      body.product_id = productId
+    }
 
     const res = await fetch('/api/proxy/pos/cart/add-by-variant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ variant_id: variantId, qty }),
+      body: JSON.stringify(body),
     })
     const json = await res.json()
 
@@ -579,12 +591,13 @@ export default function PosPageContent() {
       }
     }
 
-    if (!variantIdToUse || variantIdToUse <= 0) {
-      showMsg('Unable to determine variant. Please try again.')
-      return
-    }
-
-    const success = await addByVariantId(variantIdToUse, selectedProductQty)
+    const productId = Number(selectedProduct.product_id || selectedProduct.id)
+    const success = await addBySelection(
+      variantIdToUse && variantIdToUse > 0
+        ? { variant_id: variantIdToUse }
+        : { product_id: productId },
+      selectedProductQty,
+    )
     if (!success) return
 
     setProductSelectModalOpen(false)
@@ -601,39 +614,13 @@ export default function PosPageContent() {
       return
     }
 
-    // POS requires variant_id. For product cards, we keep id=product_id, so we must resolve a variant id.
     const productId = Number(item.product_id || item.id)
     if (!Number.isFinite(productId) || productId <= 0) {
       showMsg('Invalid product ID.')
       return
     }
 
-    try {
-      const res = await fetch(`/api/proxy/ecommerce/products/${productId}`, { cache: 'no-store' })
-      const json = await res.json()
-
-      if (!res.ok) {
-        showMsg('Unable to load product details.')
-        return
-      }
-
-      const payload = json?.data?.product ?? json?.data ?? json?.product
-      if (!payload || typeof payload !== 'object') {
-        showMsg('Invalid product data.')
-        return
-      }
-
-      const variantId = resolveVariantIdFromPayload(payload)
-
-      if (!variantId || variantId <= 0) {
-        showMsg('Product variant not found. Please select the product manually.')
-        return
-      }
-
-      await addByVariantId(variantId, 1)
-    } catch {
-      showMsg('Unable to add product. Please try again.')
-    }
+    await addBySelection({ product_id: productId }, 1)
   }
 
 
