@@ -30,6 +30,7 @@ type ProductOption = {
   price: number
   thumbnail_url?: string | null
   variants: ProductVariantOption[]
+  default_variant_id?: number | null
 }
 
 type ProductVariantOption = {
@@ -97,25 +98,26 @@ type ProductApiItem = {
 }
 
 function extractPaged<T>(json: unknown): PageResponse<T> {
-  const payload = typeof json === 'object' && json !== null && "data" in json ? (json as { data?: unknown }).data : undefined
+  const payloadAny: any =
+    typeof json === 'object' && json !== null && 'data' in json ? (json as any).data : undefined
 
-  if (payload && Array.isArray(payload.data)) {
+  if (payloadAny && typeof payloadAny === 'object' && Array.isArray(payloadAny.data)) {
     return {
-      data: payload.data as T[],
-      current_page: Number(payload.current_page ?? 1),
-      last_page: Number(payload.last_page ?? 1),
-      per_page: Number(payload.per_page ?? payload.data.length ?? 0),
-      total: Number(payload.total ?? payload.data.length ?? 0),
+      data: payloadAny.data as T[],
+      current_page: Number(payloadAny.current_page ?? 1),
+      last_page: Number(payloadAny.last_page ?? 1),
+      per_page: Number(payloadAny.per_page ?? payloadAny.data.length ?? 0),
+      total: Number(payloadAny.total ?? payloadAny.data.length ?? 0),
     }
   }
 
-  if (payload && Array.isArray(payload)) {
+  if (payloadAny && Array.isArray(payloadAny)) {
     return {
-      data: payload as T[],
+      data: payloadAny as T[],
       current_page: 1,
       last_page: 1,
-      per_page: payload.length,
-      total: payload.length,
+      per_page: payloadAny.length,
+      total: payloadAny.length,
     }
   }
 
@@ -304,13 +306,10 @@ export default function PosPageContent() {
     const priceRaw = activeVariant?.price ?? item.price ?? 0
     const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
 
-    // For products without variants, we need to use the first variant's id if available
-    // Otherwise, we'll need to fetch it later from fullProductData
-    // The id here should be the variant_id, not product_id
-    const variantId = activeVariant?.id ?? (variants.length > 0 ? variants[0].id : null)
-
     return {
-      id: variantId ?? 0, // Will be set properly when we have variant data from fullProductData
+      // IMPORTANT: keep the list/grid unique by product id (like Shop).
+      // Variants should only be selected inside the modal / cart item variant selector.
+      id: productId,
       product_id: productId,
       name: item.name ?? '-',
       sku,
@@ -318,6 +317,7 @@ export default function PosPageContent() {
       price: Number.isFinite(price) ? price : 0,
       thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? null,
       variants,
+      default_variant_id: activeVariant?.id ?? variants[0]?.id ?? null,
     }
   }
 
@@ -382,6 +382,35 @@ export default function PosPageContent() {
     }
   }
 
+  const dedupeByProductId = (items: ProductOption[]) => {
+    const map = new Map<number, ProductOption>()
+    for (const item of items) {
+      const pid = Number(item.product_id || item.id)
+      if (!Number.isFinite(pid) || pid <= 0) continue
+
+      if (!map.has(pid)) {
+        map.set(pid, item)
+        continue
+      }
+
+      // Prefer the one that has variants / image / better price if duplicates show up from API/search.
+      const existing = map.get(pid)!
+      const existingScore =
+        (existing.variants?.length ? 10 : 0) +
+        (existing.thumbnail_url ? 3 : 0) +
+        (Number(existing.price ?? 0) > 0 ? 1 : 0)
+      const nextScore =
+        (item.variants?.length ? 10 : 0) +
+        (item.thumbnail_url ? 3 : 0) +
+        (Number(item.price ?? 0) > 0 ? 1 : 0)
+
+      if (nextScore > existingScore) {
+        map.set(pid, item)
+      }
+    }
+    return Array.from(map.values())
+  }
+
   const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     setProductLoading(true)
 
@@ -422,7 +451,11 @@ export default function PosPageContent() {
       lastPage = paged.last_page
     }
 
-    setProducts((prev) => (append ? [...prev, ...mapped] : mapped))
+    // Ensure we never display variants as extra "products" in the grid.
+    setProducts((prev) => {
+      const next = append ? [...prev, ...mapped] : mapped
+      return dedupeByProductId(next)
+    })
     setProductPage(currentPage)
     setProductLastPage(lastPage)
     setProductHighlighted(0)
@@ -568,8 +601,7 @@ export default function PosPageContent() {
       return
     }
 
-    // For products without variants, we need to fetch the product to get the variant_id
-    // Since POS system requires variant_id, we need to get it from the product data
+    // POS requires variant_id. For product cards, we keep id=product_id, so we must resolve a variant id.
     const productId = Number(item.product_id || item.id)
     if (!Number.isFinite(productId) || productId <= 0) {
       showMsg('Invalid product ID.')
@@ -635,7 +667,7 @@ export default function PosPageContent() {
                 stock: typeof variant?.stock === 'number' ? variant.stock : Number(variant?.stock || 0) || null,
               }
             })
-            .filter((variant): variant is ProductVariantOption => Boolean(variant))
+            .filter((variant: ProductVariantOption | null): variant is ProductVariantOption => Boolean(variant))
         : []
 
       setCartVariantOptions((prev) => ({ ...prev, [item.id]: options }))
@@ -829,7 +861,7 @@ export default function PosPageContent() {
             <div className="grid max-h-[calc(100vh-20rem)] grid-cols-2 gap-4 overflow-auto p-1 sm:grid-cols-3 lg:grid-cols-4">
               {products.map((item, idx) => (
                 <div
-                  key={`${item.id}-${idx}`}
+                  key={item.product_id}
                   role="button"
                   tabIndex={0}
                   className={`group cursor-pointer overflow-hidden rounded-lg border-2 bg-white transition-all ${idx === productHighlighted ? 'border-black shadow-md' : 'border-gray-200 hover:border-gray-400 hover:shadow-md'}`}
@@ -911,18 +943,23 @@ export default function PosPageContent() {
                     <p className="text-xs text-gray-500">{item.variant_name} · {item.variant_sku}</p>
                     {!!item.product_id && (
                       <div className="mt-1">
+                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Select variant</p>
                         <select
                           className="w-full rounded border px-2 py-1 text-xs"
-                          value={Number(item.variant_id ?? 0)}
+                          value={item.variant_id ? String(item.variant_id) : ''}
                           onFocus={() => void fetchCartItemVariants(item)}
                           onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
                           disabled={cartVariantLoading[item.id]}
                         >
-                          <option value={Number(item.variant_id ?? 0)}>
-                            {cartVariantLoading[item.id] ? 'Loading variants...' : (cartVariantOptions[item.id]?.length ? 'Select variant' : 'Preparing variants...')}
+                          <option value="" disabled>
+                            {cartVariantLoading[item.id]
+                              ? 'Loading variants...'
+                              : cartVariantOptions[item.id]?.length
+                                ? 'Select variant'
+                                : 'Select variant'}
                           </option>
                           {(cartVariantOptions[item.id] ?? []).map((variant) => (
-                            <option key={variant.id} value={variant.id}>
+                            <option key={variant.id} value={String(variant.id)}>
                               {variant.name} ({variant.sku})
                             </option>
                           ))}
