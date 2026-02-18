@@ -854,17 +854,17 @@ export default function PosPageContent() {
   }
 
   return (
-    <div className="space-y-6 bg-gray-50 min-h-screen p-6">
+    <div className="min-h-screen space-y-6 bg-gray-50 p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">POS Checkout</h2>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-        <div className="space-y-5 lg:col-span-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5 lg:min-h-0">
+        <div className="space-y-5 lg:col-span-3 lg:min-h-0">
           {/* Barcode Scanner Input - moved into left column above Products for better POS flow */}
-          <div className="rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md h-[140px] flex flex-col">
+          <div className="flex min-h-[140px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md lg:h-[140px]">
             <label className="mb-3 block text-sm font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
@@ -893,7 +893,7 @@ export default function PosPageContent() {
           </div>
 
           {/* Products Section - Always Visible */}
-          <div className="rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md flex flex-col h-[calc(100vh-10rem)]">
+          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md lg:h-[calc(100vh-12rem)] lg:min-h-0">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -917,7 +917,7 @@ export default function PosPageContent() {
             </div>
 
             {/* Products Grid */}
-            <div className="grid flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 lg:grid-cols-2 min-h-[300px]">
+            <div className="grid min-h-[260px] flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 lg:min-h-0 lg:grid-cols-2">
               {products.map((item, idx) => (
                 <div
                   key={item.product_id}
@@ -998,10 +998,10 @@ export default function PosPageContent() {
         </div>
 
 
-        <div className="space-y-5 lg:col-span-2">
+        <div className="space-y-5 lg:col-span-2 lg:min-h-0">
 
                     {/* Member Assignment Section - Moved to Right Side */}
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm h-[140px] flex flex-col overflow-hidden">
+          <div className="flex min-h-[140px] flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-5 shadow-sm lg:h-[140px]">
             <h3 className="mb-3 text-lg font-bold text-gray-900 flex-shrink-0">Member Assignment <span className="text-xs font-normal text-gray-500">(optional)</span></h3>
 
             <div className="flex-1 flex items-center min-h-0">
@@ -1065,7 +1065,7 @@ export default function PosPageContent() {
             </div>
           </div>
 
-            <div className="rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md flex flex-col h-[calc(100vh-10rem)]">
+            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md lg:h-[calc(100vh-12rem)] lg:min-h-0">
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -1073,7 +1073,7 @@ export default function PosPageContent() {
               Shopping Cart
             </h3>
             {cart?.items.length ? (
-              <div className="mt-3 space-y-3 flex-1 overflow-y-auto pr-1 min-h-[300px]">
+              <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 lg:min-h-0">
                 {cart.items.map((item) => (
                   <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
                     <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
