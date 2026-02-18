@@ -864,7 +864,7 @@ export default function PosPageContent() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
           {/* Barcode Scanner Input - moved into left column above Products for better POS flow */}
-          <div className="rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md">
+          <div className="rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md h-[140px] flex flex-col">
             <label className="mb-3 block text-sm font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
@@ -893,7 +893,7 @@ export default function PosPageContent() {
           </div>
 
           {/* Products Section - Always Visible */}
-          <div className="rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
+          <div className="rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md flex flex-col h-[calc(100vh-10rem)]">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -917,13 +917,13 @@ export default function PosPageContent() {
             </div>
 
             {/* Products Grid */}
-            <div className="grid max-h-[calc(100vh-20rem)] grid-cols-2 gap-4 overflow-auto p-1 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="grid flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 lg:grid-cols-2 min-h-[300px]">
               {products.map((item, idx) => (
                 <div
                   key={item.product_id}
                   role="button"
                   tabIndex={0}
-                  className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
+                  className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[100px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
                   onClick={() => void onSelectProduct(item)}
                   onKeyDown={(e) => {
@@ -933,23 +933,27 @@ export default function PosPageContent() {
                     }
                   }}
                 >
-                  <div className="aspect-square w-full bg-gradient-to-br from-gray-100 to-gray-50 overflow-hidden">
+                  {/* Product Image - Left Side */}
+                  <div className="w-[100px] h-full bg-gradient-to-br from-gray-100 to-gray-50 overflow-hidden flex-shrink-0">
                     {item.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.thumbnail_url} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
-                        <svg className="h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-10 w-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       </div>
                     )}
                   </div>
-                  <div className="space-y-2 p-3.5 bg-white">
-                    <p className="line-clamp-2 text-sm font-bold leading-tight text-gray-900">{item.name}</p>
-                    <p className="text-xs text-gray-500 font-mono">{item.sku || item.barcode}</p>
+                  {/* Product Info - Right Side */}
+                  <div className="flex flex-col flex-1 p-3 bg-white min-h-0 justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1">{item.name}</p>
+                      <p className="text-xs text-gray-500 font-mono truncate">{item.sku || item.barcode}</p>
+                    </div>
                     <div className="pt-2 border-t border-gray-100">
-                      <span className="text-base font-bold text-gray-900">RM {Number(item.price ?? 0).toFixed(2)}</span>
+                      <span className="text-sm font-bold text-gray-900">RM {Number(item.price ?? 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -969,15 +973,24 @@ export default function PosPageContent() {
             </div>
 
             {/* Pagination */}
-            {products.length > 0 && (
-              <div className="mt-4 flex items-center justify-between border-t pt-4">
-                <span className="text-xs text-gray-600">Page {productPage} of {productLastPage}</span>
+            {products.length > 0 && productPage < productLastPage && (
+              <div className="mt-4 flex items-center justify-end border-t pt-4">
                 <button
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled={productLoading || productPage >= productLastPage}
+                  className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
+                  disabled={productLoading}
                   onClick={() => void fetchProductPage(productPage + 1, productQuery, true)}
                 >
-                  {productLoading ? 'Loading...' : 'Load More'}
+                  {productLoading ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Loading...
+                    </span>
+                  ) : (
+                    `View More (${productPage + 1}/${productLastPage})`
+                  )}
                 </button>
               </div>
             )}
@@ -988,48 +1001,49 @@ export default function PosPageContent() {
         <div className="space-y-5 lg:col-span-2">
 
                     {/* Member Assignment Section - Moved to Right Side */}
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">Member Assignment <span className="text-xs font-normal text-gray-500">(optional)</span></h3>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm h-[140px] flex flex-col overflow-hidden">
+            <h3 className="mb-3 text-lg font-bold text-gray-900 flex-shrink-0">Member Assignment <span className="text-xs font-normal text-gray-500">(optional)</span></h3>
 
+            <div className="flex-1 flex items-center min-h-0">
             {selectedMember ? (
-              <div className="mb-4 rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm">
-                <div className="flex items-start gap-3">
+              <div className="w-full rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-3 shadow-sm overflow-hidden">
+                <div className="flex items-center gap-2.5">
                   {selectedMember.avatar_url ? (
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={selectedMember.avatar_url} alt={selectedMember.name} className="h-full w-full object-cover" />
                     </div>
                   ) : (
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src="/images/default_user_image.jpg" alt={selectedMember.name} className="h-full w-full object-cover" />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-base font-bold text-gray-900 leading-tight">
+                    <p className="text-sm font-bold text-gray-900 leading-tight truncate">
                       {selectedMember.name}
-                      {selectedMember.phone && <span className="ml-2 text-sm font-normal text-gray-600">({selectedMember.phone})</span>}
+                      {selectedMember.phone && <span className="ml-1.5 text-xs font-normal text-gray-600">({selectedMember.phone})</span>}
                     </p>
                     {selectedMember.email && (
-                      <p className="mt-2 text-sm text-gray-700 flex items-center gap-1.5">
-                        <svg className="h-4 w-4 shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <p className="mt-1 text-xs text-gray-700 truncate flex items-center gap-1">
+                        <svg className="h-3 w-3 shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
-                        {selectedMember.email}
+                        <span className="truncate">{selectedMember.email}</span>
                       </p>
                     )}
                   </div>
                 </div>
-                <div className="mt-4 flex items-center gap-2 pt-3 border-t border-blue-200">
+                <div className="mt-2.5 flex items-center gap-2 pt-2 border-t border-blue-200">
                   <button
                     onClick={() => void toggleMemberDropdown()}
-                    className="flex-1 rounded-lg border-2 border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50"
+                    className="flex-1 rounded-lg border-2 border-blue-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50"
                   >
-                    Change Member
+                    Change
                   </button>
                   <button
                     onClick={() => setSelectedMember(null)}
-                    className="rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
+                    className="rounded-lg border-2 border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
                   >
                     Clear
                   </button>
@@ -1038,7 +1052,7 @@ export default function PosPageContent() {
             ) : (
               <button
                 onClick={() => void toggleMemberDropdown()}
-                className="mb-4 w-full rounded-lg border-2 border-dashed border-gray-300 bg-gradient-to-r from-gray-50 to-white px-4 py-3 text-left text-sm font-semibold text-gray-700 transition-all hover:border-blue-400 hover:from-blue-50 hover:to-white hover:text-blue-700"
+                className="w-full rounded-lg border-2 border-dashed border-gray-300 bg-gradient-to-r from-gray-50 to-white px-4 py-3 text-left text-sm font-semibold text-gray-700 transition-all hover:border-blue-400 hover:from-blue-50 hover:to-white hover:text-blue-700"
               >
                 <div className="flex items-center gap-2">
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1048,23 +1062,24 @@ export default function PosPageContent() {
                 </div>
               </button>
             )}
+            </div>
           </div>
 
-            <div className="rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md">
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+            <div className="rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md flex flex-col h-[calc(100vh-10rem)]">
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
               Shopping Cart
             </h3>
             {cart?.items.length ? (
-              <div className="mt-3 space-y-3 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
+              <div className="mt-3 space-y-3 flex-1 overflow-y-auto pr-1 min-h-[300px]">
                 {cart.items.map((item) => (
                   <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
                     <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">{item.product_name}</p>
-                        <p className="text-xs text-gray-600 mt-0.5 font-mono">{item.variant_sku || item.variant_name || ''}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-900 truncate max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
+                        <p className="text-xs text-gray-600 mt-0.5 font-mono truncate max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                       </div>
                       <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
                         <button onClick={() => void updateQty(item.id, item.qty - 1)} className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95">-</button>
