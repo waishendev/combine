@@ -671,19 +671,26 @@ export default function PosPageContent() {
   const updateItemVariant = async (item: CartItem, variantId: number) => {
     if (!Number.isFinite(variantId) || variantId <= 0 || item.variant_id === variantId) return
 
-    const res = await fetch(`/api/proxy/pos/cart/items/${item.id}`, {
-      method: 'PATCH',
+    const addRes = await fetch('/api/proxy/pos/cart/add-by-variant', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId, qty: item.qty }),
     })
-    const json = await res.json()
+    const addJson = await addRes.json()
 
-    if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to change variant.')
+    if (!addRes.ok) {
+      showMsg(addJson?.message ?? 'Unable to change variant.')
       return
     }
 
-    setCart(json.data.cart)
+    const removeRes = await fetch(`/api/proxy/pos/cart/items/${item.id}`, { method: 'DELETE' })
+    if (!removeRes.ok) {
+      showMsg('Variant added, but unable to remove previous variant item. Please remove it manually.')
+      await loadCart()
+      return
+    }
+
+    await loadCart()
     showMsg('Variant updated.')
     setCartVariantOptions((prev) => ({ ...prev, [item.id]: [] }))
     setCartVariantFetched((prev) => ({ ...prev, [item.id]: false }))
