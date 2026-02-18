@@ -261,20 +261,64 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'qty' => ['required', 'integer', 'min:1'],
+            'variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = $cart->items()->with(['variant', 'product'])->findOrFail($itemId);
 
-        if ($item->variant?->track_stock && $validated['qty'] > (int) $item->variant->stock) {
+        $qty = (int) $validated['qty'];
+        $targetVariantId = isset($validated['variant_id']) ? (int) $validated['variant_id'] : null;
+
+        if ($targetVariantId) {
+            $targetVariant = ProductVariant::query()
+                ->with('product')
+                ->where('id', $targetVariantId)
+                ->where('is_active', true)
+                ->first();
+
+            if (! $targetVariant || ! $targetVariant->product || ! $targetVariant->product->is_active || $targetVariant->product->is_reward_only) {
+                return $this->respondError(__('Product is not sellable.'), 404);
+            }
+
+            $duplicateItem = $cart->items()
+                ->where('variant_id', $targetVariant->id)
+                ->where('id', '!=', $item->id)
+                ->first();
+
+            $finalQty = $qty + (int) ($duplicateItem?->qty ?? 0);
+
+            if ($targetVariant->track_stock && $finalQty > (int) $targetVariant->stock) {
+                return $this->respondError(__('Insufficient stock.'), 422);
+            }
+
+            $pricing = ProductPricing::build($targetVariant->product, $targetVariant);
+            $unitPrice = (float) ($pricing['effective_price'] ?? $targetVariant->sale_price ?? $targetVariant->price ?? $targetVariant->product->sale_price ?? $targetVariant->product->price ?? 0);
+
+            $item->qty = $finalQty;
+            $item->variant_id = $targetVariant->id;
+            $item->product_id = null;
+            $item->price_snapshot = $unitPrice;
+            $item->save();
+
+            if ($duplicateItem) {
+                $duplicateItem->delete();
+            }
+
+            return $this->respond([
+                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product'])),
+            ]);
+        }
+
+        if ($item->variant?->track_stock && $qty > (int) $item->variant->stock) {
             return $this->respondError(__('Insufficient stock.'), 422);
         }
 
-        if (! $item->variant && $item->product?->track_stock && $validated['qty'] > (int) $item->product->stock) {
+        if (! $item->variant && $item->product?->track_stock && $qty > (int) $item->product->stock) {
             return $this->respondError(__('Insufficient stock.'), 422);
         }
 
-        $item->qty = $validated['qty'];
+        $item->qty = $qty;
         $item->save();
 
         return $this->respond([

@@ -674,7 +674,7 @@ export default function PosPageContent() {
     const res = await fetch(`/api/proxy/pos/cart/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ variant_id: variantId }),
+      body: JSON.stringify({ variant_id: variantId, qty: item.qty }),
     })
     const json = await res.json()
 
@@ -779,6 +779,7 @@ export default function PosPageContent() {
   const toggleMemberDropdown = async () => {
     if (memberOpen) {
       setMemberOpen(false)
+      setMemberQuery('')
       return
     }
 
@@ -931,88 +932,42 @@ export default function PosPageContent() {
         <div className="space-y-5 lg:col-span-2">
 
                     {/* Member Assignment Section - Moved to Right Side */}
-                    <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="rounded-xl border bg-white p-5 shadow-sm">
             <h3 className="mb-4 text-lg font-semibold">Member Assignment <span className="text-xs font-normal text-gray-500">(optional)</span></h3>
-            
+
             {selectedMember ? (
-              <div className="mb-4 rounded-lg bg-green-50 border border-green-200 p-3">
+              <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-green-900">{selectedMember.name}</p>
                     <p className="text-xs text-green-700">{selectedMember.phone ?? '-'} · {selectedMember.email ?? '-'}</p>
-                    {selectedMember.member_code && (
-                      <p className="mt-1 text-xs text-green-600">Code: {selectedMember.member_code}</p>
-                    )}
                   </div>
-                  <button 
-                    onClick={() => setSelectedMember(null)} 
-                    className="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100"
-                  >
-                    Clear
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => void toggleMemberDropdown()}
+                      className="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100"
+                    >
+                      Change
+                    </button>
+                    <button
+                      onClick={() => setSelectedMember(null)}
+                      className="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
-              <button 
-                onClick={() => void toggleMemberDropdown()} 
+              <button
+                onClick={() => void toggleMemberDropdown()}
                 className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-left text-sm font-medium transition-colors hover:bg-gray-50"
               >
-                {memberOpen ? '▼ Hide member search' : '▶ Search member'}
+                Assign member
               </button>
             )}
-
-            {memberOpen && (
-              <div className="rounded-lg border border-gray-200 bg-white">
-                <div className="border-b border-gray-200 p-3">
-                  <input
-                    value={memberQuery}
-                    onChange={(e) => setMemberQuery(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10"
-                    placeholder="Search by phone, email, member code, name..."
-                    autoFocus
-                  />
-                </div>
-
-                <div className="max-h-64 overflow-auto">
-                  {members.map((member) => (
-                    <button
-                      key={member.id}
-                      className="block w-full border-b border-gray-100 p-3 text-left text-sm transition-colors hover:bg-gray-50 last:border-b-0"
-                      onClick={() => {
-                        setSelectedMember(member)
-                        setMemberOpen(false)
-                        focusScanner()
-                      }}
-                    >
-                      <p className="font-semibold text-gray-900">{member.name}</p>
-                      <p className="mt-0.5 text-xs text-gray-600">{member.phone ?? '-'} · {member.email ?? '-'}</p>
-                      {member.member_code && (
-                        <p className="mt-0.5 text-xs text-gray-500">Code: {member.member_code}</p>
-                      )}
-                    </button>
-                  ))}
-
-                  {!memberLoading && members.length === 0 && (
-                    <div className="p-4 text-center text-sm text-gray-500">No members found</div>
-                  )}
-                </div>
-
-                {members.length > 0 && (
-                  <div className="flex items-center justify-between border-t border-gray-200 p-2">
-                    <span className="text-xs text-gray-500">Page {memberPage} / {memberLastPage}</span>
-                    <button
-                      className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={memberLoading || memberPage >= memberLastPage}
-                      onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
-                    >
-                      {memberLoading ? 'Loading...' : 'See more'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
-          
+
           <div className="rounded-xl border bg-white p-5 shadow-sm lg:sticky lg:top-5">
             <h3 className="mb-4 text-xl font-semibold">Cart Summary</h3>
 
@@ -1375,6 +1330,69 @@ export default function PosPageContent() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {memberOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b p-4">
+              <h4 className="text-lg font-semibold">Assign Member</h4>
+              <button
+                type="button"
+                onClick={() => void toggleMemberDropdown()}
+                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+              >
+                <span className="text-2xl leading-none">×</span>
+              </button>
+            </div>
+
+            <div className="border-b p-4">
+              <input
+                value={memberQuery}
+                onChange={(e) => setMemberQuery(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10"
+                placeholder="Search by phone, email, member code, name..."
+                autoFocus
+              />
+            </div>
+
+            <div className="max-h-80 overflow-auto">
+              {members.map((member) => (
+                <button
+                  key={member.id}
+                  className="block w-full border-b border-gray-100 p-3 text-left text-sm transition-colors hover:bg-gray-50 last:border-b-0"
+                  onClick={() => {
+                    setSelectedMember(member)
+                    setMemberOpen(false)
+                    setMemberQuery('')
+                    focusScanner()
+                  }}
+                >
+                  <p className="font-semibold text-gray-900">{member.name}</p>
+                  <p className="mt-0.5 text-xs text-gray-600">{member.phone ?? '-'} · {member.email ?? '-'}</p>
+                  {member.member_code && <p className="mt-0.5 text-xs text-gray-500">{member.member_code}</p>}
+                </button>
+              ))}
+
+              {!memberLoading && members.length === 0 && (
+                <div className="p-6 text-center text-sm text-gray-500">No members found</div>
+              )}
+            </div>
+
+            {members.length > 0 && (
+              <div className="flex items-center justify-between border-t p-3">
+                <span className="text-xs text-gray-500">Page {memberPage} / {memberLastPage}</span>
+                <button
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={memberLoading || memberPage >= memberLastPage}
+                  onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
+                >
+                  {memberLoading ? 'Loading...' : 'See more'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
