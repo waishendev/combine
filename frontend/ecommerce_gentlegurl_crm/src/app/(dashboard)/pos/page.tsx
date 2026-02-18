@@ -18,7 +18,7 @@ export default async function PosPage() {
   }
 
   return (
-    <div className="overflow-y-auto px-10 py-6">
+    <div className="overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 lg:px-10 lg:py-6">
       <PosPageContent />
     </div>
   )
