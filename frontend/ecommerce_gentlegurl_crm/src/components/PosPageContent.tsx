@@ -56,6 +56,7 @@ type Member = {
   phone?: string | null
   email?: string | null
   member_code?: string | null
+  avatar_url?: string | null
 }
 
 type PageResponse<T> = {
@@ -136,7 +137,6 @@ export default function PosPageContent() {
   const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
 
-  const [message, setMessage] = useState<string | null>(null)
   const [cart, setCart] = useState<Cart | null>(null)
 
   const [productQuery, setProductQuery] = useState('')
@@ -180,13 +180,34 @@ export default function PosPageContent() {
     paid_amount: number
     change_amount: number
   }>(null)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [qrCodeFullscreen, setQrCodeFullscreen] = useState(false)
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
   const discount = Math.max(0, cartSubtotal - cartTotal)
 
-  const canCheckout = Boolean(cart?.items.length) && !checkingOut
+  type ToastKind = 'success' | 'error' | 'info' | 'warning'
+  type ToastItem = { id: string; kind: ToastKind; text: string }
+
+  const [toasts, setToasts] = useState<ToastItem[]>([])
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id))
+  }, [])
+
+  const pushToast = useCallback((kind: ToastKind, text: string) => {
+    const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`
+    const nextToast: ToastItem = { id, kind, text }
+
+    setToasts((prev) => {
+      const next = [...prev, nextToast]
+      return next.slice(-4) // keep it tidy on iPad
+    })
+
+    window.setTimeout(() => dismissToast(id), 3200)
+  }, [dismissToast])
 
 
   const focusScanner = () => {
@@ -199,7 +220,7 @@ export default function PosPageContent() {
     }
   }
 
-  const showMsg = (text: string) => setMessage(text)
+  const showMsg = (text: string, kind: ToastKind = 'info') => pushToast(kind, text)
 
   async function loadCart() {
     const res = await fetch('/api/proxy/pos/cart', { cache: 'no-store' })
@@ -222,16 +243,16 @@ export default function PosPageContent() {
 
     if (res.ok) {
       setCart(json.data.cart)
-      showMsg('Item added to POS cart.')
+      showMsg('Added to cart.', 'success')
       return true
     }
 
     if (res.status === 404) {
-      showMsg('Barcode not found')
+      showMsg('Barcode not found.', 'error')
       return false
     }
 
-    showMsg(json?.message ?? 'Unable to add item.')
+    showMsg(json?.message ?? 'Unable to add item.', 'error')
     return false
   }
 
@@ -259,11 +280,11 @@ export default function PosPageContent() {
 
     if (res.ok) {
       setCart(json.data.cart)
-      showMsg('Item added to POS cart.')
+      showMsg('Added to cart.', 'success')
       return true
     }
 
-    showMsg(json?.message ?? 'Unable to add selected product.')
+    showMsg(json?.message ?? 'Unable to add selected product.', 'error')
     return false
   }
 
@@ -620,7 +641,7 @@ export default function PosPageContent() {
 
     const productId = Number(item.product_id || item.id)
     if (!Number.isFinite(productId) || productId <= 0) {
-      showMsg('Invalid product ID.')
+      showMsg('Invalid product ID.', 'error')
       return
     }
 
@@ -679,12 +700,12 @@ export default function PosPageContent() {
     const json = await res.json()
 
     if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to change variant.')
+      showMsg(json?.message ?? 'Unable to change variant.', 'error')
       return
     }
 
     setCart(json.data.cart)
-    showMsg('Variant updated.')
+    showMsg('Variant updated.', 'success')
     setCartVariantOptions((prev) => ({ ...prev, [item.id]: [] }))
     setCartVariantFetched((prev) => ({ ...prev, [item.id]: false }))
   }
@@ -711,11 +732,18 @@ export default function PosPageContent() {
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
 
+  // Enhanced checkout validation: must have items, and payment method requirements must be met
+  const canCheckout = Boolean(cart?.items.length) && !checkingOut && (
+    paymentMethod === 'cash' 
+      ? Number.isFinite(cashReceivedAmount) && cashReceivedAmount >= cartTotal
+      : Boolean(qrProofFileName)
+  )
+
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || cart.items.length === 0 || checkingOut) return
 
     setCheckingOut(true)
-    setMessage(null)
+    setCheckoutError(null)
 
     const res = await fetch('/api/proxy/pos/checkout', {
       method: 'POST',
@@ -725,7 +753,7 @@ export default function PosPageContent() {
     const json = await res.json()
 
     if (!res.ok) {
-      showMsg(json?.message ?? 'Checkout failed.')
+      setCheckoutError(json?.message ?? 'Checkout failed. Please try again.')
       setCheckingOut(false)
       return
     }
@@ -749,8 +777,8 @@ export default function PosPageContent() {
     }
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
-    showMsg('Checkout successful.')
     setCheckingOut(false)
+    // Don't show toast, will show success modal instead
     focusScanner()
   }
 
@@ -759,7 +787,7 @@ export default function PosPageContent() {
 
     if (paymentMethod === 'qrpay') {
       if (!qrProofFileName) {
-        showMsg('Please upload QR payment proof before checkout.')
+        showMsg('Please upload QR payment proof before checkout.', 'error')
         return
       }
 
@@ -767,12 +795,25 @@ export default function PosPageContent() {
       return
     }
 
-    if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < cartTotal) {
-      showMsg('Cash received must be equal or more than total.')
+    // Handle cash flow a bit more like retail POS:
+    // - If staff didn't key in anything, suggest a rounded cash amount automatically
+    // - Still validate that received cash covers the total
+    let effectiveCashReceived = cashReceivedAmount
+
+    if (!cashReceived || !cashReceived.trim()) {
+      const suggested = Math.ceil(cartTotal || 0)
+      effectiveCashReceived = suggested
+      setCashReceived(suggested.toFixed(2))
+    }
+
+    if (!Number.isFinite(effectiveCashReceived) || effectiveCashReceived < cartTotal) {
+      showMsg('Cash received must be equal or more than total.', 'error')
       return
     }
 
-    setCheckoutMeta({ paid_amount: cashReceivedAmount, change_amount: cashChange })
+    const effectiveChange = Math.max(0, effectiveCashReceived - cartTotal)
+
+    setCheckoutMeta({ paid_amount: effectiveCashReceived, change_amount: effectiveChange })
     setConfirmCashOpen(true)
   }
 
@@ -813,45 +854,66 @@ export default function PosPageContent() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 bg-gray-50 min-h-screen p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-semibold">POS Checkout</h2>
-      </div>
-      {message && <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">{message}</div>}
-
-      {/* Barcode Scanner Input - Always visible for POS */}
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <label className="mb-2 block text-sm font-semibold text-gray-700">Barcode Scanner</label>
-        <input
-          ref={scannerInputRef}
-          type="text"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              void onScannerEnter()
-            }
-          }}
-          className="w-full rounded-lg border-2 border-gray-300 px-4 py-3 text-base font-mono focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10"
-          placeholder="Scan barcode or type manually, then press Enter..."
-          autoFocus
-        />
-        <p className="mt-2 text-xs text-gray-500">Press Enter after scanning to add item to cart</p>
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">POS Checkout</h2>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
+          {/* Barcode Scanner Input - moved into left column above Products for better POS flow */}
+          <div className="rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md">
+            <label className="mb-3 block text-sm font-bold text-gray-900 flex items-center gap-2">
+              <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              Barcode Scanner
+            </label>
+            <input
+              ref={scannerInputRef}
+              type="text"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void onScannerEnter()
+                }
+              }}
+              className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-4 py-3.5 text-base font-mono focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+              placeholder="Scan barcode (most scanners auto-press Enter) or type manually, then press Enter..."
+              autoFocus
+            />
+            <p className="mt-2.5 text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Scan with barcode scanner to add items. If typing by hand, press Enter to confirm.
+            </p>
+          </div>
+
           {/* Products Section - Always Visible */}
-          <div className="rounded-xl border bg-white p-5 shadow-sm">
-            <h3 className="mb-4 text-xl font-semibold">Products</h3>
+          <div className="rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
+            <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
+              <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+              Products
+            </h3>
             
             {/* Search Bar */}
-            <div className="mb-4">
-              <input
-                value={productQuery}
-                onChange={(e) => setProductQuery(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10"
-                placeholder="Search products by name, SKU, or barcode..."
-              />
+            <div className="mb-5">
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  value={productQuery}
+                  onChange={(e) => setProductQuery(e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  placeholder="Search products by name, SKU, or barcode..."
+                />
+              </div>
             </div>
 
             {/* Products Grid */}
@@ -861,7 +923,7 @@ export default function PosPageContent() {
                   key={item.product_id}
                   role="button"
                   tabIndex={0}
-                  className={`group cursor-pointer overflow-hidden rounded-lg border-2 bg-white transition-all ${idx === productHighlighted ? 'border-black shadow-md' : 'border-gray-200 hover:border-gray-400 hover:shadow-md'}`}
+                  className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
                   onClick={() => void onSelectProduct(item)}
                   onKeyDown={(e) => {
@@ -871,29 +933,23 @@ export default function PosPageContent() {
                     }
                   }}
                 >
-                  <div className="aspect-square w-full bg-gray-100">
+                  <div className="aspect-square w-full bg-gradient-to-br from-gray-100 to-gray-50 overflow-hidden">
                     {item.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.thumbnail_url} alt={item.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                      <img src={item.thumbnail_url} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110" />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">No image</div>
+                      <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
+                        <svg className="h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
                     )}
                   </div>
-                  <div className="space-y-1.5 p-3">
-                    <p className="line-clamp-2 text-sm font-semibold leading-tight">{item.name}</p>
-                    <p className="text-xs text-gray-500">{item.sku || item.barcode}</p>
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <span className="text-sm font-bold text-black">RM {Number(item.price ?? 0).toFixed(2)}</span>
-                      <button
-                        type="button"
-                        className="rounded-md bg-black px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          void quickAddProduct(item)
-                        }}
-                      >
-                        + Add
-                      </button>
+                  <div className="space-y-2 p-3.5 bg-white">
+                    <p className="line-clamp-2 text-sm font-bold leading-tight text-gray-900">{item.name}</p>
+                    <p className="text-xs text-gray-500 font-mono">{item.sku || item.barcode}</p>
+                    <div className="pt-2 border-t border-gray-100">
+                      <span className="text-base font-bold text-gray-900">RM {Number(item.price ?? 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -932,64 +988,100 @@ export default function PosPageContent() {
         <div className="space-y-5 lg:col-span-2">
 
                     {/* Member Assignment Section - Moved to Right Side */}
-          <div className="rounded-xl border bg-white p-5 shadow-sm">
-            <h3 className="mb-4 text-lg font-semibold">Member Assignment <span className="text-xs font-normal text-gray-500">(optional)</span></h3>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h3 className="mb-4 text-lg font-bold text-gray-900">Member Assignment <span className="text-xs font-normal text-gray-500">(optional)</span></h3>
 
             {selectedMember ? (
-              <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-green-900">{selectedMember.name}</p>
-                    <p className="text-xs text-green-700">{selectedMember.phone ?? '-'} · {selectedMember.email ?? '-'}</p>
+              <div className="mb-4 rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  {selectedMember.avatar_url ? (
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={selectedMember.avatar_url} alt={selectedMember.name} className="h-full w-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/images/default_user_image.jpg" alt={selectedMember.name} className="h-full w-full object-cover" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-base font-bold text-gray-900 leading-tight">
+                      {selectedMember.name}
+                      {selectedMember.phone && <span className="ml-2 text-sm font-normal text-gray-600">({selectedMember.phone})</span>}
+                    </p>
+                    {selectedMember.email && (
+                      <p className="mt-2 text-sm text-gray-700 flex items-center gap-1.5">
+                        <svg className="h-4 w-4 shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        {selectedMember.email}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => void toggleMemberDropdown()}
-                      className="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100"
-                    >
-                      Change
-                    </button>
-                    <button
-                      onClick={() => setSelectedMember(null)}
-                      className="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100"
-                    >
-                      Clear
-                    </button>
-                  </div>
+                </div>
+                <div className="mt-4 flex items-center gap-2 pt-3 border-t border-blue-200">
+                  <button
+                    onClick={() => void toggleMemberDropdown()}
+                    className="flex-1 rounded-lg border-2 border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50"
+                  >
+                    Change Member
+                  </button>
+                  <button
+                    onClick={() => setSelectedMember(null)}
+                    className="rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
+                  >
+                    Clear
+                  </button>
                 </div>
               </div>
             ) : (
               <button
                 onClick={() => void toggleMemberDropdown()}
-                className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-left text-sm font-medium transition-colors hover:bg-gray-50"
+                className="mb-4 w-full rounded-lg border-2 border-dashed border-gray-300 bg-gradient-to-r from-gray-50 to-white px-4 py-3 text-left text-sm font-semibold text-gray-700 transition-all hover:border-blue-400 hover:from-blue-50 hover:to-white hover:text-blue-700"
               >
-                Assign member
+                <div className="flex items-center gap-2">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Assign Member
+                </div>
               </button>
             )}
           </div>
 
-          <div className="rounded-xl border bg-white p-5 shadow-sm lg:sticky lg:top-5">
-            <h3 className="mb-4 text-xl font-semibold">Cart Summary</h3>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-lg font-semibold">Cart</h3>
+            <div className="rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md">
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+              <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              Shopping Cart
+            </h3>
             {cart?.items.length ? (
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 space-y-3 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
                 {cart.items.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-slate-200 p-3">
+                  <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
                     <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
                       <div>
-                        <p className="text-sm font-semibold">{item.product_name}</p>
-                        <p className="text-xs text-slate-500">{item.variant_name || item.variant_sku || 'Single product'}</p>
+                        <p className="text-sm font-bold text-gray-900">{item.product_name}</p>
+                        <p className="text-xs text-gray-600 mt-0.5 font-mono">{item.variant_sku || item.variant_name || ''}</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => void updateQty(item.id, item.qty - 1)} className="h-8 w-8 rounded-lg border border-slate-300">-</button>
-                        <span className="w-6 text-center text-sm">{item.qty}</span>
-                        <button onClick={() => void updateQty(item.id, item.qty + 1)} className="h-8 w-8 rounded-lg border border-slate-300">+</button>
+                      <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                        <button onClick={() => void updateQty(item.id, item.qty - 1)} className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95">-</button>
+                        <span className="w-8 text-center text-sm font-bold text-gray-900">{item.qty}</span>
+                        <button onClick={() => void updateQty(item.id, item.qty + 1)} className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95">+</button>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="min-w-[90px] text-right text-sm font-semibold">RM {Number(item.line_total).toFixed(2)}</span>
-                        <button onClick={() => void removeItem(item.id)} className="text-sm text-red-600">Remove</button>
+                        <span className="min-w-[90px] text-right text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</span>
+                        <button 
+                          onClick={() => void removeItem(item.id)} 
+                          className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
+                          title="Remove item"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
                     {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) && (
@@ -1010,165 +1102,128 @@ export default function PosPageContent() {
                 ))}
               </div>
             ) : (
-              <div className="mt-3 rounded-xl border border-dashed border-slate-300 p-6 text-center">
-                <div className="text-3xl">🛒</div>
-                <p className="mt-2 text-sm font-semibold">Cart is empty</p>
-                <p className="text-sm text-slate-500">Scan or add products to start</p>
+              <div className="mt-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-200">
+                  <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <p className="mt-2 text-sm font-bold text-gray-700">Cart is empty</p>
+                <p className="text-xs text-gray-500 mt-1">Scan or add products to start</p>
               </div>
             )}
 
-            <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-sm">
-              <div className="flex justify-between"><span>Subtotal</span><span>RM {cartSubtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between"><span>Discount</span><span>RM {discount.toFixed(2)}</span></div>
-              <div className="flex justify-between text-base font-semibold"><span>Total</span><span>RM {cartTotal.toFixed(2)}</span></div>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-slate-200 p-4">
-              <h4 className="text-lg font-semibold">Payment</h4>
-              <div className="mt-3 space-y-2">
-                <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"><span>Cash</span><input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} /></label>
-                <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"><span>QRPay</span><input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} /></label>
-                {paymentMethod === 'qrpay' && <p className="text-xs text-slate-500">Customer transfers, staff confirms received.</p>}
-              </div>
-              {paymentMethod === 'cash' && (
-                <div className="mt-3 space-y-2">
-                  <label className="block text-sm font-medium">Cash received</label>
-                  <input type="number" min="0" step="0.01" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" placeholder="0.00" />
-                  <p className="text-xs text-slate-500">Change: RM {cashChange.toFixed(2)}</p>
+            <div className="mt-5 rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
+              {/* Order Summary inside payment card for clearer iPad POS flow */}
+              <div className="mb-4 space-y-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Subtotal</span>
+                  <span className="font-semibold text-gray-900">RM {cartSubtotal.toFixed(2)}</span>
                 </div>
-              )}
-              {paymentMethod === 'qrpay' && (
-                <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <button type="button" className="h-10 rounded-lg border border-slate-300 px-2 text-xs hover:bg-slate-50" onClick={() => qrUploadInputRef.current?.click()}>Upload Existing</button>
-                    <button type="button" className="h-10 rounded-lg border border-slate-300 px-2 text-xs hover:bg-slate-50" onClick={() => qrCameraBackInputRef.current?.click()}>Take Photo (Back)</button>
-                    <button type="button" className="h-10 rounded-lg border border-slate-300 px-2 text-xs hover:bg-slate-50" onClick={() => qrCameraFrontInputRef.current?.click()}>Take Photo (Front)</button>
+                {discount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Discount</span>
+                    <span className="font-semibold text-green-600">-RM {discount.toFixed(2)}</span>
                   </div>
-                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
-                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
-                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
-                  {qrProofFileName && <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2 py-1"><p className="truncate pr-2 text-xs text-slate-600">Selected: {qrProofFileName}</p><button type="button" className="text-xs text-red-600 underline" onClick={clearQrProof}>Clear</button></div>}
+                )}
+                <div className="flex justify-between border-t border-gray-200 pt-2 text-base font-bold">
+                  <span className="text-gray-900">Total</span>
+                  <span className="text-lg text-gray-900">RM {cartTotal.toFixed(2)}</span>
                 </div>
-              )}
-            </div>
-
-            <button onClick={() => void checkout()} disabled={!canCheckout} className="mt-4 h-12 w-full rounded-xl bg-black text-base font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">{checkingOut ? 'Processing checkout...' : 'Checkout'}</button>
-
-            {checkoutResult && (
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <h3 className="text-sm font-semibold">Order completed</h3>
-                <p className="text-sm">Order No: {checkoutResult.order_number}</p>
-                <p className="text-sm">Total: RM {checkoutResult.total.toFixed(2)}</p>
               </div>
-            )}
 
-            <p className="mt-3 text-sm text-slate-500">Items: {totalItems}</p>
-          </div>
-
-            <div className="mt-4 space-y-1 border-t pt-3 text-sm">
-              <div className="flex justify-between"><span>Subtotal</span><span>RM {cartSubtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between"><span>Discount</span><span>RM {discount.toFixed(2)}</span></div>
-              <div className="flex justify-between text-base font-semibold"><span>Total</span><span>RM {cartTotal.toFixed(2)}</span></div>
-            </div>
-
-            <div className="mt-4 rounded-lg border p-3">
-              <h4 className="mb-2 text-sm font-semibold">Payment method</h4>
-              <div className="space-y-2 text-sm">
-                <label className="flex items-center gap-2"><input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} /> CASH</label>
-                <label className="flex items-center gap-2"><input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} /> QRPAY</label>
+              <h4 className="text-base font-bold text-gray-900 mb-3">Payment Method</h4>
+              <div className="mt-3 space-y-2">
+                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <span className={paymentMethod === 'cash' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Cash</span>
+                  <input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="h-4 w-4 text-blue-600" />
+                </label>
+                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
+                  <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-4 w-4 text-blue-600" />
+                </label>
+                {paymentMethod === 'qrpay' && <p className="text-xs text-gray-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mt-2">Customer transfers, staff confirms received.</p>}
               </div>
               {paymentMethod === 'cash' && (
-                <div className="mt-3 space-y-2">
-                  <label className="block text-xs font-medium text-gray-600">Cash received</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={cashReceived}
-                    onChange={(e) => setCashReceived(e.target.value)}
-                    className="w-full rounded border px-3 py-2 text-sm"
-                    placeholder="0.00"
+                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
+                  <label className="block text-sm font-bold text-gray-900">Cash Received</label>
+                  <input 
+                    type="number" 
+                    min="0" 
+                    step="0.01" 
+                    value={cashReceived} 
+                    onChange={(e) => setCashReceived(e.target.value)} 
+                    className="h-11 w-full rounded-lg border-2 border-gray-300 bg-white px-4 text-sm font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    placeholder="0.00" 
                   />
-                  <p className="text-xs text-gray-600">Change: RM {cashChange.toFixed(2)}</p>
+                  {cashChange > 0 && (
+                    <div className="flex items-center justify-between rounded-lg bg-green-50 border-2 border-green-200 px-3 py-2">
+                      <span className="text-xs font-semibold text-green-800">Change:</span>
+                      <span className="text-sm font-bold text-green-700">RM {cashChange.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
               )}
               {paymentMethod === 'qrpay' && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-amber-700">Choose how to attach QR payment proof:</p>
+                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
+                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrUploadInputRef.current?.click()}>
-                      Upload Existing
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrUploadInputRef.current?.click()}>
+                      📁 Upload
                     </button>
-                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrCameraBackInputRef.current?.click()}>
-                      Take Photo (Back Cam)
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraBackInputRef.current?.click()}>
+                      📷 Back Camera
                     </button>
-                    <button type="button" className="rounded border px-2 py-2 text-xs hover:bg-gray-50" onClick={() => qrCameraFrontInputRef.current?.click()}>
-                      Take Photo (Front Cam)
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraFrontInputRef.current?.click()}>
+                      📷 Front Camera
                     </button>
                   </div>
                   <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
                   <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
                   <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
                   {qrProofFileName && (
-                    <div className="flex items-center justify-between rounded border bg-gray-50 px-2 py-1">
-                      <p className="truncate pr-2 text-xs text-gray-600">Selected: {qrProofFileName}</p>
-                      <button type="button" className="text-xs text-red-600 underline" onClick={clearQrProof}>Clear</button>
+                    <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2">
+                      <p className="truncate pr-2 text-xs font-medium text-green-800">✓ {qrProofFileName}</p>
+                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline" onClick={clearQrProof}>Clear</button>
                     </div>
-                  )}
-                  {qrProofPreviewUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={qrProofPreviewUrl} alt="QR payment proof" className="max-h-40 w-full rounded border object-contain" />
                   )}
                 </div>
               )}
             </div>
 
-            <button
-              onClick={() => void checkout()}
-              disabled={checkingOut || !cart?.items.length}
-              className="mt-4 w-full rounded-lg bg-black px-4 py-3 text-white disabled:cursor-not-allowed disabled:opacity-40"
+            <button 
+              onClick={() => void checkout()} 
+              disabled={!canCheckout} 
+              className="mt-5 h-14 w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-base font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 hover:shadow-xl disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none active:scale-[0.98]"
             >
-              {checkingOut ? 'Processing...' : 'Checkout'}
+              {checkingOut ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing...
+                </span>
+              ) : (
+                'Checkout'
+              )}
             </button>
 
-            {checkoutResult && (
-              <div className="mt-4 rounded-lg border bg-gray-50 p-3">
-                <h3 className="text-sm font-semibold">Order completed</h3>
-                <p className="text-sm">Order No: {checkoutResult.order_number}</p>
-                <p className="text-sm">Total: RM {checkoutResult.total.toFixed(2)}</p>
-                <p className="text-sm">Paid: RM {checkoutResult.paid_amount.toFixed(2)}</p>
-                <p className="text-sm">Change: RM {checkoutResult.change_amount.toFixed(2)}</p>
-                {checkoutResult.receipt_public_url && (
-                  <>
-                    <div className="mt-2 rounded border bg-white p-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`}
-                        alt="Receipt QR code"
-                        className="mx-auto h-40 w-40"
-                      />
-                    </div>
-                    <a href={checkoutResult.receipt_public_url} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-blue-600 underline">
-                      {checkoutResult.receipt_public_url}
-                    </a>
-                  </>
-                )}
-              </div>
-            )}
+            <p className="mt-3 text-sm text-slate-500">Items: {totalItems}</p>
+            </div>
 
-            <p className="mt-2 text-xs text-gray-500">Items: {totalItems}</p>
-          </div>
+    
 
 
         </div>
       </div>
 
       {productSelectModalOpen && selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
-          <div className="w-full max-w-4xl rounded-xl bg-white shadow-2xl my-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border-2 border-gray-100 my-8 overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between border-b p-4">
-              <h4 className="text-xl font-semibold">Product Details</h4>
+            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+              <h4 className="text-xl font-bold text-gray-900">Product Details</h4>
               <button
                 onClick={() => {
                   setProductSelectModalOpen(false)
@@ -1177,7 +1232,7 @@ export default function PosPageContent() {
                   setProductVariantLoading(false)
                   setFullProductData(null)
                 }}
-                className="rounded-lg p-2 hover:bg-gray-100 transition-colors"
+                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
               >
                 <span className="text-2xl leading-none">×</span>
               </button>
@@ -1187,13 +1242,19 @@ export default function PosPageContent() {
               {/* Left: Product Images */}
               <div className="space-y-4">
                 {productVariantLoading ? (
-                  <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
-                    <p className="text-sm text-gray-500">Loading...</p>
+                  <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-50 rounded-xl flex items-center justify-center border-2 border-gray-200">
+                    <div className="text-center">
+                      <svg className="h-12 w-12 mx-auto mb-2 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <p className="text-sm font-medium text-gray-500">Loading...</p>
+                    </div>
                   </div>
                 ) : (
                   <>
                     {fullProductData?.images?.[0]?.url || fullProductData?.cover_image_url || selectedProduct.thumbnail_url ? (
-                      <div className="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden">
+                      <div className="aspect-square w-full bg-gradient-to-br from-gray-100 to-gray-50 rounded-xl overflow-hidden border-2 border-gray-200 shadow-sm">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={fullProductData?.images?.[0]?.url || fullProductData?.cover_image_url || selectedProduct.thumbnail_url || ''}
@@ -1202,14 +1263,19 @@ export default function PosPageContent() {
                         />
                       </div>
                     ) : (
-                      <div className="aspect-square w-full bg-gray-100 rounded-lg flex items-center justify-center">
-                        <p className="text-sm text-gray-400">No image</p>
+                      <div className="aspect-square w-full bg-gradient-to-br from-gray-100 to-gray-50 rounded-xl flex items-center justify-center border-2 border-gray-200">
+                        <div className="text-center">
+                          <svg className="h-16 w-16 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <p className="text-sm font-medium text-gray-400">No image</p>
+                        </div>
                       </div>
                     )}
                     {fullProductData?.images && fullProductData.images.length > 1 && (
                       <div className="grid grid-cols-4 gap-2">
                         {fullProductData.images.slice(0, 4).map((img: any, idx: number) => (
-                          <div key={idx} className="aspect-square bg-gray-100 rounded overflow-hidden">
+                          <div key={idx} className="aspect-square bg-gray-100 rounded-lg overflow-hidden border-2 border-gray-200">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={img.url || ''} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
                           </div>
@@ -1221,16 +1287,34 @@ export default function PosPageContent() {
               </div>
 
               {/* Right: Product Info */}
-              <div className="space-y-4">
+              <div className="space-y-5">
+                {(() => {
+                  // Derive currently selected / primary variant for stock display
+                  const selectedVariant =
+                    (selectedProduct.variants.length > 0 &&
+                      (selectedProduct.variants.find((v) => v.id === selectedVariantId) ?? selectedProduct.variants[0])) ||
+                    null
+
+                  const trackStock = selectedVariant?.track_stock ?? null
+                  const stockValue =
+                    typeof selectedVariant?.stock === 'number' && Number.isFinite(selectedVariant.stock)
+                      ? selectedVariant.stock
+                      : null
+
+                  const hasStockLimit = (trackStock ?? true) && stockValue !== null && stockValue >= 0
+
+                  return null
+                })()}
+
                 <div>
-                  <h1 className="text-2xl font-semibold">{selectedProduct.name}</h1>
-                  <p className="text-sm text-gray-500 mt-1">{selectedProduct.sku || selectedProduct.barcode}</p>
+                  <h1 className="text-2xl font-bold text-gray-900">{selectedProduct.name}</h1>
+                  <p className="text-sm text-gray-500 mt-1.5 font-mono">{selectedProduct.sku || selectedProduct.barcode}</p>
                 </div>
 
                 {/* Price */}
-                <div className="rounded-lg border bg-gray-50 p-4">
+                <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm">
                   <div className="flex items-baseline gap-3">
-                    <span className="text-3xl font-bold text-black">
+                    <span className="text-3xl font-bold text-gray-900">
                       RM {selectedVariantId && selectedProduct.variants.length > 0
                         ? Number(selectedProduct.variants.find(v => v.id === selectedVariantId)?.price ?? selectedProduct.price ?? 0).toFixed(2)
                         : Number(selectedProduct.price ?? 0).toFixed(2)}
@@ -1240,13 +1324,13 @@ export default function PosPageContent() {
 
                 {/* Variants */}
                 {productVariantLoading ? (
-                  <div className="rounded-lg border p-4">
-                    <p className="text-sm text-gray-500">Loading variants...</p>
+                  <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+                    <p className="text-sm font-medium text-gray-500">Loading variants...</p>
                   </div>
                 ) : selectedProduct.variants.length > 0 ? (
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold">Select Variant</label>
-                    <div className="grid gap-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-3">
+                    <label className="block text-sm font-bold text-gray-900">Select Variant</label>
+                    <div className="grid gap-2.5 max-h-64 overflow-y-auto">
                       {selectedProduct.variants.map((variant) => {
                         const selected = variant.id === selectedVariantId
                         const isActive = variant.is_active !== false
@@ -1257,22 +1341,32 @@ export default function PosPageContent() {
                             key={variant.id}
                             onClick={() => isActive && !outOfStock && setSelectedVariantId(variant.id)}
                             disabled={!isActive || outOfStock}
-                            className={`rounded-lg border-2 p-3 text-left transition-all ${
+                            className={`rounded-xl border-2 p-4 text-left transition-all ${
                               selected
-                                ? 'border-black bg-gray-100'
+                                ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-500/20'
                                 : !isActive || outOfStock
                                   ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                                  : 'border-gray-200 hover:border-gray-400 hover:bg-gray-50'
+                                  : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50 hover:shadow-sm'
                             }`}
                           >
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="font-medium">{variant.name}</p>
-                                <p className="text-xs text-gray-500 mt-0.5">{variant.sku}</p>
-                                <p className="text-sm font-semibold mt-1">RM {variant.price.toFixed(2)}</p>
+                                <p className="font-bold text-gray-900">{variant.name}</p>
+                                <p className="text-xs text-gray-600 mt-0.5 font-mono">{variant.sku}</p>
+                                <p className="text-sm font-bold text-gray-900 mt-1.5">RM {variant.price.toFixed(2)}</p>
+                                {typeof variant.stock === 'number' && (variant.track_stock ?? true) && (
+                                  <p className="mt-1 text-xs text-gray-500">
+                                    Stock: <span className="font-semibold text-gray-800">{variant.stock}</span>
+                                  </p>
+                                )}
                               </div>
                               {outOfStock && (
-                                <span className="text-xs text-red-600 font-medium">Out of Stock</span>
+                                <span className="text-xs text-red-600 font-bold bg-red-50 px-2 py-1 rounded">Out of Stock</span>
+                              )}
+                              {selected && !outOfStock && (
+                                <svg className="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
                               )}
                             </div>
                           </button>
@@ -1292,36 +1386,81 @@ export default function PosPageContent() {
                   </div>
                 )}
 
-                {/* Quantity */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold">Quantity</label>
-                  <div className="flex items-center gap-3">
-                    <button
-                      className="rounded-lg border-2 border-gray-300 w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors"
-                      onClick={() => setSelectedProductQty((prev) => Math.max(1, prev - 1))}
-                    >
-                      <span className="text-lg">−</span>
-                    </button>
-                    <input
-                      type="number"
-                      min={1}
-                      value={selectedProductQty}
-                      onChange={(e) => setSelectedProductQty(Math.max(1, Number(e.target.value || 1)))}
-                      className="w-24 rounded-lg border-2 border-gray-300 px-3 py-2 text-center font-semibold"
-                    />
-                    <button
-                      className="rounded-lg border-2 border-gray-300 w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors"
-                      onClick={() => setSelectedProductQty((prev) => prev + 1)}
-                    >
-                      <span className="text-lg">+</span>
-                    </button>
-                  </div>
+                {/* Quantity with stock awareness */}
+                <div className="space-y-3">
+                  {(() => {
+                    const selectedVariant =
+                      (selectedProduct.variants.length > 0 &&
+                        (selectedProduct.variants.find((v) => v.id === selectedVariantId) ?? selectedProduct.variants[0])) ||
+                      null
+
+                    const trackStock = selectedVariant?.track_stock ?? null
+                    const stockValue =
+                      typeof selectedVariant?.stock === 'number' && Number.isFinite(selectedVariant.stock)
+                        ? selectedVariant.stock
+                        : null
+
+                    const hasStockLimit = (trackStock ?? true) && stockValue !== null && stockValue >= 0
+
+                    const maxQty = hasStockLimit ? stockValue ?? null : null
+
+                    const clampQty = (next: number) => {
+                      if (next < 1) return 1
+                      if (typeof maxQty === 'number') return Math.min(maxQty, next)
+                      return next
+                    }
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <label className="block text-sm font-bold text-gray-900">Quantity</label>
+                          {hasStockLimit && typeof stockValue === 'number' && (
+                            <span className="text-xs font-medium text-gray-500">
+                              Available:{' '}
+                              <span className="font-semibold text-gray-800">{stockValue}</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <button
+                            className="rounded-lg border-2 border-gray-300 w-12 h-12 flex items-center justify-center bg-white hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95 font-bold text-gray-700"
+                            onClick={() => setSelectedProductQty((prev) => clampQty(prev - 1))}
+                          >
+                            <span className="text-xl">−</span>
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            value={selectedProductQty}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value || 1)
+                              setSelectedProductQty(clampQty(Number.isFinite(raw) ? raw : 1))
+                            }}
+                            className="w-28 rounded-lg border-2 border-gray-300 bg-white px-3 py-3 text-center font-bold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          />
+                          <button
+                            className="rounded-lg border-2 border-gray-300 w-12 h-12 flex items-center justify-center bg-white hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95 font-bold text-gray-700"
+                            onClick={() => setSelectedProductQty((prev) => clampQty(prev + 1))}
+                          >
+                            <span className="text-xl">+</span>
+                          </button>
+                        </div>
+
+                        {hasStockLimit && typeof maxQty === 'number' && selectedProductQty > maxQty && (
+                          <p className="text-xs font-medium text-red-600">
+                            Quantity cannot exceed available stock ({maxQty}).
+                          </p>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
 
                 {/* Add to Cart Button */}
-                <div className="pt-4 border-t">
+                <div className="pt-4 border-t-2 border-gray-200">
                   <button
-                    className="w-full rounded-lg bg-black px-6 py-3 text-white font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 text-white font-bold text-base shadow-lg hover:from-blue-700 hover:to-blue-800 hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 active:scale-[0.98]"
                     onClick={() => void confirmAddSelectedProduct()}
                     disabled={selectedProduct.variants.length > 0 && !selectedVariantId}
                   >
@@ -1335,34 +1474,39 @@ export default function PosPageContent() {
       )}
 
       {memberOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b p-4">
-              <h4 className="text-lg font-semibold">Assign Member</h4>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
+            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+              <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
               <button
                 type="button"
                 onClick={() => void toggleMemberDropdown()}
-                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
               >
                 <span className="text-2xl leading-none">×</span>
               </button>
             </div>
 
-            <div className="border-b p-4">
-              <input
-                value={memberQuery}
-                onChange={(e) => setMemberQuery(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10"
-                placeholder="Search by phone, email, member code, name..."
-                autoFocus
-              />
+            <div className="border-b-2 border-gray-200 bg-white p-5">
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  value={memberQuery}
+                  onChange={(e) => setMemberQuery(e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  placeholder="Search by phone, email, member code, name..."
+                  autoFocus
+                />
+              </div>
             </div>
 
-            <div className="max-h-80 overflow-auto">
+            <div className="max-h-96 overflow-auto">
               {members.map((member) => (
                 <button
                   key={member.id}
-                  className="block w-full border-b border-gray-100 p-3 text-left text-sm transition-colors hover:bg-gray-50 last:border-b-0"
+                  className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
                   onClick={() => {
                     setSelectedMember(member)
                     setMemberOpen(false)
@@ -1370,26 +1514,61 @@ export default function PosPageContent() {
                     focusScanner()
                   }}
                 >
-                  <p className="font-semibold text-gray-900">{member.name}</p>
-                  <p className="mt-0.5 text-xs text-gray-600">{member.phone ?? '-'} · {member.email ?? '-'}</p>
-                  {member.member_code && <p className="mt-0.5 text-xs text-gray-500">{member.member_code}</p>}
+                  <div className="flex items-start gap-3">
+                    {member.avatar_url ? (
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={member.avatar_url} alt={member.name} className="h-full w-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/images/default_user_image.jpg" alt={member.name} className="h-full w-full object-cover" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-base leading-tight">
+                        {member.name}
+                        {member.phone && <span className="ml-2 text-sm font-normal text-gray-500">({member.phone})</span>}
+                      </p>
+                      {member.email && (
+                        <p className="mt-1.5 text-sm text-gray-600 flex items-center gap-1.5">
+                          <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          {member.email}
+                        </p>
+                      )}
+                    </div>
+                    <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
                 </button>
               ))}
 
               {!memberLoading && members.length === 0 && (
-                <div className="p-6 text-center text-sm text-gray-500">No members found</div>
+                <div className="p-12 text-center">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                    <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-600">No members found</p>
+                  <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
+                </div>
               )}
             </div>
 
             {members.length > 0 && (
-              <div className="flex items-center justify-between border-t p-3">
-                <span className="text-xs text-gray-500">Page {memberPage} / {memberLastPage}</span>
+              <div className="flex items-center justify-between border-t-2 border-gray-200 bg-gray-50 px-6 py-4 rounded-b-2xl">
+                <span className="text-xs font-medium text-gray-600">Page {memberPage} of {memberLastPage}</span>
                 <button
-                  className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 transition-all hover:border-black hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
                   disabled={memberLoading || memberPage >= memberLastPage}
                   onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
                 >
-                  {memberLoading ? 'Loading...' : 'See more'}
+                  {memberLoading ? 'Loading...' : 'Load More'}
                 </button>
               </div>
             )}
@@ -1398,27 +1577,248 @@ export default function PosPageContent() {
       )}
 
       {confirmCashOpen && checkoutMeta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl">
-            <h4 className="text-lg font-semibold">Confirm cash payment</h4>
-            <div className="mt-3 space-y-1 text-sm">
-              <p>Total: RM {cartTotal.toFixed(2)}</p>
-              <p>Customer paid: RM {checkoutMeta.paid_amount.toFixed(2)}</p>
-              <p>Change: RM {checkoutMeta.change_amount.toFixed(2)}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5">
+              <h4 className="text-xl font-bold text-white flex items-center gap-2">
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Confirm Cash Payment
+              </h4>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button className="rounded border px-3 py-2 text-sm" onClick={() => setConfirmCashOpen(false)}>Cancel</button>
+            <div className="p-6 space-y-4">
+              <div className="space-y-3 rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Total Amount</span>
+                  <span className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</span>
+                </div>
+                <div className="h-px bg-gray-300"></div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Cash Received</span>
+                  <span className="text-lg font-bold text-blue-700">RM {checkoutMeta.paid_amount.toFixed(2)}</span>
+                </div>
+                {checkoutMeta.change_amount > 0 && (
+                  <>
+                    <div className="h-px bg-gray-300"></div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-gray-600">Change</span>
+                      <span className="text-lg font-bold text-green-700">RM {checkoutMeta.change_amount.toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button 
+                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50 active:scale-95" 
+                  onClick={() => setConfirmCashOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 hover:shadow-xl active:scale-95"
+                  onClick={() => {
+                    setConfirmCashOpen(false)
+                    void finalizeCheckout(checkoutMeta)
+                  }}
+                >
+                  Confirm & Checkout
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout Success Modal with QR Code */}
+      {checkoutResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex items-center justify-between">
+              <h4 className="text-xl font-bold text-white flex items-center gap-2">
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Order Completed
+              </h4>
               <button
-                className="rounded bg-black px-3 py-2 text-sm text-white"
                 onClick={() => {
-                  setConfirmCashOpen(false)
-                  void finalizeCheckout(checkoutMeta)
+                  setCheckoutResult(null)
+                  setQrCodeFullscreen(false)
+                  focusScanner()
                 }}
+                className="rounded-lg p-1.5 text-white/90 transition-all hover:bg-white/20 hover:text-white"
+                title="Close"
               >
-                Confirm & Checkout
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="text-center space-y-2">
+                <p className="text-sm font-medium text-gray-600">Order Number</p>
+                <p className="text-2xl font-bold text-gray-900">{checkoutResult.order_number}</p>
+                <p className="text-lg font-semibold text-gray-700">RM {checkoutResult.total.toFixed(2)}</p>
+              </div>
+
+              {checkoutResult.receipt_public_url && (
+                <div className="space-y-3">
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-gray-700 mb-3">Scan QR Code to View Receipt</p>
+                    <div 
+                      className="flex justify-center p-4 bg-white rounded-xl border-2 border-gray-200 cursor-pointer hover:border-blue-400 hover:shadow-lg transition-all"
+                      onClick={() => setQrCodeFullscreen(true)}
+                      title="Click to enlarge QR code"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`}
+                        alt="Receipt QR Code"
+                        className="w-48 h-48"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Tap QR code to enlarge for customer scanning</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => window.open(checkoutResult.receipt_public_url!, '_blank')}
+                      className="flex-1 rounded-xl border-2 border-blue-500 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-100 active:scale-95"
+                    >
+                      Open Receipt
+                    </button>
+                    {/* <button
+                      onClick={() => {
+                        if (checkoutResult.receipt_public_url) {
+                          navigator.clipboard.writeText(checkoutResult.receipt_public_url)
+                        }
+                      }}
+                      className="rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 active:scale-95"
+                      title="Copy receipt link"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button> */}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Fullscreen Modal */}
+      {qrCodeFullscreen && checkoutResult?.receipt_public_url && (
+        <div 
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+          onClick={() => setQrCodeFullscreen(false)}
+        >
+          <div className="relative">
+            {/* <button
+              onClick={() => setQrCodeFullscreen(false)}
+              className="absolute -top-12 right-0 rounded-full bg-white/20 p-3 text-white transition-all hover:bg-white/30"
+              title="Close"
+            >
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button> */}
+            <div className="bg-white p-8 rounded-2xl shadow-2xl">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`}
+                alt="Receipt QR Code - Fullscreen"
+                className="w-80 h-80"
+              />
+            </div>
+            <p className="text-center text-white mt-4 text-sm">Tap anywhere to close</p>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout Error Modal */}
+      {checkoutError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-5">
+              <h4 className="text-xl font-bold text-white flex items-center gap-2">
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Checkout Failed
+              </h4>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-gray-700">{checkoutError}</p>
+              <button
+                onClick={() => {
+                  setCheckoutError(null)
+                  focusScanner()
+                }}
+                className="w-full rounded-xl bg-gradient-to-r from-gray-600 to-gray-700 px-4 py-3 text-sm font-bold text-white shadow-lg transition-all hover:from-gray-700 hover:to-gray-800 hover:shadow-xl active:scale-95"
+              >
+                Close
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Bottom-right Toasts (commercial POS style) */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3">
+          {toasts.map((toast) => {
+            const styles =
+              toast.kind === 'success'
+                ? 'border-green-200 bg-green-50 text-green-900'
+                : toast.kind === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-900'
+                  : toast.kind === 'warning'
+                    ? 'border-amber-200 bg-amber-50 text-amber-900'
+                    : 'border-blue-200 bg-blue-50 text-blue-900'
+
+            const icon =
+              toast.kind === 'success' ? (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : toast.kind === 'error' ? (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : toast.kind === 'warning' ? (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )
+
+            return (
+              <div
+                key={toast.id}
+                className={`rounded-xl border-2 px-4 py-3 shadow-lg backdrop-blur-sm ${styles}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 shrink-0">{icon}</div>
+                  <div className="flex-1 text-sm font-semibold leading-snug">{toast.text}</div>
+                  <button
+                    type="button"
+                    onClick={() => dismissToast(toast.id)}
+                    className="ml-2 rounded-md p-1 opacity-70 transition hover:bg-black/5 hover:opacity-100"
+                    title="Dismiss"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
