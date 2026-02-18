@@ -19,13 +19,24 @@ type Cart = {
   grand_total: number
 }
 
+type ProductVariantOption = {
+  id: number
+  name: string
+  sku: string
+  price: number
+  image_url?: string | null
+  is_active: boolean
+}
+
 type ProductOption = {
   id: number
+  product_id: number
   name: string
   sku: string
   barcode: string
   price: number
   thumbnail_url?: string | null
+  variants: ProductVariantOption[]
 }
 
 type CheckoutMeta = {
@@ -55,8 +66,10 @@ type ProductApiItem = {
   sku?: string
   price?: number | string
   cover_image_url?: string | null
+  barcode?: string | null
   variants?: Array<{
     id?: number
+    name?: string | null
     sku?: string | null
     price?: number | string | null
     sale_price?: number | string | null
@@ -116,6 +129,7 @@ export default function PosPageContent() {
   const [productInitialLoaded, setProductInitialLoaded] = useState(false)
   const [productSelectModalOpen, setProductSelectModalOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null)
   const [selectedProductQty, setSelectedProductQty] = useState(1)
 
   const [memberOpen, setMemberOpen] = useState(false)
@@ -225,7 +239,34 @@ export default function PosPageContent() {
       const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
       const json = await res.json()
       const paged = extractPaged<ProductOption>(json)
-      mapped = paged.data
+      mapped = paged.data.map((item) => {
+        const itemId = Number(item.id)
+        const variants = Array.isArray(item.variants)
+          ? item.variants
+              .map((variant) => {
+                const variantId = Number(variant?.id)
+                if (!Number.isFinite(variantId) || variantId <= 0) return null
+
+                return {
+                  id: variantId,
+                  name: variant?.name || item.name || '-',
+                  sku: variant?.sku || '',
+                  price: Number(variant?.price ?? item.price ?? 0) || 0,
+                  image_url: variant?.image_url ?? item.thumbnail_url ?? null,
+                  is_active: variant?.is_active !== false,
+                }
+              })
+              .filter((variant): variant is ProductVariantOption => Boolean(variant))
+          : []
+
+        return {
+          ...item,
+          id: itemId,
+          product_id: Number(item.product_id ?? itemId),
+          barcode: item.barcode || item.sku,
+          variants,
+        }
+      })
       currentPage = paged.current_page
       lastPage = paged.last_page
     } else {
@@ -240,23 +281,43 @@ export default function PosPageContent() {
 
       mapped = paged.data
         .map((item): ProductOption | null => {
-          const activeVariant = Array.isArray(item.variants)
-            ? item.variants.find((v) => v && (v.is_active === true || v.is_active === '1' || v.is_active === 1 || v.is_active === 'true')) ?? item.variants[0]
-            : null
+          const variants = Array.isArray(item.variants)
+            ? item.variants
+                .map((variant) => {
+                  const variantId = Number(variant?.id)
+                  if (!Number.isFinite(variantId) || variantId <= 0) return null
 
+                  const priceRaw = variant?.sale_price ?? variant?.price ?? item.price ?? 0
+                  const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
+
+                  return {
+                    id: variantId,
+                    name: variant?.name || item.name || '-',
+                    sku: variant?.sku || '',
+                    price: Number.isFinite(price) ? price : 0,
+                    image_url: variant?.image_url ?? item.cover_image_url ?? null,
+                    is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
+                  }
+                })
+                .filter((variant): variant is ProductVariantOption => Boolean(variant))
+            : []
+
+          const activeVariant = variants.find((variant) => variant.is_active) ?? variants[0]
           const sku = activeVariant?.sku || item.sku || ''
-          if (!sku) return null
+          if (!sku && variants.length === 0) return null
 
-          const priceRaw = activeVariant?.sale_price ?? activeVariant?.price ?? item.price ?? 0
-          const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
+          const productPriceRaw = activeVariant?.price ?? item.price ?? 0
+          const productPrice = typeof productPriceRaw === 'number' ? productPriceRaw : Number(productPriceRaw || 0)
 
           return {
-            id: Number(activeVariant?.id ?? item.id),
+            id: Number(item.id),
+            product_id: Number(item.id),
             name: item.name ?? '-',
             sku,
-            barcode: sku,
-            price: Number.isFinite(price) ? price : 0,
+            barcode: item.barcode || sku,
+            price: Number.isFinite(productPrice) ? productPrice : 0,
             thumbnail_url: activeVariant?.image_url ?? item.cover_image_url ?? null,
+            variants,
           }
         })
         .filter((item): item is ProductOption => Boolean(item))
@@ -354,24 +415,37 @@ export default function PosPageContent() {
   const onSelectProduct = (item: ProductOption) => {
     setSelectedProduct(item)
     setSelectedProductQty(1)
+    setSelectedVariantId(item.variants.find((variant) => variant.is_active)?.id ?? item.variants[0]?.id ?? null)
     setProductSelectModalOpen(true)
   }
 
   const confirmAddSelectedProduct = async () => {
     if (!selectedProduct) return
 
-    const success = await addByVariantId(selectedProduct.id, selectedProductQty)
+    const hasVariants = selectedProduct.variants.length > 0
+    const success = hasVariants
+      ? await addByVariantId(Number(selectedVariantId), selectedProductQty)
+      : await addByBarcode(selectedProduct.barcode || selectedProduct.sku, selectedProductQty)
     if (!success) return
 
     setProductSelectModalOpen(false)
     setSelectedProduct(null)
+    setSelectedVariantId(null)
     setProductOpen(false)
     setProductQuery('')
     focusScanner()
   }
 
   const quickAddProduct = async (item: ProductOption) => {
-    await addByVariantId(item.id, 1)
+    if (item.variants.length > 0) {
+      const preferredVariantId = item.variants.find((variant) => variant.is_active)?.id ?? item.variants[0]?.id
+      if (preferredVariantId) {
+        await addByVariantId(preferredVariantId, 1)
+      }
+      return
+    }
+
+    await addByBarcode(item.barcode || item.sku, 1)
   }
 
   const cashReceivedAmount = Number(cashReceived || 0)
@@ -783,8 +857,33 @@ export default function PosPageContent() {
           <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl">
             <h4 className="text-lg font-semibold">Add product to cart</h4>
             <p className="mt-1 text-sm font-medium">{selectedProduct.name}</p>
-            <p className="text-xs text-gray-500">{selectedProduct.sku || selectedProduct.barcode}</p>
-            <p className="mt-1 text-sm">RM {Number(selectedProduct.price ?? 0).toFixed(2)}</p>
+            {selectedProduct.variants.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                <label className="block text-sm font-medium">Select variant</label>
+                <div className="max-h-52 space-y-2 overflow-auto rounded-lg border p-2">
+                  {selectedProduct.variants.map((variant) => {
+                    const checked = selectedVariantId === variant.id
+                    return (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${checked ? 'border-black bg-gray-100' : 'hover:bg-gray-50'}`}
+                        onClick={() => setSelectedVariantId(variant.id)}
+                      >
+                        <p className="font-medium">{variant.name || selectedProduct.name}</p>
+                        <p className="text-xs text-gray-500">{variant.sku || '-'}</p>
+                        <p className="text-xs">RM {Number(variant.price ?? selectedProduct.price ?? 0).toFixed(2)}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500">{selectedProduct.sku || selectedProduct.barcode}</p>
+                <p className="mt-1 text-sm">RM {Number(selectedProduct.price ?? 0).toFixed(2)}</p>
+              </>
+            )}
 
             <div className="mt-4">
               <label className="mb-1 block text-sm font-medium">Quantity</label>
@@ -817,6 +916,7 @@ export default function PosPageContent() {
                 onClick={() => {
                   setProductSelectModalOpen(false)
                   setSelectedProduct(null)
+                  setSelectedVariantId(null)
                 }}
               >
                 Cancel
