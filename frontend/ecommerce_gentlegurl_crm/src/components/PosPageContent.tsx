@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 
 type CartItem = {
   id: number
@@ -130,6 +130,7 @@ export default function PosPageContent() {
   const [productSelectModalOpen, setProductSelectModalOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null)
+  const [productVariantLoading, setProductVariantLoading] = useState(false)
   const [selectedProductQty, setSelectedProductQty] = useState(1)
 
   const [memberOpen, setMemberOpen] = useState(false)
@@ -228,7 +229,92 @@ export default function PosPageContent() {
     return false
   }
 
-  async function fetchProductPage(page: number, keyword: string, append: boolean) {
+
+  const normalizeProductFromApi = (item: ProductApiItem): ProductOption | null => {
+    const productId = Number(item.id)
+    if (!Number.isFinite(productId) || productId <= 0) return null
+
+    const variants: ProductVariantOption[] = Array.isArray(item.variants)
+      ? item.variants
+          .map((variant): ProductVariantOption | null => {
+            const variantId = Number(variant?.id)
+            if (!Number.isFinite(variantId) || variantId <= 0) return null
+
+            const sku = variant?.sku?.trim() || ''
+            if (!sku) return null
+
+            const priceRaw = variant?.sale_price ?? variant?.price ?? item.price ?? 0
+            const parsedPrice = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
+
+            return {
+              id: variantId,
+              name: variant?.name?.trim() || `Variant #${variantId}`,
+              sku,
+              barcode: sku,
+              price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
+              thumbnail_url: variant?.image_url ?? item.cover_image_url ?? null,
+              is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
+            }
+          })
+          .filter((variant): variant is ProductVariantOption => Boolean(variant))
+      : []
+
+    const activeVariant = variants.find((variant) => variant.is_active) ?? variants[0] ?? null
+    const baseSku = item.sku?.trim() || ''
+    const sku = activeVariant?.sku || baseSku
+    if (!sku) return null
+
+    const priceRaw = activeVariant?.price ?? item.price ?? 0
+    const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
+
+    return {
+      id: Number(activeVariant?.id ?? productId),
+      product_id: productId,
+      name: item.name ?? '-',
+      sku,
+      barcode: sku,
+      price: Number.isFinite(price) ? price : 0,
+      thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? null,
+      variants,
+    }
+  }
+
+  const hydrateProductVariants = async (item: ProductOption) => {
+    const productId = Number(item.product_id || item.id)
+    if (!Number.isFinite(productId) || productId <= 0) return
+
+    setProductVariantLoading(true)
+
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/products/${productId}`, { cache: 'no-store' })
+      const json = await res.json()
+
+      if (!res.ok) return
+
+      const payload = json?.data?.product ?? json?.data ?? json?.product
+      if (!payload || typeof payload !== 'object') return
+
+      const normalized = normalizeProductFromApi(payload as ProductApiItem)
+      if (!normalized) return
+
+      setSelectedProduct((current) => {
+        if (!current) return current
+        const currentProductId = Number(current.product_id || current.id)
+        if (currentProductId !== productId) return current
+        return normalized
+      })
+      setSelectedVariantId((currentVariantId) => {
+        if (currentVariantId) return currentVariantId
+        return normalized.variants.length === 1 ? normalized.variants[0].id : null
+      })
+    } catch {
+      // no-op; keep fallback product information
+    } finally {
+      setProductVariantLoading(false)
+    }
+  }
+
+  const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     setProductLoading(true)
 
     let mapped: ProductOption[] = []
@@ -257,54 +343,7 @@ export default function PosPageContent() {
       const paged = extractPaged<ProductApiItem>(json)
 
       mapped = paged.data
-        .map((item): ProductOption | null => {
-          const productId = Number(item.id)
-          if (!Number.isFinite(productId) || productId <= 0) return null
-
-          const variants: ProductVariantOption[] = Array.isArray(item.variants)
-            ? item.variants
-                .map((variant): ProductVariantOption | null => {
-                  const variantId = Number(variant?.id)
-                  if (!Number.isFinite(variantId) || variantId <= 0) return null
-
-                  const sku = variant?.sku?.trim() || ''
-                  if (!sku) return null
-
-                  const priceRaw = variant?.sale_price ?? variant?.price ?? item.price ?? 0
-                  const parsedPrice = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
-
-                  return {
-                    id: variantId,
-                    name: variant?.name?.trim() || `Variant #${variantId}`,
-                    sku,
-                    barcode: sku,
-                    price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
-                    thumbnail_url: variant?.image_url ?? item.cover_image_url ?? null,
-                    is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
-                  }
-                })
-                .filter((variant): variant is ProductVariantOption => Boolean(variant))
-            : []
-
-          const activeVariant = variants.find((variant) => variant.is_active) ?? variants[0] ?? null
-          const baseSku = item.sku?.trim() || ''
-          const sku = activeVariant?.sku || baseSku
-          if (!sku) return null
-
-          const priceRaw = activeVariant?.price ?? item.price ?? 0
-          const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
-
-          return {
-            id: Number(activeVariant?.id ?? productId),
-            product_id: productId,
-            name: item.name ?? '-',
-            sku,
-            barcode: sku,
-            price: Number.isFinite(price) ? price : 0,
-            thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? null,
-            variants,
-          }
-        })
+        .map((item): ProductOption | null => normalizeProductFromApi(item))
         .filter((item): item is ProductOption => Boolean(item))
 
       currentPage = paged.current_page
@@ -316,9 +355,9 @@ export default function PosPageContent() {
     setProductLastPage(lastPage)
     setProductHighlighted(0)
     setProductLoading(false)
-  }
+  }, [])
 
-  async function fetchMemberPage(page: number, keyword: string, append: boolean) {
+  const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     setMemberLoading(true)
     const params = new URLSearchParams()
     params.set('page', String(page))
@@ -335,7 +374,7 @@ export default function PosPageContent() {
     setMemberPage(paged.current_page)
     setMemberLastPage(paged.last_page)
     setMemberLoading(false)
-  }
+  }, [])
 
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return
@@ -360,7 +399,6 @@ export default function PosPageContent() {
 
   useEffect(() => {
     focusScanner()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadCart()
   }, [])
 
@@ -372,7 +410,7 @@ export default function PosPageContent() {
     }, 300)
 
     return () => clearTimeout(handle)
-  }, [productQuery, productOpen])
+  }, [fetchProductPage, productQuery, productOpen])
 
   useEffect(() => {
     if (!memberOpen) return
@@ -382,7 +420,7 @@ export default function PosPageContent() {
     }, 300)
 
     return () => clearTimeout(handle)
-  }, [memberQuery, memberOpen])
+  }, [fetchMemberPage, memberQuery, memberOpen])
 
   const onScannerEnter = async () => {
     const value = scannerInputRef.current?.value ?? ''
@@ -402,6 +440,7 @@ export default function PosPageContent() {
     setSelectedVariantId(item.variants.length === 1 ? item.variants[0].id : null)
     setSelectedProductQty(1)
     setProductSelectModalOpen(true)
+    void hydrateProductVariants(item)
   }
 
   const confirmAddSelectedProduct = async () => {
@@ -415,12 +454,13 @@ export default function PosPageContent() {
 
     const success = hasVariants
       ? await addByVariantId(selectedVariantId ?? selectedProduct.id, selectedProductQty)
-      : await addByBarcode(selectedProduct.sku, selectedProductQty)
+      : await addByVariantId(selectedProduct.id, selectedProductQty)
     if (!success) return
 
     setProductSelectModalOpen(false)
     setSelectedProduct(null)
     setSelectedVariantId(null)
+    setProductVariantLoading(false)
     setProductOpen(false)
     setProductQuery('')
     focusScanner()
@@ -432,7 +472,7 @@ export default function PosPageContent() {
       return
     }
 
-    await addByBarcode(item.sku, 1)
+    await addByVariantId(item.id, 1)
   }
 
   const cashReceivedAmount = Number(cashReceived || 0)
@@ -847,6 +887,10 @@ export default function PosPageContent() {
             <p className="text-xs text-gray-500">{selectedProduct.sku || selectedProduct.barcode}</p>
             <p className="mt-1 text-sm">RM {Number(selectedProduct.price ?? 0).toFixed(2)}</p>
 
+            {productVariantLoading && (
+              <p className="mt-3 text-xs text-gray-500">Loading variants...</p>
+            )}
+
             {selectedProduct.variants.length > 0 && (
               <div className="mt-4 space-y-2">
                 <label className="block text-sm font-medium">Choose variant</label>
@@ -902,6 +946,7 @@ export default function PosPageContent() {
                   setProductSelectModalOpen(false)
                   setSelectedProduct(null)
                   setSelectedVariantId(null)
+                  setProductVariantLoading(false)
                 }}
               >
                 Cancel
