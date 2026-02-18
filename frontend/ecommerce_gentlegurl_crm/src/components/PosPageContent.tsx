@@ -171,6 +171,7 @@ export default function PosPageContent() {
 
   const [cartVariantOptions, setCartVariantOptions] = useState<Record<number, ProductVariantOption[]>>({})
   const [cartVariantLoading, setCartVariantLoading] = useState<Record<number, boolean>>({})
+  const [cartVariantFetched, setCartVariantFetched] = useState<Record<number, boolean>>({})
   const [checkoutResult, setCheckoutResult] = useState<null | {
     order_number: string
     receipt_public_url: string | null
@@ -625,7 +626,7 @@ export default function PosPageContent() {
 
 
   const fetchCartItemVariants = async (item: CartItem) => {
-    if (!item.product_id || cartVariantOptions[item.id]?.length || cartVariantLoading[item.id]) return
+    if (!item.product_id || cartVariantOptions[item.id]?.length || cartVariantLoading[item.id] || cartVariantFetched[item.id]) return
 
     setCartVariantLoading((prev) => ({ ...prev, [item.id]: true }))
 
@@ -660,6 +661,7 @@ export default function PosPageContent() {
       setCartVariantOptions((prev) => ({ ...prev, [item.id]: options }))
     } finally {
       setCartVariantLoading((prev) => ({ ...prev, [item.id]: false }))
+      setCartVariantFetched((prev) => ({ ...prev, [item.id]: true }))
     }
   }
 
@@ -681,6 +683,7 @@ export default function PosPageContent() {
     setCart(json.data.cart)
     showMsg('Variant updated.')
     setCartVariantOptions((prev) => ({ ...prev, [item.id]: [] }))
+    setCartVariantFetched((prev) => ({ ...prev, [item.id]: false }))
   }
 
 
@@ -689,15 +692,18 @@ export default function PosPageContent() {
 
     const itemsToPrefetch = cart.items.filter((item) => {
       if (!item.product_id) return false
+      // Single products don't have variant switchers and should not trigger variant prefetch loops.
+      if (!item.variant_id) return false
       if (cartVariantOptions[item.id]?.length) return false
       if (cartVariantLoading[item.id]) return false
+      if (cartVariantFetched[item.id]) return false
       return true
     })
 
     itemsToPrefetch.forEach((item) => {
       void fetchCartItemVariants(item)
     })
-  }, [cart, cartVariantOptions, cartVariantLoading])
+  }, [cart, cartVariantFetched, cartVariantOptions, cartVariantLoading])
 
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
@@ -927,14 +933,22 @@ export default function PosPageContent() {
                 cart.items.map((item) => (
                   <div key={item.id} className="rounded-lg border p-3">
                     <p className="text-sm font-medium">{item.product_name}</p>
-                    <p className="text-xs text-gray-500">{item.variant_name} · {item.variant_sku}</p>
-                    {!!item.product_id && (
+                    <p className="text-xs text-gray-500">
+                      {item.variant_name || item.variant_sku
+                        ? `${item.variant_name ?? '-'} · ${item.variant_sku ?? '-'}`
+                        : 'Single product'}
+                    </p>
+                    {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) && (
                       <div className="mt-1">
                         <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Select variant</p>
                         <select
                           className="w-full rounded border px-2 py-1 text-xs"
                           value={item.variant_id ? String(item.variant_id) : ''}
-                          onFocus={() => void fetchCartItemVariants(item)}
+                          onFocus={() => {
+                            if (item.variant_id) {
+                              void fetchCartItemVariants(item)
+                            }
+                          }}
                           onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
                           disabled={cartVariantLoading[item.id]}
                         >
