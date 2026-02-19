@@ -24,6 +24,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const hasRedirected = useRef(false)
   // Mobile: start collapsed (hidden), Desktop: start expanded
   const [collapsed, setCollapsed] = useState(true)
+  const [overlaySidebar, setOverlaySidebar] = useState(true)
   const [userEmail, setUserEmail] = useState('')
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [permissions, setPermissions] = useState<string[]>([])
@@ -144,19 +145,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [router])
 
-  // Auto-expand sidebar on desktop (md breakpoint and above)
+  // Desktop keeps persistent sidebar; phone/tablet (touch) uses overlay drawer
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 768) {
-        // Desktop: expand sidebar
-        setCollapsed(false)
-      } else {
-        // Mobile: collapse sidebar
-        setCollapsed(true)
-      }
+      const isTouchDevice =
+        window.matchMedia('(hover: none), (pointer: coarse)').matches ||
+        navigator.maxTouchPoints > 0
+      const shouldOverlay = window.innerWidth < 1024 || isTouchDevice
+
+      setOverlaySidebar(shouldOverlay)
+      setCollapsed(shouldOverlay)
     }
 
-    // Set initial state based on screen size
     handleResize()
 
     window.addEventListener('resize', handleResize)
@@ -193,7 +193,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         onToggleSidebar={toggleSidebar}
       />
       <div className="flex h-screen pt-16">
-        <Sidebar collapsed={collapsed} permissions={permissions} onToggleSidebar={toggleSidebar} />
+        <Sidebar collapsed={collapsed} overlayMode={overlaySidebar} permissions={permissions} onToggleSidebar={toggleSidebar} />
         <main className="flex-1 overflow-y-auto bg-slate-100">{children}</main>
       </div>
     </LogoLoader>
