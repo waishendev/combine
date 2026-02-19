@@ -144,10 +144,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [router])
 
-  // Auto-expand sidebar on desktop (lg breakpoint and above)
+  // Auto-expand sidebar on desktop (xl breakpoint and above)
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 1024) {
+      if (window.innerWidth >= 1280) {
         // Desktop: expand sidebar
         setCollapsed(false)
       } else {

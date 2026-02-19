@@ -427,15 +427,15 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
       {/* Mobile overlay backdrop */}
       {!collapsed && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 xl:hidden"
           onClick={onToggleSidebar}
           aria-hidden="true"
         />
       )}
       <aside
-        className={`fixed lg:static top-16 left-0 h-[calc(100vh-4rem)] bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col shadow-sm z-50 ${
+        className={`fixed xl:static top-16 left-0 h-[calc(100vh-4rem)] bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col shadow-sm z-50 ${
           collapsed
-            ? 'w-20 -translate-x-full lg:translate-x-0'
+            ? 'w-20 -translate-x-full xl:translate-x-0'
             : 'w-64 translate-x-0'
         }`}
       >
