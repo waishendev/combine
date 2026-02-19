@@ -1166,10 +1166,10 @@ export default function PosPageContent() {
             <div className="mt-5 rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
               {/* Order Summary inside payment card for clearer iPad POS flow */}
               <div className="mb-4 space-y-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm">
-                <div className="flex justify-between">
+                {/* <div className="flex justify-between">
                   <span className="text-gray-600">Subtotal</span>
                   <span className="font-semibold text-gray-900">RM {cartSubtotal.toFixed(2)}</span>
-                </div>
+                </div> */}
                 {discount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Discount</span>
