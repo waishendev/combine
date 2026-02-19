@@ -1001,7 +1001,7 @@ export default function PosPageContent() {
         <div className="space-y-4 md:col-span-2 md:space-y-5 md:min-h-0">
 
                     {/* Member Assignment Section - Moved to Right Side */}
-          <div className="flex min-h-[180px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm sm:p-5 md:h-[180px]">
+          <div className="flex min-h-[180px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm sm:p-5 md:min-h-[220px]">
             <h3 className="mb-3 flex flex-wrap items-center gap-2 text-lg font-bold text-gray-900 flex-shrink-0">
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1042,7 +1042,7 @@ export default function PosPageContent() {
                     )}
                   </div>
                 </div>
-                <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-blue-200 pt-2">
+                <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-blue-200 pt-2 sm:flex-nowrap">
                   <button
                     onClick={() => void toggleMemberDropdown()}
                     className="inline-flex min-w-[120px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-blue-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50"
@@ -1054,7 +1054,7 @@ export default function PosPageContent() {
                   </button>
                   <button
                     onClick={() => setSelectedMember(null)}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50 sm:w-auto"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
