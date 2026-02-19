@@ -893,7 +893,7 @@ export default function PosPageContent() {
           </div>
 
           {/* Products Section - Always Visible */}
-          <div className="flex min-h-[480px] flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5 md:h-[calc(100vh-9rem)] md:min-h-0 lg:h-[calc(100vh-8.5rem)]">
+          <div className="flex min-h-[480px] flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5 md:h-[calc(100vh-9.5rem)] md:min-h-0 lg:h-[calc(100vh-9rem)]">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -917,7 +917,7 @@ export default function PosPageContent() {
             </div>
 
             {/* Products Grid */}
-            <div className="grid min-h-[320px] flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 md:grid-cols-2">
+            <div className="grid min-h-[320px] flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 md:min-h-0 md:grid-cols-2">
               {products.map((item, idx) => (
                 <div
                   key={item.product_id}
@@ -1100,7 +1100,7 @@ export default function PosPageContent() {
             </div>
           </div>
 
-            <div className="flex min-h-[480px] flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5 md:h-[calc(100vh-9rem)] md:min-h-0 lg:h-[calc(100vh-8.5rem)]">
+            <div className="flex min-h-[480px] flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5 md:h-[calc(100vh-9.5rem)] md:min-h-0 lg:h-[calc(100vh-9rem)]">
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -1108,9 +1108,9 @@ export default function PosPageContent() {
               Shopping Cart
             </h3>
             {cart?.items.length ? (
-              <div className="mt-3 min-h-[320px] flex-1 space-y-3 overflow-y-auto pr-1">
+              <div className="mt-3 min-h-[320px] flex-1 space-y-3 overflow-y-auto pr-1 md:min-h-0">
                 {cart.items.map((item) => (
-                  <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
+                  <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-3 shadow-sm transition-shadow hover:shadow-md">
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 truncate sm:max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 type SidebarProps = {
   collapsed: boolean
+  overlayMode: boolean
   permissions: string[]
   onToggleSidebar?: () => void
 }
@@ -27,7 +28,7 @@ type MenuChild = {
   children?: MenuChild[]
 }
 
-export default function Sidebar({ collapsed, permissions, onToggleSidebar }: SidebarProps) {
+export default function Sidebar({ collapsed, overlayMode, permissions, onToggleSidebar }: SidebarProps) {
   const pathname = usePathname()
 
   const menuItems: MenuItem[] = useMemo(
@@ -425,18 +426,22 @@ export default function Sidebar({ collapsed, permissions, onToggleSidebar }: Sid
   return (
     <>
       {/* Mobile overlay backdrop */}
-      {!collapsed && (
+      {!collapsed && overlayMode && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 xl:hidden"
+          className="fixed inset-0 z-40 bg-black/50"
           onClick={onToggleSidebar}
           aria-hidden="true"
         />
       )}
       <aside
-        className={`fixed xl:static top-16 left-0 h-[calc(100vh-4rem)] bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col shadow-sm z-50 ${
-          collapsed
-            ? 'w-20 -translate-x-full xl:translate-x-0'
-            : 'w-64 translate-x-0'
+        className={`fixed top-16 left-0 h-[calc(100vh-4rem)] bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col shadow-sm z-50 ${
+          overlayMode
+            ? collapsed
+              ? 'w-20 -translate-x-full'
+              : 'w-64 translate-x-0'
+            : collapsed
+              ? 'w-20 -translate-x-full lg:translate-x-0 lg:static'
+              : 'w-64 translate-x-0 lg:static'
         }`}
       >
         <nav className="flex-1 overflow-y-auto px-3 py-6 text-sm text-slate-600">
