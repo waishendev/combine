@@ -854,17 +854,17 @@ export default function PosPageContent() {
   }
 
   return (
-    <div className="min-h-screen space-y-6 bg-gray-50 p-4 sm:p-6">
+    <div className="min-h-screen space-y-6 bg-gray-50 p-3 sm:p-4 lg:p-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">POS Checkout</h2>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5 lg:min-h-0">
-        <div className="space-y-5 lg:col-span-3 lg:min-h-0">
+      <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-5 lg:min-h-0">
+        <div className="contents lg:col-span-3 lg:block lg:min-h-0">
           {/* Barcode Scanner Input - moved into left column above Products for better POS flow */}
-          <div className="flex min-h-[200px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md lg:h-[180px]">
+          <div className="order-1 flex min-h-[180px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:h-[180px]">
             <label className="mb-3 block text-sm font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
@@ -893,7 +893,7 @@ export default function PosPageContent() {
           </div>
 
           {/* Products Section - Always Visible */}
-          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md lg:h-[calc(100vh-10rem)] lg:min-h-0">
+          <div className="order-4 flex min-h-[420px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:h-[calc(100vh-10rem)] lg:min-h-0">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -998,15 +998,15 @@ export default function PosPageContent() {
         </div>
 
 
-        <div className="space-y-5 lg:col-span-2 lg:min-h-0">
+        <div className="contents lg:col-span-2 lg:block lg:min-h-0 lg:self-start lg:sticky lg:top-6">
 
                     {/* Member Assignment Section - Moved to Right Side */}
-          <div className="flex min-h-[200px] flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-5 shadow-sm lg:h-[180px]">
-            <h3 className="mb-3 text-lg font-bold text-gray-900 flex-shrink-0">Member Assignment <span className="text-xs font-normal text-gray-500">(optional)</span></h3>
+          <div className="order-2 flex min-h-[180px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:h-[180px]">
+            <h3 className="mb-3 text-lg font-bold text-gray-900 flex items-baseline gap-2 flex-shrink-0">Member Assignment <span className="text-xs font-normal text-gray-400">(optional)</span></h3>
 
             <div className="flex-1 flex min-h-0">
             {selectedMember ? (
-              <div className="w-full rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-3 shadow-sm overflow-hidden">
+              <div className="w-full rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-3 shadow-sm overflow-hidden">
                 <div className="flex items-center gap-2.5">
                   {selectedMember.avatar_url ? (
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
@@ -1050,22 +1050,28 @@ export default function PosPageContent() {
                 </div>
               </div>
             ) : (
-              <button
-                onClick={() => void toggleMemberDropdown()}
-                className="w-full rounded-lg border-2 border-dashed border-gray-300 bg-gradient-to-r from-gray-50 to-white px-4 py-3 text-left text-sm font-semibold text-gray-700 transition-all hover:border-blue-400 hover:from-blue-50 hover:to-white hover:text-blue-700"
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Assign Member
+              <div className="w-full rounded-xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm">
+                <div className="flex flex-col items-center justify-center text-center">
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm">
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 1118.88 17.8M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900">No member assigned</p>
+                  <p className="mt-1 text-xs text-slate-500">Assign a member to earn points &amp; use member benefits</p>
+                  <button
+                    onClick={() => void toggleMemberDropdown()}
+                    className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700 transition-all hover:border-blue-400 hover:bg-blue-50 sm:h-10 sm:w-auto"
+                  >
+                    Assign Member
+                  </button>
                 </div>
-              </button>
+              </div>
             )}
             </div>
           </div>
 
-            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md lg:h-[calc(100vh-10rem)] lg:min-h-0">
+            <div className="order-3 flex min-h-[420px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:h-[calc(100vh-10rem)] lg:min-h-0">
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -1076,18 +1082,18 @@ export default function PosPageContent() {
               <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 lg:min-h-0">
                 {cart.items.map((item) => (
                   <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
-                      <div className="min-w-0">
+                    <div className="flex flex-wrap items-start gap-3 sm:flex-nowrap sm:items-center">
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-gray-900 truncate max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
                         <p className="text-xs text-gray-600 mt-0.5 font-mono truncate max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                       </div>
-                      <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                      <div className="flex items-center gap-2 rounded-lg bg-gray-100 p-1">
                         <button onClick={() => void updateQty(item.id, item.qty - 1)} className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95">-</button>
                         <span className="w-8 text-center text-sm font-bold text-gray-900">{item.qty}</span>
                         <button onClick={() => void updateQty(item.id, item.qty + 1)} className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95">+</button>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="min-w-[90px] text-right text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</span>
+                      <div className="ml-auto flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+                        <span className="min-w-[90px] text-sm font-bold text-gray-900 sm:text-right">RM {Number(item.line_total).toFixed(2)}</span>
                         <button 
                           onClick={() => void removeItem(item.id)} 
                           className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
