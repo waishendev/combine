@@ -1066,21 +1066,34 @@ export default function PosPageContent() {
             ) : (
               <button
                 onClick={() => void toggleMemberDropdown()}
-                className="w-full rounded-xl border-2 border-dashed border-slate-300 bg-gradient-to-r from-slate-50 to-white px-4 py-3 text-left text-sm font-semibold text-slate-700 transition-all hover:-translate-y-0.5 hover:border-blue-400 hover:from-blue-50 hover:to-white hover:text-blue-700"
+                className="group relative w-full h-full overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 px-4 py-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-400 hover:from-blue-50 hover:via-blue-100/40 hover:to-indigo-50/30 hover:shadow-lg active:scale-[0.98]"
               >
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-700 shadow-sm">
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v6m3-3h-6M5 20h6a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </span>
-                  <div>
-                    <p>Assign Member</p>
-                    <p className="text-xs font-normal text-slate-500">Attach profile for rewards and history</p>
+                {/* Decorative background pattern */}
+                <div className="absolute top-0 right-0 h-24 w-24 bg-gradient-to-br from-blue-200/10 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <div className="relative flex items-center gap-3.5">
+                  {/* Enhanced Icon Container */}
+                  <div className="relative flex-shrink-0">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-100 via-blue-200 to-indigo-200 text-blue-700 shadow-md ring-2 ring-blue-50 transition-all duration-300 group-hover:scale-110 group-hover:from-blue-200 group-hover:via-blue-300 group-hover:to-indigo-300 group-hover:shadow-lg">
+                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
                   </div>
-                  <svg className="ml-auto h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+                  
+                  {/* Text Content */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900 group-hover:text-blue-700 transition-colors duration-300">
+                      Assign Member
+                    </p>
+                  </div>
+                  
+                  {/* Arrow Icon */}
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-slate-400 transition-all duration-300 group-hover:translate-x-1 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
                 </div>
               </button>
             )}
