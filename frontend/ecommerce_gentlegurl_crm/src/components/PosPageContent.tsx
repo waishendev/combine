@@ -998,10 +998,10 @@ export default function PosPageContent() {
         </div>
 
 
-        <div className="contents lg:col-span-2 lg:block lg:min-h-0 lg:self-start lg:sticky lg:top-6">
+        <div className="contents lg:col-span-2 lg:block lg:min-h-0">
 
                     {/* Member Assignment Section - Moved to Right Side */}
-          <div className="order-2 flex min-h-[180px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:h-[180px]">
+          <div className="order-2 flex min-h-[180px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h3 className="mb-3 text-lg font-bold text-gray-900 flex items-baseline gap-2 flex-shrink-0">Member Assignment <span className="text-xs font-normal text-gray-400">(optional)</span></h3>
 
             <div className="flex-1 flex min-h-0">
@@ -1050,18 +1050,19 @@ export default function PosPageContent() {
                 </div>
               </div>
             ) : (
-              <div className="w-full rounded-xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm">
-                <div className="flex flex-col items-center justify-center text-center">
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm">
+              <div className="w-full rounded-xl border border-slate-200 bg-slate-50/70 p-4 shadow-sm">
+                <div className="flex flex-col items-center text-center">
+                  <div className="mb-2.5 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-blue-500 shadow-sm">
                     <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 1118.88 17.8M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 21a6 6 0 00-12 0M12 11a4 4 0 100-8 4 4 0 000 8zm8 2v6m3-3h-6" />
                     </svg>
                   </div>
                   <p className="text-sm font-semibold text-slate-900">No member assigned</p>
                   <p className="mt-1 text-xs text-slate-500">Assign a member to earn points &amp; use member benefits</p>
                   <button
+                    type="button"
                     onClick={() => void toggleMemberDropdown()}
-                    className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700 transition-all hover:border-blue-400 hover:bg-blue-50 sm:h-10 sm:w-auto"
+                    className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700 transition-all hover:border-blue-400 hover:bg-blue-50 sm:h-10 sm:w-auto"
                   >
                     Assign Member
                   </button>
