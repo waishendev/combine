@@ -864,7 +864,7 @@ export default function PosPageContent() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5 md:gap-5 md:min-h-0">
         <div className="space-y-4 md:col-span-3 md:space-y-5 md:min-h-0">
           {/* Barcode Scanner Input - moved into left column above Products for better POS flow */}
-          <div className="flex min-h-[180px] flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5 md:h-[180px]">
+          <div className="flex min-h-[180px] flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5 md:min-h-[220px]">
             <label className="mb-3 block text-sm font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
