@@ -325,10 +325,13 @@ $protectedRoutes = function () {
 
     Route::prefix('pos')->middleware('permission:ecommerce.orders.create')->group(function () {
         Route::get('/members/search', [PosController::class, 'memberSearch']);
+        Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
         Route::get('/products/search', [PosController::class, 'productSearch']);
         Route::get('/cart', [PosController::class, 'cart']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
         Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
+        Route::post('/cart/voucher/apply', [PosController::class, 'applyVoucher']);
+        Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
         Route::post('/checkout', [PosController::class, 'checkout']);
