@@ -627,18 +627,15 @@ class PosController extends Controller
 
             $orderPaymentService->handlePaid($order);
 
-            $receiptUrl = null;
-            if (!$customerId) {
-                $token = Str::random(64);
-                OrderReceiptToken::create([
-                    'order_id' => $order->id,
-                    'token' => $token,
-                    'expires_at' => null,
-                ]);
-                $frontendOrigin = $request->headers->get('origin') ?: config('services.frontend_url', config('app.url'));
-                $frontendUrl = rtrim((string) $frontendOrigin, '/');
-                $receiptUrl = $frontendUrl . '/receipt/' . $token;
-            }
+            $token = Str::random(64);
+            OrderReceiptToken::create([
+                'order_id' => $order->id,
+                'token' => $token,
+                'expires_at' => null,
+            ]);
+            $frontendOrigin = $request->headers->get('origin') ?: config('services.frontend_url', config('app.url'));
+            $frontendUrl = rtrim((string) $frontendOrigin, '/');
+            $receiptUrl = $frontendUrl . '/receipt/' . $token;
 
             $cart->items()->delete();
             $this->clearVoucherFromCart($cart);

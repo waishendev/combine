@@ -82,6 +82,9 @@ type PosVoucherOption = {
     min_order_amount?: number
     max_discount_amount?: number | null
     scope_type?: string
+    start_at?: string | null
+    end_at?: string | null
+    is_active?: boolean
   } | null
 }
 
@@ -93,6 +96,9 @@ type PublicVoucherApiItem = {
   min_order_amount?: number
   max_discount_amount?: number | null
   scope_type?: string
+  start_at?: string | null
+  end_at?: string | null
+  is_active?: boolean | number | string
 }
 
 type PageResponse<T> = {
@@ -272,6 +278,36 @@ export default function PosPageContent() {
     return `${voucher.code} · ${discountText}`
   }
 
+  const getVoucherRuleStatus = (item: PosVoucherOption) => {
+    const voucher = item.voucher
+    if (!voucher) return { eligible: false, reason: 'Invalid voucher data.' }
+
+    const now = new Date()
+    const startAt = voucher.start_at ? new Date(voucher.start_at) : null
+    const endAt = item.expires_at ? new Date(item.expires_at) : (voucher.end_at ? new Date(voucher.end_at) : null)
+
+    const isActive = voucher.is_active ?? true
+    const normalizedActive = isActive === true || isActive === 1 || isActive === '1' || isActive === 'true'
+    if (!normalizedActive) {
+      return { eligible: false, reason: 'Voucher is inactive.' }
+    }
+
+    if (startAt && !Number.isNaN(startAt.getTime()) && startAt > now) {
+      return { eligible: false, reason: 'Voucher is not started yet.' }
+    }
+
+    if (endAt && !Number.isNaN(endAt.getTime()) && endAt < now) {
+      return { eligible: false, reason: 'Voucher has expired.' }
+    }
+
+    const minSpend = Number(voucher.min_order_amount ?? 0)
+    if (minSpend > 0 && cartSubtotal < minSpend) {
+      return { eligible: false, reason: `Minimum spend RM ${minSpend.toFixed(2)} required.` }
+    }
+
+    return { eligible: true, reason: null }
+  }
+
   const fetchVouchers = useCallback(async (memberId?: number | null) => {
     setVoucherLoading(true)
     try {
@@ -306,6 +342,9 @@ export default function PosPageContent() {
             min_order_amount: Number(raw.min_order_amount ?? 0),
             max_discount_amount: raw.max_discount_amount != null ? Number(raw.max_discount_amount) : null,
             scope_type: raw.scope_type ?? 'all',
+            start_at: raw.start_at ?? null,
+            end_at: raw.end_at ?? null,
+            is_active: raw.is_active === true || raw.is_active === 1 || raw.is_active === '1' || raw.is_active === 'true',
           },
         }
       })
@@ -330,11 +369,26 @@ export default function PosPageContent() {
     return false
   }, [showMsg])
 
+  const selectedVoucher = useMemo(
+    () => availableVouchers.find((item) => String(item.id) === selectedVoucherKey || String(item.customer_voucher_id) === selectedVoucherKey) ?? null,
+    [availableVouchers, selectedVoucherKey],
+  )
+  const selectedVoucherRule = useMemo(
+    () => (selectedVoucher ? getVoucherRuleStatus(selectedVoucher) : null),
+    [selectedVoucher, cartSubtotal],
+  )
+
   const applyVoucher = useCallback(async () => {
     if (!selectedVoucherKey) return
 
     const selected = availableVouchers.find((item) => String(item.id) === selectedVoucherKey || String(item.customer_voucher_id) === selectedVoucherKey)
     if (!selected) return
+
+    const rule = getVoucherRuleStatus(selected)
+    if (!rule.eligible) {
+      showMsg(rule.reason ?? 'Voucher does not meet rules.', 'warning')
+      return
+    }
 
     const payload: Record<string, number | string> = {}
     if (selected.customer_voucher_id) {
@@ -1872,16 +1926,19 @@ export default function PosPageContent() {
                     const key = String(item.customer_voucher_id ?? item.id)
                     const voucher = item.voucher
                     const minSpend = Number(voucher?.min_order_amount ?? 0)
+                    const rule = getVoucherRuleStatus(item)
                     return (
                       <button
                         type="button"
                         key={`${key}_${voucher?.id ?? 'voucher'}`}
                         onClick={() => setSelectedVoucherKey(key)}
-                        className={`w-full rounded-lg border p-3 text-left transition ${selectedVoucherKey === key ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'}`}
+                        disabled={!rule.eligible}
+                        className={`w-full rounded-lg border p-3 text-left transition ${selectedVoucherKey === key ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'} ${!rule.eligible ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
                         <p className="text-sm font-semibold text-gray-900">{formatVoucherLabel(item)}</p>
                         {minSpend > 0 && <p className="mt-0.5 text-xs text-gray-600">Min spend: RM {minSpend.toFixed(2)}</p>}
                         {!!item.expires_at && <p className="mt-0.5 text-xs text-gray-500">Expires: {new Date(item.expires_at).toLocaleString()}</p>}
+                        {rule.reason && <p className="mt-1 text-xs font-medium text-amber-700">{rule.reason}</p>}
                       </button>
                     )
                   })}
@@ -1897,11 +1954,14 @@ export default function PosPageContent() {
               >
                 Cancel
               </button>
+              {selectedVoucherRule?.reason && selectedVoucherKey && (
+                <p className="mr-auto text-xs font-medium text-amber-700">{selectedVoucherRule.reason}</p>
+              )}
               <button
                 type="button"
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={() => void applyVoucher()}
-                disabled={!selectedVoucherKey || voucherApplying}
+                disabled={!selectedVoucherKey || voucherApplying || selectedVoucherRule?.eligible === false}
               >
                 {voucherApplying ? 'Applying...' : 'Apply Voucher'}
               </button>
