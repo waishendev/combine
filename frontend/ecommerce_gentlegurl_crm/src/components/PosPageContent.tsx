@@ -19,6 +19,16 @@ type Cart = {
   items: CartItem[]
   subtotal: number
   grand_total: number
+  voucher?: {
+    id?: number | null
+    customer_voucher_id?: number | null
+    code?: string | null
+    discount_amount?: number
+    scope_snapshot?: {
+      display_scope_text?: string | null
+      eligible_subtotal?: number
+    } | null
+  } | null
 }
 
 type ProductOption = {
@@ -57,6 +67,38 @@ type Member = {
   email?: string | null
   member_code?: string | null
   avatar_url?: string | null
+}
+
+type PosVoucherOption = {
+  id: number
+  customer_voucher_id?: number
+  status?: string
+  expires_at?: string | null
+  voucher?: {
+    id: number
+    code: string
+    type: 'fixed' | 'percent'
+    value: number
+    min_order_amount?: number
+    max_discount_amount?: number | null
+    scope_type?: string
+    start_at?: string | null
+    end_at?: string | null
+    is_active?: boolean
+  } | null
+}
+
+type PublicVoucherApiItem = {
+  id?: number
+  code?: string
+  type?: 'fixed' | 'percent' | string
+  value?: number
+  min_order_amount?: number
+  max_discount_amount?: number | null
+  scope_type?: string
+  start_at?: string | null
+  end_at?: string | null
+  is_active?: boolean | number | string
 }
 
 type PageResponse<T> = {
@@ -160,6 +202,11 @@ export default function PosPageContent() {
   const [memberLoading, setMemberLoading] = useState(false)
   const [memberInitialLoaded, setMemberInitialLoaded] = useState(false)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
+  const [voucherModalOpen, setVoucherModalOpen] = useState(false)
+  const [voucherLoading, setVoucherLoading] = useState(false)
+  const [voucherApplying, setVoucherApplying] = useState(false)
+  const [availableVouchers, setAvailableVouchers] = useState<PosVoucherOption[]>([])
+  const [selectedVoucherKey, setSelectedVoucherKey] = useState<string>('')
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
   const [cashReceived, setCashReceived] = useState('')
@@ -187,6 +234,7 @@ export default function PosPageContent() {
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
   const discount = Math.max(0, cartSubtotal - cartTotal)
+  const appliedVoucher = cart?.voucher ?? null
 
   type ToastKind = 'success' | 'error' | 'info' | 'warning'
   type ToastItem = { id: string; kind: ToastKind; text: string }
@@ -221,6 +269,157 @@ export default function PosPageContent() {
   }
 
   const showMsg = (text: string, kind: ToastKind = 'info') => pushToast(kind, text)
+
+  const formatVoucherLabel = (item: PosVoucherOption) => {
+    const voucher = item.voucher
+    if (!voucher) return 'Unknown voucher'
+    const value = Number(voucher.value ?? 0)
+    const discountText = voucher.type === 'percent' ? `${value}% OFF` : `RM ${value.toFixed(2)} OFF`
+    return `${voucher.code} · ${discountText}`
+  }
+
+  const getVoucherRuleStatus = (item: PosVoucherOption) => {
+    const voucher = item.voucher
+    if (!voucher) return { eligible: false, reason: 'Invalid voucher data.' }
+
+    const now = new Date()
+    const startAt = voucher.start_at ? new Date(voucher.start_at) : null
+    const endAt = item.expires_at ? new Date(item.expires_at) : (voucher.end_at ? new Date(voucher.end_at) : null)
+
+    const isActive = voucher.is_active ?? true
+    const normalizedActive = isActive === true || isActive === 1 || isActive === '1' || isActive === 'true'
+    if (!normalizedActive) {
+      return { eligible: false, reason: 'Voucher is inactive.' }
+    }
+
+    if (startAt && !Number.isNaN(startAt.getTime()) && startAt > now) {
+      return { eligible: false, reason: 'Voucher is not started yet.' }
+    }
+
+    if (endAt && !Number.isNaN(endAt.getTime()) && endAt < now) {
+      return { eligible: false, reason: 'Voucher has expired.' }
+    }
+
+    const minSpend = Number(voucher.min_order_amount ?? 0)
+    if (minSpend > 0 && cartSubtotal < minSpend) {
+      return { eligible: false, reason: `Minimum spend RM ${minSpend.toFixed(2)} required.` }
+    }
+
+    return { eligible: true, reason: null }
+  }
+
+  const fetchVouchers = useCallback(async (memberId?: number | null) => {
+    setVoucherLoading(true)
+    try {
+      if (memberId) {
+        const res = await fetch(`/api/proxy/pos/members/${memberId}/vouchers`, { cache: 'no-store' })
+        const json = await res.json()
+        const paged = extractPaged<PosVoucherOption>(json)
+        setAvailableVouchers(paged.data)
+        return
+      }
+
+      const params = new URLSearchParams({
+        page: '1',
+        per_page: '50',
+        is_reward_only: 'false',
+      })
+      const res = await fetch(`/api/proxy/ecommerce/vouchers?${params.toString()}`, { cache: 'no-store' })
+      const json = await res.json()
+      const paged = extractPaged<PosVoucherOption>(json)
+      const mapped = paged.data.map((item) => {
+        if (item.voucher) return item
+        const raw = item as unknown as PublicVoucherApiItem
+        const fallbackCode = raw.code
+        const fallbackId = Number(raw.id ?? item.id)
+        return {
+          ...item,
+          voucher: {
+            id: fallbackId,
+            code: typeof fallbackCode === 'string' ? fallbackCode : `Voucher #${fallbackId}`,
+            type: raw.type === 'percent' ? 'percent' : 'fixed',
+            value: Number(raw.value ?? 0),
+            min_order_amount: Number(raw.min_order_amount ?? 0),
+            max_discount_amount: raw.max_discount_amount != null ? Number(raw.max_discount_amount) : null,
+            scope_type: raw.scope_type ?? 'all',
+            start_at: raw.start_at ?? null,
+            end_at: raw.end_at ?? null,
+            is_active: raw.is_active === true || raw.is_active === 1 || raw.is_active === '1' || raw.is_active === 'true',
+          },
+        }
+      })
+      setAvailableVouchers(mapped)
+    } catch {
+      setAvailableVouchers([])
+    } finally {
+      setVoucherLoading(false)
+    }
+  }, [])
+
+  const removeVoucher = useCallback(async (silent = false) => {
+    const res = await fetch('/api/proxy/pos/cart/voucher', { method: 'DELETE' })
+    const json = await res.json()
+    if (res.ok && json?.data?.cart) {
+      setCart(json.data.cart)
+      if (!silent) showMsg('Voucher removed.', 'info')
+      return true
+    }
+
+    if (!silent) showMsg(json?.message ?? 'Unable to remove voucher.', 'error')
+    return false
+  }, [showMsg])
+
+  const selectedVoucher = useMemo(
+    () => availableVouchers.find((item) => String(item.id) === selectedVoucherKey || String(item.customer_voucher_id) === selectedVoucherKey) ?? null,
+    [availableVouchers, selectedVoucherKey],
+  )
+  const selectedVoucherRule = useMemo(
+    () => (selectedVoucher ? getVoucherRuleStatus(selectedVoucher) : null),
+    [selectedVoucher, cartSubtotal],
+  )
+
+  const applyVoucher = useCallback(async () => {
+    if (!selectedVoucherKey) return
+
+    const selected = availableVouchers.find((item) => String(item.id) === selectedVoucherKey || String(item.customer_voucher_id) === selectedVoucherKey)
+    if (!selected) return
+
+    const rule = getVoucherRuleStatus(selected)
+    if (!rule.eligible) {
+      showMsg(rule.reason ?? 'Voucher does not meet rules.', 'warning')
+      return
+    }
+
+    const payload: Record<string, number | string> = {}
+    if (selected.customer_voucher_id) {
+      payload.customer_voucher_id = selected.customer_voucher_id
+      if (selectedMember?.id) payload.member_id = selectedMember.id
+    } else if (selected.voucher?.code) {
+      payload.voucher_code = selected.voucher.code
+      if (selectedMember?.id) payload.member_id = selectedMember.id
+    } else {
+      showMsg('Invalid voucher selection.', 'error')
+      return
+    }
+
+    setVoucherApplying(true)
+    const res = await fetch('/api/proxy/pos/cart/voucher/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await res.json()
+    setVoucherApplying(false)
+
+    if (res.ok && json?.data?.cart) {
+      setCart(json.data.cart)
+      setVoucherModalOpen(false)
+      showMsg('Voucher applied.', 'success')
+      return
+    }
+
+    showMsg(json?.message ?? 'Unable to apply voucher.', 'error')
+  }, [availableVouchers, selectedMember?.id, selectedVoucherKey, showMsg])
 
   async function loadCart() {
     const res = await fetch('/api/proxy/pos/cart', { cache: 'no-store' })
@@ -831,6 +1030,48 @@ export default function PosPageContent() {
     }
   }
 
+  const onAssignMember = async (member: Member) => {
+    const shouldRemoveCurrentVoucher = Boolean(appliedVoucher && !appliedVoucher.customer_voucher_id)
+    if (shouldRemoveCurrentVoucher) {
+      await removeVoucher(true)
+    }
+    setSelectedMember(member)
+    setVoucherModalOpen(false)
+    setSelectedVoucherKey('')
+    showMsg('Member assigned.', 'success')
+  }
+
+  const onClearMember = async () => {
+    setSelectedMember(null)
+    setVoucherModalOpen(false)
+    setSelectedVoucherKey('')
+    if (appliedVoucher?.customer_voucher_id) {
+      await removeVoucher(true)
+    }
+  }
+
+  useEffect(() => {
+    if (!voucherModalOpen) return
+    void fetchVouchers(selectedMember?.id ?? null)
+  }, [fetchVouchers, selectedMember?.id, voucherModalOpen])
+
+  useEffect(() => {
+    if (!voucherModalOpen) return
+    if (!appliedVoucher) {
+      setSelectedVoucherKey('')
+      return
+    }
+
+    if (appliedVoucher.customer_voucher_id) {
+      setSelectedVoucherKey(String(appliedVoucher.customer_voucher_id))
+      return
+    }
+
+    if (appliedVoucher.id) {
+      setSelectedVoucherKey(String(appliedVoucher.id))
+    }
+  }, [appliedVoucher, voucherModalOpen])
+
   const onSelectQrProof: ChangeEventHandler<HTMLInputElement> = (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -1053,7 +1294,7 @@ export default function PosPageContent() {
                     Change
                   </button>
                   <button
-                    onClick={() => setSelectedMember(null)}
+                    onClick={() => void onClearMember()}
                     className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1164,6 +1405,43 @@ export default function PosPageContent() {
             )}
 
             <div className="mt-5 rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
+              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-800">Voucher</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVoucherModalOpen(true)
+                    }}
+                    disabled={!cart?.items.length}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {appliedVoucher ? 'Change Voucher' : 'Apply Voucher'}
+                  </button>
+                </div>
+
+                {appliedVoucher ? (
+                  <div className="mt-2 space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
+                    {!!appliedVoucher.discount_amount && (
+                      <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>
+                    )}
+                    {appliedVoucher.scope_snapshot?.display_scope_text && (
+                      <p className="text-[11px] text-green-700/90">{appliedVoucher.scope_snapshot.display_scope_text}</p>
+                    )}
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-red-600 underline"
+                      onClick={() => void removeVoucher()}
+                    >
+                      Remove voucher
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-gray-600">No voucher applied.</p>
+                )}
+              </div>
+
               {/* Order Summary inside payment card for clearer iPad POS flow */}
               <div className="mb-4 space-y-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm">
                 {/* <div className="flex justify-between">
@@ -1317,10 +1595,10 @@ export default function PosPageContent() {
                     )}
                     {fullProductData?.images && fullProductData.images.length > 1 && (
                       <div className="grid grid-cols-4 gap-2">
-                        {fullProductData.images.slice(0, 4).map((img: any, idx: number) => (
+                        {fullProductData.images.slice(0, 4).map((img: { url?: string } | null, idx: number) => (
                           <div key={idx} className="aspect-square bg-gray-100 rounded-lg overflow-hidden border-2 border-gray-200">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={img.url || ''} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                            <img src={img?.url || ''} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
                           </div>
                         ))}
                       </div>
@@ -1551,7 +1829,7 @@ export default function PosPageContent() {
                   key={member.id}
                   className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
                   onClick={() => {
-                    setSelectedMember(member)
+                    void onAssignMember(member)
                     setMemberOpen(false)
                     setMemberQuery('')
                     focusScanner()
@@ -1615,6 +1893,79 @@ export default function PosPageContent() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {voucherModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+              <h4 className="text-xl font-bold text-gray-900">Apply Voucher</h4>
+              <button
+                type="button"
+                onClick={() => setVoucherModalOpen(false)}
+                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+              >
+                <span className="text-2xl leading-none">×</span>
+              </button>
+            </div>
+
+            <div className="p-5">
+              <p className="mb-3 text-xs text-gray-600">
+                {selectedMember ? 'Showing member vouchers.' : 'Showing public vouchers (non-reward).'}
+              </p>
+
+              {voucherLoading ? (
+                <p className="text-sm text-gray-600">Loading vouchers...</p>
+              ) : availableVouchers.length === 0 ? (
+                <p className="text-sm text-gray-600">No vouchers available.</p>
+              ) : (
+                <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+                  {availableVouchers.map((item) => {
+                    const key = String(item.customer_voucher_id ?? item.id)
+                    const voucher = item.voucher
+                    const minSpend = Number(voucher?.min_order_amount ?? 0)
+                    const rule = getVoucherRuleStatus(item)
+                    return (
+                      <button
+                        type="button"
+                        key={`${key}_${voucher?.id ?? 'voucher'}`}
+                        onClick={() => setSelectedVoucherKey(key)}
+                        disabled={!rule.eligible}
+                        className={`w-full rounded-lg border p-3 text-left transition ${selectedVoucherKey === key ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'} ${!rule.eligible ? 'cursor-not-allowed opacity-60' : ''}`}
+                      >
+                        <p className="text-sm font-semibold text-gray-900">{formatVoucherLabel(item)}</p>
+                        {minSpend > 0 && <p className="mt-0.5 text-xs text-gray-600">Min spend: RM {minSpend.toFixed(2)}</p>}
+                        {!!item.expires_at && <p className="mt-0.5 text-xs text-gray-500">Expires: {new Date(item.expires_at).toLocaleString()}</p>}
+                        {rule.reason && <p className="mt-1 text-xs font-medium text-amber-700">{rule.reason}</p>}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-4">
+              <button
+                type="button"
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700"
+                onClick={() => setVoucherModalOpen(false)}
+              >
+                Cancel
+              </button>
+              {selectedVoucherRule?.reason && selectedVoucherKey && (
+                <p className="mr-auto text-xs font-medium text-amber-700">{selectedVoucherRule.reason}</p>
+              )}
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={() => void applyVoucher()}
+                disabled={!selectedVoucherKey || voucherApplying || selectedVoucherRule?.eligible === false}
+              >
+                {voucherApplying ? 'Applying...' : 'Apply Voucher'}
+              </button>
+            </div>
           </div>
         </div>
       )}
