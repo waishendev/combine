@@ -35,6 +35,7 @@ class StaffRbacSeeder extends Seeder
             'staff.view',
             'pos.checkout',
             'pos.orders.view',
+            'reports.my-pos-summary.view',
         ])->pluck('id')->all();
 
         if (! empty($permissionIds)) {

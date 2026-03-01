@@ -298,6 +298,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/reports/staff-commission',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
+          {
+            key: 'my-pos-summary',
+            label: 'My POS Summary',
+            href: '/reports/my-pos-summary',
+            requiredPermission: 'reports.my-pos-summary.view',
+          },
         ],
       },
       

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type StaffOption = {
   id: number
@@ -80,7 +80,7 @@ export default function StaffCommissionReportPage() {
     setStaffOptions(mapped)
   }
 
-  const applyFilter = async () => {
+  const applyFilter = useCallback(async () => {
     setLoading(true)
     try {
       const qs = new URLSearchParams({ start_date: startDate, end_date: endDate })
@@ -104,7 +104,15 @@ export default function StaffCommissionReportPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [endDate, staffId, startDate])
+
+  useEffect(() => {
+    loadStaffOptions('').catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    applyFilter().catch(() => {})
+  }, [applyFilter])
 
   const openDetails = async (row: SummaryRow) => {
     setDetailOpen(true)

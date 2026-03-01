@@ -15,6 +15,7 @@ class Order extends Model
     protected $fillable = [
         'order_number',
         'customer_id',
+        'created_by_user_id',
         'status',
         'payment_status',
         'payment_method',
@@ -96,6 +97,12 @@ class Order extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+
+    public function creator()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'created_by_user_id');
     }
 
     public function items()
