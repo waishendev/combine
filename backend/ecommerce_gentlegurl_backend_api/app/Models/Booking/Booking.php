@@ -12,6 +12,7 @@ class Booking extends Model
         'booking_code', 'source', 'customer_id', 'guest_name', 'guest_phone', 'guest_email',
         'staff_id', 'service_id', 'start_at', 'end_at', 'buffer_min', 'status', 'deposit_amount',
         'payment_status', 'hold_expires_at', 'created_by_staff_id', 'cancelled_at', 'cancellation_type', 'notes',
+        'reschedule_count', 'rescheduled_at', 'rescheduled_from_booking_id', 'reschedule_reason', 'notified_cancellation_voucher_id',
     ];
 
     protected $casts = [
@@ -19,6 +20,7 @@ class Booking extends Model
         'end_at' => 'datetime',
         'hold_expires_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'rescheduled_at' => 'datetime',
     ];
 
     public function service()
