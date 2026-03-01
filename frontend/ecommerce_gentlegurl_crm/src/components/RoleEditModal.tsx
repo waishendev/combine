@@ -12,6 +12,8 @@ import type { RoleRowData } from './RoleRow'
 
 interface RoleEditModalProps {
   roleId: number | string
+  roleIsSystem: boolean
+  canManageSystem: boolean
   onClose: () => void
   onSuccess: (role: RoleRowData) => void
   permissions: PermissionOption[]
@@ -29,6 +31,7 @@ type RoleApiItem = {
   name?: string | null
   description?: string | null
   is_active?: boolean | number | string | null
+  is_system?: boolean | number | string | null
   permissions?: RoleApiPermission[] | null
   created_at?: string | null
   updated_at?: string | null
@@ -49,17 +52,25 @@ const mapApiRoleToRow = (item: RoleApiItem): RoleRowData => {
       : ''
 
   const isActiveValue = item.is_active
+  const isSystemValue = item.is_system
   const isActive =
     isActiveValue === true ||
     isActiveValue === 'true' ||
     isActiveValue === '1' ||
     isActiveValue === 1
 
+  const isSystem =
+    isSystemValue === true ||
+    isSystemValue === 'true' ||
+    isSystemValue === '1' ||
+    isSystemValue === 1
+
   return {
     id: item.id ?? '',
     name: item.name ?? '-',
     description: item.description ?? null,
     isActive,
+    isSystem,
     permissions,
     permissionNames,
     permissionCount: permissions.length,
@@ -84,6 +95,8 @@ const initialFormState: FormState = {
 
 export default function RoleEditModal({
   roleId,
+  roleIsSystem,
+  canManageSystem,
   onClose,
   onSuccess,
   permissions,
@@ -247,11 +260,14 @@ export default function RoleEditModal({
     }))
   }
 
+
+  const canEditName = !roleIsSystem || canManageSystem
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     const trimmedName = form.name.trim()
-    if (!trimmedName) {
+    if (canEditName && !trimmedName) {
       setError('Name is required')
       return
     }
@@ -267,7 +283,7 @@ export default function RoleEditModal({
           Accept: 'application/json',
         },
         body: JSON.stringify({
-          name: trimmedName,
+          ...(canEditName ? { name: trimmedName } : {}),
           description: form.description.trim() || null,
           is_active: form.isActive,
           permissions: form.permissionIds,
@@ -370,8 +386,11 @@ export default function RoleEditModal({
                   onChange={handleInputChange}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                   placeholder={t('common.name')}
-                  disabled={disableForm}
+                  disabled={disableForm || !canEditName}
                 />
+                {!canEditName && (
+                  <p className="mt-1 text-xs text-amber-700">System role name can only be changed with roles.manage-system permission.</p>
+                )}
               </div>
               <div>
                 <label

@@ -13,7 +13,7 @@ class RoleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Role::where('is_system', false);
+        $query = Role::query();
     
         // ✅ 只有在有 pass is_active 的时候才过滤
         if ($request->has('is_active')) {
@@ -102,15 +102,11 @@ class RoleController extends Controller
 
     public function show(Request $request, Role $role)
     {
-        $this->ensureNotSystemRole($role, $request->user(), true);
-
         return $this->respond($role->load('permissions'));
     }
 
     public function edit(Request $request, Role $role)
     {
-        $this->ensureNotSystemRole($role, $request->user(), true);
-
         $user = $request->user();
         $delegatable = $user->delegatablePermissions();
         $role->load('permissions');
@@ -131,7 +127,7 @@ class RoleController extends Controller
 
     public function update(Request $request, Role $role)
     {
-        $this->ensureNotSystemRole($role, $request->user(), true);
+        $canManageSystem = $this->userCanManageSystemRoles($request->user());
 
         $validated = $request->validate([
             'name' => [
@@ -142,11 +138,24 @@ class RoleController extends Controller
             ],
             'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_system' => ['sometimes', 'boolean'],
             'permissions' => ['array'],
             'permissions.*' => ['string'],
             'permission_ids' => ['array'],
             'permission_ids.*' => ['integer', 'exists:permissions,id'],
         ]);
+
+        if ($role->is_system && ! $canManageSystem && array_key_exists('name', $validated)) {
+            return response()->json([
+                'message' => 'You are not allowed to rename system roles.',
+            ], 403);
+        }
+
+        if (array_key_exists('is_system', $validated) && ! $canManageSystem) {
+            return response()->json([
+                'message' => 'You are not allowed to manage system roles.',
+            ], 403);
+        }
 
         $role->fill($validated);
         $role->save();
@@ -185,23 +194,22 @@ class RoleController extends Controller
         return $this->respond($role->load('permissions'), __('Role updated successfully.'));
     }
 
-    public function destroy(Role $role)
+    public function destroy(Request $request, Role $role)
     {
-        $this->ensureNotSystemRole($role);
+        if ($role->is_system && ! $this->userCanManageSystemRoles($request->user())) {
+            return response()->json([
+                'message' => 'You are not allowed to delete system roles.',
+            ], 403);
+        }
 
         $role->delete();
 
         return $this->respond(null, __('Role deleted successfully.'));
     }
 
-    private function ensureNotSystemRole(Role $role, ?User $user = null, bool $allowSuperAdmin = false): void
+    private function userCanManageSystemRoles(?User $user): bool
     {
-        if ($role->is_system) {
-            if ($allowSuperAdmin && $user && $user->isSuperAdmin()) {
-                return;
-            }
-            abort(404);
-        }
+        return (bool) $user?->getAllPermissions()->contains('roles.manage-system');
     }
 
     private function requestedPermissionIdentifiers(Request $request): Collection

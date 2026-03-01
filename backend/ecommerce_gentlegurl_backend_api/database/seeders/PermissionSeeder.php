@@ -57,7 +57,7 @@ class PermissionSeeder extends Seeder
 
         $definitions = [
             'users' => ['view', 'create', 'update', 'delete'],
-            'roles' => ['view', 'view-all', 'create', 'update', 'delete'],
+            'roles' => ['view', 'view-all', 'create', 'update', 'delete', 'manage-system'],
             'permissions' => ['view', 'create', 'update', 'delete'],
             'permission-groups' => ['view', 'create', 'update', 'delete'],
             'customers' => ['view', 'create', 'update', 'delete', 'verify'],

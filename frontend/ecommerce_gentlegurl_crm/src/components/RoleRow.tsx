@@ -16,6 +16,7 @@ export interface RoleRowData {
   name: string
   description: string | null
   isActive: boolean
+  isSystem: boolean
   permissions: RolePermissionData[]
   permissionNames: string
   permissionCount: number
@@ -28,6 +29,9 @@ interface RoleRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  disableEdit?: boolean
+  disableDelete?: boolean
+  deleteDisabledReason?: string
   onEdit?: (role: RoleRowData) => void
   onDelete?: (role: RoleRowData) => void
   onViewPermissions?: (role: RoleRowData) => void
@@ -38,6 +42,9 @@ export default function RoleRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  disableEdit = false,
+  disableDelete = false,
+  deleteDisabledReason,
   onEdit,
   onDelete,
   onViewPermissions,
@@ -84,7 +91,14 @@ export default function RoleRow({
   return (
     <tr className="text-sm">
       <td className="border border-gray-200 px-4 py-2 font-medium text-gray-900">
-        {role.name}
+        <div className="flex items-center gap-2">
+          <span>{role.name}</span>
+          {role.isSystem && (
+            <span className="rounded bg-slate-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+              System
+            </span>
+          )}
+        </div>
       </td>
       <td className="border border-gray-200 px-4 py-2 text-gray-700">
         {role.description || '-'}
@@ -121,10 +135,11 @@ export default function RoleRow({
             {canUpdate && (
               <button
                 type="button"
-                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
+                className={`inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded text-white ${disableEdit ? 'cursor-not-allowed bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
                 onClick={() => onEdit?.(role)}
                 aria-label={t('role.editAction')}
-                title={t('role.editAction')}
+                title={disableEdit ? (deleteDisabledReason ?? t('role.editAction')) : t('role.editAction')}
+                disabled={disableEdit}
               >
                 <i className="fa-solid fa-pen-to-square" />
               </button>
@@ -132,10 +147,11 @@ export default function RoleRow({
             {canDelete && (
               <button
                 type="button"
-                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
+                className={`inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded text-white ${disableDelete ? 'cursor-not-allowed bg-gray-400' : 'bg-red-600 hover:bg-red-700'}`}
                 onClick={() => onDelete?.(role)}
                 aria-label={t('role.deleteAction')}
-                title={t('role.deleteAction')}
+                title={disableDelete ? (deleteDisabledReason ?? t('role.deleteAction')) : t('role.deleteAction')}
+                disabled={disableDelete}
               >
                 <i className="fa-solid fa-trash" />
               </button>

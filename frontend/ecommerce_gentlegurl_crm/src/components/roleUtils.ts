@@ -19,6 +19,7 @@ export type RoleApiItem = {
   name?: string | null
   description?: string | null
   is_active?: boolean | number | string | null
+  is_system?: boolean | number | string | null
   permissions?: RoleApiPermission[] | null
   created_at?: string | null
   updated_at?: string | null
@@ -51,11 +52,19 @@ export const mapRoleApiItemToRow = (item: RoleApiItem): RoleRowData => {
     isActiveValue === '1' ||
     isActiveValue === 1
 
+  const isSystemValue = item.is_system
+  const isSystem =
+    isSystemValue === true ||
+    isSystemValue === 'true' ||
+    isSystemValue === '1' ||
+    isSystemValue === 1
+
   return {
     id: normalizedId,
     name: item.name ?? '-',
     description: item.description ?? null,
     isActive,
+    isSystem,
     permissions,
     permissionNames,
     permissionCount: permissions.length,

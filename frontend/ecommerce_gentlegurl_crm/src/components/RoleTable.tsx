@@ -76,7 +76,7 @@ export default function RoleTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [sortColumn, setSortColumn] = useState<keyof RoleRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-  const [editingRoleId, setEditingRoleId] = useState<number | null>(null)
+  const [editingRole, setEditingRole] = useState<RoleRowData | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RoleRowData | null>(null)
   const [viewingPermissions, setViewingPermissions] = useState<RoleRowData | null>(null)
   const [permissionOptions, setPermissionOptions] = useState<PermissionOption[]>([])
@@ -86,6 +86,7 @@ export default function RoleTable({
   const canUpdate = permissions.includes('roles.update')
   const canDelete = permissions.includes('roles.delete')
   const canView = permissions.includes('roles.view')
+  const canManageSystem = permissions.includes('roles.manage-system')
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -260,12 +261,12 @@ export default function RoleTable({
   // }, [filters, currentPage, pageSize, isSuperAdmin])
 
   useEffect(() => {
-    if (isCreateModalOpen || editingRoleId !== null) {
+    if (isCreateModalOpen || editingRole !== null) {
       const controller = new AbortController()
       fetchPermissions(controller).catch(() => {})
       return () => controller.abort()
     }
-  }, [isCreateModalOpen, editingRoleId])
+  }, [isCreateModalOpen, editingRole])
 
   const handleSort = (column: keyof RoleRowData) => {
     if (sortColumn === column) {
@@ -581,13 +582,16 @@ export default function RoleTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  disableEdit={false}
+                  disableDelete={role.isSystem && !canManageSystem}
+                  deleteDisabledReason={role.isSystem && !canManageSystem ? 'System role cannot be deleted' : undefined}
                   onEdit={() => {
                     if (canUpdate) {
-                      setEditingRoleId(role.id as number)
+                      setEditingRole(role)
                     }
                   }}
                   onDelete={() => {
-                    if (canDelete) {
+                    if (canDelete && !(role.isSystem && !canManageSystem)) {
                       setDeleteTarget(role)
                     }
                   }}
@@ -605,12 +609,14 @@ export default function RoleTable({
         </table>
       </div>
 
-      {editingRoleId !== null && (
+      {editingRole !== null && (
         <RoleEditModal
-          roleId={editingRoleId}
-          onClose={() => setEditingRoleId(null)}
+          roleId={editingRole.id}
+          roleIsSystem={editingRole.isSystem}
+          canManageSystem={canManageSystem}
+          onClose={() => setEditingRole(null)}
           onSuccess={(role) => {
-            setEditingRoleId(null)
+            setEditingRole(null)
             handleRoleUpdated(role)
           }}
           permissions={permissionOptions}
