@@ -1,13 +1,26 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-import PaginationControls from './PaginationControls'
+import StaffFiltersWrapper from './StaffFiltersWrapper'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
-import { mapStaffApiItemToRow, type StaffApiItem, type StaffRowData } from './staffUtils'
+import PaginationControls from './PaginationControls'
+import StaffRow, { StaffRowData } from './StaffRow'
+import {
+  StaffFilterValues,
+  emptyStaffFilters,
+} from './StaffFilters'
+import StaffCreateModal from './StaffCreateModal'
+import StaffEditModal from './StaffEditModal'
+import StaffDeleteModal from './StaffDeleteModal'
+import {
+  type StaffApiItem,
+  mapStaffApiItemToRow,
+} from './staffUtils'
+import { useI18n } from '@/lib/i18n'
 
-type StaffTableProps = {
+interface StaffTableProps {
   permissions: string[]
 }
 
@@ -18,281 +31,535 @@ type Meta = {
   total: number
 }
 
-type StaffForm = {
-  code: string
-  name: string
-  phone: string
-  email: string
-  password: string
-  username: string
-  commissionPercent: string
-  isActive: 'true' | 'false'
-}
-
-const initialForm: StaffForm = {
-  code: '',
-  name: '',
-  phone: '',
-  email: '',
-  password: '',
-  username: '',
-  commissionPercent: '0',
-  isActive: 'true',
+type StaffApiResponse = {
+  data?: StaffApiItem[] | {
+    current_page?: number
+    data?: StaffApiItem[]
+    last_page?: number
+    per_page?: number
+    total?: number
+    from?: number
+    to?: number
+    [key: string]: unknown
+  }
+  meta?: Partial<Meta>
+  success?: boolean
+  message?: string
 }
 
 export default function StaffTable({ permissions }: StaffTableProps) {
+  const { t } = useI18n()
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [inputs, setInputs] = useState<StaffFilterValues>({ ...emptyStaffFilters })
+  const [filters, setFilters] = useState<StaffFilterValues>({ ...emptyStaffFilters })
+  const [rows, setRows] = useState<StaffRowData[]>([])
+  const [pageSize, setPageSize] = useState(50)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortColumn, setSortColumn] = useState<keyof StaffRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+  const [editingStaffId, setEditingStaffId] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<StaffRowData | null>(null)
+
   const canCreate = permissions.includes('staff.create')
   const canUpdate = permissions.includes('staff.update')
   const canDelete = permissions.includes('staff.delete')
+  const showActions = canUpdate || canDelete
 
-  const [rows, setRows] = useState<StaffRowData[]>([])
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
-  const [pageSize, setPageSize] = useState(15)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [meta, setMeta] = useState<Meta>({ current_page: 1, last_page: 1, per_page: 15, total: 0 })
+  const [meta, setMeta] = useState<Meta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 50,
+    total: 0,
+  })
   const [loading, setLoading] = useState(true)
 
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editing, setEditing] = useState<StaffRowData | null>(null)
-  const [form, setForm] = useState<StaffForm>(initialForm)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  function DualSortIcons({
+    active,
+    dir,
+    className = 'ml-1',
+  }: {
+    active: boolean
+    dir: 'asc' | 'desc' | null
+    className?: string
+  }) {
+    const activeColor = '#122350ff'
+    const inactiveColor = '#afb2b8ff'
+    const up = active && dir === 'asc' ? activeColor : inactiveColor
+    const down = active && dir === 'desc' ? activeColor : inactiveColor
 
-  const loadData = useCallback(async (controller?: AbortController) => {
-    setLoading(true)
-    try {
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
-      if (search.trim()) qs.set('search', search.trim())
-      if (status !== 'all') qs.set('is_active', status === 'active' ? '1' : '0')
-
-      const res = await fetch(`/api/proxy/staffs?${qs.toString()}`, {
-        cache: 'no-store',
-        signal: controller?.signal,
-      })
-
-      if (!res.ok) {
-        setRows([])
-        setMeta({ current_page: 1, last_page: 1, per_page: pageSize, total: 0 })
-        return
-      }
-
-      const json = await res.json().catch(() => ({}))
-      const payload = Array.isArray(json?.data?.data) ? json.data.data : []
-      const list = payload.map((item: StaffApiItem) => mapStaffApiItemToRow(item))
-      setRows(list)
-
-      setMeta({
-        current_page: Number(json?.data?.current_page ?? 1),
-        last_page: Number(json?.data?.last_page ?? 1),
-        per_page: Number(json?.data?.per_page ?? pageSize),
-        total: Number(json?.data?.total ?? list.length),
-      })
-    } finally {
-      setLoading(false)
-    }
-  }, [currentPage, pageSize, search, status])
+    return (
+      <svg
+        className={`${className} inline-block align-middle`}
+        width="15"
+        height="15"
+        viewBox="0 0 10 12"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M5 1 L9 5 H1 Z" fill={up} />
+        <path d="M5 11 L1 7 H9 Z" fill={down} />
+      </svg>
+    )
+  }
 
   useEffect(() => {
     const controller = new AbortController()
-    loadData(controller).catch(() => setRows([]))
+    const fetchStaffs = async () => {
+      setLoading(true)
+      try {
+        const qs = new URLSearchParams()
+        qs.set('page', String(currentPage))
+        qs.set('per_page', String(pageSize))
+        if (filters.search) qs.set('search', filters.search)
+        if (filters.isActive) {
+          qs.set('is_active', filters.isActive === 'active' ? '1' : '0')
+        }
+
+        const res = await fetch(`/api/proxy/staffs?${qs.toString()}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+
+        if (!res.ok) {
+          setRows([])
+          setMeta((prev) => ({ ...prev, total: 0 }))
+          return
+        }
+
+        const response: StaffApiResponse = await res
+          .json()
+          .catch(() => ({} as StaffApiResponse))
+        if (response?.success === false && response?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+
+        // Handle nested data structure: { data: { data: [...], current_page: 1, ... } }
+        let staffItems: StaffApiItem[] = []
+        let paginationData: Partial<Meta> = {}
+
+        if (response?.data) {
+          if (Array.isArray(response.data)) {
+            // Direct array format
+            staffItems = response.data
+          } else if (typeof response.data === 'object' && 'data' in response.data) {
+            // Nested format: { data: { data: [...], current_page: 1, ... } }
+            const nestedData = response.data as {
+              data?: StaffApiItem[]
+              current_page?: number
+              last_page?: number
+              per_page?: number
+              total?: number
+            }
+            staffItems = Array.isArray(nestedData.data) ? nestedData.data : []
+            paginationData = {
+              current_page: nestedData.current_page,
+              last_page: nestedData.last_page,
+              per_page: nestedData.per_page,
+              total: nestedData.total,
+            }
+          }
+        }
+
+        // Fallback to meta if available
+        if (response?.meta) {
+          paginationData = { ...paginationData, ...response.meta }
+        }
+
+        const list: StaffRowData[] = staffItems.map((item) => mapStaffApiItemToRow(item))
+
+        setRows(list)
+        setMeta({
+          current_page: Number(paginationData.current_page ?? currentPage) || 1,
+          last_page: Number(paginationData.last_page ?? 1) || 1,
+          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
+          total: Number(paginationData.total ?? list.length) || list.length,
+        })
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setRows([])
+          setMeta((prev) => ({ ...prev, total: 0 }))
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    fetchStaffs()
     return () => controller.abort()
-  }, [loadData])
+  }, [filters, currentPage, pageSize])
 
-  const openCreate = () => {
-    setEditing(null)
-    setForm(initialForm)
-    setError(null)
-    setIsModalOpen(true)
+  const handleSort = (column: keyof StaffRowData) => {
+    if (sortColumn === column) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else if (sortDirection === 'desc') {
+        setSortColumn(null)
+        setSortDirection(null)
+      } else {
+        setSortDirection('asc')
+      }
+      return
+    }
+
+    setSortColumn(column)
+    setSortDirection('asc')
   }
 
-  const openEdit = (row: StaffRowData) => {
-    setEditing(row)
-    setForm({
-      code: row.code === '-' ? '' : row.code,
-      name: row.name === '-' ? '' : row.name,
-      phone: row.phone === '-' ? '' : row.phone,
-      email: row.email === '-' ? '' : row.email,
-      password: '',
-      username: row.loginUsername === '-' ? '' : row.loginUsername,
-      commissionPercent: String((row.commissionRate * 100).toFixed(2)).replace(/\.00$/, ''),
-      isActive: row.isActive ? 'true' : 'false',
+  const filteredRows = useMemo(() => {
+    const searchFilter = filters.search.trim().toLowerCase()
+    const statusFilter = filters.isActive
+
+    return rows.filter((staff) => {
+      if (searchFilter) {
+        const matchesSearch =
+          staff.name.toLowerCase().includes(searchFilter) ||
+          staff.code.toLowerCase().includes(searchFilter) ||
+          staff.email.toLowerCase().includes(searchFilter)
+        if (!matchesSearch) {
+          return false
+        }
+      }
+
+      if (statusFilter) {
+        const statusMatches =
+          statusFilter === 'active' ? staff.isActive : !staff.isActive
+        if (!statusMatches) {
+          return false
+        }
+      }
+
+      return true
     })
-    setError(null)
-    setIsModalOpen(true)
-  }
+  }, [filters.search, filters.isActive, rows])
 
-  const submitForm = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const sortedRows = useMemo(() => {
+    if (!sortColumn || !sortDirection) return filteredRows
 
-    if (!form.name.trim() || form.name.trim().length < 2) {
-      setError('Name is required and minimum 2 characters.')
-      return
-    }
-    if (!form.email.trim()) {
-      setError('Email is required.')
-      return
-    }
-    if (!editing && !form.password.trim()) {
-      setError('Password is required.')
-      return
-    }
+    const compare = (a: StaffRowData, b: StaffRowData) => {
+      const valueA = a[sortColumn]
+      const valueB = b[sortColumn]
 
-    setSubmitting(true)
-    setError(null)
-    try {
-      const commissionRate = Number(form.commissionPercent || 0) / 100
-      const payload = {
-        code: form.code.trim() || null,
-        name: form.name.trim(),
-        phone: form.phone.trim() || null,
-        email: form.email.trim(),
-        password: form.password.trim() || undefined,
-        username: form.username.trim() || null,
-        commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
-        is_active: form.isActive === 'true',
+      const normalize = (value: unknown) => {
+        if (value == null) return ''
+        if (typeof value === 'string') return value.toLowerCase()
+        if (typeof value === 'number') return value
+        if (typeof value === 'boolean') return value ? 1 : 0
+        return value
       }
 
-      const url = editing ? `/api/proxy/staffs/${editing.id}` : '/api/proxy/staffs'
-      const method = editing ? 'PUT' : 'POST'
+      const normalizedA = normalize(valueA)
+      const normalizedB = normalize(valueB)
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        setError(data?.message ?? 'Failed to save staff.')
-        return
+      if (typeof normalizedA === 'number' && typeof normalizedB === 'number') {
+        return normalizedA - normalizedB
       }
 
-      setIsModalOpen(false)
-      await loadData()
-    } finally {
-      setSubmitting(false)
+      return String(normalizedA).localeCompare(String(normalizedB))
     }
+
+    const sorted = [...filteredRows].sort(compare)
+    return sortDirection === 'asc' ? sorted : sorted.reverse()
+  }, [filteredRows, sortColumn, sortDirection])
+
+  const handleFilterChange = (values: StaffFilterValues) => {
+    setInputs(values)
   }
 
-  const handleDelete = async (row: StaffRowData) => {
-    if (!canDelete) return
-    if (!window.confirm(`Deactivate ${row.name}?`)) return
+  const handleFilterSubmit = (values: StaffFilterValues) => {
+    setFilters(values)
+    setInputs(values)
+    setCurrentPage(1)
+  }
 
-    await fetch(`/api/proxy/staffs/${row.id}`, { method: 'DELETE' })
-    await loadData()
+  const handleFilterReset = () => {
+    setInputs({ ...emptyStaffFilters })
+    setFilters({ ...emptyStaffFilters })
+    setCurrentPage(1)
+  }
+
+  const handleBadgeRemove = (field: keyof StaffFilterValues) => {
+    const next = { ...filters, [field]: '' }
+    setFilters(next)
+    setInputs(next)
+    setCurrentPage(1)
+  }
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > (meta.last_page || 1)) return
+    setCurrentPage(page)
+  }
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
+  }
+
+  const colCount = showActions ? 7 : 6
+
+  const totalPages = meta.last_page || 1
+
+  const activeFilters = useMemo(() => {
+    return (Object.entries(filters) as [keyof StaffFilterValues, string][]) 
+      .filter(([, value]) => Boolean(value))
+  }, [filters])
+
+  const filterLabels: Record<keyof StaffFilterValues, string> = {
+    search: 'Search',
+    isActive: t('common.status'),
+  }
+
+  const renderFilterValue = (key: keyof StaffFilterValues, value: string) => {
+    if (key === 'isActive') {
+      return value === 'active' ? t('common.active') : t('common.inactive')
+    }
+    return value
+  }
+
+  const handleStaffCreated = (staff: StaffRowData) => {
+    setRows((prev) => {
+      if (currentPage !== 1) return prev
+      const filtered = prev.filter((item) => item.id !== staff.id)
+      const next = [staff, ...filtered]
+      return next.length > pageSize ? next.slice(0, pageSize) : next
+    })
+
+    setMeta((prevMeta) => {
+      const perPage = prevMeta.per_page || pageSize || 1
+      const total = (prevMeta.total || 0) + 1
+      const last_page = Math.max(
+        prevMeta.last_page || 1,
+        Math.ceil(total / perPage),
+      )
+
+      return {
+        ...prevMeta,
+        total,
+        last_page,
+      }
+    })
+  }
+
+  const handleStaffUpdated = (staff: StaffRowData) => {
+    setRows((prev) => {
+      const index = prev.findIndex((item) => item.id === staff.id)
+      if (index === -1) return prev
+      const next = [...prev]
+      next[index] = staff
+      return next
+    })
+  }
+
+  const handleStaffDeleted = (staffId: number) => {
+    setRows((prev) => prev.filter((item) => item.id !== staffId))
+
+    setMeta((prevMeta) => {
+      const perPage = prevMeta.per_page || pageSize || 1
+      const total = Math.max((prevMeta.total || 0) - 1, 0)
+      const last_page = Math.max(1, Math.ceil(total / perPage))
+      const nextMeta: Meta = {
+        ...prevMeta,
+        total,
+        last_page,
+        current_page: Math.min(prevMeta.current_page || 1, last_page),
+      }
+
+      if ((prevMeta.current_page || 1) > last_page) {
+        setCurrentPage(last_page)
+      }
+
+      return nextMeta
+    })
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-        <div className="flex gap-2">
+    <div>
+      {isFilterModalOpen && (
+        <StaffFiltersWrapper
+          inputs={inputs}
+          onChange={handleFilterChange}
+          onSubmit={handleFilterSubmit}
+          onReset={handleFilterReset}
+          onClose={() => setIsFilterModalOpen(false)}
+          disabled={loading}
+        />
+      )}
+
+      {isCreateModalOpen && (
+        <StaffCreateModal
+          onClose={() => setIsCreateModalOpen(false)}
+          onSuccess={(staff) => {
+            setIsCreateModalOpen(false)
+            handleStaffCreated(staff)
+          }}
+        />
+      )}
+
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canCreate && (
-            <button className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white" onClick={openCreate}>Create Staff</button>
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+              onClick={() => setIsCreateModalOpen(true)}
+              type="button"
+            >
+              <i className="fa-solid fa-user-plus" />
+              Create Staff
+            </button>
           )}
-          <button className="rounded-md border px-4 py-2 text-sm" onClick={() => setIsFilterOpen((v) => !v)}>Filter</button>
+
+          <button
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+            onClick={() => setIsFilterModalOpen(true)}
+            disabled={loading}
+          >
+            <i className="fa-solid fa-filter" />
+            {t('common.filter')}
+          </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name/code/email" className="rounded-md border px-3 py-2 text-sm" />
-          <button className="rounded-md border px-3 py-2 text-sm" onClick={() => { setCurrentPage(1); loadData().catch(() => {}) }}>Apply</button>
+        <div className="flex items-center gap-3">
+          <label htmlFor="pageSize" className="text-sm text-gray-700">
+            {t('common.show')}
+          </label>
+          <select
+            id="pageSize"
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            {[50, 100, 150, 200].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {isFilterOpen && (
-        <div className="flex gap-3 border-b p-4">
-          <select className="rounded border px-3 py-2 text-sm" value={status} onChange={(e) => { setStatus(e.target.value as 'all' | 'active' | 'inactive'); setCurrentPage(1) }}>
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {activeFilters.map(([key, value]) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs"
+            >
+              <span className="font-medium">{filterLabels[key]}</span>
+              <span>{renderFilterValue(key, value)}</span>
+              <button
+                type="button"
+                className="text-blue-600 hover:text-blue-800"
+                onClick={() => handleBadgeRemove(key)}
+                aria-label={`${t('common.removeFilter')} ${filterLabels[key]}`}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </span>
+          ))}
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50">
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-2 text-left">Name</th>
-              <th className="px-4 py-2 text-left">Email</th>
-              <th className="px-4 py-2 text-left">Phone</th>
-              <th className="px-4 py-2 text-left">Login Username</th>
-              <th className="px-4 py-2 text-left">Commission Rate (%)</th>
-              <th className="px-4 py-2 text-left">Status</th>
-              <th className="px-4 py-2 text-left">Actions</th>
+              {(
+                [
+                  { key: 'name', label: 'Name' },
+                  { key: 'email', label: 'Email' },
+                  { key: 'phone', label: 'Phone' },
+                  { key: 'loginUsername', label: 'Login Username' },
+                  { key: 'commissionRate', label: 'Commission Rate (%)' },
+                  { key: 'isActive', label: t('common.status') },
+                ] as const
+              ).map(({ key, label }) => (
+                <th
+                  key={key}
+                  className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
+                >
+                  <button
+                    type="button"
+                    className="flex items-center gap-1"
+                    onClick={() => handleSort(key)}
+                  >
+                    <span>{label}</span>
+                    <DualSortIcons
+                      active={sortColumn === key && sortDirection !== null}
+                      dir={sortColumn === key ? sortDirection : null}
+                    />
+                  </button>
+                </th>
+              ))}
+              {showActions && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                  {t('common.actions')}
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={7} />
-            ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={7} message="No staffs found." />
-            ) : (
-              rows.map((row) => (
-                <tr key={row.id} className="border-t">
-                  <td className="px-4 py-2">{row.name}</td>
-                  <td className="px-4 py-2">{row.email}</td>
-                  <td className="px-4 py-2">{row.phone}</td>
-                  <td className="px-4 py-2">{row.loginUsername}</td>
-                  <td className="px-4 py-2">{(row.commissionRate * 100).toFixed(2)}%</td>
-                  <td className="px-4 py-2">{row.isActive ? 'Active' : 'Inactive'}</td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-2">
-                      {canUpdate && <button className="text-blue-600" onClick={() => openEdit(row)}>Edit</button>}
-                      {canDelete && <button className="text-red-600" onClick={() => handleDelete(row)}>Delete</button>}
-                    </div>
-                  </td>
-                </tr>
+              <TableLoadingRow colSpan={colCount} />
+            ) : rows.length > 0 ? (
+              sortedRows.map((staff) => (
+                <StaffRow
+                  key={staff.id}
+                  staff={staff}
+                  showActions={showActions}
+                  canUpdate={canUpdate}
+                  canDelete={canDelete}
+                  onEdit={() => {
+                    if (canUpdate) {
+                      setEditingStaffId(staff.id)
+                    }
+                  }}
+                  onDelete={() => {
+                    if (canDelete) {
+                      setDeleteTarget(staff)
+                    }
+                  }}
+                />
               ))
+            ) : (
+              <TableEmptyState colSpan={colCount} />
             )}
           </tbody>
         </table>
       </div>
 
-      <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm text-gray-600">Total: {meta.total}</div>
-          <select className="rounded border px-2 py-1 text-sm" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1) }}>
-            {[15, 25, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
-          </select>
-        </div>
-        <PaginationControls currentPage={meta.current_page} totalPages={meta.last_page} pageSize={meta.per_page} onPageChange={setCurrentPage} />
-      </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => !submitting && setIsModalOpen(false)} />
-          <div className="relative w-full max-w-lg rounded-lg bg-white p-5">
-            <h3 className="mb-4 text-lg font-semibold">{editing ? 'Edit Staff' : 'Create Staff'}</h3>
-            <form className="space-y-3" onSubmit={submitForm}>
-              <h4 className="text-sm font-semibold text-gray-700">Staff Info</h4>
-              <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Name *" value={form.name} onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))} />
-              <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Code (optional)" value={form.code} onChange={(e) => setForm((v) => ({ ...v, code: e.target.value }))} />
-              <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Phone" value={form.phone} onChange={(e) => setForm((v) => ({ ...v, phone: e.target.value }))} />
-              <input type="number" min="0" max="100" step="0.01" className="w-full rounded border px-3 py-2 text-sm" placeholder="Commission Rate (%)" value={form.commissionPercent} onChange={(e) => setForm((v) => ({ ...v, commissionPercent: e.target.value }))} />
-
-              <h4 className="pt-2 text-sm font-semibold text-gray-700">Login Info (Role: STAFF)</h4>
-              <input type="email" className="w-full rounded border px-3 py-2 text-sm" placeholder="Email *" value={form.email} onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))} />
-              <input type="password" className="w-full rounded border px-3 py-2 text-sm" placeholder={editing ? 'Password (leave blank to keep)' : 'Password *'} value={form.password} onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))} />
-              <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Username (optional)" value={form.username} onChange={(e) => setForm((v) => ({ ...v, username: e.target.value }))} />
-
-              <select className="w-full rounded border px-3 py-2 text-sm" value={form.isActive} onChange={(e) => setForm((v) => ({ ...v, isActive: e.target.value as 'true' | 'false' }))}>
-                <option value="true">Active</option>
-                <option value="false">Inactive</option>
-              </select>
-
-              {error && <p className="text-sm text-red-600">{error}</p>}
-              <div className="flex justify-end gap-2">
-                <button type="button" className="rounded border px-3 py-2 text-sm" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="rounded bg-blue-600 px-3 py-2 text-sm text-white" disabled={submitting}>{submitting ? 'Saving...' : 'Save'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {editingStaffId !== null && (
+        <StaffEditModal
+          staffId={editingStaffId}
+          onClose={() => setEditingStaffId(null)}
+          onSuccess={(staff) => {
+            setEditingStaffId(null)
+            handleStaffUpdated(staff)
+          }}
+        />
       )}
+
+      {deleteTarget && (
+        <StaffDeleteModal
+          staff={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={(staffId) => {
+            setDeleteTarget(null)
+            handleStaffDeleted(staffId)
+          }}
+        />
+      )}
+
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        disabled={loading}
+      />
     </div>
   )
 }
