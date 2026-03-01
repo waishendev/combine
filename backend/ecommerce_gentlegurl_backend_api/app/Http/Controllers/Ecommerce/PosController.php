@@ -806,8 +806,7 @@ class PosController extends Controller
             ]);
         }
 
-        $frontendOrigin = $request->headers->get('origin') ?: config('services.frontend_url', config('app.url'));
-        $frontendUrl = rtrim((string) $frontendOrigin, '/');
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
 
         return $frontendUrl . '/receipt/' . $existingToken->token;
     }
