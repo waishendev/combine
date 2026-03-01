@@ -22,6 +22,7 @@ class OrderItem extends Model
         'variant_cost_snapshot',
         'quantity',
         'line_total',
+        'staff_id',
         'is_package',
         'parent_package_item_id',
         'is_reward',
@@ -76,5 +77,15 @@ class OrderItem extends Model
     public function review()
     {
         return $this->hasOne(ProductReview::class);
+    }
+
+    public function staff()
+    {
+        return $this->belongsTo(\App\Models\Staff::class);
+    }
+
+    public function staffSplits()
+    {
+        return $this->hasMany(OrderItemStaffSplit::class);
     }
 }

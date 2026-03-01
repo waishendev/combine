@@ -60,11 +60,6 @@ type CheckoutMeta = {
   change_amount: number
 }
 
-type StaffSplit = {
-  staff_id: number
-  share_percent: number
-}
-
 type PosCurrentUser = {
   id: number
   name: string
@@ -75,7 +70,31 @@ type PosCurrentUser = {
 type StaffOption = {
   id: number
   name: string
+  phone?: string | null
+  email?: string | null
+  code?: string | null
   is_active?: boolean | number | string | null
+}
+
+type CheckoutItemAssignment = {
+  cart_item_id: number
+  splits: CheckoutItemStaffSplit[]
+  is_default: boolean
+}
+
+type CheckoutItemStaffSplit = {
+  staff_id: number
+  share_percent: number
+}
+
+type CheckoutItemSplitDraft = {
+  id: string
+  staff_id: number | null
+  share_percent: number
+  search: string
+  options: StaffOption[]
+  loading: boolean
+  open: boolean
 }
 
 type Member = {
@@ -227,17 +246,17 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [selectedVoucherKey, setSelectedVoucherKey] = useState<string>('')
 
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
-  const [staffModalOpen, setStaffModalOpen] = useState(false)
-  const [staffSplits, setStaffSplits] = useState<StaffSplit[]>([])
-  const [draftStaffSplits, setDraftStaffSplits] = useState<StaffSplit[]>([])
-  const [hasManualStaffAssignment, setHasManualStaffAssignment] = useState(false)
-  const [staffAutoBalance, setStaffAutoBalance] = useState(true)
-  const [staffAssignmentError, setStaffAssignmentError] = useState<string | null>(null)
+  const [checkoutConfirmationOpen, setCheckoutConfirmationOpen] = useState(false)
+  const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
+  const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
+  const [itemSplitEditorItemId, setItemSplitEditorItemId] = useState<number | null>(null)
+  const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
+  const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
+  const [itemSplitError, setItemSplitError] = useState<string | null>(null)
+  const staffSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
   const [cashReceived, setCashReceived] = useState('')
-  const [checkoutMeta, setCheckoutMeta] = useState<CheckoutMeta | null>(null)
-  const [confirmCashOpen, setConfirmCashOpen] = useState(false)
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
   const [checkingOut, setCheckingOut] = useState(false)
@@ -262,44 +281,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const discount = Math.max(0, cartSubtotal - cartTotal)
   const appliedVoucher = cart?.voucher ?? null
 
-  const defaultStaffSplit = useMemo<StaffSplit[]>(() => {
-    if (!currentUser.staff_id) return []
-    return [{ staff_id: currentUser.staff_id, share_percent: 100 }]
-  }, [currentUser.staff_id])
-
-  const resolvedStaffSplits = useMemo<StaffSplit[]>(() => {
-    if (hasManualStaffAssignment) return staffSplits
-    return defaultStaffSplit
-  }, [defaultStaffSplit, hasManualStaffAssignment, staffSplits])
-
-  const staffNameById = useMemo(() => {
-    const map = new Map<number, string>()
-    if (currentUser.staff_id) {
-      map.set(currentUser.staff_id, currentUser.staff_name?.trim() || currentUser.name)
-    }
-    activeStaffs.forEach((staff) => {
-      map.set(staff.id, staff.name)
+  const selectedStaffSplitsByCartItemId = useMemo(() => {
+    const map = new Map<number, CheckoutItemStaffSplit[]>()
+    checkoutItemAssignments.forEach((assignment) => {
+      map.set(assignment.cart_item_id, assignment.splits)
     })
     return map
-  }, [activeStaffs, currentUser.name, currentUser.staff_id, currentUser.staff_name])
-
-  const staffSummaryText = useMemo(() => {
-    if (!hasManualStaffAssignment) {
-      if (defaultStaffSplit.length === 1) {
-        const defaultStaff = defaultStaffSplit[0]
-        const defaultStaffName = staffNameById.get(defaultStaff.staff_id) || 'Current staff'
-        return `Default: ${defaultStaffName} (${defaultStaff.share_percent}%)`
-      }
-      return 'No staff assigned'
-    }
-
-    if (!staffSplits.length) return 'Assigned: No staff assigned'
-    const parts = staffSplits.map((split) => {
-      const staffName = staffNameById.get(split.staff_id) || `Staff #${split.staff_id}`
-      return `${staffName} ${split.share_percent}%`
-    })
-    return `Assigned: ${parts.join(', ')}`
-  }, [defaultStaffSplit, hasManualStaffAssignment, staffNameById, staffSplits])
+  }, [checkoutItemAssignments])
 
   type ToastKind = 'success' | 'error' | 'info' | 'warning'
   type ToastItem = { id: string; kind: ToastKind; text: string }
@@ -374,98 +362,42 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
 
-  const isValidStaffSplitRow = (split: StaffSplit) => Number.isFinite(split.staff_id) && split.staff_id > 0 && Number.isInteger(split.share_percent) && split.share_percent >= 0 && split.share_percent <= 100
-
-  const validateStaffSplits = (splits: StaffSplit[]) => {
-    if (splits.length === 0) return { valid: false, error: 'Please add at least one staff row.' }
-
-    const staffIds = new Set<number>()
-    for (const split of splits) {
-      if (!isValidStaffSplitRow(split)) {
-        return { valid: false, error: 'Each staff row must have a staff and a share between 0% and 100%.' }
-      }
-      if (staffIds.has(split.staff_id)) {
-        return { valid: false, error: 'Duplicate staff is not allowed.' }
-      }
-      staffIds.add(split.staff_id)
-    }
-
-    const total = splits.reduce((sum, split) => sum + split.share_percent, 0)
-    if (total !== 100) {
-      return { valid: false, error: 'Total share must be exactly 100%.' }
-    }
-
-    return { valid: true, error: null as string | null }
-  }
+  const mapStaffOptions = useCallback((json: unknown): StaffOption[] => {
+    const maybe = json as { data?: { data?: StaffOption[] } | StaffOption[] } | null
+    const payload = Array.isArray(maybe?.data && (maybe.data as { data?: StaffOption[] }).data)
+      ? (maybe?.data as { data?: StaffOption[] }).data ?? []
+      : Array.isArray(maybe?.data)
+        ? maybe.data
+        : []
+    return payload
+      .map((staff: StaffOption) => ({
+        id: Number(staff.id),
+        name: String(staff.name ?? '').trim(),
+        phone: staff.phone ?? null,
+        email: staff.email ?? null,
+        code: staff.code ?? null,
+        is_active: staff.is_active,
+      }))
+      .filter((staff) => staff.id > 0 && staff.name)
+  }, [])
 
   const fetchActiveStaffs = useCallback(async () => {
-    const params = new URLSearchParams({ page: '1', per_page: '200', is_active: '1' })
+    const params = new URLSearchParams({ page: '1', per_page: '50', is_active: '1' })
     const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
     if (!res.ok) return
 
     const json = await res.json().catch(() => null)
-    const payload = Array.isArray(json?.data?.data) ? json.data.data : []
-    const next: StaffOption[] = payload
-      .map((staff: StaffOption) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim(), is_active: staff.is_active }))
-      .filter((staff) => staff.id > 0 && staff.name)
-    setActiveStaffs(next)
-  }, [])
+    setActiveStaffs(mapStaffOptions(json))
+  }, [mapStaffOptions])
 
-  const openStaffModal = async () => {
-    setStaffAssignmentError(null)
-    setStaffAutoBalance(true)
-
-    if (!activeStaffs.length) {
-      await fetchActiveStaffs()
-    }
-
-    if (hasManualStaffAssignment && staffSplits.length > 0) {
-      setDraftStaffSplits(staffSplits)
-    } else if (defaultStaffSplit.length > 0) {
-      setDraftStaffSplits(defaultStaffSplit)
-    } else {
-      setDraftStaffSplits([{ staff_id: 0, share_percent: 100 }])
-    }
-
-    setStaffModalOpen(true)
-  }
-
-  const applyAutoBalance = (splits: StaffSplit[], index: number, nextValue: number) => {
-    const current = splits[index]
-    if (!current) {
-      return { nextSplits: splits, error: 'Invalid staff row.' }
-    }
-
-    const clampedValue = Math.max(0, Math.min(100, Math.round(nextValue)))
-    const delta = clampedValue - current.share_percent
-
-    const nextSplits = splits.map((split, idx) => (idx === index ? { ...split, share_percent: clampedValue } : { ...split }))
-
-    if (delta === 0) return { nextSplits, error: null as string | null }
-
-    const otherIndexes = nextSplits
-      .map((split, idx) => ({ idx, share: split.share_percent }))
-      .filter((item) => item.idx !== index)
-
-    if (otherIndexes.length === 0) {
-      if (clampedValue === 100) return { nextSplits, error: null as string | null }
-      return { nextSplits: splits, error: 'Auto Balance needs at least two staff rows unless share is 100%.' }
-    }
-
-    if (delta > 0) {
-      const highest = otherIndexes.reduce((best, currentItem) => (currentItem.share > best.share ? currentItem : best), otherIndexes[0])
-      if (highest.share < delta) {
-        return { nextSplits: splits, error: 'Cannot auto-balance because another row would go below 0%.' }
-      }
-      nextSplits[highest.idx] = { ...nextSplits[highest.idx], share_percent: highest.share - delta }
-      return { nextSplits, error: null as string | null }
-    }
-
-    const increaseAmount = Math.abs(delta)
-    const highest = otherIndexes.reduce((best, currentItem) => (currentItem.share > best.share ? currentItem : best), otherIndexes[0])
-    nextSplits[highest.idx] = { ...nextSplits[highest.idx], share_percent: highest.share + increaseAmount }
-    return { nextSplits, error: null as string | null }
-  }
+  const fetchStaffOptions = useCallback(async (search: string) => {
+    const params = new URLSearchParams({ page: '1', per_page: '20', is_active: '1' })
+    if (search.trim()) params.set('search', search.trim())
+    const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
+    if (!res.ok) return [] as StaffOption[]
+    const json = await res.json().catch(() => null)
+    return mapStaffOptions(json)
+  }, [mapStaffOptions])
 
   const fetchVouchers = useCallback(async (memberId?: number | null) => {
     setVoucherLoading(true)
@@ -1091,12 +1023,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
 
-  // Enhanced checkout validation: must have items, and payment method requirements must be met
-  const canCheckout = Boolean(cart?.items.length) && !checkingOut && (
-    paymentMethod === 'cash' 
-      ? Number.isFinite(cashReceivedAmount) && cashReceivedAmount >= cartTotal
-      : Boolean(qrProofFileName)
-  )
+  const canCheckout = Boolean(cart?.items.length) && !checkingOut
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || cart.items.length === 0 || checkingOut) return
@@ -1107,7 +1034,21 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     const res = await fetch('/api/proxy/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_method: paymentMethod, member_id: selectedMember?.id ?? null, staff_splits: resolvedStaffSplits }),
+      body: JSON.stringify({
+        payment_method: paymentMethod,
+        member_id: selectedMember?.id ?? null,
+        items: cart.items.map((item) => ({
+          cart_item_id: item.id,
+          product_id: item.product_id,
+          qty: item.qty,
+          unit_price: item.unit_price,
+          line_total: item.line_total,
+          staff_splits: (selectedStaffSplitsByCartItemId.get(item.id) ?? []).map((split) => ({
+            staff_id: split.staff_id,
+            share_percent: split.share_percent,
+          })),
+        })),
+      }),
     })
     const json = await res.json()
 
@@ -1130,20 +1071,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setMembers([])
     setCart({ id: cart.id, items: [], subtotal: 0, grand_total: 0 })
     setCashReceived('')
-    setCheckoutMeta(null)
-    setHasManualStaffAssignment(false)
-    setStaffSplits([])
+    setCheckoutItemAssignments([])
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
+    setCheckoutConfirmationOpen(false)
     setCheckingOut(false)
     // Don't show toast, will show success modal instead
     focusScanner()
   }
 
-  const checkout = async () => {
+  const confirmCheckout = async () => {
     if (!cart || cart.items.length === 0 || checkingOut) return
 
     if (paymentMethod === 'qrpay') {
@@ -1173,9 +1113,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
 
     const effectiveChange = Math.max(0, effectiveCashReceived - cartTotal)
+    await finalizeCheckout({ paid_amount: effectiveCashReceived, change_amount: effectiveChange })
+  }
 
-    setCheckoutMeta({ paid_amount: effectiveCashReceived, change_amount: effectiveChange })
-    setConfirmCashOpen(true)
+  const checkout = async () => {
+    if (!cart || cart.items.length === 0 || checkingOut) return
+    await openCheckoutConfirmation()
   }
 
   const toggleMemberDropdown = async () => {
@@ -1256,60 +1199,177 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setQrProofFileName(null)
   }
 
-  const draftStaffTotal = useMemo(
-    () => draftStaffSplits.reduce((sum, split) => sum + (Number.isFinite(split.share_percent) ? split.share_percent : 0), 0),
-    [draftStaffSplits],
-  )
-
-  const draftStaffValidation = useMemo(() => validateStaffSplits(draftStaffSplits), [draftStaffSplits])
-
-  const onAddStaffRow = () => {
-    setDraftStaffSplits((prev) => [...prev, { staff_id: 0, share_percent: 0 }])
-    setStaffAssignmentError(null)
+  const getStaffLabel = (staff: StaffOption) => {
+    const parts = [staff.name, staff.phone ?? '', staff.email ?? ''].filter(Boolean)
+    return parts.join(' • ')
   }
 
-  const onRemoveStaffRow = (index: number) => {
-    setDraftStaffSplits((prev) => prev.filter((_, idx) => idx !== index))
-    setStaffAssignmentError(null)
+  const getSplitSummary = (assignment: CheckoutItemAssignment | undefined) => {
+    if (!assignment || assignment.splits.length === 0) return 'No staff assigned'
+    const total = assignment.splits.reduce((sum, row) => sum + row.share_percent, 0)
+    if (assignment.is_default && assignment.splits.length === 1 && total === 100) {
+      return 'Default (100%)'
+    }
+    return `${assignment.splits.length} staff (${total}%)`
   }
 
-  const onChangeStaffId = (index: number, nextStaffId: number) => {
-    setDraftStaffSplits((prev) => prev.map((split, idx) => (idx === index ? { ...split, staff_id: nextStaffId } : split)))
-    setStaffAssignmentError(null)
-  }
+  const createDraftRow = (seed?: Partial<CheckoutItemSplitDraft>): CheckoutItemSplitDraft => ({
+    id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    staff_id: seed?.staff_id ?? null,
+    share_percent: seed?.share_percent ?? 0,
+    search: seed?.search ?? '',
+    options: seed?.options ?? activeStaffs,
+    loading: false,
+    open: false,
+  })
 
-  const onChangeStaffShare = (index: number, rawValue: number) => {
-    const numericValue = Number.isFinite(rawValue) ? rawValue : 0
+  const validateSplitDraft = (rows: CheckoutItemSplitDraft[]) => {
+    if (rows.length === 0) return { valid: false, error: 'Please add at least one staff row.' }
 
-    if (staffAutoBalance) {
-      const { nextSplits, error } = applyAutoBalance(draftStaffSplits, index, numericValue)
-      if (error) {
-        setStaffAssignmentError(error)
-        return
+    const ids = new Set<number>()
+    let total = 0
+    for (const row of rows) {
+      if (!row.staff_id || row.staff_id <= 0) return { valid: false, error: 'Please select staff for every row.' }
+      if (ids.has(row.staff_id)) return { valid: false, error: 'Duplicate staff is not allowed.' }
+      ids.add(row.staff_id)
+      if (!Number.isInteger(row.share_percent) || row.share_percent < 0 || row.share_percent > 100) {
+        return { valid: false, error: 'Share % must be an integer between 0 and 100.' }
       }
-      setDraftStaffSplits(nextSplits)
-      setStaffAssignmentError(null)
+      total += row.share_percent
+    }
+    if (total !== 100) return { valid: false, error: 'Total share must be exactly 100%.' }
+
+    return { valid: true, error: null as string | null }
+  }
+
+  const syncCheckoutAssignments = useCallback(async () => {
+    if (!cart?.items?.length) {
+      setCheckoutItemAssignments([])
       return
     }
 
-    const clamped = Math.max(0, Math.min(100, Math.round(numericValue)))
-    setDraftStaffSplits((prev) => prev.map((split, idx) => (idx === index ? { ...split, share_percent: clamped } : split)))
-    setStaffAssignmentError(null)
+    let baseStaffs = activeStaffs
+    if (!baseStaffs.length) {
+      const fetched = await fetchStaffOptions('')
+      baseStaffs = fetched
+      setActiveStaffs(fetched)
+    }
+
+    setCheckoutItemAssignments((prev) => cart.items.map((item) => {
+      const existing = prev.find((x) => x.cart_item_id === item.id)
+      if (existing) return existing
+      const defaultStaffId = currentUser.staff_id ?? null
+      return {
+        cart_item_id: item.id,
+        splits: defaultStaffId ? [{ staff_id: defaultStaffId, share_percent: 100 }] : [],
+        is_default: Boolean(defaultStaffId),
+      }
+    }))
+  }, [activeStaffs, cart?.items, currentUser.staff_id, fetchStaffOptions])
+
+  const openItemSplitEditor = async (cartItemId: number) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+
+    const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === cartItemId)
+    const rows = (assignment?.splits ?? []).map((split) => {
+      const selected = nextStaffs.find((staff) => staff.id === split.staff_id)
+      return createDraftRow({
+        staff_id: split.staff_id,
+        share_percent: split.share_percent,
+        search: selected ? getStaffLabel(selected) : '',
+        options: nextStaffs,
+      })
+    })
+
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
+    setItemSplitEditorItemId(cartItemId)
+    setItemSplitAutoBalance(true)
+    setItemSplitError(null)
+    setItemSplitEditorOpen(true)
   }
 
-  const saveStaffAssignment = () => {
-    const validation = validateStaffSplits(draftStaffSplits)
+  const setDraftRowSearch = (rowId: string, value: string) => {
+    setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, search: value, loading: true, open: true } : row))
+    if (staffSearchTimerRef.current[rowId]) clearTimeout(staffSearchTimerRef.current[rowId])
+    staffSearchTimerRef.current[rowId] = setTimeout(async () => {
+      const options = await fetchStaffOptions(value)
+      setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, loading: false, options, open: true } : row))
+    }, 300)
+  }
+
+  const selectDraftRowStaff = (rowId: string, staff: StaffOption) => {
+    setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, staff_id: staff.id, search: getStaffLabel(staff), open: false } : row))
+  }
+
+  const saveItemSplitEditor = () => {
+    const validation = validateSplitDraft(itemSplitDraftRows)
     if (!validation.valid) {
-      setStaffAssignmentError(validation.error)
+      setItemSplitError(validation.error)
       return
     }
 
-    setStaffSplits(draftStaffSplits)
-    setHasManualStaffAssignment(true)
-    setStaffAssignmentError(null)
-    setStaffModalOpen(false)
-    showMsg('Staff assignment updated.', 'success')
+    if (!itemSplitEditorItemId) return
+    setCheckoutItemAssignments((prev) => prev.map((assignment) => {
+      if (assignment.cart_item_id !== itemSplitEditorItemId) return assignment
+      return {
+        ...assignment,
+        is_default: false,
+        splits: itemSplitDraftRows.map((row) => ({ staff_id: row.staff_id!, share_percent: row.share_percent })),
+      }
+    }))
+    setItemSplitEditorOpen(false)
   }
+
+  const onAddDraftSplitRow = () => {
+    setItemSplitDraftRows((prev) => [...prev, createDraftRow({ options: activeStaffs, share_percent: 0 })])
+    setItemSplitError(null)
+  }
+
+  const onRemoveDraftSplitRow = (rowId: string) => {
+    setItemSplitDraftRows((prev) => prev.filter((row) => row.id !== rowId))
+    setItemSplitError(null)
+  }
+
+  const onChangeDraftShare = (rowId: string, rawValue: number) => {
+    const nextValue = Math.max(0, Math.min(100, Math.round(rawValue || 0)))
+    setItemSplitError(null)
+
+    setItemSplitDraftRows((prev) => {
+      if (!itemSplitAutoBalance) {
+        return prev.map((row) => row.id === rowId ? { ...row, share_percent: nextValue } : row)
+      }
+
+      const primary = prev[0]
+      if (!primary) return prev
+      if (primary.id === rowId) return prev
+
+      const next = prev.map((row) => row.id === rowId ? { ...row, share_percent: nextValue } : row)
+      const othersTotal = next.slice(1).reduce((sum, row) => sum + row.share_percent, 0)
+      const primaryShare = 100 - othersTotal
+      if (primaryShare < 0) {
+        setItemSplitError('Total share cannot exceed 100% when Auto Balance is on.')
+        return prev
+      }
+
+      next[0] = { ...next[0], share_percent: primaryShare }
+      return next
+    })
+  }
+
+  const openCheckoutConfirmation = async () => {
+    await syncCheckoutAssignments()
+    setCheckoutConfirmationOpen(true)
+  }
+
+  const canConfirmCheckoutInModal = useMemo(() => {
+    if (checkingOut) return false
+    if (paymentMethod === 'qrpay') return Boolean(qrProofFileName)
+    return Number.isFinite(cashReceivedAmount) && cashReceivedAmount >= cartTotal
+  }, [cashReceivedAmount, cartTotal, checkingOut, paymentMethod, qrProofFileName])
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -1351,7 +1411,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           </div>
 
           {/* Products Section - Always Visible */}
-          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(120vh-5rem)] xl:min-h-0">
+          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(70vh-5rem)] xl:min-h-0">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -1558,7 +1618,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             </div>
           </div>
 
-            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(120vh-5rem)] xl:min-h-0">
+            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(70vh-5rem)] xl:min-h-0">
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -1622,58 +1682,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             )}
 
             <div className="mt-5 rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-800">Staff Assignment (Optional)</p>
-                  <button
-                    type="button"
-                    onClick={() => void openStaffModal()}
-                    disabled={!cart?.items.length}
-                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Assign Staff
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-gray-600">{staffSummaryText}</p>
-              </div>
-
-              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-800">Voucher</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVoucherModalOpen(true)
-                    }}
-                    disabled={!cart?.items.length}
-                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {appliedVoucher ? 'Change Voucher' : 'Apply Voucher'}
-                  </button>
-                </div>
-
-                {appliedVoucher ? (
-                  <div className="mt-2 space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-                    <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
-                    {!!appliedVoucher.discount_amount && (
-                      <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>
-                    )}
-                    {/* {appliedVoucher.scope_snapshot?.display_scope_text && (
-                      <p className="text-[11px] text-green-700/90">{appliedVoucher.scope_snapshot.display_scope_text}</p>
-                    )} */}
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-red-600 underline"
-                      onClick={() => void removeVoucher()}
-                    >
-                      Remove voucher
-                    </button>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-xs text-gray-600">No voucher applied.</p>
-                )}
-              </div>
-
               {/* Order Summary inside payment card for clearer iPad POS flow */}
               <div className="mb-4 space-y-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm">
                 {/* <div className="flex justify-between">
@@ -1692,62 +1700,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </div>
               </div>
 
-              <h4 className="text-base font-bold text-gray-900 mb-3">Payment Method</h4>
-              <div className="mt-3 space-y-2">
-                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <span className={paymentMethod === 'cash' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Cash</span>
-                  <input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="h-4 w-4 text-blue-600" />
-                </label>
-                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
-                  <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-4 w-4 text-blue-600" />
-                </label>
-              </div>
-              {paymentMethod === 'cash' && (
-                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
-                  <label className="block text-sm font-bold text-gray-900">Cash Received</label>
-                  <input 
-                    type="number" 
-                    min="0" 
-                    step="0.01" 
-                    value={cashReceived} 
-                    onChange={(e) => setCashReceived(e.target.value)} 
-                    className="h-11 w-full rounded-lg border-2 border-gray-300 bg-white px-4 text-sm font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
-                    placeholder="0.00" 
-                  />
-                  {cashChange > 0 && (
-                    <div className="flex items-center justify-between rounded-lg bg-green-50 border-2 border-green-200 px-3 py-2">
-                      <span className="text-xs font-semibold text-green-800">Change:</span>
-                      <span className="text-sm font-bold text-green-700">RM {cashChange.toFixed(2)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-              {paymentMethod === 'qrpay' && (
-                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
-                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof</label>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrUploadInputRef.current?.click()}>
-                      📁 Upload
-                    </button>
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraBackInputRef.current?.click()}>
-                      📷 Back Camera
-                    </button>
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraFrontInputRef.current?.click()}>
-                      📷 Front Camera
-                    </button>
-                  </div>
-                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
-                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
-                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
-                  {qrProofFileName && (
-                    <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2">
-                      <p className="truncate pr-2 text-xs font-medium text-green-800">✓ {qrProofFileName}</p>
-                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline" onClick={clearQrProof}>Clear</button>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             <button 
@@ -2026,99 +1978,245 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         </div>
       )}
 
-      {staffModalOpen && (
+      {checkoutConfirmationOpen && cart?.items?.length ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+          <div className="w-full max-w-5xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-              <h4 className="text-xl font-bold text-gray-900">Assign Staff</h4>
+              <h4 className="text-xl font-bold text-gray-900">Checkout confirmation</h4>
               <button
                 type="button"
-                onClick={() => setStaffModalOpen(false)}
+                onClick={() => setCheckoutConfirmationOpen(false)}
                 className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
               >
                 <span className="text-2xl leading-none">×</span>
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5">
+              <div className="max-h-[55vh] overflow-auto rounded-lg border border-gray-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit Price</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Total Price</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Staff</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.items.map((item) => {
+                      const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === item.id)
+                      return (
+                        <tr key={item.id} className="border-t border-gray-100 align-top">
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-gray-900">{item.product_name}</p>
+                            <p className="text-xs text-gray-500">Qty: {item.qty}</p>
+                          </td>
+                          <td className="px-3 py-2">RM {Number(item.unit_price).toFixed(2)}</td>
+                          <td className="px-3 py-2 font-semibold">RM {Number(item.line_total).toFixed(2)}</td>
+                          <td className="px-3 py-2 min-w-[280px]">
+                            <div className="space-y-1">
+                              <p className="text-xs text-gray-700">{getSplitSummary(assignment)}</p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void openItemSplitEditor(item.id)}
+                                  className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                                >
+                                  {assignment?.splits?.length ? 'Edit' : 'Assign'}
+                                </button>
+                                {assignment?.splits?.length ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setCheckoutItemAssignments((prev) => prev.map((row) => row.cart_item_id === item.id ? { ...row, splits: [], is_default: false } : row))}
+                                    className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                  >
+                                    Clear
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="text-sm font-medium text-gray-700">Net amount</p>
+                <p className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-800">Member</p>
+                  <button
+                    type="button"
+                    onClick={() => void toggleMemberDropdown()}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50"
+                  >
+                    {selectedMember ? 'Change Member' : 'Assign Member'}
+                  </button>
+                </div>
+                {selectedMember ? (
+                  <div className="mt-2 space-y-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-blue-800">{selectedMember.name}</p>
+                    <p className="text-xs text-blue-700">{selectedMember.phone || selectedMember.email || `Member #${selectedMember.id}`}</p>
+                    <button type="button" className="text-xs font-semibold text-red-600 underline" onClick={() => void onClearMember()}>Clear member</button>
+                  </div>
+                ) : <p className="mt-2 text-xs text-gray-600">No member assigned.</p>}
+              </div>
+
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-800">Voucher</p>
+                  <button
+                    type="button"
+                    onClick={() => setVoucherModalOpen(true)}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50"
+                  >
+                    {appliedVoucher ? 'Change Voucher' : 'Apply Voucher'}
+                  </button>
+                </div>
+                {appliedVoucher ? (
+                  <div className="mt-2 space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
+                    {!!appliedVoucher.discount_amount && <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>}
+                    <button type="button" className="text-xs font-semibold text-red-600 underline" onClick={() => void removeVoucher()}>Remove voucher</button>
+                  </div>
+                ) : <p className="mt-2 text-xs text-gray-600">No voucher applied.</p>}
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold text-gray-800">Payment method</p>
+                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <span className={paymentMethod === 'cash' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Cash</span>
+                  <input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="h-4 w-4 text-blue-600" />
+                </label>
+                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
+                  <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-4 w-4 text-blue-600" />
+                </label>
+              </div>
+
+              {paymentMethod === 'cash' && (
+                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
+                  <label className="block text-sm font-bold text-gray-900">Cash Received</label>
+                  <input type="number" min="0" step="0.01" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-11 w-full rounded-lg border-2 border-gray-300 bg-white px-4 text-sm font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="0.00" />
+                  {cashChange > 0 && <div className="flex items-center justify-between rounded-lg bg-green-50 border-2 border-green-200 px-3 py-2"><span className="text-xs font-semibold text-green-800">Change:</span><span className="text-sm font-bold text-green-700">RM {cashChange.toFixed(2)}</span></div>}
+                </div>
+              )}
+
+              {paymentMethod === 'qrpay' && (
+                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
+                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof</label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrUploadInputRef.current?.click()}>📁 Upload</button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraBackInputRef.current?.click()}>📷 Back Camera</button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraFrontInputRef.current?.click()}>📷 Front Camera</button>
+                  </div>
+                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
+                  {qrProofFileName && <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2"><p className="truncate pr-2 text-xs font-medium text-green-800">✓ {qrProofFileName}</p><button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline" onClick={clearQrProof}>Clear</button></div>}
+                </div>
+              )}
+
+              <div className="mt-4 flex gap-3 pt-1">
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
+                  onClick={() => setCheckoutConfirmationOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmCheckout()}
+                  disabled={!canConfirmCheckoutInModal}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none"
+                >
+                  Confirm checkout
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {itemSplitEditorOpen && itemSplitEditorItemId ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+              <h5 className="text-lg font-bold text-gray-900">Item Staff Split</h5>
+              <button type="button" onClick={() => setItemSplitEditorOpen(false)} className="text-2xl leading-none text-gray-500">×</button>
+            </div>
+
+            <div className="space-y-3 p-5">
               <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={staffAutoBalance}
-                  onChange={(event) => setStaffAutoBalance(event.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                />
+                <input type="checkbox" checked={itemSplitAutoBalance} onChange={(event) => setItemSplitAutoBalance(event.target.checked)} className="h-4 w-4" />
                 Auto Balance
               </label>
 
-              <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
-                {draftStaffSplits.map((split, index) => (
-                  <div key={`${index}-${split.staff_id}`} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[1.4fr_0.8fr_auto] sm:items-end">
-                    <div>
+              <div className="max-h-[40vh] space-y-3 overflow-auto pr-1">
+                {itemSplitDraftRows.map((row, index) => (
+                  <div key={row.id} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[1.6fr_0.8fr_auto] sm:items-end">
+                    <div className="relative">
                       <label className="mb-1 block text-xs font-semibold text-gray-600">Staff</label>
-                      <select
-                        value={split.staff_id > 0 ? String(split.staff_id) : ''}
-                        onChange={(event) => onChangeStaffId(index, Number(event.target.value || 0))}
+                      <input
+                        value={row.search}
+                        onFocus={() => setItemSplitDraftRows((prev) => prev.map((item) => item.id === row.id ? { ...item, open: true } : item))}
+                        onChange={(event) => setDraftRowSearch(row.id, event.target.value)}
                         className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
-                      >
-                        <option value="">Select staff</option>
-                        {activeStaffs.map((staff) => (
-                          <option key={staff.id} value={String(staff.id)}>{staff.name}</option>
-                        ))}
-                      </select>
+                        placeholder="Search staff by name / phone / email"
+                      />
+                      {row.open && (
+                        <div className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                          {row.loading ? <p className="px-3 py-2 text-xs text-gray-500">Searching...</p> : row.options.map((staff) => (
+                            <button key={staff.id} type="button" onClick={() => selectDraftRowStaff(row.id, staff)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50">
+                              {getStaffLabel(staff)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
+
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-gray-600">Share %</label>
                       <input
                         type="number"
                         min={0}
                         max={100}
-                        value={split.share_percent}
-                        onChange={(event) => onChangeStaffShare(index, Number(event.target.value || 0))}
-                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                        value={row.share_percent}
+                        readOnly={itemSplitAutoBalance && index === 0}
+                        onChange={(event) => onChangeDraftShare(row.id, Number(event.target.value || 0))}
+                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm read-only:bg-gray-100"
                       />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveStaffRow(index)}
-                      className="h-10 rounded-lg border border-red-300 bg-white px-3 text-xs font-semibold text-red-700 transition hover:bg-red-50"
-                    >
-                      Remove
-                    </button>
+
+                    <button type="button" onClick={() => onRemoveDraftSplitRow(row.id)} className="h-10 rounded-lg border border-red-300 px-3 text-xs font-semibold text-red-700 hover:bg-red-50">Remove</button>
                   </div>
                 ))}
               </div>
 
-              <button
-                type="button"
-                onClick={onAddStaffRow}
-                className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
-              >
-                + Add Staff
-              </button>
+              <button type="button" onClick={onAddDraftSplitRow} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">+ Add Staff</button>
 
               <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                <p className="text-sm text-gray-700">Total %</p>
-                <p className={`text-sm font-bold ${draftStaffTotal === 100 ? 'text-green-700' : 'text-amber-700'}`}>{draftStaffTotal}%</p>
+                <span className="text-sm text-gray-700">Total %</span>
+                <span className="text-sm font-bold text-gray-900">{itemSplitDraftRows.reduce((sum, row) => sum + row.share_percent, 0)}%</span>
               </div>
 
-              {(staffAssignmentError || (!staffAutoBalance && draftStaffTotal !== 100)) && (
-                <p className="text-xs font-medium text-red-600">{staffAssignmentError ?? 'Total share must be exactly 100% when Auto Balance is off.'}</p>
-              )}
+              {itemSplitError && <p className="text-xs font-medium text-red-600">{itemSplitError}</p>}
 
               <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setItemSplitEditorOpen(false)} className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700">Cancel</button>
                 <button
                   type="button"
-                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
-                  onClick={() => setStaffModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={saveStaffAssignment}
-                  disabled={!draftStaffValidation.valid}
-                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400"
+                  onClick={saveItemSplitEditor}
+                  disabled={!validateSplitDraft(itemSplitDraftRows).valid}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400"
                 >
                   Save
                 </button>
@@ -2126,7 +2224,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {memberOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -2299,60 +2397,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               >
                 {voucherApplying ? 'Applying...' : 'Apply Voucher'}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmCashOpen && checkoutMeta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5">
-              <h4 className="text-xl font-bold text-white flex items-center gap-2">
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Confirm Cash Payment
-              </h4>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="space-y-3 rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">Total Amount</span>
-                  <span className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</span>
-                </div>
-                <div className="h-px bg-gray-300"></div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">Cash Received</span>
-                  <span className="text-lg font-bold text-blue-700">RM {checkoutMeta.paid_amount.toFixed(2)}</span>
-                </div>
-                {checkoutMeta.change_amount > 0 && (
-                  <>
-                    <div className="h-px bg-gray-300"></div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Change</span>
-                      <span className="text-lg font-bold text-green-700">RM {checkoutMeta.change_amount.toFixed(2)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button 
-                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50 active:scale-95" 
-                  onClick={() => setConfirmCashOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 hover:shadow-xl active:scale-95"
-                  onClick={() => {
-                    setConfirmCashOpen(false)
-                    void finalizeCheckout(checkoutMeta)
-                  }}
-                >
-                  Confirm & Checkout
-                </button>
-              </div>
             </div>
           </div>
         </div>
