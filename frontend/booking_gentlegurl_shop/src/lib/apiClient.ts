@@ -65,7 +65,7 @@ export async function getAvailability(serviceId: string, staffId: string, date: 
 export async function createHold(payload: {
   service_id: number;
   staff_id: number;
-  start_time: string;
+  start_at: string;
 }) {
   const response = await request<{ data: BookingHold } | BookingHold>("/booking/hold", {
     method: "POST",

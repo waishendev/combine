@@ -39,11 +39,11 @@ export default function SlotPage() {
     const hold = await createHold({
       service_id: Number(serviceId),
       staff_id: Number(staffId),
-      start_time: slot.start_time,
+      start_at: slot.start_time,
     });
 
-    setHoldMessage(`Slot reserved 15 minutes. Expires at ${new Date(hold.expires_at).toLocaleTimeString("en-MY", { timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}`);
-    router.push(`/booking/checkout?booking_id=${hold.booking_id}&expires_at=${encodeURIComponent(hold.expires_at)}`);
+    setHoldMessage(`Slot reserved 15 minutes. Expires at ${new Date(hold.hold_expires_at).toLocaleTimeString("en-MY", { timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}`);
+    router.push(`/booking/checkout?booking_id=${hold.booking_id}&expires_at=${encodeURIComponent(hold.hold_expires_at)}`);
   };
 
   return (

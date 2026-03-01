@@ -23,7 +23,7 @@ export type BookingSlot = {
 
 export type BookingHold = {
   booking_id: number;
-  expires_at: string;
+  hold_expires_at: string;
   status: string;
   service: Service;
   staff?: Staff | null;
