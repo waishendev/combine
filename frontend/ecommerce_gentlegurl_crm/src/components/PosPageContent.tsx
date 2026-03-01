@@ -257,8 +257,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
   const [cashReceived, setCashReceived] = useState('')
-  const [checkoutMeta, setCheckoutMeta] = useState<CheckoutMeta | null>(null)
-  const [confirmCashOpen, setConfirmCashOpen] = useState(false)
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
   const [checkingOut, setCheckingOut] = useState(false)
@@ -1025,12 +1023,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
 
-  // Enhanced checkout validation: must have items, and payment method requirements must be met
-  const canCheckout = Boolean(cart?.items.length) && !checkingOut && (
-    paymentMethod === 'cash' 
-      ? Number.isFinite(cashReceivedAmount) && cashReceivedAmount >= cartTotal
-      : Boolean(qrProofFileName)
-  )
+  const canCheckout = Boolean(cart?.items.length) && !checkingOut
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || cart.items.length === 0 || checkingOut) return
@@ -1078,7 +1071,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setMembers([])
     setCart({ id: cart.id, items: [], subtotal: 0, grand_total: 0 })
     setCashReceived('')
-    setCheckoutMeta(null)
     setCheckoutItemAssignments([])
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
@@ -1120,9 +1112,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
 
     const effectiveChange = Math.max(0, effectiveCashReceived - cartTotal)
-
-    setCheckoutMeta({ paid_amount: effectiveCashReceived, change_amount: effectiveChange })
-    setConfirmCashOpen(true)
+    await finalizeCheckout({ paid_amount: effectiveCashReceived, change_amount: effectiveChange })
   }
 
   const checkout = async () => {
@@ -1685,43 +1675,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             )}
 
             <div className="mt-5 rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-800">Voucher</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVoucherModalOpen(true)
-                    }}
-                    disabled={!cart?.items.length}
-                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {appliedVoucher ? 'Change Voucher' : 'Apply Voucher'}
-                  </button>
-                </div>
-
-                {appliedVoucher ? (
-                  <div className="mt-2 space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-                    <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
-                    {!!appliedVoucher.discount_amount && (
-                      <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>
-                    )}
-                    {/* {appliedVoucher.scope_snapshot?.display_scope_text && (
-                      <p className="text-[11px] text-green-700/90">{appliedVoucher.scope_snapshot.display_scope_text}</p>
-                    )} */}
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-red-600 underline"
-                      onClick={() => void removeVoucher()}
-                    >
-                      Remove voucher
-                    </button>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-xs text-gray-600">No voucher applied.</p>
-                )}
-              </div>
-
               {/* Order Summary inside payment card for clearer iPad POS flow */}
               <div className="mb-4 space-y-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm">
                 {/* <div className="flex justify-between">
@@ -1740,62 +1693,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </div>
               </div>
 
-              <h4 className="text-base font-bold text-gray-900 mb-3">Payment Method</h4>
-              <div className="mt-3 space-y-2">
-                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <span className={paymentMethod === 'cash' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Cash</span>
-                  <input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="h-4 w-4 text-blue-600" />
-                </label>
-                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
-                  <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-4 w-4 text-blue-600" />
-                </label>
-              </div>
-              {paymentMethod === 'cash' && (
-                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
-                  <label className="block text-sm font-bold text-gray-900">Cash Received</label>
-                  <input 
-                    type="number" 
-                    min="0" 
-                    step="0.01" 
-                    value={cashReceived} 
-                    onChange={(e) => setCashReceived(e.target.value)} 
-                    className="h-11 w-full rounded-lg border-2 border-gray-300 bg-white px-4 text-sm font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
-                    placeholder="0.00" 
-                  />
-                  {cashChange > 0 && (
-                    <div className="flex items-center justify-between rounded-lg bg-green-50 border-2 border-green-200 px-3 py-2">
-                      <span className="text-xs font-semibold text-green-800">Change:</span>
-                      <span className="text-sm font-bold text-green-700">RM {cashChange.toFixed(2)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-              {paymentMethod === 'qrpay' && (
-                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
-                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof</label>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrUploadInputRef.current?.click()}>
-                      📁 Upload
-                    </button>
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraBackInputRef.current?.click()}>
-                      📷 Back Camera
-                    </button>
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraFrontInputRef.current?.click()}>
-                      📷 Front Camera
-                    </button>
-                  </div>
-                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
-                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
-                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
-                  {qrProofFileName && (
-                    <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2">
-                      <p className="truncate pr-2 text-xs font-medium text-green-800">✓ {qrProofFileName}</p>
-                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline" onClick={clearQrProof}>Clear</button>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             <button 
@@ -2147,6 +2044,61 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <p className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
               </div>
 
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-800">Voucher</p>
+                  <button
+                    type="button"
+                    onClick={() => setVoucherModalOpen(true)}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50"
+                  >
+                    {appliedVoucher ? 'Change Voucher' : 'Apply Voucher'}
+                  </button>
+                </div>
+                {appliedVoucher ? (
+                  <div className="mt-2 space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
+                    {!!appliedVoucher.discount_amount && <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>}
+                    <button type="button" className="text-xs font-semibold text-red-600 underline" onClick={() => void removeVoucher()}>Remove voucher</button>
+                  </div>
+                ) : <p className="mt-2 text-xs text-gray-600">No voucher applied.</p>}
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold text-gray-800">Payment method</p>
+                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <span className={paymentMethod === 'cash' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Cash</span>
+                  <input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="h-4 w-4 text-blue-600" />
+                </label>
+                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
+                  <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-4 w-4 text-blue-600" />
+                </label>
+              </div>
+
+              {paymentMethod === 'cash' && (
+                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
+                  <label className="block text-sm font-bold text-gray-900">Cash Received</label>
+                  <input type="number" min="0" step="0.01" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-11 w-full rounded-lg border-2 border-gray-300 bg-white px-4 text-sm font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="0.00" />
+                  {cashChange > 0 && <div className="flex items-center justify-between rounded-lg bg-green-50 border-2 border-green-200 px-3 py-2"><span className="text-xs font-semibold text-green-800">Change:</span><span className="text-sm font-bold text-green-700">RM {cashChange.toFixed(2)}</span></div>}
+                </div>
+              )}
+
+              {paymentMethod === 'qrpay' && (
+                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
+                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof</label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrUploadInputRef.current?.click()}>📁 Upload</button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraBackInputRef.current?.click()}>📷 Back Camera</button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraFrontInputRef.current?.click()}>📷 Front Camera</button>
+                  </div>
+                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
+                  {qrProofFileName && <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2"><p className="truncate pr-2 text-xs font-medium text-green-800">✓ {qrProofFileName}</p><button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline" onClick={clearQrProof}>Clear</button></div>}
+                </div>
+              )}
+
               <div className="mt-4 flex gap-3 pt-1">
                 <button
                   type="button"
@@ -2422,60 +2374,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               >
                 {voucherApplying ? 'Applying...' : 'Apply Voucher'}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmCashOpen && checkoutMeta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5">
-              <h4 className="text-xl font-bold text-white flex items-center gap-2">
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Confirm Cash Payment
-              </h4>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="space-y-3 rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">Total Amount</span>
-                  <span className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</span>
-                </div>
-                <div className="h-px bg-gray-300"></div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">Cash Received</span>
-                  <span className="text-lg font-bold text-blue-700">RM {checkoutMeta.paid_amount.toFixed(2)}</span>
-                </div>
-                {checkoutMeta.change_amount > 0 && (
-                  <>
-                    <div className="h-px bg-gray-300"></div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Change</span>
-                      <span className="text-lg font-bold text-green-700">RM {checkoutMeta.change_amount.toFixed(2)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button 
-                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50 active:scale-95" 
-                  onClick={() => setConfirmCashOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 hover:shadow-xl active:scale-95"
-                  onClick={() => {
-                    setConfirmCashOpen(false)
-                    void finalizeCheckout(checkoutMeta)
-                  }}
-                >
-                  Confirm & Checkout
-                </button>
-              </div>
             </div>
           </div>
         </div>
