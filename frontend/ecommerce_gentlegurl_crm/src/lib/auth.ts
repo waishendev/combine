@@ -5,6 +5,8 @@ export type User = {
   name: string
   email: string
   username: string
+  staff_id?: number | null
+  staff_name?: string | null
   is_active?: boolean
   roles: string[] | Array<{ id: number; name: string }>
   permissions: string[]
@@ -65,4 +67,3 @@ export async function getCurrentUser(): Promise<User | null> {
     return null
   }
 }
-

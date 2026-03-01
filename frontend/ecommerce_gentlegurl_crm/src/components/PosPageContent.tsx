@@ -60,6 +60,24 @@ type CheckoutMeta = {
   change_amount: number
 }
 
+type StaffSplit = {
+  staff_id: number
+  share_percent: number
+}
+
+type PosCurrentUser = {
+  id: number
+  name: string
+  staff_id?: number | null
+  staff_name?: string | null
+}
+
+type StaffOption = {
+  id: number
+  name: string
+  is_active?: boolean | number | string | null
+}
+
 type Member = {
   id: number
   name: string
@@ -173,7 +191,7 @@ function extractPaged<T>(json: unknown): PageResponse<T> {
   }
 }
 
-export default function PosPageContent() {
+export default function PosPageContent({ currentUser }: { currentUser: PosCurrentUser }) {
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
@@ -208,6 +226,14 @@ export default function PosPageContent() {
   const [availableVouchers, setAvailableVouchers] = useState<PosVoucherOption[]>([])
   const [selectedVoucherKey, setSelectedVoucherKey] = useState<string>('')
 
+  const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
+  const [staffModalOpen, setStaffModalOpen] = useState(false)
+  const [staffSplits, setStaffSplits] = useState<StaffSplit[]>([])
+  const [draftStaffSplits, setDraftStaffSplits] = useState<StaffSplit[]>([])
+  const [hasManualStaffAssignment, setHasManualStaffAssignment] = useState(false)
+  const [staffAutoBalance, setStaffAutoBalance] = useState(true)
+  const [staffAssignmentError, setStaffAssignmentError] = useState<string | null>(null)
+
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
   const [cashReceived, setCashReceived] = useState('')
   const [checkoutMeta, setCheckoutMeta] = useState<CheckoutMeta | null>(null)
@@ -235,6 +261,45 @@ export default function PosPageContent() {
   const cartTotal = Number(cart?.grand_total ?? 0)
   const discount = Math.max(0, cartSubtotal - cartTotal)
   const appliedVoucher = cart?.voucher ?? null
+
+  const defaultStaffSplit = useMemo<StaffSplit[]>(() => {
+    if (!currentUser.staff_id) return []
+    return [{ staff_id: currentUser.staff_id, share_percent: 100 }]
+  }, [currentUser.staff_id])
+
+  const resolvedStaffSplits = useMemo<StaffSplit[]>(() => {
+    if (hasManualStaffAssignment) return staffSplits
+    return defaultStaffSplit
+  }, [defaultStaffSplit, hasManualStaffAssignment, staffSplits])
+
+  const staffNameById = useMemo(() => {
+    const map = new Map<number, string>()
+    if (currentUser.staff_id) {
+      map.set(currentUser.staff_id, currentUser.staff_name?.trim() || currentUser.name)
+    }
+    activeStaffs.forEach((staff) => {
+      map.set(staff.id, staff.name)
+    })
+    return map
+  }, [activeStaffs, currentUser.name, currentUser.staff_id, currentUser.staff_name])
+
+  const staffSummaryText = useMemo(() => {
+    if (!hasManualStaffAssignment) {
+      if (defaultStaffSplit.length === 1) {
+        const defaultStaff = defaultStaffSplit[0]
+        const defaultStaffName = staffNameById.get(defaultStaff.staff_id) || 'Current staff'
+        return `Default: ${defaultStaffName} (${defaultStaff.share_percent}%)`
+      }
+      return 'No staff assigned'
+    }
+
+    if (!staffSplits.length) return 'Assigned: No staff assigned'
+    const parts = staffSplits.map((split) => {
+      const staffName = staffNameById.get(split.staff_id) || `Staff #${split.staff_id}`
+      return `${staffName} ${split.share_percent}%`
+    })
+    return `Assigned: ${parts.join(', ')}`
+  }, [defaultStaffSplit, hasManualStaffAssignment, staffNameById, staffSplits])
 
   type ToastKind = 'success' | 'error' | 'info' | 'warning'
   type ToastItem = { id: string; kind: ToastKind; text: string }
@@ -306,6 +371,100 @@ export default function PosPageContent() {
     }
 
     return { eligible: true, reason: null }
+  }
+
+
+  const isValidStaffSplitRow = (split: StaffSplit) => Number.isFinite(split.staff_id) && split.staff_id > 0 && Number.isInteger(split.share_percent) && split.share_percent >= 0 && split.share_percent <= 100
+
+  const validateStaffSplits = (splits: StaffSplit[]) => {
+    if (splits.length === 0) return { valid: false, error: 'Please add at least one staff row.' }
+
+    const staffIds = new Set<number>()
+    for (const split of splits) {
+      if (!isValidStaffSplitRow(split)) {
+        return { valid: false, error: 'Each staff row must have a staff and a share between 0% and 100%.' }
+      }
+      if (staffIds.has(split.staff_id)) {
+        return { valid: false, error: 'Duplicate staff is not allowed.' }
+      }
+      staffIds.add(split.staff_id)
+    }
+
+    const total = splits.reduce((sum, split) => sum + split.share_percent, 0)
+    if (total !== 100) {
+      return { valid: false, error: 'Total share must be exactly 100%.' }
+    }
+
+    return { valid: true, error: null as string | null }
+  }
+
+  const fetchActiveStaffs = useCallback(async () => {
+    const params = new URLSearchParams({ page: '1', per_page: '200', is_active: '1' })
+    const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
+    if (!res.ok) return
+
+    const json = await res.json().catch(() => null)
+    const payload = Array.isArray(json?.data?.data) ? json.data.data : []
+    const next: StaffOption[] = payload
+      .map((staff: StaffOption) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim(), is_active: staff.is_active }))
+      .filter((staff) => staff.id > 0 && staff.name)
+    setActiveStaffs(next)
+  }, [])
+
+  const openStaffModal = async () => {
+    setStaffAssignmentError(null)
+    setStaffAutoBalance(true)
+
+    if (!activeStaffs.length) {
+      await fetchActiveStaffs()
+    }
+
+    if (hasManualStaffAssignment && staffSplits.length > 0) {
+      setDraftStaffSplits(staffSplits)
+    } else if (defaultStaffSplit.length > 0) {
+      setDraftStaffSplits(defaultStaffSplit)
+    } else {
+      setDraftStaffSplits([{ staff_id: 0, share_percent: 100 }])
+    }
+
+    setStaffModalOpen(true)
+  }
+
+  const applyAutoBalance = (splits: StaffSplit[], index: number, nextValue: number) => {
+    const current = splits[index]
+    if (!current) {
+      return { nextSplits: splits, error: 'Invalid staff row.' }
+    }
+
+    const clampedValue = Math.max(0, Math.min(100, Math.round(nextValue)))
+    const delta = clampedValue - current.share_percent
+
+    const nextSplits = splits.map((split, idx) => (idx === index ? { ...split, share_percent: clampedValue } : { ...split }))
+
+    if (delta === 0) return { nextSplits, error: null as string | null }
+
+    const otherIndexes = nextSplits
+      .map((split, idx) => ({ idx, share: split.share_percent }))
+      .filter((item) => item.idx !== index)
+
+    if (otherIndexes.length === 0) {
+      if (clampedValue === 100) return { nextSplits, error: null as string | null }
+      return { nextSplits: splits, error: 'Auto Balance needs at least two staff rows unless share is 100%.' }
+    }
+
+    if (delta > 0) {
+      const highest = otherIndexes.reduce((best, currentItem) => (currentItem.share > best.share ? currentItem : best), otherIndexes[0])
+      if (highest.share < delta) {
+        return { nextSplits: splits, error: 'Cannot auto-balance because another row would go below 0%.' }
+      }
+      nextSplits[highest.idx] = { ...nextSplits[highest.idx], share_percent: highest.share - delta }
+      return { nextSplits, error: null as string | null }
+    }
+
+    const increaseAmount = Math.abs(delta)
+    const highest = otherIndexes.reduce((best, currentItem) => (currentItem.share > best.share ? currentItem : best), otherIndexes[0])
+    nextSplits[highest.idx] = { ...nextSplits[highest.idx], share_percent: highest.share + increaseAmount }
+    return { nextSplits, error: null as string | null }
   }
 
   const fetchVouchers = useCallback(async (memberId?: number | null) => {
@@ -743,7 +902,8 @@ export default function PosPageContent() {
     void loadCart()
     // Load products on initial mount
     void fetchProductPage(1, '', false)
-  }, [])
+    void fetchActiveStaffs()
+  }, [fetchActiveStaffs])
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -947,7 +1107,7 @@ export default function PosPageContent() {
     const res = await fetch('/api/proxy/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_method: paymentMethod, member_id: selectedMember?.id ?? null }),
+      body: JSON.stringify({ payment_method: paymentMethod, member_id: selectedMember?.id ?? null, staff_splits: resolvedStaffSplits }),
     })
     const json = await res.json()
 
@@ -971,6 +1131,8 @@ export default function PosPageContent() {
     setCart({ id: cart.id, items: [], subtotal: 0, grand_total: 0 })
     setCashReceived('')
     setCheckoutMeta(null)
+    setHasManualStaffAssignment(false)
+    setStaffSplits([])
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
@@ -1092,6 +1254,61 @@ export default function PosPageContent() {
     }
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
+  }
+
+  const draftStaffTotal = useMemo(
+    () => draftStaffSplits.reduce((sum, split) => sum + (Number.isFinite(split.share_percent) ? split.share_percent : 0), 0),
+    [draftStaffSplits],
+  )
+
+  const draftStaffValidation = useMemo(() => validateStaffSplits(draftStaffSplits), [draftStaffSplits])
+
+  const onAddStaffRow = () => {
+    setDraftStaffSplits((prev) => [...prev, { staff_id: 0, share_percent: 0 }])
+    setStaffAssignmentError(null)
+  }
+
+  const onRemoveStaffRow = (index: number) => {
+    setDraftStaffSplits((prev) => prev.filter((_, idx) => idx !== index))
+    setStaffAssignmentError(null)
+  }
+
+  const onChangeStaffId = (index: number, nextStaffId: number) => {
+    setDraftStaffSplits((prev) => prev.map((split, idx) => (idx === index ? { ...split, staff_id: nextStaffId } : split)))
+    setStaffAssignmentError(null)
+  }
+
+  const onChangeStaffShare = (index: number, rawValue: number) => {
+    const numericValue = Number.isFinite(rawValue) ? rawValue : 0
+
+    if (staffAutoBalance) {
+      const { nextSplits, error } = applyAutoBalance(draftStaffSplits, index, numericValue)
+      if (error) {
+        setStaffAssignmentError(error)
+        return
+      }
+      setDraftStaffSplits(nextSplits)
+      setStaffAssignmentError(null)
+      return
+    }
+
+    const clamped = Math.max(0, Math.min(100, Math.round(numericValue)))
+    setDraftStaffSplits((prev) => prev.map((split, idx) => (idx === index ? { ...split, share_percent: clamped } : split)))
+    setStaffAssignmentError(null)
+  }
+
+  const saveStaffAssignment = () => {
+    const validation = validateStaffSplits(draftStaffSplits)
+    if (!validation.valid) {
+      setStaffAssignmentError(validation.error)
+      return
+    }
+
+    setStaffSplits(draftStaffSplits)
+    setHasManualStaffAssignment(true)
+    setStaffAssignmentError(null)
+    setStaffModalOpen(false)
+    showMsg('Staff assignment updated.', 'success')
   }
 
   return (
@@ -1405,6 +1622,21 @@ export default function PosPageContent() {
             )}
 
             <div className="mt-5 rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
+              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-800">Staff Assignment (Optional)</p>
+                  <button
+                    type="button"
+                    onClick={() => void openStaffModal()}
+                    disabled={!cart?.items.length}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Assign Staff
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-gray-600">{staffSummaryText}</p>
+              </div>
+
               <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-gray-800">Voucher</p>
@@ -1788,6 +2020,108 @@ export default function PosPageContent() {
                     Add to Cart
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {staffModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+              <h4 className="text-xl font-bold text-gray-900">Assign Staff</h4>
+              <button
+                type="button"
+                onClick={() => setStaffModalOpen(false)}
+                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+              >
+                <span className="text-2xl leading-none">×</span>
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={staffAutoBalance}
+                  onChange={(event) => setStaffAutoBalance(event.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                />
+                Auto Balance
+              </label>
+
+              <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
+                {draftStaffSplits.map((split, index) => (
+                  <div key={`${index}-${split.staff_id}`} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[1.4fr_0.8fr_auto] sm:items-end">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-gray-600">Staff</label>
+                      <select
+                        value={split.staff_id > 0 ? String(split.staff_id) : ''}
+                        onChange={(event) => onChangeStaffId(index, Number(event.target.value || 0))}
+                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                      >
+                        <option value="">Select staff</option>
+                        {activeStaffs.map((staff) => (
+                          <option key={staff.id} value={String(staff.id)}>{staff.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-gray-600">Share %</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={split.share_percent}
+                        onChange={(event) => onChangeStaffShare(index, Number(event.target.value || 0))}
+                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveStaffRow(index)}
+                      className="h-10 rounded-lg border border-red-300 bg-white px-3 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={onAddStaffRow}
+                className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+              >
+                + Add Staff
+              </button>
+
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="text-sm text-gray-700">Total %</p>
+                <p className={`text-sm font-bold ${draftStaffTotal === 100 ? 'text-green-700' : 'text-amber-700'}`}>{draftStaffTotal}%</p>
+              </div>
+
+              {(staffAssignmentError || (!staffAutoBalance && draftStaffTotal !== 100)) && (
+                <p className="text-xs font-medium text-red-600">{staffAssignmentError ?? 'Total share must be exactly 100% when Auto Balance is off.'}</p>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
+                  onClick={() => setStaffModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveStaffAssignment}
+                  disabled={!draftStaffValidation.valid}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400"
+                >
+                  Save
+                </button>
               </div>
             </div>
           </div>
