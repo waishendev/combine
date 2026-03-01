@@ -12,10 +12,13 @@ class Kernel extends ConsoleKernel
         Commands\SendLowStockSummary::class,
         Commands\ExpirePendingOrders::class,
         Commands\ExpireApprovedReturns::class,
+        Commands\ExpireBookingHolds::class,
     ];
 
     protected function schedule(Schedule $schedule): void
     {
+        $schedule->command('booking:expire-holds')->everyMinute();
+
         $schedule->job(new SendDailyOrderSummaryEmailJob())
             ->dailyAt('10:00')
             ->onOneServer()

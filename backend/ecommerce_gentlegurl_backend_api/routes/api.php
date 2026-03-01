@@ -873,3 +873,21 @@ $protectedRoutes = function () {
 
 // 🟢 Session + Sanctum token 共用一套受保护路由（Cookie 或 Bearer token 都可）
 Route::middleware(['api.session', 'auth:web,sanctum'])->group($protectedRoutes);
+
+Route::prefix('/booking')->middleware('api.session')->group(function () {
+    Route::get('/availability', [\App\Http\Controllers\Booking\AvailabilityController::class, 'index']);
+    Route::post('/hold', [\App\Http\Controllers\Booking\HoldController::class, 'store']);
+    Route::post('/{id}/pay', [\App\Http\Controllers\Booking\PaymentController::class, 'pay']);
+    Route::post('/payment/callback', [\App\Http\Controllers\Booking\PaymentController::class, 'callback']);
+});
+
+Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')->group(function () {
+    Route::get('/appointments', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'index']);
+    Route::get('/appointments/{id}', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'show']);
+    Route::patch('/appointments/{id}/status', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'updateStatus']);
+    Route::post('/appointments/{id}/photos', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'uploadPhoto']);
+
+    Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
+    Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
+    Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);
+});
