@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type SummaryRow = {
   period: string
@@ -18,18 +18,30 @@ export default function BookingReportsPage() {
 
   const maxTotal = useMemo(() => Math.max(1, ...rows.map((r) => Number(r.total_bookings || 0))), [rows])
 
+  const buildQuery = () => {
+    const qs = new URLSearchParams({ group_by: groupBy })
+    if (from) qs.set('from', from)
+    if (to) qs.set('to', to)
+    return qs
+  }
+
   const load = async () => {
-    const qs = new URLSearchParams({ from, to, group_by: groupBy })
+    const qs = buildQuery()
     const res = await fetch(`/api/proxy/admin/booking/reports/summary?${qs.toString()}`, { cache: 'no-store' })
     const json = await res.json()
     setRows(json.data ?? [])
   }
 
   const exportCsv = () => {
-    const qs = new URLSearchParams({ from, to, group_by: groupBy })
+    const qs = buildQuery()
     window.open(`/api/proxy/admin/booking/reports/summary/export.csv?${qs.toString()}`, '_blank')
   }
 
+
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return (
     <div className="space-y-4 p-4">
       <h1 className="text-2xl font-semibold">Booking Reports</h1>

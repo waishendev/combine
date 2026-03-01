@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use Carbon\Carbon;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
@@ -15,7 +16,8 @@ class ReportController extends Controller
 
         $rows = Booking::query()
             ->selectRaw('staff_id, status, COUNT(*) as total')
-            ->whereBetween('start_at', [$from, $to])
+            ->when($from, fn (Builder $q) => $q->where('start_at', '>=', $from))
+            ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to))
             ->when($request->filled('staff_id'), fn ($q) => $q->where('staff_id', (int) $request->staff_id))
             ->groupBy('staff_id', 'status')
             ->get();
@@ -43,14 +45,8 @@ class ReportController extends Controller
         [$from, $to] = $this->resolveRange($request);
         $groupBy = $request->query('group_by', 'day');
 
-        $format = match ($groupBy) {
-            'month' => '%Y-%m',
-            'week' => '%x-W%v',
-            default => '%Y-%m-%d',
-        };
-
         $rows = Booking::query()
-            ->selectRaw("DATE_FORMAT(start_at, '{$format}') as period")
+            ->selectRaw($this->periodExpression($groupBy) . ' as period')
             ->selectRaw('COUNT(*) as total_bookings')
             ->selectRaw("SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as confirmed_count")
             ->selectRaw("SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count")
@@ -59,7 +55,8 @@ class ReportController extends Controller
             ->selectRaw("SUM(CASE WHEN status = 'NO_SHOW' THEN 1 ELSE 0 END) as no_show_count")
             ->selectRaw("SUM(CASE WHEN status = 'NOTIFIED_CANCELLATION' THEN 1 ELSE 0 END) as notified_cancellation_count")
             ->selectRaw('SUM(CASE WHEN payment_status = \'PAID\' THEN deposit_amount ELSE 0 END) as deposit_collected')
-            ->whereBetween('start_at', [$from, $to])
+            ->when($from, fn (Builder $q) => $q->where('start_at', '>=', $from))
+            ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to))
             ->groupBy('period')
             ->orderBy('period')
             ->get();
@@ -94,9 +91,32 @@ class ReportController extends Controller
 
     private function resolveRange(Request $request): array
     {
-        $from = Carbon::parse($request->query('from', now()->subDays(30)->toDateString()))->startOfDay();
-        $to = Carbon::parse($request->query('to', now()->toDateString()))->endOfDay();
+        $from = $request->filled('from')
+            ? Carbon::parse($request->query('from'))->startOfDay()
+            : null;
+        $to = $request->filled('to')
+            ? Carbon::parse($request->query('to'))->endOfDay()
+            : null;
 
         return [$from, $to];
+    }
+
+    private function periodExpression(string $groupBy): string
+    {
+        $driver = Booking::query()->getConnection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            return match ($groupBy) {
+                'month' => "to_char(start_at, 'YYYY-MM')",
+                'week' => "to_char(start_at, 'IYYY-\"W\"IW')",
+                default => "to_char(start_at, 'YYYY-MM-DD')",
+            };
+        }
+
+        return match ($groupBy) {
+            'month' => "DATE_FORMAT(start_at, '%Y-%m')",
+            'week' => "DATE_FORMAT(start_at, '%x-W%v')",
+            default => "DATE_FORMAT(start_at, '%Y-%m-%d')",
+        };
     }
 }
