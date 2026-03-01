@@ -501,6 +501,9 @@ class PosController extends Controller
         $validated = $request->validate([
             'payment_method' => ['required', 'in:cash,qrpay'],
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'items' => ['nullable', 'array'],
+            'items.*.cart_item_id' => ['nullable', 'integer'],
+            'items.*.staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product']);
@@ -570,6 +573,11 @@ class PosController extends Controller
                 'notes' => 'POS checkout by staff #' . $request->user()->id,
             ]);
 
+            $staffByCartItemId = collect($validated['items'] ?? [])->mapWithKeys(function (array $item) {
+                $cartItemId = isset($item['cart_item_id']) ? (int) $item['cart_item_id'] : 0;
+                return $cartItemId > 0 ? [$cartItemId => ($item['staff_id'] ?? null)] : [];
+            });
+
             foreach ($cart->items as $item) {
                 $variant = $item->variant;
                 $product = $variant?->product ?? $item->product;
@@ -598,6 +606,7 @@ class PosController extends Controller
                     'variant_cost_snapshot' => $variant?->cost_price,
                     'quantity' => $item->qty,
                     'line_total' => ((float) $item->price_snapshot) * $item->qty,
+                    'staff_id' => $staffByCartItemId->get((int) $item->id),
                     'locked' => true,
                 ]);
             }

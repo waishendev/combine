@@ -15,22 +15,25 @@ class StaffController extends Controller
 {
     public function index(Request $request)
     {
-        $perPage = $request->integer('per_page', 15);
+        $perPage = min(50, max(1, $request->integer('per_page', 15)));
         $search = trim((string) $request->input('search', ''));
 
         $staffs = Staff::query()
             ->with(['admin:id,staff_id,username,email'])
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('code', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
+                    $q->where('name', 'ilike', "%{$search}%")
+                        ->orWhere('phone', 'ilike', "%{$search}%")
+                        ->orWhere('email', 'ilike', "%{$search}%")
+                        ->orWhere('code', 'ilike', "%{$search}%");
                 });
             })
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', $request->boolean('is_active'));
+            }, function ($query) {
+                $query->where('is_active', true);
             })
-            ->orderByDesc('id')
+            ->orderBy('name')
             ->paginate($perPage);
 
         return $this->respond($staffs);

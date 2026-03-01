@@ -60,11 +60,6 @@ type CheckoutMeta = {
   change_amount: number
 }
 
-type StaffSplit = {
-  staff_id: number
-  share_percent: number
-}
-
 type PosCurrentUser = {
   id: number
   name: string
@@ -75,7 +70,19 @@ type PosCurrentUser = {
 type StaffOption = {
   id: number
   name: string
+  phone?: string | null
+  email?: string | null
+  code?: string | null
   is_active?: boolean | number | string | null
+}
+
+type CheckoutItemAssignment = {
+  cart_item_id: number
+  staff_id: number | null
+  search: string
+  options: StaffOption[]
+  loading: boolean
+  open: boolean
 }
 
 type Member = {
@@ -227,12 +234,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [selectedVoucherKey, setSelectedVoucherKey] = useState<string>('')
 
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
-  const [staffModalOpen, setStaffModalOpen] = useState(false)
-  const [staffSplits, setStaffSplits] = useState<StaffSplit[]>([])
-  const [draftStaffSplits, setDraftStaffSplits] = useState<StaffSplit[]>([])
-  const [hasManualStaffAssignment, setHasManualStaffAssignment] = useState(false)
-  const [staffAutoBalance, setStaffAutoBalance] = useState(true)
-  const [staffAssignmentError, setStaffAssignmentError] = useState<string | null>(null)
+  const [checkoutConfirmationOpen, setCheckoutConfirmationOpen] = useState(false)
+  const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
   const [cashReceived, setCashReceived] = useState('')
@@ -262,44 +265,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const discount = Math.max(0, cartSubtotal - cartTotal)
   const appliedVoucher = cart?.voucher ?? null
 
-  const defaultStaffSplit = useMemo<StaffSplit[]>(() => {
-    if (!currentUser.staff_id) return []
-    return [{ staff_id: currentUser.staff_id, share_percent: 100 }]
-  }, [currentUser.staff_id])
-
-  const resolvedStaffSplits = useMemo<StaffSplit[]>(() => {
-    if (hasManualStaffAssignment) return staffSplits
-    return defaultStaffSplit
-  }, [defaultStaffSplit, hasManualStaffAssignment, staffSplits])
-
-  const staffNameById = useMemo(() => {
-    const map = new Map<number, string>()
-    if (currentUser.staff_id) {
-      map.set(currentUser.staff_id, currentUser.staff_name?.trim() || currentUser.name)
-    }
-    activeStaffs.forEach((staff) => {
-      map.set(staff.id, staff.name)
+  const selectedStaffByCartItemId = useMemo(() => {
+    const map = new Map<number, number | null>()
+    checkoutItemAssignments.forEach((assignment) => {
+      map.set(assignment.cart_item_id, assignment.staff_id)
     })
     return map
-  }, [activeStaffs, currentUser.name, currentUser.staff_id, currentUser.staff_name])
-
-  const staffSummaryText = useMemo(() => {
-    if (!hasManualStaffAssignment) {
-      if (defaultStaffSplit.length === 1) {
-        const defaultStaff = defaultStaffSplit[0]
-        const defaultStaffName = staffNameById.get(defaultStaff.staff_id) || 'Current staff'
-        return `Default: ${defaultStaffName} (${defaultStaff.share_percent}%)`
-      }
-      return 'No staff assigned'
-    }
-
-    if (!staffSplits.length) return 'Assigned: No staff assigned'
-    const parts = staffSplits.map((split) => {
-      const staffName = staffNameById.get(split.staff_id) || `Staff #${split.staff_id}`
-      return `${staffName} ${split.share_percent}%`
-    })
-    return `Assigned: ${parts.join(', ')}`
-  }, [defaultStaffSplit, hasManualStaffAssignment, staffNameById, staffSplits])
+  }, [checkoutItemAssignments])
 
   type ToastKind = 'success' | 'error' | 'info' | 'warning'
   type ToastItem = { id: string; kind: ToastKind; text: string }
@@ -374,98 +346,42 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
 
-  const isValidStaffSplitRow = (split: StaffSplit) => Number.isFinite(split.staff_id) && split.staff_id > 0 && Number.isInteger(split.share_percent) && split.share_percent >= 0 && split.share_percent <= 100
-
-  const validateStaffSplits = (splits: StaffSplit[]) => {
-    if (splits.length === 0) return { valid: false, error: 'Please add at least one staff row.' }
-
-    const staffIds = new Set<number>()
-    for (const split of splits) {
-      if (!isValidStaffSplitRow(split)) {
-        return { valid: false, error: 'Each staff row must have a staff and a share between 0% and 100%.' }
-      }
-      if (staffIds.has(split.staff_id)) {
-        return { valid: false, error: 'Duplicate staff is not allowed.' }
-      }
-      staffIds.add(split.staff_id)
-    }
-
-    const total = splits.reduce((sum, split) => sum + split.share_percent, 0)
-    if (total !== 100) {
-      return { valid: false, error: 'Total share must be exactly 100%.' }
-    }
-
-    return { valid: true, error: null as string | null }
-  }
+  const mapStaffOptions = useCallback((json: unknown): StaffOption[] => {
+    const maybe = json as { data?: { data?: StaffOption[] } | StaffOption[] } | null
+    const payload = Array.isArray(maybe?.data && (maybe.data as { data?: StaffOption[] }).data)
+      ? (maybe?.data as { data?: StaffOption[] }).data ?? []
+      : Array.isArray(maybe?.data)
+        ? maybe.data
+        : []
+    return payload
+      .map((staff: StaffOption) => ({
+        id: Number(staff.id),
+        name: String(staff.name ?? '').trim(),
+        phone: staff.phone ?? null,
+        email: staff.email ?? null,
+        code: staff.code ?? null,
+        is_active: staff.is_active,
+      }))
+      .filter((staff) => staff.id > 0 && staff.name)
+  }, [])
 
   const fetchActiveStaffs = useCallback(async () => {
-    const params = new URLSearchParams({ page: '1', per_page: '200', is_active: '1' })
+    const params = new URLSearchParams({ page: '1', per_page: '50', is_active: '1' })
     const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
     if (!res.ok) return
 
     const json = await res.json().catch(() => null)
-    const payload = Array.isArray(json?.data?.data) ? json.data.data : []
-    const next: StaffOption[] = payload
-      .map((staff: StaffOption) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim(), is_active: staff.is_active }))
-      .filter((staff) => staff.id > 0 && staff.name)
-    setActiveStaffs(next)
-  }, [])
+    setActiveStaffs(mapStaffOptions(json))
+  }, [mapStaffOptions])
 
-  const openStaffModal = async () => {
-    setStaffAssignmentError(null)
-    setStaffAutoBalance(true)
-
-    if (!activeStaffs.length) {
-      await fetchActiveStaffs()
-    }
-
-    if (hasManualStaffAssignment && staffSplits.length > 0) {
-      setDraftStaffSplits(staffSplits)
-    } else if (defaultStaffSplit.length > 0) {
-      setDraftStaffSplits(defaultStaffSplit)
-    } else {
-      setDraftStaffSplits([{ staff_id: 0, share_percent: 100 }])
-    }
-
-    setStaffModalOpen(true)
-  }
-
-  const applyAutoBalance = (splits: StaffSplit[], index: number, nextValue: number) => {
-    const current = splits[index]
-    if (!current) {
-      return { nextSplits: splits, error: 'Invalid staff row.' }
-    }
-
-    const clampedValue = Math.max(0, Math.min(100, Math.round(nextValue)))
-    const delta = clampedValue - current.share_percent
-
-    const nextSplits = splits.map((split, idx) => (idx === index ? { ...split, share_percent: clampedValue } : { ...split }))
-
-    if (delta === 0) return { nextSplits, error: null as string | null }
-
-    const otherIndexes = nextSplits
-      .map((split, idx) => ({ idx, share: split.share_percent }))
-      .filter((item) => item.idx !== index)
-
-    if (otherIndexes.length === 0) {
-      if (clampedValue === 100) return { nextSplits, error: null as string | null }
-      return { nextSplits: splits, error: 'Auto Balance needs at least two staff rows unless share is 100%.' }
-    }
-
-    if (delta > 0) {
-      const highest = otherIndexes.reduce((best, currentItem) => (currentItem.share > best.share ? currentItem : best), otherIndexes[0])
-      if (highest.share < delta) {
-        return { nextSplits: splits, error: 'Cannot auto-balance because another row would go below 0%.' }
-      }
-      nextSplits[highest.idx] = { ...nextSplits[highest.idx], share_percent: highest.share - delta }
-      return { nextSplits, error: null as string | null }
-    }
-
-    const increaseAmount = Math.abs(delta)
-    const highest = otherIndexes.reduce((best, currentItem) => (currentItem.share > best.share ? currentItem : best), otherIndexes[0])
-    nextSplits[highest.idx] = { ...nextSplits[highest.idx], share_percent: highest.share + increaseAmount }
-    return { nextSplits, error: null as string | null }
-  }
+  const fetchStaffOptions = useCallback(async (search: string) => {
+    const params = new URLSearchParams({ page: '1', per_page: '20', is_active: '1' })
+    if (search.trim()) params.set('search', search.trim())
+    const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
+    if (!res.ok) return [] as StaffOption[]
+    const json = await res.json().catch(() => null)
+    return mapStaffOptions(json)
+  }, [mapStaffOptions])
 
   const fetchVouchers = useCallback(async (memberId?: number | null) => {
     setVoucherLoading(true)
@@ -1107,7 +1023,18 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     const res = await fetch('/api/proxy/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_method: paymentMethod, member_id: selectedMember?.id ?? null, staff_splits: resolvedStaffSplits }),
+      body: JSON.stringify({
+        payment_method: paymentMethod,
+        member_id: selectedMember?.id ?? null,
+        items: cart.items.map((item) => ({
+          cart_item_id: item.id,
+          product_id: item.product_id,
+          qty: item.qty,
+          unit_price: item.unit_price,
+          line_total: item.line_total,
+          staff_id: selectedStaffByCartItemId.get(item.id) ?? null,
+        })),
+      }),
     })
     const json = await res.json()
 
@@ -1131,8 +1058,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCart({ id: cart.id, items: [], subtotal: 0, grand_total: 0 })
     setCashReceived('')
     setCheckoutMeta(null)
-    setHasManualStaffAssignment(false)
-    setStaffSplits([])
+    setCheckoutItemAssignments([])
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
@@ -1143,7 +1069,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     focusScanner()
   }
 
-  const checkout = async () => {
+  const confirmCheckout = async () => {
     if (!cart || cart.items.length === 0 || checkingOut) return
 
     if (paymentMethod === 'qrpay') {
@@ -1176,6 +1102,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
     setCheckoutMeta({ paid_amount: effectiveCashReceived, change_amount: effectiveChange })
     setConfirmCashOpen(true)
+  }
+
+  const checkout = async () => {
+    if (!cart || cart.items.length === 0 || checkingOut) return
+    await openCheckoutConfirmation()
   }
 
   const toggleMemberDropdown = async () => {
@@ -1256,59 +1187,61 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setQrProofFileName(null)
   }
 
-  const draftStaffTotal = useMemo(
-    () => draftStaffSplits.reduce((sum, split) => sum + (Number.isFinite(split.share_percent) ? split.share_percent : 0), 0),
-    [draftStaffSplits],
-  )
+  const getStaffLabel = (staff: StaffOption) => staff.phone ? `${staff.name} • ${staff.phone}` : staff.name
 
-  const draftStaffValidation = useMemo(() => validateStaffSplits(draftStaffSplits), [draftStaffSplits])
+  const syncCheckoutAssignments = useCallback(async () => {
+    if (!cart?.items?.length) {
+      setCheckoutItemAssignments([])
+      return
+    }
 
-  const onAddStaffRow = () => {
-    setDraftStaffSplits((prev) => [...prev, { staff_id: 0, share_percent: 0 }])
-    setStaffAssignmentError(null)
-  }
+    let baseStaffs = activeStaffs
+    if (!baseStaffs.length) {
+      const fetched = await fetchStaffOptions('')
+      baseStaffs = fetched
+      setActiveStaffs(fetched)
+    }
 
-  const onRemoveStaffRow = (index: number) => {
-    setDraftStaffSplits((prev) => prev.filter((_, idx) => idx !== index))
-    setStaffAssignmentError(null)
-  }
-
-  const onChangeStaffId = (index: number, nextStaffId: number) => {
-    setDraftStaffSplits((prev) => prev.map((split, idx) => (idx === index ? { ...split, staff_id: nextStaffId } : split)))
-    setStaffAssignmentError(null)
-  }
-
-  const onChangeStaffShare = (index: number, rawValue: number) => {
-    const numericValue = Number.isFinite(rawValue) ? rawValue : 0
-
-    if (staffAutoBalance) {
-      const { nextSplits, error } = applyAutoBalance(draftStaffSplits, index, numericValue)
-      if (error) {
-        setStaffAssignmentError(error)
-        return
+    setCheckoutItemAssignments((prev) => cart.items.map((item) => {
+      const existing = prev.find((x) => x.cart_item_id === item.id)
+      if (existing) return existing
+      const defaultStaff = currentUser.staff_id ? baseStaffs.find((x) => x.id === currentUser.staff_id) : null
+      return {
+        cart_item_id: item.id,
+        staff_id: currentUser.staff_id ?? null,
+        search: defaultStaff ? getStaffLabel(defaultStaff) : '',
+        options: baseStaffs,
+        loading: false,
+        open: false,
       }
-      setDraftStaffSplits(nextSplits)
-      setStaffAssignmentError(null)
-      return
-    }
+    }))
+  }, [activeStaffs, cart?.items, currentUser.staff_id, fetchStaffOptions])
 
-    const clamped = Math.max(0, Math.min(100, Math.round(numericValue)))
-    setDraftStaffSplits((prev) => prev.map((split, idx) => (idx === index ? { ...split, share_percent: clamped } : split)))
-    setStaffAssignmentError(null)
+  const onCheckoutStaffSearch = async (cartItemId: number, value: string) => {
+    setCheckoutItemAssignments((prev) => prev.map((assignment) =>
+      assignment.cart_item_id === cartItemId ? { ...assignment, search: value, loading: true, open: true } : assignment,
+    ))
+    const options = await fetchStaffOptions(value)
+    setCheckoutItemAssignments((prev) => prev.map((assignment) =>
+      assignment.cart_item_id === cartItemId ? { ...assignment, options, loading: false, open: true } : assignment,
+    ))
   }
 
-  const saveStaffAssignment = () => {
-    const validation = validateStaffSplits(draftStaffSplits)
-    if (!validation.valid) {
-      setStaffAssignmentError(validation.error)
-      return
-    }
+  const selectCheckoutStaff = (cartItemId: number, staff: StaffOption | null) => {
+    setCheckoutItemAssignments((prev) => prev.map((assignment) => {
+      if (assignment.cart_item_id !== cartItemId) return assignment
+      return {
+        ...assignment,
+        staff_id: staff?.id ?? null,
+        search: staff ? getStaffLabel(staff) : '',
+        open: false,
+      }
+    }))
+  }
 
-    setStaffSplits(draftStaffSplits)
-    setHasManualStaffAssignment(true)
-    setStaffAssignmentError(null)
-    setStaffModalOpen(false)
-    showMsg('Staff assignment updated.', 'success')
+  const openCheckoutConfirmation = async () => {
+    await syncCheckoutAssignments()
+    setCheckoutConfirmationOpen(true)
   }
 
   return (
@@ -1622,21 +1555,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             )}
 
             <div className="mt-5 rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-800">Staff Assignment (Optional)</p>
-                  <button
-                    type="button"
-                    onClick={() => void openStaffModal()}
-                    disabled={!cart?.items.length}
-                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Assign Staff
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-gray-600">{staffSummaryText}</p>
-              </div>
-
               <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-gray-800">Voucher</p>
@@ -2026,107 +1944,118 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         </div>
       )}
 
-      {staffModalOpen && (
+      {checkoutConfirmationOpen && cart?.items?.length ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+          <div className="w-full max-w-5xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-              <h4 className="text-xl font-bold text-gray-900">Assign Staff</h4>
+              <h4 className="text-xl font-bold text-gray-900">Checkout confirmation</h4>
               <button
                 type="button"
-                onClick={() => setStaffModalOpen(false)}
+                onClick={() => setCheckoutConfirmationOpen(false)}
                 className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
               >
                 <span className="text-2xl leading-none">×</span>
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
-              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={staffAutoBalance}
-                  onChange={(event) => setStaffAutoBalance(event.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                />
-                Auto Balance
-              </label>
-
-              <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
-                {draftStaffSplits.map((split, index) => (
-                  <div key={`${index}-${split.staff_id}`} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[1.4fr_0.8fr_auto] sm:items-end">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Staff</label>
-                      <select
-                        value={split.staff_id > 0 ? String(split.staff_id) : ''}
-                        onChange={(event) => onChangeStaffId(index, Number(event.target.value || 0))}
-                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
-                      >
-                        <option value="">Select staff</option>
-                        {activeStaffs.map((staff) => (
-                          <option key={staff.id} value={String(staff.id)}>{staff.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Share %</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={split.share_percent}
-                        onChange={(event) => onChangeStaffShare(index, Number(event.target.value || 0))}
-                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveStaffRow(index)}
-                      className="h-10 rounded-lg border border-red-300 bg-white px-3 text-xs font-semibold text-red-700 transition hover:bg-red-50"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+            <div className="p-5">
+              <div className="max-h-[55vh] overflow-auto rounded-lg border border-gray-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit Price</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Discount</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Total Price</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Staff</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.items.map((item) => {
+                      const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === item.id)
+                      return (
+                        <tr key={item.id} className="border-t border-gray-100 align-top">
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-gray-900">{item.product_name}</p>
+                            <p className="text-xs text-gray-500">Qty: {item.qty}</p>
+                          </td>
+                          <td className="px-3 py-2">RM {Number(item.unit_price).toFixed(2)}</td>
+                          <td className="px-3 py-2">-</td>
+                          <td className="px-3 py-2 font-semibold">RM {Number(item.line_total).toFixed(2)}</td>
+                          <td className="px-3 py-2 min-w-[280px]">
+                            <div className="relative">
+                              <input
+                                value={assignment?.search ?? ''}
+                                onFocus={() => setCheckoutItemAssignments((prev) => prev.map((row) => row.cart_item_id === item.id ? { ...row, open: true } : row))}
+                                onChange={(event) => void onCheckoutStaffSearch(item.id, event.target.value)}
+                                className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                                placeholder="Search staff by name / phone / email"
+                              />
+                              {!!assignment?.staff_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => selectCheckoutStaff(item.id, null)}
+                                  className="absolute right-2 top-2 text-xs text-red-600"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                              {assignment?.open && (
+                                <div className="absolute z-10 mt-1 max-h-44 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                                  {assignment.loading ? (
+                                    <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>
+                                  ) : assignment.options.length ? assignment.options.map((staff) => (
+                                    <button
+                                      key={staff.id}
+                                      type="button"
+                                      onClick={() => selectCheckoutStaff(item.id, staff)}
+                                      className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50"
+                                    >
+                                      <p className="font-medium text-gray-800">{getStaffLabel(staff)}</p>
+                                      <p className="text-gray-500">{staff.email || staff.code || '-'}</p>
+                                    </button>
+                                  )) : (
+                                    <p className="px-3 py-2 text-xs text-gray-500">No staff found.</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
 
-              <button
-                type="button"
-                onClick={onAddStaffRow}
-                className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
-              >
-                + Add Staff
-              </button>
-
-              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                <p className="text-sm text-gray-700">Total %</p>
-                <p className={`text-sm font-bold ${draftStaffTotal === 100 ? 'text-green-700' : 'text-amber-700'}`}>{draftStaffTotal}%</p>
+              <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="text-sm font-medium text-gray-700">Net amount</p>
+                <p className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
               </div>
 
-              {(staffAssignmentError || (!staffAutoBalance && draftStaffTotal !== 100)) && (
-                <p className="text-xs font-medium text-red-600">{staffAssignmentError ?? 'Total share must be exactly 100% when Auto Balance is off.'}</p>
-              )}
-
-              <div className="flex gap-3 pt-1">
+              <div className="mt-4 flex gap-3 pt-1">
                 <button
                   type="button"
                   className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
-                  onClick={() => setStaffModalOpen(false)}
+                  onClick={() => setCheckoutConfirmationOpen(false)}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={saveStaffAssignment}
-                  disabled={!draftStaffValidation.valid}
-                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400"
+                  onClick={() => {
+                    setCheckoutConfirmationOpen(false)
+                    void confirmCheckout()
+                  }}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800"
                 >
-                  Save
+                  Confirm checkout
                 </button>
               </div>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {memberOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
