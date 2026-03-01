@@ -212,6 +212,8 @@ function extractPaged<T>(json: unknown): PageResponse<T> {
 
 export default function PosPageContent({ currentUser }: { currentUser: PosCurrentUser }) {
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
+  const scannerBufferRef = useRef('')
+  const scannerBufferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
@@ -921,6 +923,51 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     await addByBarcode(value)
     focusScanner()
   }
+
+  useEffect(() => {
+    const flushScannerBuffer = () => {
+      if (scannerBufferTimerRef.current) {
+        window.clearTimeout(scannerBufferTimerRef.current)
+      }
+      scannerBufferTimerRef.current = null
+      scannerBufferRef.current = ''
+    }
+
+    const handleGlobalScanner = (event: KeyboardEvent) => {
+      const activeElement = document.activeElement
+      if (activeElement === scannerInputRef.current) return
+      if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return
+
+      if (event.key === 'Enter') {
+        const bufferedCode = scannerBufferRef.current.trim()
+        flushScannerBuffer()
+        if (!bufferedCode) return
+
+        void addByBarcode(bufferedCode)
+        return
+      }
+
+      if (event.key.length !== 1) return
+
+      scannerBufferRef.current += event.key
+
+      if (scannerBufferTimerRef.current) {
+        window.clearTimeout(scannerBufferTimerRef.current)
+      }
+
+      scannerBufferTimerRef.current = window.setTimeout(() => {
+        scannerBufferRef.current = ''
+        scannerBufferTimerRef.current = null
+      }, 150)
+    }
+
+    window.addEventListener('keydown', handleGlobalScanner)
+
+    return () => {
+      window.removeEventListener('keydown', handleGlobalScanner)
+      flushScannerBuffer()
+    }
+  }, [])
 
   const onSelectProduct = (item: ProductOption) => {
     setFullProductData(null)
