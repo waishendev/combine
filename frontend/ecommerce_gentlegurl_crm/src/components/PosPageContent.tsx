@@ -265,6 +265,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [cartVariantLoading, setCartVariantLoading] = useState<Record<number, boolean>>({})
   const [cartVariantFetched, setCartVariantFetched] = useState<Record<number, boolean>>({})
   const [checkoutResult, setCheckoutResult] = useState<null | {
+    order_id: number
     order_number: string
     receipt_public_url: string | null
     total: number
@@ -274,12 +275,65 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [qrCodeFullscreen, setQrCodeFullscreen] = useState(false)
+  const [receiptEmail, setReceiptEmail] = useState('')
+  const [receiptEmailError, setReceiptEmailError] = useState<string | null>(null)
+  const [sendingReceiptEmail, setSendingReceiptEmail] = useState(false)
+  const [receiptCooldownUntil, setReceiptCooldownUntil] = useState<number>(0)
+  const [receiptQrLoaded, setReceiptQrLoaded] = useState(false)
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
   const discount = Math.max(0, cartSubtotal - cartTotal)
   const appliedVoucher = cart?.voucher ?? null
+
+  const receiptQrImageUrl = useMemo(() => {
+    if (!checkoutResult?.receipt_public_url) return null
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`
+  }, [checkoutResult?.receipt_public_url])
+
+  const receiptQrFullscreenImageUrl = useMemo(() => {
+    if (!checkoutResult?.receipt_public_url) return null
+    return `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`
+  }, [checkoutResult?.receipt_public_url])
+
+  const receiptCooldownActive = receiptCooldownUntil > Date.now()
+
+
+
+  useEffect(() => {
+    if (!receiptQrImageUrl && !receiptQrFullscreenImageUrl) {
+      setReceiptQrLoaded(false)
+      return
+    }
+
+    setReceiptQrLoaded(false)
+    const smallImage = new Image()
+    smallImage.src = receiptQrImageUrl ?? ''
+    smallImage.onload = () => setReceiptQrLoaded(true)
+    smallImage.onerror = () => setReceiptQrLoaded(true)
+
+    if (receiptQrFullscreenImageUrl) {
+      const fullImage = new Image()
+      fullImage.src = receiptQrFullscreenImageUrl
+    }
+  }, [receiptQrImageUrl, receiptQrFullscreenImageUrl])
+
+
+
+  useEffect(() => {
+    if (!receiptCooldownUntil) return
+
+    const remaining = receiptCooldownUntil - Date.now()
+    if (remaining <= 0) {
+      setReceiptCooldownUntil(0)
+      return
+    }
+
+    const timer = window.setTimeout(() => setReceiptCooldownUntil(0), remaining)
+
+    return () => window.clearTimeout(timer)
+  }, [receiptCooldownUntil])
 
   const selectedStaffSplitsByCartItemId = useMemo(() => {
     const map = new Map<number, CheckoutItemStaffSplit[]>()
@@ -1059,6 +1113,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
 
     setCheckoutResult({
+      order_id: Number(json.data.order.id),
       order_number: json.data.order.order_number,
       receipt_public_url: json.data.receipt_public_url,
       total: Number(json.data.order.grand_total ?? 0),
@@ -1066,6 +1121,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       paid_amount: meta.paid_amount,
       change_amount: meta.change_amount,
     })
+    setReceiptEmail(selectedMember?.email?.trim() ?? '')
+    setReceiptEmailError(null)
+    setReceiptCooldownUntil(0)
     setSelectedMember(null)
     setMemberQuery('')
     setMembers([])
@@ -1081,6 +1139,46 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCheckingOut(false)
     // Don't show toast, will show success modal instead
     focusScanner()
+  }
+
+
+  const sendReceiptToEmail = async () => {
+    if (!checkoutResult) return
+
+    const normalizedEmail = receiptEmail.trim()
+    if (!normalizedEmail) {
+      setReceiptEmailError('Email is required.')
+      return
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setReceiptEmailError('Please enter a valid email.')
+      return
+    }
+
+    setSendingReceiptEmail(true)
+    setReceiptEmailError(null)
+
+    try {
+      const res = await fetch(`/api/proxy/orders/${checkoutResult.order_id}/send-receipt-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
+      })
+      const json = await res.json()
+
+      if (!res.ok) {
+        setReceiptEmailError(json?.message ?? 'Unable to send receipt email.')
+        return
+      }
+
+      setReceiptCooldownUntil(Date.now() + 10_000)
+      showMsg('Receipt sent', 'success')
+    } catch {
+      setReceiptEmailError('Unable to send receipt email.')
+    } finally {
+      setSendingReceiptEmail(false)
+    }
   }
 
   const confirmCheckout = async () => {
@@ -1147,6 +1245,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const onClearMember = async () => {
+    setReceiptEmail(selectedMember?.email?.trim() ?? '')
+    setReceiptEmailError(null)
+    setReceiptCooldownUntil(0)
     setSelectedMember(null)
     setVoucherModalOpen(false)
     setSelectedVoucherKey('')
@@ -2417,6 +2518,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 onClick={() => {
                   setCheckoutResult(null)
                   setQrCodeFullscreen(false)
+                  setReceiptEmail('')
+                  setReceiptEmailError(null)
+                  setSendingReceiptEmail(false)
+                  setReceiptCooldownUntil(0)
                   focusScanner()
                 }}
                 className="rounded-lg p-1.5 text-white/90 transition-all hover:bg-white/20 hover:text-white"
@@ -2439,19 +2544,48 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <div className="text-center">
                     <p className="text-sm font-semibold text-gray-700 mb-3">Scan QR Code to View Receipt</p>
                     <div 
-                      className="flex justify-center p-4 bg-white rounded-xl border-2 border-gray-200 cursor-pointer hover:border-blue-400 hover:shadow-lg transition-all"
+                      className="relative flex justify-center p-4 bg-white rounded-xl border-2 border-gray-200 cursor-pointer hover:border-blue-400 hover:shadow-lg transition-all"
                       onClick={() => setQrCodeFullscreen(true)}
                       title="Click to enlarge QR code"
                     >
+                      {!receiptQrLoaded && <div className="h-48 w-48 animate-pulse rounded-lg bg-gray-100" />}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`}
+                        src={receiptQrImageUrl ?? ''}
+                        onLoad={() => setReceiptQrLoaded(true)}
+                        onError={() => setReceiptQrLoaded(true)}
                         alt="Receipt QR Code"
-                        className="w-48 h-48"
+                        className={`h-48 w-48 ${receiptQrLoaded ? 'block' : 'hidden'}`}
                       />
                     </div>
                     <p className="text-xs text-gray-500 mt-2">Tap QR code to enlarge for customer scanning</p>
                   </div>
+
+                  <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-gray-700">Send receipt to email</p>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="email"
+                        value={receiptEmail}
+                        onChange={(event) => {
+                          setReceiptEmail(event.target.value)
+                          if (receiptEmailError) setReceiptEmailError(null)
+                        }}
+                        placeholder="customer@email.com"
+                        className="h-10 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void sendReceiptToEmail()}
+                        disabled={sendingReceiptEmail || receiptCooldownActive}
+                        className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {sendingReceiptEmail ? 'Sending...' : receiptCooldownActive ? 'Send (wait...)' : 'Send'}
+                      </button>
+                    </div>
+                    {receiptEmailError && <p className="text-xs font-medium text-red-600">{receiptEmailError}</p>}
+                  </div>
+
                   <div className="flex gap-2">
                     <button
                       onClick={() => window.open(checkoutResult.receipt_public_url!, '_blank')}
@@ -2499,7 +2633,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             <div className="bg-white p-8 rounded-2xl shadow-2xl">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img 
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(checkoutResult.receipt_public_url)}`}
+                src={receiptQrFullscreenImageUrl ?? ''}
                 alt="Receipt QR Code - Fullscreen"
                 className="w-80 h-80"
               />

@@ -356,6 +356,9 @@ $protectedRoutes = function () {
         Route::post('/checkout', [PosController::class, 'checkout']);
     });
 
+    Route::post('/orders/{orderId}/send-receipt-email', [PosController::class, 'sendReceiptEmail'])
+        ->middleware(['permission:pos.checkout', 'throttle:6,1']);
+
     // Ecommerce Admin APIs
     Route::prefix('ecommerce')->group(function () {
         // Categories
