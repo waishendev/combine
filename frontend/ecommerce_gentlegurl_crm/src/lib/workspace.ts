@@ -59,7 +59,7 @@ export function setWorkspace(ws: Workspace): void {
 
 export function getWorkspaceLanding(ws: Workspace): string {
   if (ws === 'booking') {
-    return '/booking/reports'
+    return '/booking/appointments'
   }
 
   return '/dashboard'
