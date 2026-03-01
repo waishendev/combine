@@ -215,6 +215,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
+  const lastScanFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastScanClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [cart, setCart] = useState<Cart | null>(null)
 
@@ -280,6 +282,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [sendingReceiptEmail, setSendingReceiptEmail] = useState(false)
   const [receiptCooldownUntil, setReceiptCooldownUntil] = useState<number>(0)
   const [receiptQrLoaded, setReceiptQrLoaded] = useState(false)
+  const [lastScan, setLastScan] = useState('')
+  const [lastScanFading, setLastScanFading] = useState(false)
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -376,6 +380,41 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const showMsg = (text: string, kind: ToastKind = 'info') => pushToast(kind, text)
+
+  const clearLastScanTimers = useCallback(() => {
+    if (lastScanFadeTimerRef.current) {
+      window.clearTimeout(lastScanFadeTimerRef.current)
+      lastScanFadeTimerRef.current = null
+    }
+
+    if (lastScanClearTimerRef.current) {
+      window.clearTimeout(lastScanClearTimerRef.current)
+      lastScanClearTimerRef.current = null
+    }
+  }, [])
+
+  const showLastScanFeedback = useCallback((code: string) => {
+    clearLastScanTimers()
+    setLastScan(code)
+    setLastScanFading(false)
+
+    lastScanFadeTimerRef.current = window.setTimeout(() => {
+      setLastScanFading(true)
+    }, 1700)
+
+    lastScanClearTimerRef.current = window.setTimeout(() => {
+      setLastScan('')
+      setLastScanFading(false)
+      lastScanFadeTimerRef.current = null
+      lastScanClearTimerRef.current = null
+    }, 2000)
+  }, [clearLastScanTimers])
+
+  useEffect(() => {
+    return () => {
+      clearLastScanTimers()
+    }
+  }, [clearLastScanTimers])
 
   const formatVoucherLabel = (item: PosVoucherOption) => {
     const voucher = item.voucher
@@ -587,6 +626,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
     if (res.ok) {
       setCart(json.data.cart)
+      showLastScanFeedback(trimmed)
       showMsg('Added to cart.', 'success')
       return true
     }
@@ -1484,12 +1524,20 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         <div className="space-y-5 xl:col-span-3 xl:min-h-0">
           {/* Barcode Scanner Input - moved into left column above Products for better POS flow */}
           <div className="flex min-h-[200px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[180px]">
-            <label className="mb-3 block text-sm font-bold text-gray-900 flex items-center gap-2">
-              <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-              Barcode Scanner
-            </label>
+            <div className="mb-3 flex items-center gap-3 text-sm font-bold text-gray-900">
+              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Listening
+              </span>
+              <span className="inline-flex min-w-[240px] items-center text-xs font-medium text-gray-600">
+                <span
+                  className={`inline-block truncate transition-opacity duration-300 ${lastScan ? 'opacity-100' : 'opacity-0'} ${lastScanFading ? 'opacity-0' : ''}`}
+                  aria-live="polite"
+                >
+                  {lastScan ? `Last scan: ${lastScan}` : 'Last scan:'}
+                </span>
+              </span>
+            </div>
             <input
               ref={scannerInputRef}
               type="text"
