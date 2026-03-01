@@ -16,14 +16,14 @@ class StaffRbacSeeder extends Seeder
 
         if (! $staffRole) {
             $staffRole = Role::create([
-                'name' => 'STAFF',
+                'name' => 'Staff',
                 'description' => 'Staff role for POS and limited CRM access',
                 'is_active' => true,
                 'is_system' => false,
                 'is_default' => true,
             ]);
         } else {
-            $staffRole->name = 'STAFF';
+            $staffRole->name = 'Staff';
             $staffRole->description = $staffRole->description ?: 'Staff role for POS and limited CRM access';
             $staffRole->is_active = true;
             $staffRole->is_system = false;

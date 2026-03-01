@@ -133,7 +133,7 @@ class RbacSeeder extends Seeder
 
 
         $staffRole = Role::firstOrCreate(
-            ['name' => 'STAFF'],
+            ['name' => 'Staff'],
             [
                 'description' => 'POS staff role',
                 'is_active' => true,
@@ -143,8 +143,8 @@ class RbacSeeder extends Seeder
         );
 
 
-        if (! $staffRole->is_default || $staffRole->is_system || $staffRole->name !== 'STAFF') {
-            $staffRole->name = 'STAFF';
+        if (! $staffRole->is_default || $staffRole->is_system || $staffRole->name !== 'Staff') {
+            $staffRole->name = 'Staff';
             $staffRole->is_system = false;
             $staffRole->is_default = true;
             $staffRole->save();

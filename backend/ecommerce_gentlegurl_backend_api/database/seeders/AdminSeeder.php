@@ -19,14 +19,14 @@ class AdminSeeder extends Seeder
 
         if (! $adminRole) {
             $adminRole = Role::create([
-                'name' => 'ADMIN',
+                'name' => 'Admin',
                 'description' => 'Administrator with limited access',
                 'is_active' => true,
                 'is_system' => false,
                 'is_default' => true,
             ]);
         } else {
-            $adminRole->name = 'ADMIN';
+            $adminRole->name = 'Admin';
             $adminRole->description = $adminRole->description ?: 'Administrator with limited access';
             $adminRole->is_active = true;
             $adminRole->is_system = false;
