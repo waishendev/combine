@@ -6751,5 +6751,413 @@
         }
       ]
     }
+    ,
+    {
+      "name": "Booking",
+      "item": [
+        {
+          "name": "Public Booking",
+          "item": [
+            {
+              "name": "Get Availability",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/booking/availability?service_id={{booking_service_id}}&staff_id={{booking_staff_id}}&date={{booking_date}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "availability"
+                  ],
+                  "query": [
+                    {"key": "service_id", "value": "{{booking_service_id}}"},
+                    {"key": "staff_id", "value": "{{booking_staff_id}}"},
+                    {"key": "date", "value": "{{booking_date}}"}
+                  ]
+                },
+                "description": "Check available slots by service + staff + date."
+              },
+              "response": []
+            },
+            {
+              "name": "Create HOLD",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/booking/hold",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "hold"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_id\": {{booking_service_id}},\n  \"staff_id\": {{booking_staff_id}},\n  \"start_at\": \"{{booking_start_at}}\",\n  \"guest_name\": \"Booking Guest\",\n  \"guest_phone\": \"0123456789\",\n  \"guest_email\": \"guest@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Create a HOLD booking. For logged-in customer flow, guest fields are optional."
+              },
+              "response": []
+            },
+            {
+              "name": "Pay Booking Deposit",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/booking/{{booking_id}}/pay",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "{{booking_id}}",
+                    "pay"
+                  ]
+                },
+                "description": "Create booking payment record and return payment URL."
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Payment Callback (Manual Test)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/booking/payment/callback",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "payment",
+                    "callback"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"booking_id\": {{booking_id}},\n  \"status\": \"PAID\",\n  \"ref\": \"FPX-TEST-001\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Manual callback simulation to mark payment as PAID/FAILED."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Admin Booking",
+          "item": [
+            {
+              "name": "List Appointments",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/appointments?date={{booking_date}}&staff_id={{booking_staff_id}}&status=CONFIRMED",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "appointments"
+                  ],
+                  "query": [
+                    {"key": "date", "value": "{{booking_date}}"},
+                    {"key": "staff_id", "value": "{{booking_staff_id}}"},
+                    {"key": "status", "value": "CONFIRMED"}
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Appointment Detail",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/appointments/{{booking_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "appointments",
+                    "{{booking_id}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Appointment Status",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/appointments/{{booking_id}}/status",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "appointments",
+                    "{{booking_id}}",
+                    "status"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"COMPLETED\",\n  \"notes\": \"Done\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Upload Appointment Photo",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/appointments/{{booking_id}}/photos",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "appointments",
+                    "{{booking_id}}",
+                    "photos"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"https://example.com/result.jpg\",\n  \"uploaded_by_staff_id\": {{booking_staff_id}}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Booking Service",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/services",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "services"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Facial Basic\",\n  \"description\": \"60 min facial\",\n  \"duration_min\": 60,\n  \"deposit_amount\": 20,\n  \"buffer_min\": 15,\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Booking Services",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/services",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "services"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Staff Schedule",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/staff-schedules",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "staff-schedules"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"staff_id\": {{booking_staff_id}},\n  \"day_of_week\": 1,\n  \"start_time\": \"10:00\",\n  \"end_time\": \"18:00\",\n  \"break_start\": \"13:00\",\n  \"break_end\": \"14:00\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Booking Block",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/blocks",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "blocks"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scope\": \"STAFF\",\n  \"staff_id\": {{booking_staff_id}},\n  \"start_at\": \"{{booking_block_start_at}}\",\n  \"end_at\": \"{{booking_block_end_at}}\",\n  \"reason\": \"Meeting\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Booking Blocks",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/blocks",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "blocks"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
   ]
 }
