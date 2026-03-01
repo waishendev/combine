@@ -73,6 +73,7 @@ export default function AdminTable({
   const canCreate = permissions.includes('users.create')
   const canUpdate = permissions.includes('users.update')
   const canDelete = permissions.includes('users.delete')
+  const canManageSystemAdmins = permissions.includes('admins.manage-system')
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -149,6 +150,8 @@ export default function AdminTable({
           rolesArray.map((role: AdminApiRole) => ({
             id: role.id ?? null,
             name: role.name ?? null,
+            isSystem: role.is_system === true || role.is_system === 1 || role.is_system === '1' || role.is_system === 'true',
+            isDefault: !(role.is_default === false || role.is_default === 0 || role.is_default === '0' || role.is_default === 'false'),
           })),
         )
       }
@@ -631,6 +634,7 @@ export default function AdminTable({
           }}
           roles={roles}
           rolesLoading={rolesLoading && !hasFetchedRoles}
+          canManageSystemRoles={canManageSystemAdmins}
         />
       )}
 

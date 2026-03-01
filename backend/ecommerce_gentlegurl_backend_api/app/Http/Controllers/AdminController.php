@@ -15,8 +15,10 @@ class AdminController extends Controller
         $search = $request->string('search')->toString();
 
         $admins = User::with(['roles', 'staff'])
-            ->whereDoesntHave('roles', function ($query) {
-                $query->where('is_system', true);
+            ->when(! $request->user()?->canManageSystemAdmins(), function ($query) {
+                $query->whereDoesntHave('roles', function ($roleQuery) {
+                    $roleQuery->where('is_system', true);
+                });
             })
             ->when($search, function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
@@ -56,26 +58,22 @@ class AdminController extends Controller
             'staff_id' => $validated['staff_id'] ?? null,
         ]);
 
-        $roleIds = $this->filterSystemRoleIds($validated['role_ids'] ?? []);
+        $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user());
         $user->roles()->sync($roleIds);
 
         return $this->respond($user->load(['roles', 'staff']), __('Admin created successfully.'));
     }
 
-    public function show(User $admin)
+    public function show(Request $request, User $admin)
     {
-        if ($this->isSystemAdmin($admin)) {
-            abort(404);
-        }
+        $this->ensureSystemAdminAllowed($request->user(), $admin);
 
         return $this->respond($admin->load(['roles', 'staff']));
     }
 
     public function update(Request $request, User $admin)
     {
-        if ($this->isSystemAdmin($admin)) {
-            abort(404);
-        }
+        $this->ensureSystemAdminAllowed($request->user(), $admin);
 
         $validated = $request->validate([
             'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($admin->id)],
@@ -103,40 +101,53 @@ class AdminController extends Controller
         $admin->save();
 
         if ($request->has('role_ids')) {
-            $roleIds = $this->filterSystemRoleIds($validated['role_ids'] ?? []);
+            $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user());
             $admin->roles()->sync($roleIds);
         }
 
         return $this->respond($admin->load(['roles', 'staff']), __('Admin updated successfully.'));
     }
 
-    public function destroy(User $admin)
+    public function destroy(Request $request, User $admin)
     {
-        if ($this->isSystemAdmin($admin)) {
-            abort(404);
-        }
+        $this->ensureSystemAdminAllowed($request->user(), $admin);
 
         $admin->delete();
 
         return $this->respond(null, __('Admin deleted successfully.'));
     }
 
-    private function isSystemAdmin(User $admin): bool
+
+    private function ensureSystemAdminAllowed(?User $actor, User $targetAdmin): void
     {
-        return $admin->roles()->where('is_system', true)->exists();
+        if (! $actor?->canManageSystemAdmins() && $targetAdmin->roles()->where('is_system', true)->exists()) {
+            abort(404);
+        }
     }
 
-    private function filterSystemRoleIds(array $roleIds): array
+    private function filterAssignableRoleIds(array $roleIds, ?User $actor): array
     {
         if (empty($roleIds)) {
             return $roleIds;
         }
 
-        return Role::whereIn('id', $roleIds)
-            ->where('is_system', false)
+        $query = Role::whereIn('id', $roleIds);
+
+        if (! $actor?->canManageSystemAdmins()) {
+            $query->where('is_system', false)
+                ->where('is_default', true);
+        }
+
+        $assignableRoleIds = $query
             ->pluck('id')
             ->map(fn ($roleId) => (int) $roleId)
             ->values()
             ->all();
+
+        if (count($assignableRoleIds) !== count(array_unique($roleIds))) {
+            abort(403, __('You are not allowed to assign one or more selected roles.'));
+        }
+
+        return $assignableRoleIds;
     }
 }

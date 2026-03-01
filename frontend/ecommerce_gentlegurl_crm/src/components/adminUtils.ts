@@ -4,6 +4,8 @@ export type AdminApiRole = {
   id?: number | string | null
   name?: string | null
   guard_name?: string | null
+  is_system?: boolean | number | string | null
+  is_default?: boolean | number | string | null
 }
 
 export type AdminApiStaff = {

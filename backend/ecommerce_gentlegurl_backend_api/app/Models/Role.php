@@ -13,6 +13,13 @@ class Role extends BaseModel
         'description',
         'is_active',
         'is_system',
+        'is_default',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'is_system' => 'boolean',
+        'is_default' => 'boolean',
     ];
 
     public function users()

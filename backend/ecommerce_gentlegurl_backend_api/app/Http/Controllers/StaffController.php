@@ -163,14 +163,14 @@ class StaffController extends Controller
 
         if (! $staffRole) {
             $staffRole = Role::create([
-                'name' => 'STAFF',
+                'name' => 'Staff',
                 'description' => 'Staff role for POS and limited CRM access',
                 'is_active' => true,
                 'is_system' => true,
             ]);
         } else {
             $staffRole->fill([
-                'name' => 'STAFF',
+                'name' => 'Staff',
                 'description' => $staffRole->description ?: 'Staff role for POS and limited CRM access',
                 'is_active' => true,
                 'is_system' => true,
