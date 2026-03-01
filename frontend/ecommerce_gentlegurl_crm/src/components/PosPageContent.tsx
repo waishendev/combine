@@ -217,7 +217,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
   const scanBufferRef = useRef('')
   const lastKeyTimeRef = useRef(0)
-  const scanningRef = useRef(false)
+  const scanModeRef = useRef<'idle' | 'possible' | 'confirmed'>('idle')
+  const possibleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activeTargetRef = useRef<HTMLElement | null>(null)
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastScanMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
@@ -937,11 +939,39 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     const MIN_LEN_SUBMIT = 6
     const SCAN_KEY_INTERVAL_MS = 50
     const SCAN_IDLE_RESET_MS = 150
+    const POSSIBLE_SCAN_TIMEOUT_MS = 100
+
+    const clearPossibleTimer = () => {
+      if (possibleTimerRef.current) {
+        window.clearTimeout(possibleTimerRef.current)
+        possibleTimerRef.current = null
+      }
+    }
+
+    const replayBufferToActiveTarget = (buffer: string) => {
+      const target = activeTargetRef.current
+      if (!target || !buffer) return
+
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        const start = target.selectionStart ?? target.value.length
+        const end = target.selectionEnd ?? target.value.length
+        target.setRangeText(buffer, start, end, 'end')
+        target.dispatchEvent(new Event('input', { bubbles: true }))
+        return
+      }
+
+      if (target.isContentEditable) {
+        target.textContent = `${target.textContent ?? ''}${buffer}`
+        target.dispatchEvent(new InputEvent('input', { bubbles: true, data: buffer, inputType: 'insertText' }))
+      }
+    }
 
     const resetScanState = () => {
+      clearPossibleTimer()
       scanBufferRef.current = ''
       lastKeyTimeRef.current = 0
-      scanningRef.current = false
+      scanModeRef.current = 'idle'
+      activeTargetRef.current = null
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -961,59 +991,85 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       const now = Date.now()
 
       if (lastKeyTimeRef.current && now - lastKeyTimeRef.current > SCAN_IDLE_RESET_MS) {
+        if (scanModeRef.current === 'possible') {
+          replayBufferToActiveTarget(scanBufferRef.current)
+        }
         resetScanState()
       }
 
       if (isPrintable) {
+        if (scanModeRef.current === 'idle') {
+          scanModeRef.current = 'possible'
+          scanBufferRef.current = key
+          activeTargetRef.current = event.target instanceof HTMLElement ? event.target : null
+          lastKeyTimeRef.current = now
+
+          event.preventDefault()
+          event.stopPropagation()
+
+          clearPossibleTimer()
+          possibleTimerRef.current = window.setTimeout(() => {
+            if (scanModeRef.current === 'possible') {
+              replayBufferToActiveTarget(scanBufferRef.current)
+              resetScanState()
+            }
+          }, POSSIBLE_SCAN_TIMEOUT_MS)
+
+          return
+        }
+
         const elapsed = now - lastKeyTimeRef.current
         const isScannerSpeed = elapsed <= SCAN_KEY_INTERVAL_MS
 
         if (isScannerSpeed) {
           scanBufferRef.current += key
-        } else {
-          scanBufferRef.current = key
-          scanningRef.current = false
-        }
+          lastKeyTimeRef.current = now
 
-        if (scanBufferRef.current.length >= MIN_LEN_START && isScannerSpeed) {
-          scanningRef.current = true
-        }
-
-        if (scanningRef.current) {
           event.preventDefault()
           event.stopPropagation()
+
+          if (scanBufferRef.current.length >= MIN_LEN_START) {
+            scanModeRef.current = 'confirmed'
+            clearPossibleTimer()
+          } else {
+            clearPossibleTimer()
+            possibleTimerRef.current = window.setTimeout(() => {
+              if (scanModeRef.current === 'possible') {
+                replayBufferToActiveTarget(scanBufferRef.current)
+                resetScanState()
+              }
+            }, POSSIBLE_SCAN_TIMEOUT_MS)
+          }
+
+          if (scanTimeoutRef.current) {
+            window.clearTimeout(scanTimeoutRef.current)
+          }
+
+          scanTimeoutRef.current = window.setTimeout(() => {
+            resetScanState()
+          }, SCAN_IDLE_RESET_MS)
+
+          return
         }
 
-        lastKeyTimeRef.current = now
-
-        if (scanTimeoutRef.current) {
-          window.clearTimeout(scanTimeoutRef.current)
-        }
-
-        scanTimeoutRef.current = window.setTimeout(() => {
-          resetScanState()
-        }, SCAN_IDLE_RESET_MS)
-
+        replayBufferToActiveTarget(`${scanBufferRef.current}${key}`)
+        resetScanState()
         return
       }
 
       if (key === 'Enter') {
-        if (scanningRef.current) {
-          event.preventDefault()
-          event.stopPropagation()
-        }
-
-        const scanned = scanBufferRef.current.trim()
-
         if (scanTimeoutRef.current) {
           window.clearTimeout(scanTimeoutRef.current)
           scanTimeoutRef.current = null
         }
 
-        const isValidScan = scanningRef.current && scanned.length >= MIN_LEN_SUBMIT
-        resetScanState()
+        const scanned = scanBufferRef.current.trim()
+        const mode = scanModeRef.current
 
-        if (isValidScan) {
+        if (mode === 'confirmed' && scanned.length >= MIN_LEN_SUBMIT) {
+          event.preventDefault()
+          event.stopPropagation()
+
           void addByBarcodeRef.current(scanned)
           setLastScanValue(scanned)
           setLastScanVisible(true)
@@ -1025,7 +1081,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           lastScanMessageTimeoutRef.current = window.setTimeout(() => {
             setLastScanVisible(false)
           }, 2000)
+
+          resetScanState()
+          return
         }
+
+        if (mode === 'possible') {
+          replayBufferToActiveTarget(scanned)
+        }
+
+        resetScanState()
       }
     }
 
@@ -1035,6 +1100,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       window.removeEventListener('keydown', onKeyDown, true)
       if (scanTimeoutRef.current) {
         window.clearTimeout(scanTimeoutRef.current)
+      }
+      if (possibleTimerRef.current) {
+        window.clearTimeout(possibleTimerRef.current)
       }
       if (lastScanMessageTimeoutRef.current) {
         window.clearTimeout(lastScanMessageTimeoutRef.current)
