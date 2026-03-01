@@ -215,6 +215,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
+  const scanBufferRef = useRef('')
+  const lastKeyTimeRef = useRef(0)
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastScanMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
 
   const [cart, setCart] = useState<Cart | null>(null)
 
@@ -280,6 +285,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [sendingReceiptEmail, setSendingReceiptEmail] = useState(false)
   const [receiptCooldownUntil, setReceiptCooldownUntil] = useState<number>(0)
   const [receiptQrLoaded, setReceiptQrLoaded] = useState(false)
+  const [lastScanValue, setLastScanValue] = useState('')
+  const [lastScanVisible, setLastScanVisible] = useState(false)
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -599,6 +606,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     showMsg(json?.message ?? 'Unable to add item.', 'error')
     return false
   }
+  addByBarcodeRef.current = addByBarcode
 
   async function addBySelection(payload: { variant_id?: number; product_id?: number }, qty = 1) {
     const variantId = Number(payload.variant_id)
@@ -921,6 +929,83 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     await addByBarcode(value)
     focusScanner()
   }
+
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (memberOpen || checkoutConfirmationOpen) return
+
+      const key = event.key
+      const isPrintable = key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey
+
+      if (isPrintable) {
+        const now = Date.now()
+        const elapsed = now - lastKeyTimeRef.current
+        const isScannerSpeed = elapsed <= 50
+
+        if (isScannerSpeed) {
+          scanBufferRef.current += key
+          event.preventDefault()
+          event.stopPropagation()
+        } else {
+          scanBufferRef.current = key
+        }
+
+        lastKeyTimeRef.current = now
+
+        if (scanTimeoutRef.current) {
+          window.clearTimeout(scanTimeoutRef.current)
+        }
+
+        scanTimeoutRef.current = window.setTimeout(() => {
+          scanBufferRef.current = ''
+          lastKeyTimeRef.current = 0
+        }, 150)
+
+        return
+      }
+
+      if (key === 'Enter') {
+        const scanned = scanBufferRef.current.trim()
+
+        if (scanTimeoutRef.current) {
+          window.clearTimeout(scanTimeoutRef.current)
+          scanTimeoutRef.current = null
+        }
+
+        scanBufferRef.current = ''
+        lastKeyTimeRef.current = 0
+
+        if (scanned.length >= 6) {
+          event.preventDefault()
+          event.stopPropagation()
+          void addByBarcodeRef.current(scanned)
+          setLastScanValue(scanned)
+          setLastScanVisible(true)
+
+          if (lastScanMessageTimeoutRef.current) {
+            window.clearTimeout(lastScanMessageTimeoutRef.current)
+          }
+
+          lastScanMessageTimeoutRef.current = window.setTimeout(() => {
+            setLastScanVisible(false)
+          }, 2000)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown, true)
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      if (scanTimeoutRef.current) {
+        window.clearTimeout(scanTimeoutRef.current)
+      }
+      if (lastScanMessageTimeoutRef.current) {
+        window.clearTimeout(lastScanMessageTimeoutRef.current)
+      }
+    }
+  }, [checkoutConfirmationOpen, memberOpen])
 
   const onSelectProduct = (item: ProductOption) => {
     setFullProductData(null)
@@ -1508,6 +1593,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Scan with barcode scanner to add items. If typing by hand, press Enter to confirm.
+            </p>
+            <p className={`mt-2 text-xs font-mono text-blue-700 transition-opacity duration-300 ${lastScanVisible ? 'opacity-100' : 'opacity-0'}`} aria-live="polite">
+              Last scan: {lastScanValue || '-'}
             </p>
           </div>
 
