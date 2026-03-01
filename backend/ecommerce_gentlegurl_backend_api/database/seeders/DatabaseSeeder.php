@@ -30,6 +30,7 @@ class DatabaseSeeder extends Seeder
 
             SuperAdminRoleSeeder::class,
             SuperAdminSeeder::class,
+            StaffRbacSeeder::class,
             PaymentGatewaySeeder::class,
 
             // upper all should open , no command to avoid error seed

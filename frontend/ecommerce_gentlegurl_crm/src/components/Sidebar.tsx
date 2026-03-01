@@ -74,6 +74,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/permission',
             requiredPermission: 'permissions.view',
           },
+          {
+            key: 'staffs',
+            label: 'Staffs',
+            href: '/staffs',
+            requiredPermission: 'staff.view',
+          },
         ],
       },
       // ======================
@@ -112,7 +118,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             key: 'orders-pos',
             label: 'POS Checkout',
             href: '/pos',
-            requiredPermission: 'ecommerce.orders.create',
+            requiredPermission: 'pos.checkout',
           },
         ],
       },

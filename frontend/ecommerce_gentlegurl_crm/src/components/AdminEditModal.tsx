@@ -13,6 +13,7 @@ interface AdminEditModalProps {
   onSuccess: (admin: AdminRowData) => void
   roles: AdminRoleOption[]
   rolesLoading: boolean
+  staffOptions: Array<{ id: number; name: string }>
 }
 
 interface FormState {
@@ -21,6 +22,7 @@ interface FormState {
   email: string
   roleId: string
   isActive: 'true' | 'false'
+  staffId: string
 }
 
 const initialFormState: FormState = {
@@ -29,6 +31,7 @@ const initialFormState: FormState = {
   email: '',
   roleId: '',
   isActive: 'true',
+  staffId: '',
 }
 
 export default function AdminEditModal({
@@ -37,6 +40,7 @@ export default function AdminEditModal({
   onSuccess,
   roles,
   rolesLoading,
+  staffOptions,
 }: AdminEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -105,6 +109,7 @@ export default function AdminEditModal({
             admin.is_active === true || admin.is_active === 'true' || admin.is_active === 1
               ? 'true'
               : 'false',
+          staffId: admin.staff_id != null ? String(admin.staff_id) : '',
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -147,10 +152,12 @@ export default function AdminEditModal({
 
     try {
       const payload: Record<string, unknown> = {
+        name: trimmedUsername,
         username: trimmedUsername,
         email: trimmedEmail,
         role_ids: [roleIdNumber],
         is_active: form.isActive === 'true',
+        staff_id: form.staffId ? Number(form.staffId) : null,
       }
 
       const trimmedPassword = form.password.trim()
@@ -345,6 +352,30 @@ export default function AdminEditModal({
                   ))}
                 </select>
               </div>
+              <div>
+                <label
+                  htmlFor="edit-staffId"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Linked Staff
+                </label>
+                <select
+                  id="edit-staffId"
+                  name="staffId"
+                  value={form.staffId}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={disableForm}
+                >
+                  <option value="">None</option>
+                  {staffOptions.map((staff) => (
+                    <option key={staff.id} value={staff.id}>
+                      {staff.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label
                   htmlFor="edit-isActive"

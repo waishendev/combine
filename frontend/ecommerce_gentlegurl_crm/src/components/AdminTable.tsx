@@ -34,6 +34,8 @@ type Meta = {
   total: number
 }
 
+type StaffOption = { id: number; name: string }
+
 type AdminApiResponse = {
   data?: AdminApiItem[] | {
     current_page?: number
@@ -67,6 +69,7 @@ export default function AdminTable({
   const [roles, setRoles] = useState<AdminRoleOption[]>([])
   const [rolesLoading, setRolesLoading] = useState(false)
   const [hasFetchedRoles, setHasFetchedRoles] = useState(false)
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [editingAdminId, setEditingAdminId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AdminRowData | null>(null)
 
@@ -112,6 +115,28 @@ export default function AdminTable({
         <path d="M5 11 L1 7 H9 Z" fill={down} />
       </svg>
     )
+  }
+
+  const fetchStaffs = async (controller: AbortController) => {
+    try {
+      const res = await fetch('/api/proxy/staffs?per_page=200&is_active=1', {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+
+      if (!res.ok) {
+        return
+      }
+
+      const data = await res.json().catch(() => ({}))
+      const items = Array.isArray(data?.data?.data) ? data.data.data : []
+      setStaffOptions(items.map((item: { id?: number; name?: string }) => ({
+        id: Number(item.id ?? 0),
+        name: item.name ?? '-',
+      })).filter((item: StaffOption) => item.id > 0))
+    } catch {
+      // noop
+    }
   }
 
   const fetchRoles = async (controller: AbortController) => {
@@ -264,6 +289,13 @@ export default function AdminTable({
 
     return () => controller.abort()
   }, [isFilterModalOpen, isCreateModalOpen, editingAdminId, hasFetchedRoles])
+
+  useEffect(() => {
+    if (!isCreateModalOpen && editingAdminId === null) return
+    const controller = new AbortController()
+    fetchStaffs(controller)
+    return () => controller.abort()
+  }, [isCreateModalOpen, editingAdminId])
 
   const handleSort = (column: keyof AdminRowData) => {
     if (sortColumn === column) {
@@ -485,6 +517,7 @@ export default function AdminTable({
           }}
           roles={roles}
           rolesLoading={rolesLoading && !hasFetchedRoles}
+          staffOptions={staffOptions}
         />
       )}
 
@@ -631,6 +664,7 @@ export default function AdminTable({
           }}
           roles={roles}
           rolesLoading={rolesLoading && !hasFetchedRoles}
+          staffOptions={staffOptions}
         />
       )}
 

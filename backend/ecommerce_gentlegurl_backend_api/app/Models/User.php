@@ -29,6 +29,7 @@ class User extends Authenticatable
         'is_active',
         'last_login_at',
         'last_login_ip',
+        'staff_id',
     ];
 
     /**
@@ -52,9 +53,15 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
+            'staff_id' => 'integer',
         ];
     }
 
+
+    public function staff()
+    {
+        return $this->belongsTo(Staff::class);
+    }
     public function roles()
     {
         return $this->belongsToMany(Role::class);

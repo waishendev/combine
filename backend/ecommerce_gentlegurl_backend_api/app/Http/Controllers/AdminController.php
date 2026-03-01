@@ -14,7 +14,7 @@ class AdminController extends Controller
         $perPage = $request->integer('per_page', 15);
         $search = $request->string('search')->toString();
 
-        $admins = User::with('roles')
+        $admins = User::with(['roles', 'staff'])
             ->whereDoesntHave('roles', function ($query) {
                 $query->where('is_system', true);
             })
@@ -40,6 +40,7 @@ class AdminController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'role_ids' => ['array'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
+            'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
         ]);
 
         $user = User::create([
@@ -48,12 +49,13 @@ class AdminController extends Controller
             'username' => $validated['username'],
             'password' => $validated['password'],
             'is_active' => $validated['is_active'] ?? true,
+            'staff_id' => $validated['staff_id'] ?? null,
         ]);
 
         $roleIds = $this->filterSystemRoleIds($validated['role_ids'] ?? []);
         $user->roles()->sync($roleIds);
 
-        return $this->respond($user->load('roles'), __('Admin created successfully.'));
+        return $this->respond($user->load(['roles', 'staff']), __('Admin created successfully.'));
     }
 
     public function show(User $admin)
@@ -62,7 +64,7 @@ class AdminController extends Controller
             abort(404);
         }
 
-        return $this->respond($admin->load('roles'));
+        return $this->respond($admin->load(['roles', 'staff']));
     }
 
     public function update(Request $request, User $admin)
@@ -79,6 +81,7 @@ class AdminController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'role_ids' => ['array'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
+            'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
         ]);
 
         if (empty($validated['password'])) {
@@ -94,7 +97,7 @@ class AdminController extends Controller
             $admin->roles()->sync($roleIds);
         }
 
-        return $this->respond($admin->load('roles'), __('Admin updated successfully.'));
+        return $this->respond($admin->load(['roles', 'staff']), __('Admin updated successfully.'));
     }
 
     public function destroy(User $admin)
