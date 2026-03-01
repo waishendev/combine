@@ -29,8 +29,12 @@ class RbacSeeder extends Seeder
                 'description' => 'Full access to all admin features',
                 'is_active' => true,
                 'is_system' => true,
+                'is_default' => false,
             ]
         );
+        $superAdminRole->is_system = true;
+        $superAdminRole->is_default = false;
+        $superAdminRole->save();
 
         $groups = [
             'users' => 'Users',
@@ -74,7 +78,7 @@ class RbacSeeder extends Seeder
 
         $definitions = [
             'users' => ['view', 'create', 'update', 'delete'],
-            'roles' => ['view', 'create', 'update', 'delete'],
+            'roles' => ['view', 'manage-system', 'create', 'update', 'delete'],
             'permissions' => ['view', 'create', 'update', 'delete'],
             'permission-groups' => ['view', 'create', 'update', 'delete'],
             'customers' => ['view', 'create', 'update', 'delete', 'verify'],
@@ -127,12 +131,22 @@ class RbacSeeder extends Seeder
 
 
         $staffRole = Role::firstOrCreate(
-            ['name' => 'staff'],
+            ['name' => 'STAFF'],
             [
                 'description' => 'POS staff role',
                 'is_active' => true,
+                'is_system' => false,
+                'is_default' => true,
             ]
         );
+
+
+        if (! $staffRole->is_default || $staffRole->is_system || $staffRole->name !== 'STAFF') {
+            $staffRole->name = 'STAFF';
+            $staffRole->is_system = false;
+            $staffRole->is_default = true;
+            $staffRole->save();
+        }
 
         $staffPermissionIds = Permission::whereIn('slug', [
             'ecommerce.orders.create',

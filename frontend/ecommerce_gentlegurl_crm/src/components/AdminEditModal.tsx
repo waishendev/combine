@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 
 import type { AdminRowData } from './AdminRow'
 import { AdminRoleOption } from './AdminFilters'
@@ -13,6 +13,7 @@ interface AdminEditModalProps {
   onSuccess: (admin: AdminRowData) => void
   roles: AdminRoleOption[]
   rolesLoading: boolean
+  canManageSystemRoles: boolean
 }
 
 interface FormState {
@@ -35,6 +36,7 @@ export default function AdminEditModal({
   onSuccess,
   roles,
   rolesLoading,
+  canManageSystemRoles,
 }: AdminEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -42,6 +44,7 @@ export default function AdminEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadedAdmin, setLoadedAdmin] = useState<AdminRowData | null>(null)
+  const [currentRole, setCurrentRole] = useState<AdminRoleOption | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -94,6 +97,32 @@ export default function AdminEditModal({
             ? admin.roles[0].id
             : null)
 
+        const primaryRole =
+          admin.role ??
+          (Array.isArray(admin.roles) && admin.roles.length > 0
+            ? admin.roles[0]
+            : null)
+
+        if (primaryRole) {
+          setCurrentRole({
+            id: primaryRole.id ?? null,
+            name: primaryRole.name ?? null,
+            isSystem:
+              primaryRole.is_system === true ||
+              primaryRole.is_system === 1 ||
+              primaryRole.is_system === '1' ||
+              primaryRole.is_system === 'true',
+            isDefault: !(
+              primaryRole.is_default === false ||
+              primaryRole.is_default === 0 ||
+              primaryRole.is_default === '0' ||
+              primaryRole.is_default === 'false'
+            ),
+          })
+        } else {
+          setCurrentRole(null)
+        }
+
         setForm({
           username: typeof admin.username === 'string' ? admin.username : '',
           password: '',
@@ -144,7 +173,10 @@ export default function AdminEditModal({
         name: trimmedUsername || trimmedEmail.split('@')[0],
         username: trimmedUsername || null,
         email: trimmedEmail,
-        role_ids: [roleIdNumber],
+      }
+
+      if (!roleReadOnly) {
+        payload.role_ids = [roleIdNumber]
       }
 
       const trimmedPassword = form.password.trim()
@@ -230,6 +262,22 @@ export default function AdminEditModal({
   }
 
   const disableForm = loading || submitting
+  const roleReadOnly =
+    !canManageSystemRoles &&
+    !!currentRole &&
+    (currentRole.isSystem === true || currentRole.isDefault === false)
+
+  const roleOptions = useMemo(() => {
+    if (!currentRole?.id) {
+      return roles
+    }
+
+    const hasCurrentRole = roles.some(
+      (role) => String(role.id ?? '') === String(currentRole.id ?? ''),
+    )
+
+    return hasCurrentRole ? roles : [currentRole, ...roles]
+  }, [currentRole, roles])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -329,15 +377,21 @@ export default function AdminEditModal({
                   value={form.roleId}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm || rolesLoading}
+                  disabled={disableForm || rolesLoading || roleReadOnly}
+                  title={roleReadOnly ? 'You cannot change this internal role.' : undefined}
                 >
                   <option value="">{t('common.selectRole')}</option>
-                  {roles.map((role) => (
+                  {roleOptions.map((role) => (
                     <option key={String(role.id)} value={String(role.id ?? '')}>
                       {role.name ?? role.id}
                     </option>
                   ))}
                 </select>
+                {roleReadOnly && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    This role is internal and can only be changed by users with roles.manage-system.
+                  </p>
+                )}
               </div>
             </>
           )}

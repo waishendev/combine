@@ -22,6 +22,8 @@ export const emptyAdminFilters: AdminFilterValues = {
 export interface AdminRoleOption {
   id: number | string | null
   name: string | null
+  isSystem?: boolean
+  isDefault?: boolean
 }
 
 interface AdminFiltersProps {

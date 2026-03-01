@@ -13,7 +13,10 @@ class RoleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Role::where('is_system', false);
+        $query = Role::query();
+        if (! $request->user()?->canManageSystemRoles()) {
+            $query->where('is_default', true);
+        }
     
         // ✅ 只有在有 pass is_active 的时候才过滤
         if ($request->has('is_active')) {

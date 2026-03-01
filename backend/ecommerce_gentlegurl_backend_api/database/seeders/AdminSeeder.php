@@ -13,14 +13,26 @@ class AdminSeeder extends Seeder
     public function run(): void
     {
         // 创建管理员角色（或使用现有的角色）
-        $adminRole = Role::firstOrCreate(
-            ['name' => 'admin'],
-            [
+        $adminRole = Role::query()
+            ->whereRaw('LOWER(name) = ?', ['admin'])
+            ->first();
+
+        if (! $adminRole) {
+            $adminRole = Role::create([
+                'name' => 'ADMIN',
                 'description' => 'Administrator with limited access',
                 'is_active' => true,
                 'is_system' => false,
-            ]
-        );
+                'is_default' => true,
+            ]);
+        } else {
+            $adminRole->name = 'ADMIN';
+            $adminRole->description = $adminRole->description ?: 'Administrator with limited access';
+            $adminRole->is_active = true;
+            $adminRole->is_system = false;
+            $adminRole->is_default = true;
+            $adminRole->save();
+        }
 
         // 为管理员角色分配基本权限（可以根据需要调整）
         // 这里我们给管理员大部分权限，除了系统级别的权限
