@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type LogRow = {
   id: number
@@ -15,14 +15,24 @@ export default function BookingLogsPage() {
   const [action, setAction] = useState('')
   const [rows, setRows] = useState<LogRow[]>([])
 
-  const load = async () => {
+  const buildQuery = () => {
     const qs = new URLSearchParams()
     if (action) qs.set('action', action)
+    return qs
+  }
+
+  const load = async () => {
+    const qs = buildQuery()
     const res = await fetch(`/api/proxy/admin/booking/logs?${qs.toString()}`, { cache: 'no-store' })
     const json = await res.json()
     setRows(json.data?.data ?? [])
   }
 
+
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return (
     <div className="space-y-4 p-4">
       <h1 className="text-2xl font-semibold">Booking Audit Logs</h1>
@@ -31,7 +41,7 @@ export default function BookingLogsPage() {
           <input value={action} onChange={(e) => setAction(e.target.value)} className="ml-2 rounded border px-2 py-1" placeholder="e.g. VOUCHER_GRANTED" />
         </label>
         <button onClick={load} className="rounded bg-black px-3 py-1 text-white">Load</button>
-        <button onClick={() => window.open(`/api/proxy/admin/booking/logs/export.csv?action=${encodeURIComponent(action)}`, '_blank')} className="rounded border px-3 py-1">Download CSV</button>
+        <button onClick={() => window.open(`/api/proxy/admin/booking/logs/export.csv?${buildQuery().toString()}`, '_blank')} className="rounded border px-3 py-1">Download CSV</button>
       </div>
 
       <table className="w-full border text-sm">
