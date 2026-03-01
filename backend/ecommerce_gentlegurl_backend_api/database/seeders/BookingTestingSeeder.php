@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class BookingTestingSeeder extends Seeder
 {
@@ -330,39 +331,76 @@ class BookingTestingSeeder extends Seeder
 
         $now = Carbon::now('Asia/Kuala_Lumpur');
         $voucherAmount = (float) $booking->deposit_amount;
-        $voucher = Voucher::query()->create([
+
+        $voucherData = [
             'code' => 'BNC-SEED-' . $booking->id,
             'type' => 'fixed',
             'value' => $voucherAmount,
-            'amount' => $voucherAmount,
             'min_order_amount' => 0,
-            'scope_type' => 'all',
             'start_at' => $now,
             'end_at' => $now->copy()->addDays(45),
-            'usage_limit_total' => 1,
-            'usage_limit_per_customer' => 1,
             'is_active' => true,
-            'is_reward_only' => true,
-        ]);
+        ];
+
+        if (Schema::hasColumn('vouchers', 'usage_limit_total')) {
+            $voucherData['usage_limit_total'] = 1;
+        }
+        if (Schema::hasColumn('vouchers', 'usage_limit_per_customer')) {
+            $voucherData['usage_limit_per_customer'] = 1;
+        }
+        if (Schema::hasColumn('vouchers', 'max_uses')) {
+            $voucherData['max_uses'] = 1;
+        }
+        if (Schema::hasColumn('vouchers', 'max_uses_per_customer')) {
+            $voucherData['max_uses_per_customer'] = 1;
+        }
+        if (Schema::hasColumn('vouchers', 'is_reward_only')) {
+            $voucherData['is_reward_only'] = true;
+        }
+        if (Schema::hasColumn('vouchers', 'scope_type')) {
+            $voucherData['scope_type'] = 'all';
+        }
+        if (Schema::hasColumn('vouchers', 'amount')) {
+            $voucherData['amount'] = $voucherAmount;
+        }
+
+        $voucher = Voucher::query()->create($voucherData);
+
+        $customerVoucherData = [
+            'status' => 'active',
+            'claimed_at' => $now,
+            'expires_at' => $now->copy()->addDays(45),
+            'meta' => ['booking_id' => $booking->id, 'non_combinable' => true],
+        ];
+
+        if (Schema::hasColumn('customer_vouchers', 'quantity_total')) {
+            $customerVoucherData['quantity_total'] = 1;
+        }
+        if (Schema::hasColumn('customer_vouchers', 'quantity_used')) {
+            $customerVoucherData['quantity_used'] = 0;
+        }
+        if (Schema::hasColumn('customer_vouchers', 'assigned_by_admin_id')) {
+            $customerVoucherData['assigned_by_admin_id'] = null;
+        }
+        if (Schema::hasColumn('customer_vouchers', 'assigned_at')) {
+            $customerVoucherData['assigned_at'] = $now;
+        }
+        if (Schema::hasColumn('customer_vouchers', 'start_at')) {
+            $customerVoucherData['start_at'] = $now;
+        }
+        if (Schema::hasColumn('customer_vouchers', 'end_at')) {
+            $customerVoucherData['end_at'] = $now->copy()->addDays(45);
+        }
+        if (Schema::hasColumn('customer_vouchers', 'note')) {
+            $customerVoucherData['note'] = 'Booking Notified Cancellation (booking_id=' . $booking->id . ')';
+        }
 
         CustomerVoucher::query()->updateOrCreate(
             [
                 'customer_id' => $customerId,
                 'voucher_id' => $voucher->id,
             ],
-            [
-                'quantity_total' => 1,
-                'quantity_used' => 0,
-                'status' => 'active',
-                'claimed_at' => $now,
-                'assigned_by_admin_id' => null,
-                'assigned_at' => $now,
-                'start_at' => $now,
-                'end_at' => $now->copy()->addDays(45),
-                'expires_at' => $now->copy()->addDays(45),
-                'note' => 'Booking Notified Cancellation (booking_id=' . $booking->id . ')',
-                'meta' => ['booking_id' => $booking->id, 'non_combinable' => true],
-            ]
+            $customerVoucherData
         );
 
         $booking->update(['notified_cancellation_voucher_id' => $voucher->id]);
