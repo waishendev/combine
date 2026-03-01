@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
+use App\Mail\PosOrderReceiptMail;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
@@ -22,6 +23,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class PosController extends Controller
@@ -671,15 +673,7 @@ class PosController extends Controller
 
             $orderPaymentService->handlePaid($order);
 
-            $token = Str::random(64);
-            OrderReceiptToken::create([
-                'order_id' => $order->id,
-                'token' => $token,
-                'expires_at' => null,
-            ]);
-            $frontendOrigin = $request->headers->get('origin') ?: config('services.frontend_url', config('app.url'));
-            $frontendUrl = rtrim((string) $frontendOrigin, '/');
-            $receiptUrl = $frontendUrl . '/receipt/' . $token;
+            $receiptUrl = $this->buildReceiptUrl($order, $request);
 
             $cart->items()->delete();
             $this->clearVoucherFromCart($cart);
@@ -699,6 +693,36 @@ class PosController extends Controller
             'receipt_public_url' => $receiptUrl,
         ]);
     }
+
+    public function sendReceiptEmail(Request $request, int $orderId)
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $order = Order::query()
+            ->with(['items'])
+            ->findOrFail($orderId);
+
+        $receiptUrl = $this->buildReceiptUrl($order, $request);
+
+        Mail::to($validated['email'])->queue(new PosOrderReceiptMail(
+            orderNumber: (string) ($order->order_number ?? $order->id),
+            placedAt: $order->placed_at?->toDateTimeString() ?? $order->created_at?->toDateTimeString() ?? now()->toDateTimeString(),
+            totalAmount: (float) ($order->grand_total ?? 0),
+            receiptUrl: $receiptUrl,
+            items: $order->items->map(fn (OrderItem $item) => [
+                'name' => $item->product_name_snapshot ?: 'Item #' . $item->id,
+                'qty' => (int) $item->quantity,
+                'line_total' => (float) $item->line_total,
+            ])->values()->all(),
+        ));
+
+        return $this->respond([
+            'ok' => true,
+        ]);
+    }
+
 
     protected function resolveCart(int $staffUserId): PosCart
     {
@@ -764,6 +788,28 @@ class PosController extends Controller
         $cart->voucher_discount_amount = 0;
         $cart->voucher_snapshot = null;
         $cart->save();
+    }
+
+
+    protected function buildReceiptUrl(Order $order, Request $request): string
+    {
+        $existingToken = OrderReceiptToken::query()
+            ->where('order_id', $order->id)
+            ->latest('id')
+            ->first();
+
+        if (! $existingToken) {
+            $existingToken = OrderReceiptToken::create([
+                'order_id' => $order->id,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
+        }
+
+        $frontendOrigin = $request->headers->get('origin') ?: config('services.frontend_url', config('app.url'));
+        $frontendUrl = rtrim((string) $frontendOrigin, '/');
+
+        return $frontendUrl . '/receipt/' . $existingToken->token;
     }
 
     protected function generateOrderNumber(): string
