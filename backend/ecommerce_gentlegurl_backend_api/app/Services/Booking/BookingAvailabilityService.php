@@ -59,7 +59,7 @@ class BookingAvailabilityService
             ->whereNotIn('status', ['EXPIRED', 'CANCELLED'])
             ->where(function ($query) use ($startAt, $blockEnd) {
                 $query->where('start_at', '<', $blockEnd)
-                    ->whereRaw('DATE_ADD(end_at, INTERVAL buffer_min MINUTE) > ?', [$startAt->toDateTimeString()]);
+                    ->whereRaw("end_at + (buffer_min * interval '1 minute') > ?", [$startAt->toDateTimeString()]);
             })
             ->exists();
 
