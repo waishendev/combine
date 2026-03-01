@@ -875,11 +875,16 @@ $protectedRoutes = function () {
 Route::middleware(['api.session', 'auth:web,sanctum'])->group($protectedRoutes);
 
 Route::prefix('/booking')->middleware('api.session')->group(function () {
+    Route::get('/services', [\App\Http\Controllers\Booking\ServiceController::class, 'index']);
     Route::get('/availability', [\App\Http\Controllers\Booking\AvailabilityController::class, 'index']);
     Route::post('/hold', [\App\Http\Controllers\Booking\HoldController::class, 'store']);
     Route::post('/{id}/pay', [\App\Http\Controllers\Booking\PaymentController::class, 'pay']);
     Route::post('/{id}/reschedule', [\App\Http\Controllers\Booking\RescheduleController::class, 'store']);
     Route::post('/payment/callback', [\App\Http\Controllers\Booking\PaymentController::class, 'callback']);
+
+    Route::middleware('auth:customer,sanctum')->group(function () {
+        Route::get('/my', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
+    });
 });
 
 Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')->group(function () {
