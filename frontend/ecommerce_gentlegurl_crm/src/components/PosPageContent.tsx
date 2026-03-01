@@ -1077,6 +1077,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
+    setCheckoutConfirmationOpen(false)
     setCheckingOut(false)
     // Don't show toast, will show success modal instead
     focusScanner()
@@ -1363,6 +1364,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     await syncCheckoutAssignments()
     setCheckoutConfirmationOpen(true)
   }
+
+  const canConfirmCheckoutInModal = useMemo(() => {
+    if (checkingOut) return false
+    if (paymentMethod === 'qrpay') return Boolean(qrProofFileName)
+    return Number.isFinite(cashReceivedAmount) && cashReceivedAmount >= cartTotal
+  }, [cashReceivedAmount, cartTotal, checkingOut, paymentMethod, qrProofFileName])
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -1992,7 +1999,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit Price</th>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Discount</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Total Price</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Staff</th>
                     </tr>
@@ -2007,7 +2013,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-xs text-gray-500">Qty: {item.qty}</p>
                           </td>
                           <td className="px-3 py-2">RM {Number(item.unit_price).toFixed(2)}</td>
-                          <td className="px-3 py-2">-</td>
                           <td className="px-3 py-2 font-semibold">RM {Number(item.line_total).toFixed(2)}</td>
                           <td className="px-3 py-2 min-w-[280px]">
                             <div className="space-y-1">
@@ -2042,6 +2047,26 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                 <p className="text-sm font-medium text-gray-700">Net amount</p>
                 <p className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-800">Member</p>
+                  <button
+                    type="button"
+                    onClick={() => void toggleMemberDropdown()}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50"
+                  >
+                    {selectedMember ? 'Change Member' : 'Assign Member'}
+                  </button>
+                </div>
+                {selectedMember ? (
+                  <div className="mt-2 space-y-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-blue-800">{selectedMember.name}</p>
+                    <p className="text-xs text-blue-700">{selectedMember.phone || selectedMember.email || `Member #${selectedMember.id}`}</p>
+                    <button type="button" className="text-xs font-semibold text-red-600 underline" onClick={() => void onClearMember()}>Clear member</button>
+                  </div>
+                ) : <p className="mt-2 text-xs text-gray-600">No member assigned.</p>}
               </div>
 
               <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -2109,11 +2134,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setCheckoutConfirmationOpen(false)
-                    void confirmCheckout()
-                  }}
-                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800"
+                  onClick={() => void confirmCheckout()}
+                  disabled={!canConfirmCheckoutInModal}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none"
                 >
                   Confirm checkout
                 </button>
