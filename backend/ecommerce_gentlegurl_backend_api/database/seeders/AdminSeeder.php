@@ -127,6 +127,7 @@ class AdminSeeder extends Seeder
             'ecommerce.vouchers.assign.logs.view',
             'ecommerce.reports.sales.view',
             'ecommerce.reports.sales.export',
+            'reports.my-pos-summary.view',
             'ecommerce.dashboard.view',
             'ecommerce.dashboard.update',
             'ecommerce.settings.view',

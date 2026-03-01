@@ -561,6 +561,7 @@ class PosController extends Controller
             $order = Order::create([
                 'order_number' => $this->generateOrderNumber(),
                 'customer_id' => $customerId,
+                'created_by_user_id' => $request->user()->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
                 'payment_method' => $validated['payment_method'],
@@ -580,6 +581,19 @@ class PosController extends Controller
                 $cartItemId = isset($item['cart_item_id']) ? (int) $item['cart_item_id'] : 0;
                 return $cartItemId > 0 ? [$cartItemId => collect($item['staff_splits'] ?? [])->values()->all()] : [];
             });
+
+            $staffIds = $staffSplitsByCartItemId
+                ->flatMap(fn (array $splits) => collect($splits)->pluck('staff_id'))
+                ->filter()
+                ->map(fn ($staffId) => (int) $staffId)
+                ->unique()
+                ->values();
+
+            $staffCommissionRates = DB::table('staffs')
+                ->whereIn('id', $staffIds)
+                ->pluck('commission_rate', 'id')
+                ->map(fn ($rate) => (float) $rate)
+                ->all();
 
             foreach ($cart->items as $item) {
                 $variant = $item->variant;
@@ -626,6 +640,7 @@ class PosController extends Controller
                             'order_item_id' => $orderItem->id,
                             'staff_id' => (int) $split['staff_id'],
                             'share_percent' => (int) $split['share_percent'],
+                            'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
                         ]);
                     }
                 }
