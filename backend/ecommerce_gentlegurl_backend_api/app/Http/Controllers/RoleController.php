@@ -14,7 +14,7 @@ class RoleController extends Controller
     public function index(Request $request)
     {
         $query = Role::query();
-        if (! $request->user()?->canManageSystemRoles()) {
+        if (! $request->user()?->canManageSystemAdmins()) {
             $query->where('is_default', true);
         }
     

@@ -25,9 +25,9 @@ class SuperAdminRoleSeeder extends Seeder
 
         // 获取所有权限并分配给超级管理员角色
         $manageSystemPermission = Permission::firstOrCreate(
-            ['slug' => 'roles.manage-system'],
+            ['slug' => 'admins.manage-system'],
             [
-                'name' => 'Roles Manage-system',
+                'name' => 'Admins Manage-system',
                 'description' => null,
                 'group_id' => null,
             ]

@@ -73,7 +73,7 @@ export default function AdminTable({
   const canCreate = permissions.includes('users.create')
   const canUpdate = permissions.includes('users.update')
   const canDelete = permissions.includes('users.delete')
-  const canManageSystemRoles = permissions.includes('roles.manage-system')
+  const canManageSystemAdmins = permissions.includes('admins.manage-system')
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -488,7 +488,6 @@ export default function AdminTable({
           }}
           roles={roles}
           rolesLoading={rolesLoading && !hasFetchedRoles}
-          canManageSystemRoles={canManageSystemRoles}
         />
       )}
 
@@ -635,7 +634,7 @@ export default function AdminTable({
           }}
           roles={roles}
           rolesLoading={rolesLoading && !hasFetchedRoles}
-          canManageSystemRoles={canManageSystemRoles}
+          canManageSystemRoles={canManageSystemAdmins}
         />
       )}
 

@@ -15,6 +15,11 @@ class AdminController extends Controller
         $search = $request->string('search')->toString();
 
         $admins = User::with(['roles', 'staff'])
+            ->when(! $request->user()?->canManageSystemAdmins(), function ($query) {
+                $query->whereDoesntHave('roles', function ($roleQuery) {
+                    $roleQuery->where('is_system', true);
+                });
+            })
             ->when($search, function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
@@ -59,13 +64,17 @@ class AdminController extends Controller
         return $this->respond($user->load(['roles', 'staff']), __('Admin created successfully.'));
     }
 
-    public function show(User $admin)
+    public function show(Request $request, User $admin)
     {
+        $this->ensureSystemAdminAllowed($request->user(), $admin);
+
         return $this->respond($admin->load(['roles', 'staff']));
     }
 
     public function update(Request $request, User $admin)
     {
+        $this->ensureSystemAdminAllowed($request->user(), $admin);
+
         $validated = $request->validate([
             'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($admin->id)],
             'username' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('users', 'username')->ignore($admin->id)],
@@ -99,11 +108,21 @@ class AdminController extends Controller
         return $this->respond($admin->load(['roles', 'staff']), __('Admin updated successfully.'));
     }
 
-    public function destroy(User $admin)
+    public function destroy(Request $request, User $admin)
     {
+        $this->ensureSystemAdminAllowed($request->user(), $admin);
+
         $admin->delete();
 
         return $this->respond(null, __('Admin deleted successfully.'));
+    }
+
+
+    private function ensureSystemAdminAllowed(?User $actor, User $targetAdmin): void
+    {
+        if (! $actor?->canManageSystemAdmins() && $targetAdmin->roles()->where('is_system', true)->exists()) {
+            abort(404);
+        }
     }
 
     private function filterAssignableRoleIds(array $roleIds, ?User $actor): array
@@ -114,7 +133,7 @@ class AdminController extends Controller
 
         $query = Role::whereIn('id', $roleIds);
 
-        if (! $actor?->canManageSystemRoles()) {
+        if (! $actor?->canManageSystemAdmins()) {
             $query->where('is_system', false)
                 ->where('is_default', true);
         }

@@ -389,7 +389,7 @@ export default function AdminEditModal({
                 </select>
                 {roleReadOnly && (
                   <p className="mt-1 text-xs text-amber-700">
-                    This role is internal and can only be changed by users with roles.manage-system.
+                    This role is internal and can only be changed by users with admins.manage-system.
                   </p>
                 )}
               </div>

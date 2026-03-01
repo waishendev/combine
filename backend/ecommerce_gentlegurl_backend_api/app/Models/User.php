@@ -85,9 +85,9 @@ class User extends Authenticatable
         return $this->roles()->where('name', $superAdminRole)->exists();
     }
 
-    public function canManageSystemRoles(): bool
+    public function canManageSystemAdmins(): bool
     {
-        return $this->getAllPermissions()->contains('roles.manage-system');
+        return $this->getAllPermissions()->contains('admins.manage-system');
     }
 
     public function delegatablePermissions(): Collection
