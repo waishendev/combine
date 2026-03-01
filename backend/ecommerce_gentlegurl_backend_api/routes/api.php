@@ -109,6 +109,7 @@ Route::prefix('/public/shop/auth')->group(function () {
 Route::post('/public/payments/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/public/payments/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
 Route::get('/public/receipt/{token}', [PublicReceiptController::class, 'show']);
+Route::get('/public/receipt/{token}/invoice', [PublicReceiptController::class, 'invoice']);
 // Backwards compatibility for previous callback URLs
 Route::post('/payment/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/payment/billplz/redirect', [BillplzCallbackController::class, 'redirect']);

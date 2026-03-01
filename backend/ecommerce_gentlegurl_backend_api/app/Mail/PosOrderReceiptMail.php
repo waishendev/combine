@@ -20,6 +20,8 @@ class PosOrderReceiptMail extends Mailable implements ShouldQueue
         private string $placedAt,
         private float $totalAmount,
         private string $receiptUrl,
+        private string $pdfBytes,
+        private string $pdfFilename,
         private array $items = [],
     ) {
     }
@@ -33,6 +35,9 @@ class PosOrderReceiptMail extends Mailable implements ShouldQueue
                 'totalAmount' => $this->totalAmount,
                 'receiptUrl' => $this->receiptUrl,
                 'items' => $this->items,
+            ])
+            ->attachData($this->pdfBytes, $this->pdfFilename, [
+                'mime' => 'application/pdf',
             ]);
     }
 }

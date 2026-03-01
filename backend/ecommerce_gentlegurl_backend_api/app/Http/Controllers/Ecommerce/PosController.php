@@ -15,6 +15,7 @@ use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
+use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
@@ -31,6 +32,7 @@ class PosController extends Controller
     public function __construct(
         protected VoucherEligibilityService $voucherEligibilityService,
         protected VoucherService $voucherService,
+        protected InvoiceService $invoiceService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -706,11 +708,15 @@ class PosController extends Controller
 
         $receiptUrl = $this->buildReceiptUrl($order, $request);
 
+        $pdf = $this->invoiceService->buildPdf($order);
+
         Mail::to($validated['email'])->queue(new PosOrderReceiptMail(
             orderNumber: (string) ($order->order_number ?? $order->id),
             placedAt: $order->placed_at?->toDateTimeString() ?? $order->created_at?->toDateTimeString() ?? now()->toDateTimeString(),
             totalAmount: (float) ($order->grand_total ?? 0),
             receiptUrl: $receiptUrl,
+            pdfBytes: $pdf->output(),
+            pdfFilename: 'Invoice-' . (string) ($order->order_number ?? $order->id) . '.pdf',
             items: $order->items->map(fn (OrderItem $item) => [
                 'name' => $item->product_name_snapshot ?: 'Item #' . $item->id,
                 'qty' => (int) $item->quantity,
@@ -808,7 +814,7 @@ class PosController extends Controller
 
         $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
 
-        return $frontendUrl . '/receipt/' . $existingToken->token;
+        return $frontendUrl . '/api/proxy/public/receipt/' . $existingToken->token . '/invoice';
     }
 
     protected function generateOrderNumber(): string
