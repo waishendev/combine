@@ -51,8 +51,8 @@ export async function getBookingServices(search?: string) {
 }
 
 export async function getBookingServiceDetail(id: string) {
-  const response = await request<{ data: Service & { staff?: Staff[] } } | (Service & { staff?: Staff[] })>(`/booking/services/${id}`);
-  return unwrapData<Service & { staff?: Staff[] }>(response);
+  const response = await request<{ data: Service & { staffs?: Staff[] } } | (Service & { staffs?: Staff[] })>(`/booking/services/${id}`);
+  return unwrapData<Service & { staffs?: Staff[] }>(response);
 }
 
 export async function getAvailability(serviceId: string, staffId: string, date: string) {
