@@ -6,6 +6,12 @@ export type AdminApiRole = {
   guard_name?: string | null
 }
 
+export type AdminApiStaff = {
+  id?: number | string | null
+  name?: string | null
+  code?: string | null
+}
+
 export type AdminApiItem = {
   id: number | string
   username?: string | null
@@ -17,6 +23,8 @@ export type AdminApiItem = {
   updated_at?: string | null
   last_login_at?: string | null
   last_login_ip?: string | null
+  staff_id?: number | string | null
+  staff?: AdminApiStaff | null
 }
 
 export const mapAdminApiItemToRow = (item: AdminApiItem): AdminRowData => {

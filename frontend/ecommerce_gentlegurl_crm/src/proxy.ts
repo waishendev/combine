@@ -4,6 +4,7 @@ export function proxy(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
   const isProtectedPage = 
     pathname.startsWith('/admins') || 
+    pathname.startsWith('/staffs') ||
     pathname.startsWith('/dashboard');
   const isLoginPage = pathname.startsWith('/login');
   const hasSessionCookie = 
@@ -25,5 +26,5 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admins/:path*', '/dashboard/:path*', '/login'],
+  matcher: ['/admins/:path*', '/staffs/:path*', '/dashboard/:path*', '/login'],
 };

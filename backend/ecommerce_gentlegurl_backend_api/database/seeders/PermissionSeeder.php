@@ -16,6 +16,7 @@ class PermissionSeeder extends Seeder
             'permissions' => 'Permissions',
             'permission-groups' => 'Permission Groups',
             'customers' => 'Customers',
+            'staff' => 'Staff',
             'ecommerce.categories' => 'Ecommerce Categories',
             'ecommerce.products' => 'Ecommerce Products',
             'ecommerce.shop-menu' => 'Ecommerce Shop Menu',
@@ -40,6 +41,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.dashboard' => 'Ecommerce Dashboard',
             'ecommerce.settings' => 'Ecommerce Settings',
             'ecommerce.orders' => 'Ecommerce Orders',
+            'pos' => 'POS',
             'ecommerce.returns' => 'Ecommerce Returns',
         ];
 
@@ -59,6 +61,7 @@ class PermissionSeeder extends Seeder
             'permissions' => ['view', 'create', 'update', 'delete'],
             'permission-groups' => ['view', 'create', 'update', 'delete'],
             'customers' => ['view', 'create', 'update', 'delete', 'verify'],
+            'staff' => ['view', 'create', 'update', 'delete'],
             'ecommerce.categories' => ['view', 'create', 'update', 'delete'],
             'ecommerce.products' => ['view', 'create', 'update', 'delete'],
             'ecommerce.shop-menu' => ['view', 'create', 'update', 'delete'],
@@ -72,6 +75,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.payment-gateways' => ['view', 'create', 'update', 'delete'],
             'ecommerce.announcements' => ['view', 'create', 'update', 'delete'],
             'ecommerce.orders' => ['view', 'create', 'update', 'confirm-payment'],
+            'pos' => ['checkout', 'orders.view'],
             'ecommerce.returns' => ['view', 'update'],
             'ecommerce.loyalty' => ['settings', 'tiers'],
             'ecommerce.loyalty.settings' => ['view', 'create', 'update', 'delete', 'settings', 'tiers'],

@@ -61,6 +61,7 @@ use App\Http\Controllers\ShopMenuItemController;
 use App\Http\Controllers\ServicesMenuItemController;
 use App\Http\Controllers\ServicesPageController;
 use App\Http\Controllers\StoreLocationController;
+use App\Http\Controllers\StaffController;
 use App\Http\Controllers\Payments\BillplzCallbackController;
 use App\Http\Controllers\PublicServicesController;
 use Illuminate\Support\Facades\Route;
@@ -323,7 +324,23 @@ $protectedRoutes = function () {
     Route::post('/customers/{customer}/verify-email', [CustomerController::class, 'verifyEmail'])
         ->middleware('permission:customers.verify');
 
-    Route::prefix('pos')->middleware('permission:ecommerce.orders.create')->group(function () {
+    // Staffs
+    Route::get('/staffs', [StaffController::class, 'index'])
+        ->middleware('permission:staff.view');
+
+    Route::post('/staffs', [StaffController::class, 'store'])
+        ->middleware('permission:staff.create');
+
+    Route::get('/staffs/{staff}', [StaffController::class, 'show'])
+        ->middleware('permission:staff.view');
+
+    Route::put('/staffs/{staff}', [StaffController::class, 'update'])
+        ->middleware('permission:staff.update');
+
+    Route::delete('/staffs/{staff}', [StaffController::class, 'destroy'])
+        ->middleware('permission:staff.delete');
+
+    Route::prefix('pos')->middleware('permission:pos.checkout')->group(function () {
         Route::get('/members/search', [PosController::class, 'memberSearch']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
         Route::get('/products/search', [PosController::class, 'productSearch']);

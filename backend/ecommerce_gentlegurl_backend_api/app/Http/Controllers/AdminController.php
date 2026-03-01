@@ -14,7 +14,7 @@ class AdminController extends Controller
         $perPage = $request->integer('per_page', 15);
         $search = $request->string('search')->toString();
 
-        $admins = User::with('roles')
+        $admins = User::with(['roles', 'staff'])
             ->whereDoesntHave('roles', function ($query) {
                 $query->where('is_system', true);
             })
@@ -33,27 +33,33 @@ class AdminController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'username' => ['required', 'string', 'max:100', 'unique:users,username'],
+            'username' => ['nullable', 'string', 'max:100', 'unique:users,username'],
             'password' => ['required', 'string', 'min:6'],
             'is_active' => ['sometimes', 'boolean'],
-            'role_ids' => ['array'],
+            'role_ids' => ['required', 'array', 'min:1'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
+            'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
         ]);
 
+        $username = isset($validated['username']) ? trim((string) $validated['username']) : null;
+        if ($username === '') {
+            $username = null;
+        }
+
         $user = User::create([
-            'name' => $validated['name'],
+            'name' => $username ?: (string) strstr($validated['email'], '@', true),
             'email' => $validated['email'],
-            'username' => $validated['username'],
+            'username' => $username,
             'password' => $validated['password'],
             'is_active' => $validated['is_active'] ?? true,
+            'staff_id' => $validated['staff_id'] ?? null,
         ]);
 
         $roleIds = $this->filterSystemRoleIds($validated['role_ids'] ?? []);
         $user->roles()->sync($roleIds);
 
-        return $this->respond($user->load('roles'), __('Admin created successfully.'));
+        return $this->respond($user->load(['roles', 'staff']), __('Admin created successfully.'));
     }
 
     public function show(User $admin)
@@ -62,7 +68,7 @@ class AdminController extends Controller
             abort(404);
         }
 
-        return $this->respond($admin->load('roles'));
+        return $this->respond($admin->load(['roles', 'staff']));
     }
 
     public function update(Request $request, User $admin)
@@ -72,21 +78,28 @@ class AdminController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($admin->id)],
-            'username' => ['sometimes', 'string', 'max:100', Rule::unique('users', 'username')->ignore($admin->id)],
+            'username' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('users', 'username')->ignore($admin->id)],
             'password' => ['nullable', 'string', 'min:6'],
             'is_active' => ['sometimes', 'boolean'],
-            'role_ids' => ['array'],
+            'role_ids' => ['sometimes', 'array', 'min:1'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
+            'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
         ]);
+
+        if (array_key_exists('username', $validated)) {
+            $username = trim((string) ($validated['username'] ?? ''));
+            $validated['username'] = $username === '' ? null : $username;
+            if (($validated['username'] ?? null) && empty($admin->name)) {
+                $validated['name'] = $validated['username'];
+            }
+        }
 
         if (empty($validated['password'])) {
             unset($validated['password']);
         }
 
         $admin->fill($validated);
-
         $admin->save();
 
         if ($request->has('role_ids')) {
@@ -94,7 +107,7 @@ class AdminController extends Controller
             $admin->roles()->sync($roleIds);
         }
 
-        return $this->respond($admin->load('roles'), __('Admin updated successfully.'));
+        return $this->respond($admin->load(['roles', 'staff']), __('Admin updated successfully.'));
     }
 
     public function destroy(User $admin)

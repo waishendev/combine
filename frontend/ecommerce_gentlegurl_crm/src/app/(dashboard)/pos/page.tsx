@@ -12,7 +12,7 @@ export default async function PosPage() {
     redirect('/login')
   }
 
-  const hasPermission = user.permissions.includes('ecommerce.orders.create')
+  const hasPermission = user.permissions.includes('pos.checkout')
   if (!hasPermission) {
     redirect('/dashboard')
   }

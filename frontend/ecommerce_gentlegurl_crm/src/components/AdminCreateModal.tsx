@@ -53,7 +53,7 @@ export default function AdminCreateModal({
     const trimmedEmail = form.email.trim()
     const roleIdNumber = Number(form.roleId)
 
-    if (!trimmedUsername || !form.password || !trimmedEmail || !roleIdNumber) {
+    if (!form.password || !trimmedEmail || !roleIdNumber) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -69,7 +69,8 @@ export default function AdminCreateModal({
           Accept: 'application/json',
         },
         body: JSON.stringify({
-          username: trimmedUsername,
+          name: trimmedUsername || trimmedEmail.split('@')[0],
+          username: trimmedUsername || null,
           password: form.password,
           email: trimmedEmail,
           role_ids: [roleIdNumber],
@@ -113,7 +114,7 @@ export default function AdminCreateModal({
         ? mapAdminApiItemToRow(payload)
         : {
             id: 0,
-            username: trimmedUsername,
+            username: trimmedUsername || '',
             email: trimmedEmail,
             isActive: true,
             roleName,
@@ -180,7 +181,7 @@ export default function AdminCreateModal({
               htmlFor="username"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              {t('common.username')} <span className="text-red-500">*</span>
+              {t('common.username')} (optional)
             </label>
             <input
               id="username"
