@@ -217,6 +217,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
   const scanBufferRef = useRef('')
   const lastKeyTimeRef = useRef(0)
+  const scanningRef = useRef(false)
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastScanMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
@@ -932,23 +933,55 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
 
   useEffect(() => {
+    const MIN_LEN_START = 3
+    const MIN_LEN_SUBMIT = 6
+    const SCAN_KEY_INTERVAL_MS = 50
+    const SCAN_IDLE_RESET_MS = 150
+
+    const resetScanState = () => {
+      scanBufferRef.current = ''
+      lastKeyTimeRef.current = 0
+      scanningRef.current = false
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (memberOpen || checkoutConfirmationOpen) return
+      const hasOpenModal =
+        memberOpen ||
+        checkoutConfirmationOpen ||
+        productSelectModalOpen ||
+        voucherModalOpen ||
+        itemSplitEditorOpen ||
+        Boolean(checkoutResult) ||
+        qrCodeFullscreen
+
+      if (hasOpenModal) return
 
       const key = event.key
       const isPrintable = key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey
+      const now = Date.now()
+
+      if (lastKeyTimeRef.current && now - lastKeyTimeRef.current > SCAN_IDLE_RESET_MS) {
+        resetScanState()
+      }
 
       if (isPrintable) {
-        const now = Date.now()
         const elapsed = now - lastKeyTimeRef.current
-        const isScannerSpeed = elapsed <= 50
+        const isScannerSpeed = elapsed <= SCAN_KEY_INTERVAL_MS
 
         if (isScannerSpeed) {
           scanBufferRef.current += key
-          event.preventDefault()
-          event.stopPropagation()
         } else {
           scanBufferRef.current = key
+          scanningRef.current = false
+        }
+
+        if (scanBufferRef.current.length >= MIN_LEN_START && isScannerSpeed) {
+          scanningRef.current = true
+        }
+
+        if (scanningRef.current) {
+          event.preventDefault()
+          event.stopPropagation()
         }
 
         lastKeyTimeRef.current = now
@@ -958,14 +991,18 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         }
 
         scanTimeoutRef.current = window.setTimeout(() => {
-          scanBufferRef.current = ''
-          lastKeyTimeRef.current = 0
-        }, 150)
+          resetScanState()
+        }, SCAN_IDLE_RESET_MS)
 
         return
       }
 
       if (key === 'Enter') {
+        if (scanningRef.current) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+
         const scanned = scanBufferRef.current.trim()
 
         if (scanTimeoutRef.current) {
@@ -973,12 +1010,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           scanTimeoutRef.current = null
         }
 
-        scanBufferRef.current = ''
-        lastKeyTimeRef.current = 0
+        const isValidScan = scanningRef.current && scanned.length >= MIN_LEN_SUBMIT
+        resetScanState()
 
-        if (scanned.length >= 6) {
-          event.preventDefault()
-          event.stopPropagation()
+        if (isValidScan) {
           void addByBarcodeRef.current(scanned)
           setLastScanValue(scanned)
           setLastScanVisible(true)
@@ -1005,7 +1040,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         window.clearTimeout(lastScanMessageTimeoutRef.current)
       }
     }
-  }, [checkoutConfirmationOpen, memberOpen])
+  }, [
+    checkoutConfirmationOpen,
+    checkoutResult,
+    itemSplitEditorOpen,
+    memberOpen,
+    productSelectModalOpen,
+    qrCodeFullscreen,
+    voucherModalOpen,
+  ])
 
   const onSelectProduct = (item: ProductOption) => {
     setFullProductData(null)
