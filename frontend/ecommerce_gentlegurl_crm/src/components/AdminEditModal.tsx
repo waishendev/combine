@@ -13,7 +13,6 @@ interface AdminEditModalProps {
   onSuccess: (admin: AdminRowData) => void
   roles: AdminRoleOption[]
   rolesLoading: boolean
-  staffOptions: Array<{ id: number; name: string }>
 }
 
 interface FormState {
@@ -21,8 +20,6 @@ interface FormState {
   password: string
   email: string
   roleId: string
-  isActive: 'true' | 'false'
-  staffId: string
 }
 
 const initialFormState: FormState = {
@@ -30,8 +27,6 @@ const initialFormState: FormState = {
   password: '',
   email: '',
   roleId: '',
-  isActive: 'true',
-  staffId: '',
 }
 
 export default function AdminEditModal({
@@ -40,7 +35,6 @@ export default function AdminEditModal({
   onSuccess,
   roles,
   rolesLoading,
-  staffOptions,
 }: AdminEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -105,11 +99,6 @@ export default function AdminEditModal({
           password: '',
           email: typeof admin.email === 'string' ? admin.email : '',
           roleId: primaryRoleId != null ? String(primaryRoleId) : '',
-          isActive:
-            admin.is_active === true || admin.is_active === 'true' || admin.is_active === 1
-              ? 'true'
-              : 'false',
-          staffId: admin.staff_id != null ? String(admin.staff_id) : '',
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -142,7 +131,7 @@ export default function AdminEditModal({
     const trimmedEmail = form.email.trim()
     const roleIdNumber = Number(form.roleId)
 
-    if (!trimmedUsername || !trimmedEmail || !roleIdNumber) {
+    if (!trimmedEmail || !roleIdNumber) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -152,12 +141,10 @@ export default function AdminEditModal({
 
     try {
       const payload: Record<string, unknown> = {
-        name: trimmedUsername,
-        username: trimmedUsername,
+        name: trimmedUsername || trimmedEmail.split('@')[0],
+        username: trimmedUsername || null,
         email: trimmedEmail,
         role_ids: [roleIdNumber],
-        is_active: form.isActive === 'true',
-        staff_id: form.staffId ? Number(form.staffId) : null,
       }
 
       const trimmedPassword = form.password.trim()
@@ -223,9 +210,9 @@ export default function AdminEditModal({
         ? mapAdminApiItemToRow(payloadData)
         : {
             id: loadedAdmin?.id ?? adminId,
-            username: trimmedUsername,
+            username: trimmedUsername || '',
             email: trimmedEmail,
-            isActive: form.isActive === 'true',
+            isActive: loadedAdmin?.isActive ?? true,
             roleName,
             roleId: roleIdNumber || null,
             createdAt: loadedAdmin?.createdAt ?? '',
@@ -277,7 +264,7 @@ export default function AdminEditModal({
                   htmlFor="edit-username"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  {t('common.username')} <span className="text-red-500">*</span>
+                  {t('common.username')} (optional)
                 </label>
                 <input
                   id="edit-username"
@@ -296,7 +283,7 @@ export default function AdminEditModal({
                   htmlFor="edit-password"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  {t('common.passwordKeepBlank')} <span className="text-red-500">*</span>
+                  {t('common.passwordKeepBlank')}
                 </label>
                 <input
                   id="edit-password"
@@ -350,49 +337,6 @@ export default function AdminEditModal({
                       {role.name ?? role.id}
                     </option>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label
-                  htmlFor="edit-staffId"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Linked Staff
-                </label>
-                <select
-                  id="edit-staffId"
-                  name="staffId"
-                  value={form.staffId}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="">None</option>
-                  {staffOptions.map((staff) => (
-                    <option key={staff.id} value={staff.id}>
-                      {staff.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-isActive"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('common.status')} <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-isActive"
-                  name="isActive"
-                  value={form.isActive}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="true">{t('common.active')}</option>
-                  <option value="false">{t('common.inactive')}</option>
                 </select>
               </div>
             </>

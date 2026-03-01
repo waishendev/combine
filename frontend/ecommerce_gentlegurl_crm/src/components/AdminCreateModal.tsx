@@ -12,7 +12,6 @@ interface AdminCreateModalProps {
   onSuccess: (admin: AdminRowData) => void
   roles: AdminRoleOption[]
   rolesLoading: boolean
-  staffOptions: Array<{ id: number; name: string }>
 }
 
 interface FormState {
@@ -20,7 +19,6 @@ interface FormState {
   password: string
   email: string
   roleId: string
-  staffId: string
 }
 
 const initialFormState: FormState = {
@@ -28,7 +26,6 @@ const initialFormState: FormState = {
   password: '',
   email: '',
   roleId: '',
-  staffId: '',
 }
 
 export default function AdminCreateModal({
@@ -36,7 +33,6 @@ export default function AdminCreateModal({
   onSuccess,
   roles,
   rolesLoading,
-  staffOptions,
 }: AdminCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -57,7 +53,7 @@ export default function AdminCreateModal({
     const trimmedEmail = form.email.trim()
     const roleIdNumber = Number(form.roleId)
 
-    if (!trimmedUsername || !form.password || !trimmedEmail || !roleIdNumber) {
+    if (!form.password || !trimmedEmail || !roleIdNumber) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -73,13 +69,12 @@ export default function AdminCreateModal({
           Accept: 'application/json',
         },
         body: JSON.stringify({
-          name: trimmedUsername,
-          username: trimmedUsername,
+          name: trimmedUsername || trimmedEmail.split('@')[0],
+          username: trimmedUsername || null,
           password: form.password,
           email: trimmedEmail,
           role_ids: [roleIdNumber],
           is_active: true,
-          staff_id: form.staffId ? Number(form.staffId) : null,
         }),
       })
 
@@ -119,7 +114,7 @@ export default function AdminCreateModal({
         ? mapAdminApiItemToRow(payload)
         : {
             id: 0,
-            username: trimmedUsername,
+            username: trimmedUsername || '',
             email: trimmedEmail,
             isActive: true,
             roleName,
@@ -186,7 +181,7 @@ export default function AdminCreateModal({
               htmlFor="username"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              {t('common.username')} <span className="text-red-500">*</span>
+              {t('common.username')} (optional)
             </label>
             <input
               id="username"
@@ -238,18 +233,6 @@ export default function AdminCreateModal({
                 <option key={String(role.id)} value={String(role.id ?? '')}>
                   {role.name ?? role.id}
                 </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="staffId" className="block text-sm font-medium text-gray-700 mb-1">
-              Linked Staff
-            </label>
-            <select id="staffId" name="staffId" value={form.staffId} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500" disabled={submitting}>
-              <option value="">None</option>
-              {staffOptions.map((staff) => (
-                <option key={staff.id} value={staff.id}>{staff.name}</option>
               ))}
             </select>
           </div>

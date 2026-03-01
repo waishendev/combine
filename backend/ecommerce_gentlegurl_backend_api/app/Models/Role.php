@@ -12,6 +12,7 @@ class Role extends BaseModel
         'name',
         'description',
         'is_active',
+        'is_system',
     ];
 
     public function users()
