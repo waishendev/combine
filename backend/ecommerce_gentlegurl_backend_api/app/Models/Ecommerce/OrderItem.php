@@ -83,4 +83,9 @@ class OrderItem extends Model
     {
         return $this->belongsTo(\App\Models\Staff::class);
     }
+
+    public function staffSplits()
+    {
+        return $this->hasMany(OrderItemStaffSplit::class);
+    }
 }

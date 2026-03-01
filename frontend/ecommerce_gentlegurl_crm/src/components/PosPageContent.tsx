@@ -78,7 +78,19 @@ type StaffOption = {
 
 type CheckoutItemAssignment = {
   cart_item_id: number
+  splits: CheckoutItemStaffSplit[]
+  is_default: boolean
+}
+
+type CheckoutItemStaffSplit = {
+  staff_id: number
+  share_percent: number
+}
+
+type CheckoutItemSplitDraft = {
+  id: string
   staff_id: number | null
+  share_percent: number
   search: string
   options: StaffOption[]
   loading: boolean
@@ -236,6 +248,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [checkoutConfirmationOpen, setCheckoutConfirmationOpen] = useState(false)
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
+  const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
+  const [itemSplitEditorItemId, setItemSplitEditorItemId] = useState<number | null>(null)
+  const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
+  const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
+  const [itemSplitError, setItemSplitError] = useState<string | null>(null)
+  const staffSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
   const [cashReceived, setCashReceived] = useState('')
@@ -265,10 +283,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const discount = Math.max(0, cartSubtotal - cartTotal)
   const appliedVoucher = cart?.voucher ?? null
 
-  const selectedStaffByCartItemId = useMemo(() => {
-    const map = new Map<number, number | null>()
+  const selectedStaffSplitsByCartItemId = useMemo(() => {
+    const map = new Map<number, CheckoutItemStaffSplit[]>()
     checkoutItemAssignments.forEach((assignment) => {
-      map.set(assignment.cart_item_id, assignment.staff_id)
+      map.set(assignment.cart_item_id, assignment.splits)
     })
     return map
   }, [checkoutItemAssignments])
@@ -1032,7 +1050,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           qty: item.qty,
           unit_price: item.unit_price,
           line_total: item.line_total,
-          staff_id: selectedStaffByCartItemId.get(item.id) ?? null,
+          staff_splits: (selectedStaffSplitsByCartItemId.get(item.id) ?? []).map((split) => ({
+            staff_id: split.staff_id,
+            share_percent: split.share_percent,
+          })),
         })),
       }),
     })
@@ -1187,7 +1208,48 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setQrProofFileName(null)
   }
 
-  const getStaffLabel = (staff: StaffOption) => staff.phone ? `${staff.name} • ${staff.phone}` : staff.name
+  const getStaffLabel = (staff: StaffOption) => {
+    const parts = [staff.name, staff.phone ?? '', staff.email ?? ''].filter(Boolean)
+    return parts.join(' • ')
+  }
+
+  const getSplitSummary = (assignment: CheckoutItemAssignment | undefined) => {
+    if (!assignment || assignment.splits.length === 0) return 'No staff assigned'
+    const total = assignment.splits.reduce((sum, row) => sum + row.share_percent, 0)
+    if (assignment.is_default && assignment.splits.length === 1 && total === 100) {
+      return 'Default (100%)'
+    }
+    return `${assignment.splits.length} staff (${total}%)`
+  }
+
+  const createDraftRow = (seed?: Partial<CheckoutItemSplitDraft>): CheckoutItemSplitDraft => ({
+    id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    staff_id: seed?.staff_id ?? null,
+    share_percent: seed?.share_percent ?? 0,
+    search: seed?.search ?? '',
+    options: seed?.options ?? activeStaffs,
+    loading: false,
+    open: false,
+  })
+
+  const validateSplitDraft = (rows: CheckoutItemSplitDraft[]) => {
+    if (rows.length === 0) return { valid: false, error: 'Please add at least one staff row.' }
+
+    const ids = new Set<number>()
+    let total = 0
+    for (const row of rows) {
+      if (!row.staff_id || row.staff_id <= 0) return { valid: false, error: 'Please select staff for every row.' }
+      if (ids.has(row.staff_id)) return { valid: false, error: 'Duplicate staff is not allowed.' }
+      ids.add(row.staff_id)
+      if (!Number.isInteger(row.share_percent) || row.share_percent < 0 || row.share_percent > 100) {
+        return { valid: false, error: 'Share % must be an integer between 0 and 100.' }
+      }
+      total += row.share_percent
+    }
+    if (total !== 100) return { valid: false, error: 'Total share must be exactly 100%.' }
+
+    return { valid: true, error: null as string | null }
+  }
 
   const syncCheckoutAssignments = useCallback(async () => {
     if (!cart?.items?.length) {
@@ -1205,38 +1267,106 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCheckoutItemAssignments((prev) => cart.items.map((item) => {
       const existing = prev.find((x) => x.cart_item_id === item.id)
       if (existing) return existing
-      const defaultStaff = currentUser.staff_id ? baseStaffs.find((x) => x.id === currentUser.staff_id) : null
+      const defaultStaffId = currentUser.staff_id ?? null
       return {
         cart_item_id: item.id,
-        staff_id: currentUser.staff_id ?? null,
-        search: defaultStaff ? getStaffLabel(defaultStaff) : '',
-        options: baseStaffs,
-        loading: false,
-        open: false,
+        splits: defaultStaffId ? [{ staff_id: defaultStaffId, share_percent: 100 }] : [],
+        is_default: Boolean(defaultStaffId),
       }
     }))
   }, [activeStaffs, cart?.items, currentUser.staff_id, fetchStaffOptions])
 
-  const onCheckoutStaffSearch = async (cartItemId: number, value: string) => {
-    setCheckoutItemAssignments((prev) => prev.map((assignment) =>
-      assignment.cart_item_id === cartItemId ? { ...assignment, search: value, loading: true, open: true } : assignment,
-    ))
-    const options = await fetchStaffOptions(value)
-    setCheckoutItemAssignments((prev) => prev.map((assignment) =>
-      assignment.cart_item_id === cartItemId ? { ...assignment, options, loading: false, open: true } : assignment,
-    ))
+  const openItemSplitEditor = async (cartItemId: number) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+
+    const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === cartItemId)
+    const rows = (assignment?.splits ?? []).map((split) => {
+      const selected = nextStaffs.find((staff) => staff.id === split.staff_id)
+      return createDraftRow({
+        staff_id: split.staff_id,
+        share_percent: split.share_percent,
+        search: selected ? getStaffLabel(selected) : '',
+        options: nextStaffs,
+      })
+    })
+
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
+    setItemSplitEditorItemId(cartItemId)
+    setItemSplitAutoBalance(true)
+    setItemSplitError(null)
+    setItemSplitEditorOpen(true)
   }
 
-  const selectCheckoutStaff = (cartItemId: number, staff: StaffOption | null) => {
+  const setDraftRowSearch = (rowId: string, value: string) => {
+    setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, search: value, loading: true, open: true } : row))
+    if (staffSearchTimerRef.current[rowId]) clearTimeout(staffSearchTimerRef.current[rowId])
+    staffSearchTimerRef.current[rowId] = setTimeout(async () => {
+      const options = await fetchStaffOptions(value)
+      setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, loading: false, options, open: true } : row))
+    }, 300)
+  }
+
+  const selectDraftRowStaff = (rowId: string, staff: StaffOption) => {
+    setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, staff_id: staff.id, search: getStaffLabel(staff), open: false } : row))
+  }
+
+  const saveItemSplitEditor = () => {
+    const validation = validateSplitDraft(itemSplitDraftRows)
+    if (!validation.valid) {
+      setItemSplitError(validation.error)
+      return
+    }
+
+    if (!itemSplitEditorItemId) return
     setCheckoutItemAssignments((prev) => prev.map((assignment) => {
-      if (assignment.cart_item_id !== cartItemId) return assignment
+      if (assignment.cart_item_id !== itemSplitEditorItemId) return assignment
       return {
         ...assignment,
-        staff_id: staff?.id ?? null,
-        search: staff ? getStaffLabel(staff) : '',
-        open: false,
+        is_default: false,
+        splits: itemSplitDraftRows.map((row) => ({ staff_id: row.staff_id!, share_percent: row.share_percent })),
       }
     }))
+    setItemSplitEditorOpen(false)
+  }
+
+  const onAddDraftSplitRow = () => {
+    setItemSplitDraftRows((prev) => [...prev, createDraftRow({ options: activeStaffs, share_percent: 0 })])
+    setItemSplitError(null)
+  }
+
+  const onRemoveDraftSplitRow = (rowId: string) => {
+    setItemSplitDraftRows((prev) => prev.filter((row) => row.id !== rowId))
+    setItemSplitError(null)
+  }
+
+  const onChangeDraftShare = (rowId: string, rawValue: number) => {
+    const nextValue = Math.max(0, Math.min(100, Math.round(rawValue || 0)))
+    setItemSplitError(null)
+
+    setItemSplitDraftRows((prev) => {
+      if (!itemSplitAutoBalance) {
+        return prev.map((row) => row.id === rowId ? { ...row, share_percent: nextValue } : row)
+      }
+
+      const primary = prev[0]
+      if (!primary) return prev
+      if (primary.id === rowId) return prev
+
+      const next = prev.map((row) => row.id === rowId ? { ...row, share_percent: nextValue } : row)
+      const othersTotal = next.slice(1).reduce((sum, row) => sum + row.share_percent, 0)
+      const primaryShare = 100 - othersTotal
+      if (primaryShare < 0) {
+        setItemSplitError('Total share cannot exceed 100% when Auto Balance is on.')
+        return prev
+      }
+
+      next[0] = { ...next[0], share_percent: primaryShare }
+      return next
+    })
   }
 
   const openCheckoutConfirmation = async () => {
@@ -1983,42 +2113,26 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           <td className="px-3 py-2">-</td>
                           <td className="px-3 py-2 font-semibold">RM {Number(item.line_total).toFixed(2)}</td>
                           <td className="px-3 py-2 min-w-[280px]">
-                            <div className="relative">
-                              <input
-                                value={assignment?.search ?? ''}
-                                onFocus={() => setCheckoutItemAssignments((prev) => prev.map((row) => row.cart_item_id === item.id ? { ...row, open: true } : row))}
-                                onChange={(event) => void onCheckoutStaffSearch(item.id, event.target.value)}
-                                className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
-                                placeholder="Search staff by name / phone / email"
-                              />
-                              {!!assignment?.staff_id && (
+                            <div className="space-y-1">
+                              <p className="text-xs text-gray-700">{getSplitSummary(assignment)}</p>
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => selectCheckoutStaff(item.id, null)}
-                                  className="absolute right-2 top-2 text-xs text-red-600"
+                                  onClick={() => void openItemSplitEditor(item.id)}
+                                  className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
                                 >
-                                  Clear
+                                  {assignment?.splits?.length ? 'Edit' : 'Assign'}
                                 </button>
-                              )}
-                              {assignment?.open && (
-                                <div className="absolute z-10 mt-1 max-h-44 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                                  {assignment.loading ? (
-                                    <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>
-                                  ) : assignment.options.length ? assignment.options.map((staff) => (
-                                    <button
-                                      key={staff.id}
-                                      type="button"
-                                      onClick={() => selectCheckoutStaff(item.id, staff)}
-                                      className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50"
-                                    >
-                                      <p className="font-medium text-gray-800">{getStaffLabel(staff)}</p>
-                                      <p className="text-gray-500">{staff.email || staff.code || '-'}</p>
-                                    </button>
-                                  )) : (
-                                    <p className="px-3 py-2 text-xs text-gray-500">No staff found.</p>
-                                  )}
-                                </div>
-                              )}
+                                {assignment?.splits?.length ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setCheckoutItemAssignments((prev) => prev.map((row) => row.cart_item_id === item.id ? { ...row, splits: [], is_default: false } : row))}
+                                    className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                  >
+                                    Clear
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -2050,6 +2164,86 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800"
                 >
                   Confirm checkout
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {itemSplitEditorOpen && itemSplitEditorItemId ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+              <h5 className="text-lg font-bold text-gray-900">Item Staff Split</h5>
+              <button type="button" onClick={() => setItemSplitEditorOpen(false)} className="text-2xl leading-none text-gray-500">×</button>
+            </div>
+
+            <div className="space-y-3 p-5">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input type="checkbox" checked={itemSplitAutoBalance} onChange={(event) => setItemSplitAutoBalance(event.target.checked)} className="h-4 w-4" />
+                Auto Balance
+              </label>
+
+              <div className="max-h-[40vh] space-y-3 overflow-auto pr-1">
+                {itemSplitDraftRows.map((row, index) => (
+                  <div key={row.id} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[1.6fr_0.8fr_auto] sm:items-end">
+                    <div className="relative">
+                      <label className="mb-1 block text-xs font-semibold text-gray-600">Staff</label>
+                      <input
+                        value={row.search}
+                        onFocus={() => setItemSplitDraftRows((prev) => prev.map((item) => item.id === row.id ? { ...item, open: true } : item))}
+                        onChange={(event) => setDraftRowSearch(row.id, event.target.value)}
+                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                        placeholder="Search staff by name / phone / email"
+                      />
+                      {row.open && (
+                        <div className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                          {row.loading ? <p className="px-3 py-2 text-xs text-gray-500">Searching...</p> : row.options.map((staff) => (
+                            <button key={staff.id} type="button" onClick={() => selectDraftRowStaff(row.id, staff)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50">
+                              {getStaffLabel(staff)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-gray-600">Share %</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={row.share_percent}
+                        readOnly={itemSplitAutoBalance && index === 0}
+                        onChange={(event) => onChangeDraftShare(row.id, Number(event.target.value || 0))}
+                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm read-only:bg-gray-100"
+                      />
+                    </div>
+
+                    <button type="button" onClick={() => onRemoveDraftSplitRow(row.id)} className="h-10 rounded-lg border border-red-300 px-3 text-xs font-semibold text-red-700 hover:bg-red-50">Remove</button>
+                  </div>
+                ))}
+              </div>
+
+              <button type="button" onClick={onAddDraftSplitRow} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">+ Add Staff</button>
+
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <span className="text-sm text-gray-700">Total %</span>
+                <span className="text-sm font-bold text-gray-900">{itemSplitDraftRows.reduce((sum, row) => sum + row.share_percent, 0)}%</span>
+              </div>
+
+              {itemSplitError && <p className="text-xs font-medium text-red-600">{itemSplitError}</p>}
+
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setItemSplitEditorOpen(false)} className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700">Cancel</button>
+                <button
+                  type="button"
+                  onClick={saveItemSplitEditor}
+                  disabled={!validateSplitDraft(itemSplitDraftRows).valid}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400"
+                >
+                  Save
                 </button>
               </div>
             </div>

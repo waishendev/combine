@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\OrderItemStaffSplit;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCartItem;
@@ -503,7 +504,9 @@ class PosController extends Controller
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
             'items' => ['nullable', 'array'],
             'items.*.cart_item_id' => ['nullable', 'integer'],
-            'items.*.staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+            'items.*.staff_splits' => ['nullable', 'array'],
+            'items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product']);
@@ -573,9 +576,9 @@ class PosController extends Controller
                 'notes' => 'POS checkout by staff #' . $request->user()->id,
             ]);
 
-            $staffByCartItemId = collect($validated['items'] ?? [])->mapWithKeys(function (array $item) {
+            $staffSplitsByCartItemId = collect($validated['items'] ?? [])->mapWithKeys(function (array $item) {
                 $cartItemId = isset($item['cart_item_id']) ? (int) $item['cart_item_id'] : 0;
-                return $cartItemId > 0 ? [$cartItemId => ($item['staff_id'] ?? null)] : [];
+                return $cartItemId > 0 ? [$cartItemId => collect($item['staff_splits'] ?? [])->values()->all()] : [];
             });
 
             foreach ($cart->items as $item) {
@@ -593,7 +596,8 @@ class PosController extends Controller
                     abort(422, __('Insufficient stock for :sku', ['sku' => $product->sku ?? $product->id]));
                 }
 
-                OrderItem::create([
+                $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
+                $orderItem = OrderItem::create([
                     'order_id' => $order->id,
                     'product_id' => $product->id,
                     'product_variant_id' => $variant?->id,
@@ -606,9 +610,25 @@ class PosController extends Controller
                     'variant_cost_snapshot' => $variant?->cost_price,
                     'quantity' => $item->qty,
                     'line_total' => ((float) $item->price_snapshot) * $item->qty,
-                    'staff_id' => $staffByCartItemId->get((int) $item->id),
+                    'staff_id' => $itemSplits->first()['staff_id'] ?? null,
                     'locked' => true,
                 ]);
+
+                if ($itemSplits->isNotEmpty()) {
+                    $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
+                    $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
+                    if ($sum !== 100 || $uniqueCount !== $itemSplits->count()) {
+                        abort(422, __('Invalid staff split.'));
+                    }
+
+                    foreach ($itemSplits as $split) {
+                        OrderItemStaffSplit::create([
+                            'order_item_id' => $orderItem->id,
+                            'staff_id' => (int) $split['staff_id'],
+                            'share_percent' => (int) $split['share_percent'],
+                        ]);
+                    }
+                }
             }
 
             $order->load(['items', 'customer']);
