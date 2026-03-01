@@ -9,7 +9,28 @@ use Illuminate\Http\Request;
 
 class BlockController extends Controller
 {
-    public function index() { return $this->respond(BookingBlock::query()->latest('start_at')->paginate(50)); }
+    public function index(Request $request)
+    {
+        $query = BookingBlock::query();
+
+        if ($request->filled('scope')) {
+            $query->where('scope', $request->string('scope'));
+        }
+
+        if ($request->filled('staff_id')) {
+            $query->where('staff_id', (int) $request->staff_id);
+        }
+
+        if ($request->filled('from')) {
+            $query->where('start_at', '>=', $request->string('from'));
+        }
+
+        if ($request->filled('to')) {
+            $query->where('end_at', '<=', $request->string('to'));
+        }
+
+        return $this->respond($query->latest('start_at')->paginate(50));
+    }
 
     public function store(Request $request)
     {
@@ -34,17 +55,29 @@ class BlockController extends Controller
         return $this->respond($block, null, true, 201);
     }
 
-    public function show(int $id) { return $this->respond(BookingBlock::findOrFail($id)); }
-    public function update(Request $request, int $id) {
+    public function show(int $id)
+    {
+        return $this->respond(BookingBlock::findOrFail($id));
+    }
+
+    public function update(Request $request, int $id)
+    {
         $block = BookingBlock::findOrFail($id);
         $block->update($request->validate([
             'scope' => ['sometimes', 'in:STORE,STAFF'],
             'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
             'start_at' => ['sometimes', 'date'],
-            'end_at' => ['sometimes', 'date'],
+            'end_at' => ['sometimes', 'date', 'after:start_at'],
             'reason' => ['nullable', 'string'],
         ]));
+
         return $this->respond($block);
     }
-    public function destroy(int $id) { BookingBlock::findOrFail($id)->delete(); return $this->respond(null); }
+
+    public function destroy(int $id)
+    {
+        BookingBlock::findOrFail($id)->delete();
+
+        return $this->respond(null);
+    }
 }

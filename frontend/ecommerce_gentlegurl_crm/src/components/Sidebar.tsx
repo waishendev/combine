@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
+import { getWorkspace, type Workspace } from '@/lib/workspace'
+
 type SidebarProps = {
   collapsed: boolean
   overlayMode: boolean
@@ -30,8 +32,16 @@ type MenuChild = {
 
 export default function Sidebar({ collapsed, overlayMode, permissions, onToggleSidebar }: SidebarProps) {
   const pathname = usePathname()
+  const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
 
-  const menuItems: MenuItem[] = useMemo(
+  useEffect(() => {
+    const handleWorkspaceChanged = () => setWorkspaceState(getWorkspace())
+    window.addEventListener('crm_workspace_changed', handleWorkspaceChanged)
+
+    return () => window.removeEventListener('crm_workspace_changed', handleWorkspaceChanged)
+  }, [])
+
+  const ecommerceMenuItems: MenuItem[] = useMemo(
     () => [
       // ======================
       // Overview
@@ -386,6 +396,75 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
     ],
     [],
   );
+
+  const bookingMenuItems: MenuItem[] = useMemo(
+    () => [
+      {
+        key: 'booking-dashboard',
+        label: 'Booking Dashboard',
+        icon: 'fa-solid fa-calendar-days',
+        href: '/booking/reports',
+      },
+      {
+        key: 'booking-management',
+        label: 'Booking',
+        icon: 'fa-solid fa-calendar-check',
+        children: [
+          {
+            key: 'booking-appointments',
+            label: 'Appointments',
+            href: '/booking/appointments',
+            requiredPermission: 'booking.appointments.view',
+          },
+          {
+            key: 'booking-services',
+            label: 'Services',
+            href: '/booking/services',
+            requiredPermission: 'booking.services.view',
+          },
+          {
+            key: 'booking-schedules',
+            label: 'Staff Schedules',
+            href: '/booking/staff-schedules',
+            requiredPermission: 'booking.schedules.view',
+          },
+          {
+            key: 'booking-blocks',
+            label: 'Blocks',
+            href: '/booking/blocks',
+            requiredPermission: 'booking.blocks.view',
+          },
+        ],
+      },
+      {
+        key: 'booking-reports',
+        label: 'Reports',
+        icon: 'fa-solid fa-chart-line',
+        href: '/booking/reports',
+        requiredPermission: 'booking.reports.view',
+      },
+      {
+        key: 'booking-logs',
+        label: 'Audit Logs',
+        icon: 'fa-solid fa-clipboard-list',
+        href: '/booking/logs',
+        requiredPermission: 'booking.logs.view',
+      },
+      {
+        key: 'booking-settings',
+        label: 'Settings',
+        icon: 'fa-solid fa-gear',
+        href: '/booking/settings',
+        requiredPermission: 'booking.settings.view',
+      },
+    ],
+    [],
+  )
+
+  const menuItems = useMemo(
+    () => (workspace === 'booking' ? bookingMenuItems : ecommerceMenuItems),
+    [bookingMenuItems, ecommerceMenuItems, workspace],
+  )
 
   const visibleItems = useMemo(() => {
     return menuItems

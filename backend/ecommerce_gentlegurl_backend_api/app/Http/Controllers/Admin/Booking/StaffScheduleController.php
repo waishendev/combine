@@ -8,7 +8,16 @@ use Illuminate\Http\Request;
 
 class StaffScheduleController extends Controller
 {
-    public function index() { return $this->respond(BookingStaffSchedule::query()->paginate(50)); }
+    public function index(Request $request)
+    {
+        $query = BookingStaffSchedule::query();
+
+        if ($request->filled('staff_id')) {
+            $query->where('staff_id', (int) $request->staff_id);
+        }
+
+        return $this->respond($query->paginate(50));
+    }
     public function show(int $id) { return $this->respond(BookingStaffSchedule::findOrFail($id)); }
     public function store(Request $request) {
         $data = $request->validate([
