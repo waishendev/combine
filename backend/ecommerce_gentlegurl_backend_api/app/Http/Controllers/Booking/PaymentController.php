@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPayment;
+use App\Models\Booking\BookingLog;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
@@ -65,6 +66,15 @@ class PaymentController extends Controller
                 'payment_status' => 'PAID',
                 'status' => 'CONFIRMED',
                 'hold_expires_at' => null,
+            ]);
+
+            BookingLog::create([
+                'booking_id' => $booking->id,
+                'actor_type' => 'SYSTEM',
+                'actor_id' => null,
+                'action' => 'PAYMENT_CONFIRMED',
+                'meta' => ['payment_id' => $payment->id, 'ref' => $payment->ref],
+                'created_at' => now(),
             ]);
         } else {
             $payment->update([

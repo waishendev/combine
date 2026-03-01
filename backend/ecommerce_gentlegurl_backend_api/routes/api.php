@@ -878,6 +878,7 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::get('/availability', [\App\Http\Controllers\Booking\AvailabilityController::class, 'index']);
     Route::post('/hold', [\App\Http\Controllers\Booking\HoldController::class, 'store']);
     Route::post('/{id}/pay', [\App\Http\Controllers\Booking\PaymentController::class, 'pay']);
+    Route::post('/{id}/reschedule', [\App\Http\Controllers\Booking\RescheduleController::class, 'store']);
     Route::post('/payment/callback', [\App\Http\Controllers\Booking\PaymentController::class, 'callback']);
 });
 
@@ -886,6 +887,18 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::get('/appointments/{id}', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'show']);
     Route::patch('/appointments/{id}/status', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'updateStatus']);
     Route::post('/appointments/{id}/photos', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'uploadPhoto']);
+    Route::post('/{id}/reschedule', [\App\Http\Controllers\Admin\Booking\RescheduleController::class, 'store']);
+
+    Route::get('/reports/staff', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'staff']);
+    Route::get('/reports/staff/export.csv', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'staffExport']);
+    Route::get('/reports/summary', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'summary']);
+    Route::get('/reports/summary/export.csv', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'summaryExport']);
+
+    Route::get('/logs', [\App\Http\Controllers\Admin\Booking\LogController::class, 'index']);
+    Route::get('/logs/export.csv', [\App\Http\Controllers\Admin\Booking\LogController::class, 'export']);
+
+    Route::get('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'show']);
+    Route::put('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'update']);
 
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
