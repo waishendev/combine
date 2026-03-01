@@ -45,9 +45,7 @@ class BookingTestingSeeder extends Seeder
 
     private function truncateBookingTables(): void
     {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
-
-        foreach ([
+        $tables = [
             'booking_logs',
             'booking_payments',
             'booking_photos',
@@ -57,11 +55,27 @@ class BookingTestingSeeder extends Seeder
             'booking_staff_schedules',
             'booking_service_staff',
             'booking_services',
-        ] as $table) {
-            DB::table($table)->truncate();
+        ];
+
+        $driver = DB::getDriverName();
+
+        if ($driver === 'pgsql') {
+            DB::statement('TRUNCATE TABLE ' . implode(', ', $tables) . ' RESTART IDENTITY CASCADE');
+            return;
         }
 
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        if ($driver === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+            foreach ($tables as $table) {
+                DB::table($table)->truncate();
+            }
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            return;
+        }
+
+        foreach ($tables as $table) {
+            DB::table($table)->truncate();
+        }
     }
 
     private function resolveStaffIds(): array
