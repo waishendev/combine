@@ -41,7 +41,7 @@ class MyPosSummaryReportController extends Controller
 
         $totalStaffCommission = (float) ((clone $this->baseOrderQuery($validated, (int) $user->id))
             ->leftJoin('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
-            ->selectRaw('COALESCE(SUM((order_items.line_total::numeric) * (order_item_staff_splits.share_percent::numeric / 100) * (CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END), 0) AS total_staff_commission')
+            ->selectRaw('COALESCE(SUM((order_items.line_total::numeric) * (order_item_staff_splits.share_percent::numeric / 100) * (CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END)), 0) AS total_staff_commission')
             ->value('total_staff_commission') ?? 0);
 
         $myCommission = 0.0;
@@ -49,7 +49,7 @@ class MyPosSummaryReportController extends Controller
             $myCommission = (float) ((clone $this->baseOrderQuery($validated, (int) $user->id))
                 ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
                 ->where('order_item_staff_splits.staff_id', (int) $user->staff_id)
-                ->selectRaw('COALESCE(SUM((order_items.line_total::numeric) * (order_item_staff_splits.share_percent::numeric / 100) * (CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END), 0) AS my_commission')
+                ->selectRaw('COALESCE(SUM((order_items.line_total::numeric) * (order_item_staff_splits.share_percent::numeric / 100) * (CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END)), 0) AS my_commission')
                 ->value('my_commission') ?? 0);
         }
 
