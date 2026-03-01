@@ -82,7 +82,7 @@ return new class extends Migration {
             $table->dateTime('start_at');
             $table->dateTime('end_at');
             $table->unsignedInteger('buffer_min')->default(15);
-            $table->enum('status', ['HOLD', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW', 'EXPIRED']);
+            $table->enum('status', ['HOLD', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW', 'NOTIFIED_CANCELLATION', 'EXPIRED']);
             $table->decimal('deposit_amount', 12, 2)->default(0);
             $table->enum('payment_status', ['UNPAID', 'PAID', 'FAILED', 'REFUNDED'])->default('UNPAID');
             $table->dateTime('hold_expires_at')->nullable();
@@ -90,6 +90,11 @@ return new class extends Migration {
             $table->dateTime('cancelled_at')->nullable();
             $table->enum('cancellation_type', ['CANCELLED', 'LATE_CANCELLATION'])->nullable();
             $table->text('notes')->nullable();
+            $table->unsignedInteger('reschedule_count')->default(0);
+            $table->dateTime('rescheduled_at')->nullable();
+            $table->unsignedBigInteger('rescheduled_from_booking_id')->nullable();
+            $table->text('reschedule_reason')->nullable();
+            $table->foreignId('notified_cancellation_voucher_id')->nullable()->constrained('vouchers')->nullOnDelete();
             $table->timestamps();
 
             $table->index(['staff_id', 'start_at']);
