@@ -6720,8 +6720,7 @@
           ]
         }
       ]
-    }
-    ,
+    },
     {
       "name": "Booking",
       "item": [
@@ -6743,9 +6742,18 @@
                     "availability"
                   ],
                   "query": [
-                    {"key": "service_id", "value": "{{booking_service_id}}"},
-                    {"key": "staff_id", "value": "{{booking_staff_id}}"},
-                    {"key": "date", "value": "{{booking_date}}"}
+                    {
+                      "key": "service_id",
+                      "value": "{{booking_service_id}}"
+                    },
+                    {
+                      "key": "staff_id",
+                      "value": "{{booking_staff_id}}"
+                    },
+                    {
+                      "key": "date",
+                      "value": "{{booking_date}}"
+                    }
                   ]
                 },
                 "description": "Check available slots by service + staff + date."
@@ -6841,6 +6849,37 @@
                 "description": "Manual callback simulation to mark payment as PAID/FAILED."
               },
               "response": []
+            },
+            {
+              "name": "Reschedule Booking (Customer/Staff)",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"start_at\": \"{{booking_reschedule_start_at}}\",\n  \"reason\": \"Need another slot\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/booking/{{booking_id}}/reschedule",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "{{booking_id}}",
+                    "reschedule"
+                  ]
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -6866,9 +6905,18 @@
                     "appointments"
                   ],
                   "query": [
-                    {"key": "date", "value": "{{booking_date}}"},
-                    {"key": "staff_id", "value": "{{booking_staff_id}}"},
-                    {"key": "status", "value": "CONFIRMED"}
+                    {
+                      "key": "date",
+                      "value": "{{booking_date}}"
+                    },
+                    {
+                      "key": "staff_id",
+                      "value": "{{booking_staff_id}}"
+                    },
+                    {
+                      "key": "status",
+                      "value": "CONFIRMED"
+                    }
                   ]
                 }
               },
@@ -6925,12 +6973,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"status\": \"COMPLETED\",\n  \"notes\": \"Done\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
+                  "raw": "{\n  \"status\": \"NOTIFIED_CANCELLATION\",\n  \"notes\": \"Customer notified in advance\",\n  \"reason\": \"Customer requested cancellation\",\n  \"grant_voucher_override\": false\n}"
                 }
               },
               "response": []
@@ -7121,6 +7164,324 @@
                     "booking",
                     "blocks"
                   ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Admin Reschedule Booking",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/{{booking_id}}/reschedule",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "{{booking_id}}",
+                    "reschedule"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"start_at\": \"{{booking_reschedule_start_at}}\",\n  \"reason\": \"Admin override\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Report - Staff",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/reports/staff?from={{reports_date_from}}&to={{reports_date_to}}&staff_id={{booking_staff_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "reports",
+                    "staff"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "to",
+                      "value": "{{reports_date_to}}"
+                    },
+                    {
+                      "key": "staff_id",
+                      "value": "{{booking_staff_id}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Report - Staff Export CSV",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/reports/staff/export.csv?from={{reports_date_from}}&to={{reports_date_to}}&staff_id={{booking_staff_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "reports",
+                    "staff",
+                    "export.csv"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "to",
+                      "value": "{{reports_date_to}}"
+                    },
+                    {
+                      "key": "staff_id",
+                      "value": "{{booking_staff_id}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Report - Summary",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/reports/summary?from={{reports_date_from}}&to={{reports_date_to}}&group_by=day",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "reports",
+                    "summary"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "to",
+                      "value": "{{reports_date_to}}"
+                    },
+                    {
+                      "key": "group_by",
+                      "value": "day"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Report - Summary Export CSV",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/reports/summary/export.csv?from={{reports_date_from}}&to={{reports_date_to}}&group_by=day",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "reports",
+                    "summary",
+                    "export.csv"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "to",
+                      "value": "{{reports_date_to}}"
+                    },
+                    {
+                      "key": "group_by",
+                      "value": "day"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Logs",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/logs?from={{reports_date_from}}&to={{reports_date_to}}&action=UPDATE_STATUS&booking_id={{booking_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "logs"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "to",
+                      "value": "{{reports_date_to}}"
+                    },
+                    {
+                      "key": "action",
+                      "value": "UPDATE_STATUS"
+                    },
+                    {
+                      "key": "booking_id",
+                      "value": "{{booking_id}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Logs Export CSV",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/logs/export.csv?from={{reports_date_from}}&to={{reports_date_to}}&action=UPDATE_STATUS&booking_id={{booking_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "logs",
+                    "export.csv"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "{{reports_date_from}}"
+                    },
+                    {
+                      "key": "to",
+                      "value": "{{reports_date_to}}"
+                    },
+                    {
+                      "key": "action",
+                      "value": "UPDATE_STATUS"
+                    },
+                    {
+                      "key": "booking_id",
+                      "value": "{{booking_id}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Voucher Setting - Show",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/settings/notified-cancellation-voucher",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "settings",
+                    "notified-cancellation-voucher"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Voucher Setting - Update",
+              "request": {
+                "auth": {
+                  "type": "inherit"
+                },
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/admin/booking/settings/notified-cancellation-voucher",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "booking",
+                    "settings",
+                    "notified-cancellation-voucher"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"enabled\": true,\n  \"reward_type\": \"PERCENT\",\n  \"reward_value\": 10,\n  \"base_amount_source\": \"DEPOSIT\",\n  \"expiry_days\": 45,\n  \"non_combinable\": true,\n  \"min_spend\": null,\n  \"usage_limit\": 1\n}"
                 }
               },
               "response": []
