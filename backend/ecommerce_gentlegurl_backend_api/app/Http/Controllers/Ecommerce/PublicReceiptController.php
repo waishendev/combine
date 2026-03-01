@@ -4,10 +4,16 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\OrderReceiptToken;
+use App\Services\Ecommerce\InvoiceService;
 use Carbon\Carbon;
 
 class PublicReceiptController extends Controller
 {
+    public function __construct(
+        protected InvoiceService $invoiceService,
+    ) {
+    }
+
     public function show(string $token)
     {
         $receiptToken = OrderReceiptToken::query()
@@ -43,6 +49,31 @@ class PublicReceiptController extends Controller
                 'unit_price' => $item->price_snapshot,
                 'line_total' => $item->line_total,
             ])->values(),
+        ]);
+    }
+
+    public function invoice(string $token)
+    {
+        $receiptToken = OrderReceiptToken::query()
+            ->where('token', $token)
+            ->with(['order.items'])
+            ->first();
+
+        if (! $receiptToken) {
+            return $this->respondError(__('Receipt not found.'), 404);
+        }
+
+        if ($receiptToken->expires_at && Carbon::parse($receiptToken->expires_at)->isPast()) {
+            return $this->respondError(__('Receipt has expired.'), 410);
+        }
+
+        $order = $receiptToken->order;
+        $pdf = $this->invoiceService->buildPdf($order);
+        $filename = 'Invoice-' . ($order->order_number ?? $order->id) . '.pdf';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
         ]);
     }
 }
