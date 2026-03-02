@@ -1053,7 +1053,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   useEffect(() => {
     const MIN_LEN_START = 3
-    const MIN_LEN_SUBMIT = 6
+    const MIN_LEN_SUBMIT = 0 
     const SCAN_KEY_INTERVAL_MS = 50
     const SCAN_IDLE_RESET_MS = 150
     const POSSIBLE_SCAN_TIMEOUT_MS = 100
@@ -1183,7 +1183,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         const scanned = scanBufferRef.current.trim()
         const mode = scanModeRef.current
 
-        if (mode === 'confirmed' && scanned.length >= MIN_LEN_SUBMIT) {
+        if (mode === 'confirmed' && scanned.length > 0) { // 这个会觉得你的BARCODE 是多少的时候进去 如果一定要6 就要改
           event.preventDefault()
           event.stopPropagation()
 
