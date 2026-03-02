@@ -45,6 +45,11 @@ type ProductOption = {
 
 type ProductSearchMode = 'name' | 'sku'
 
+type FetchProductOptions = {
+  silent?: boolean
+  resetHighlight?: boolean
+}
+
 type ProductVariantOption = {
   id: number
   name: string
@@ -225,10 +230,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastScanMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
+  const latestProductRequestRef = useRef(0)
 
   const [cart, setCart] = useState<Cart | null>(null)
 
   const [productQuery, setProductQuery] = useState('')
+  const [debouncedSkuQuery, setDebouncedSkuQuery] = useState('')
   const [productSearchMode, setProductSearchMode] = useState<ProductSearchMode>('name')
   const [products, setProducts] = useState<ProductOption[]>([])
   const [productPage, setProductPage] = useState(1)
@@ -294,22 +301,48 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
-  const normalizedProductQuery = useMemo(() => productQuery.trim().toLowerCase(), [productQuery])
+  const normalizedProductQuery = useMemo(() => {
+    const source = productSearchMode === 'sku' ? debouncedSkuQuery : productQuery
+    return source.trim().toLowerCase()
+  }, [debouncedSkuQuery, productQuery, productSearchMode])
+  const normalizeSkuSearchValue = useCallback((value: string | null | undefined) => value?.trim().toLowerCase() ?? '', [])
+  const findMatchedVariantSkuId = useCallback((item: ProductOption, keyword: string) => {
+    if (!keyword) return null
+
+    let includesMatchId: number | null = null
+    for (const variant of item.variants) {
+      const variantSku = normalizeSkuSearchValue(variant.sku)
+      if (!variantSku) continue
+      if (variantSku.startsWith(keyword)) return variant.id
+      if (includesMatchId === null && variantSku.includes(keyword)) {
+        includesMatchId = variant.id
+      }
+    }
+
+    return includesMatchId
+  }, [normalizeSkuSearchValue])
   const visibleProducts = useMemo(() => {
     if (!normalizedProductQuery) return products
 
     return products.filter((item) => {
       const keyword = normalizedProductQuery
       const productName = item.name?.toLowerCase() ?? ''
-      const productSku = item.sku?.toLowerCase() ?? ''
+      const productSku = normalizeSkuSearchValue(item.sku)
 
       if (productSearchMode === 'name') {
         return productName.includes(keyword)
       }
 
-      return productSku.includes(keyword)
+      if (keyword.length < 2) {
+        return true
+      }
+
+      const variantSkuMatched = findMatchedVariantSkuId(item, keyword) !== null
+      const productStartsWith = productSku.startsWith(keyword)
+      const productIncludes = productSku.includes(keyword)
+      return variantSkuMatched || productStartsWith || productIncludes
     })
-  }, [normalizedProductQuery, productSearchMode, products])
+  }, [findMatchedVariantSkuId, normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -823,55 +856,71 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return Array.from(map.values())
   }
 
-  const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean) => {
-    setProductLoading(true)
+  const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean, options?: FetchProductOptions) => {
+    const requestId = latestProductRequestRef.current + 1
+    latestProductRequestRef.current = requestId
+    const silent = options?.silent ?? false
+    const resetHighlight = options?.resetHighlight ?? true
 
-    let mapped: ProductOption[] = []
-    let currentPage = page
-    let lastPage = page
-
-    if (keyword.trim()) {
-      const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
-      const json = await res.json()
-      const paged = extractPaged<ProductOption>(json)
-      mapped = paged.data.map((item) => {
-        const resolvedProductId = Number(item.product_id)
-
-        return {
-          ...item,
-          product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
-          variants: Array.isArray(item.variants) ? item.variants : [],
-        }
-      })
-      currentPage = paged.current_page
-      lastPage = paged.last_page
-    } else {
-      const params = new URLSearchParams()
-      params.set('page', String(page))
-      params.set('per_page', '100')
-      params.set('is_active', 'true')
-
-      const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
-      const json = await res.json()
-      const paged = extractPaged<ProductApiItem>(json)
-
-      mapped = paged.data
-        .map((item): ProductOption | null => normalizeProductFromApi(item))
-        .filter((item): item is ProductOption => Boolean(item))
-
-      currentPage = paged.current_page
-      lastPage = paged.last_page
+    if (!silent) {
+      setProductLoading(true)
     }
 
-    // Ensure we never display variants as extra "products" in the grid.
-    setProducts((prev) => {
-      const next = append ? [...prev, ...mapped] : mapped
-      return dedupeByProductId(next)
-    })
-    setProductPage(currentPage)
-    setProductLastPage(lastPage)
-    setProductHighlighted(0)
-    setProductLoading(false)
+    try {
+      let mapped: ProductOption[] = []
+      let currentPage = page
+      let lastPage = page
+
+      if (keyword.trim()) {
+        const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
+        const json = await res.json()
+        const paged = extractPaged<ProductOption>(json)
+        mapped = paged.data.map((item) => {
+          const resolvedProductId = Number(item.product_id)
+
+          return {
+            ...item,
+            product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
+            variants: Array.isArray(item.variants) ? item.variants : [],
+          }
+        })
+        currentPage = paged.current_page
+        lastPage = paged.last_page
+      } else {
+        const params = new URLSearchParams()
+        params.set('page', String(page))
+        params.set('per_page', '100')
+        params.set('is_active', 'true')
+
+        const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
+        const json = await res.json()
+        const paged = extractPaged<ProductApiItem>(json)
+
+        mapped = paged.data
+          .map((item): ProductOption | null => normalizeProductFromApi(item))
+          .filter((item): item is ProductOption => Boolean(item))
+
+        currentPage = paged.current_page
+        lastPage = paged.last_page
+      }
+
+      if (requestId !== latestProductRequestRef.current) return
+
+      // Ensure we never display variants as extra "products" in the grid.
+      setProducts((prev) => {
+        const next = append ? [...prev, ...mapped] : mapped
+        return dedupeByProductId(next)
+      })
+      setProductPage(currentPage)
+      setProductLastPage(lastPage)
+      if (resetHighlight) {
+        setProductHighlighted(0)
+      }
+    } finally {
+      if (!silent && requestId === latestProductRequestRef.current) {
+        setProductLoading(false)
+      }
+    }
   }, [])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
@@ -923,12 +972,36 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [fetchActiveStaffs])
 
   useEffect(() => {
-    const handle = setTimeout(() => {
-      void fetchProductPage(1, productQuery, false)
-    }, 300)
+    if (productSearchMode !== 'sku') {
+      setDebouncedSkuQuery('')
+      return
+    }
 
-    return () => clearTimeout(handle)
+    const handle = window.setTimeout(() => {
+      setDebouncedSkuQuery(productQuery)
+    }, 180)
+
+    return () => window.clearTimeout(handle)
+  }, [productQuery, productSearchMode])
+
+  useEffect(() => {
+    if (productQuery.trim()) return
+
+    const handle = window.setTimeout(() => {
+      void fetchProductPage(1, '', false, { silent: true, resetHighlight: false })
+    }, 150)
+
+    return () => window.clearTimeout(handle)
   }, [fetchProductPage, productQuery])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (productQuery.trim() || productSelectModalOpen) return
+      void fetchProductPage(1, '', false, { silent: true, resetHighlight: false })
+    }, 60_000)
+
+    return () => window.clearInterval(timer)
+  }, [fetchProductPage, productQuery, productSelectModalOpen])
 
   useEffect(() => {
     if (!memberOpen) return
@@ -1138,10 +1211,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     voucherModalOpen,
   ])
 
-  const onSelectProduct = (item: ProductOption) => {
+  const onSelectProduct = (item: ProductOption, preferredVariantId?: number | null) => {
+    const resolvedPreferredVariantId = Number(preferredVariantId)
+    const hasPreferredVariant = Number.isFinite(resolvedPreferredVariantId) && resolvedPreferredVariantId > 0
+
     setFullProductData(null)
     setSelectedProduct(item)
-    setSelectedVariantId(item.variants.length === 1 ? item.variants[0].id : null)
+    setSelectedVariantId(hasPreferredVariant ? resolvedPreferredVariantId : (item.variants.length === 1 ? item.variants[0].id : null))
     setSelectedProductQty(1)
     setProductSelectModalOpen(true)
     void hydrateProductVariants(item)
@@ -1771,11 +1847,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   tabIndex={0}
                   className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[100px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
-                  onClick={() => void onSelectProduct(item)}
+                  onClick={() => {
+                    const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
+                      ? findMatchedVariantSkuId(item, normalizedProductQuery)
+                      : null
+                    void onSelectProduct(item, matchedVariantId)
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      void onSelectProduct(item)
+                      const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
+                        ? findMatchedVariantSkuId(item, normalizedProductQuery)
+                        : null
+                      void onSelectProduct(item, matchedVariantId)
                     }
                   }}
                 >
@@ -1824,7 +1908,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
                   disabled={productLoading}
-                  onClick={() => void fetchProductPage(productPage + 1, productQuery, true)}
+                  onClick={() => void fetchProductPage(productPage + 1, '', true)}
                 >
                   {productLoading ? (
                     <span className="flex items-center gap-2">

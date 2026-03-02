@@ -69,6 +69,26 @@ const formatDisplayDate = (dateString: string) => {
   }).format(date)
 }
 
+const formatDateTimeForTable = (dateString: string) => {
+  if (!dateString) return { time: '—', date: '—' }
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) {
+    return { time: '—', date: '—' }
+  }
+  const time = date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+  const dateStr = date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+  return { time, date: dateStr }
+}
+
 const DEFAULT_PAGE_SIZE = 15
 const DEFAULT_PAGE = 1
 const PAGE_SIZE_OPTIONS = [15, 50, 100, 150, 200]
@@ -98,6 +118,8 @@ export default function MyPosSummaryPage() {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [loading, setLoading] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [selectedRow, setSelectedRow] = useState<DetailRow | null>(null)
 
   const [currentPage, setCurrentPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
@@ -313,14 +335,13 @@ export default function MyPosSummaryPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <Card label="Orders" value={String(summary.orders_count)} />
-        <Card label="Items" value={String(summary.items_count)} />
-        <Card label="With Staff" value={String(summary.items_with_staff_count)} />
-        <Card label="Without Staff" value={String(summary.items_without_staff_count)} />
-        <Card label="Total Amount" value={money(Number(summary.total_item_amount))} />
-        <Card label="Total Staff Commission" value={money(Number(summary.total_staff_commission))} />
-        <Card label="My Commission" value={money(Number(summary.my_commission))} />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Card label="Orders" value={String(summary.orders_count)} color="blue" />
+        <Card label="Items" value={String(summary.items_count)} color="purple" />
+        <Card label="With Staff (items)" value={String(summary.items_with_staff_count)} color="emerald" />
+        <Card label="Without Staff (items)" value={String(summary.items_without_staff_count)} color="orange" />
+        <Card label="Total Amount" value={money(Number(summary.total_item_amount))} color="indigo" />
+        <Card label="Total Staff Commission" value={money(Number(summary.total_staff_commission))} color="teal" />
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-x-auto">
@@ -330,22 +351,22 @@ export default function MyPosSummaryPage() {
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
                 Order No
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Order Date
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Product
               </th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
                 Qty
               </th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                Item Total
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
+                Total
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                Has Staff
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                Has Assign
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-center text-gray-600 tracking-wider">
                 Actions
               </th>
             </tr>
@@ -363,7 +384,15 @@ export default function MyPosSummaryPage() {
                       {row.order_no ?? row.order_id}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      {new Date(row.order_date).toLocaleString()}
+                      {(() => {
+                        const { time, date } = formatDateTimeForTable(row.order_date)
+                        return (
+                          <div className="flex flex-col">
+                            <span className="text-xs font-medium text-gray-900">{time}</span>
+                            <span className="text-xs text-gray-500">{date}</span>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
                       {row.product_name ?? '—'}
@@ -377,47 +406,20 @@ export default function MyPosSummaryPage() {
                     <td className="px-4 py-2 border border-gray-200">
                       {row.has_staff_assignment ? 'Yes' : 'No'}
                     </td>
-                    <td className="px-4 py-2 border border-gray-200">
+                    <td className="px-4 py-2 border border-gray-200 text-center">
                       <button
-                        className="text-blue-600 hover:text-blue-800"
-                        onClick={() => setExpanded((prev) => ({ ...prev, [row.order_item_id]: !prev[row.order_item_id] }))}
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
+                        onClick={() => {
+                          setSelectedRow(row)
+                          setDetailOpen(true)
+                        }}
+                        aria-label={`View details for ${row.order_no ?? row.order_id}`}
                       >
-                        {expanded[row.order_item_id] ? 'Hide splits' : 'View splits'}
+                        <i className="fa-solid fa-eye" />
                       </button>
                     </td>
                   </tr>
-                  {expanded[row.order_item_id] && (
-                    <tr className="bg-slate-50">
-                      <td className="px-4 py-2 border border-gray-200" colSpan={7}>
-                        {row.staff_splits.length === 0 ? (
-                          <div className="text-gray-500">No staff splits.</div>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full text-xs">
-                              <thead>
-                                <tr>
-                                  <th className="px-2 py-1 text-left">Staff</th>
-                                  <th className="px-2 py-1 text-right">Share %</th>
-                                  <th className="px-2 py-1 text-right">Rate Snapshot</th>
-                                  <th className="px-2 py-1 text-right">Commission</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {row.staff_splits.map((split, idx) => (
-                                  <tr key={`${row.order_item_id}-${split.staff_id}-${idx}`}>
-                                    <td className="px-2 py-1">{split.staff_name ?? (split.staff_id ? `#${split.staff_id}` : '-')}</td>
-                                    <td className="px-2 py-1 text-right">{split.share_percent}%</td>
-                                    <td className="px-2 py-1 text-right">{(Number(split.commission_rate_snapshot) * 100).toFixed(2)}%</td>
-                                    <td className="px-2 py-1 text-right">{money(Number(split.staff_commission_amount))}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
                 </Fragment>
               ))
             )}
@@ -435,15 +437,173 @@ export default function MyPosSummaryPage() {
         }}
         disabled={loading}
       />
+
+      {detailOpen && selectedRow && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/50 transition-opacity"
+            onClick={() => setDetailOpen(false)}
+          />
+          {/* Drawer - slides in from right, larger width */}
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-6xl bg-white shadow-2xl transition-transform duration-300 ease-out">
+            <div className="flex h-full flex-col">
+              {/* Header - Dark background */}
+              <div className="flex items-center justify-between border-b border-slate-700 bg-slate-800 px-6 py-4">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400">
+                    ORDER NO
+                  </p>
+                  <h3 className="mt-1 text-lg font-bold text-white">
+                    {selectedRow.order_no ?? `Order #${selectedRow.order_id}`}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-700 hover:text-white transition-colors"
+                  onClick={() => setDetailOpen(false)}
+                  aria-label="Close drawer"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+
+              {/* Content - Scrollable */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                {/* Order Information Section */}
+                <div className="mb-6 space-y-4">
+                  <div>
+                    <h4 className="mb-1 text-sm font-semibold text-gray-700">Order Information</h4>
+                    <div className="mb-4 text-sm font-medium text-gray-700">
+                      {(() => {
+                        const { time, date } = formatDateTimeForTable(selectedRow.order_date)
+                        return `${date} ${time}`
+                      })()}
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                        <p className="text-xs font-semibold text-blue-600">
+                          Product
+                        </p>
+                        <p className="mt-1 text-base font-bold text-blue-900">
+                          {selectedRow.product_name ?? '—'}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                        <p className="text-xs font-semibold text-emerald-600">
+                          Quantity
+                        </p>
+                        <p className="mt-1 text-base font-bold text-emerald-700">
+                          {selectedRow.qty}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-purple-100 bg-purple-50 px-4 py-3">
+                        <p className="text-xs font-semibold text-purple-600">
+                          Total Amount
+                        </p>
+                        <p className="mt-1 text-base font-bold text-purple-900">
+                          RM {money(Number(selectedRow.item_total_price))}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-3">
+                        <p className="text-xs font-semibold text-orange-600">
+                          Has Assign
+                        </p>
+                        <p className="mt-1 text-base font-bold text-orange-900">
+                          {selectedRow.has_staff_assignment ? 'Yes' : 'No'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Staff Splits Section - Outside border */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-gray-700">Staff Splits</h4>
+                  {selectedRow.staff_splits.length === 0 ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-500">
+                      No staff splits.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+                      <table className="min-w-full text-xs sm:text-sm">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-4 py-2 font-semibold text-left text-gray-700">
+                              Staff
+                            </th>
+                            <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                              Share %
+                            </th>
+                            <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                              Rate Snapshot
+                            </th>
+                            <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                              Commission
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedRow.staff_splits.map((split, idx) => (
+                            <tr key={`${selectedRow.order_item_id}-${split.staff_id}-${idx}`} className="border-t border-gray-200 hover:bg-gray-50">
+                              <td className="px-4 py-2">
+                                {split.staff_name ?? (split.staff_id ? `#${split.staff_id}` : '-')}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                {split.share_percent}%
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                {(Number(split.commission_rate_snapshot) * 100).toFixed(2)}%
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                RM {money(Number(split.staff_commission_amount))}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
-function Card({ label, value }: { label: string; value: string }) {
+function Card({ label, value, color = 'gray' }: { label: string; value: string; color?: string }) {
+  const colorClasses = {
+    blue: 'border-blue-100 bg-blue-50 text-blue-600',
+    purple: 'border-purple-100 bg-purple-50 text-purple-600',
+    emerald: 'border-emerald-100 bg-emerald-50 text-emerald-600',
+    orange: 'border-orange-100 bg-orange-50 text-orange-600',
+    indigo: 'border-indigo-100 bg-indigo-50 text-indigo-600',
+    teal: 'border-teal-100 bg-teal-50 text-teal-600',
+    pink: 'border-pink-100 bg-pink-50 text-pink-600',
+    gray: 'border-gray-100 bg-gray-50 text-gray-600',
+  }
+  
+  const valueColorClasses = {
+    blue: 'text-blue-900',
+    purple: 'text-purple-900',
+    emerald: 'text-emerald-700',
+    orange: 'text-orange-900',
+    indigo: 'text-indigo-900',
+    teal: 'text-teal-700',
+    pink: 'text-pink-900',
+    gray: 'text-gray-900',
+  }
+
+  const classes = colorClasses[color as keyof typeof colorClasses] || colorClasses.gray
+  const valueClasses = valueColorClasses[color as keyof typeof valueColorClasses] || valueColorClasses.gray
+
   return (
-    <div className="rounded-lg border bg-white p-3 shadow-sm">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-lg font-semibold">{value}</p>
+    <div className={`rounded-xl border ${classes} px-4 py-3 shadow-sm`}>
+      <p className="text-xs font-semibold">{label}</p>
+      <p className={`mt-1 text-lg font-bold ${valueClasses}`}>{value}</p>
     </div>
   )
 }
