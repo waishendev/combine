@@ -291,6 +291,38 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
+  const normalizedProductQuery = useMemo(() => productQuery.trim().toLowerCase(), [productQuery])
+  const visibleProducts = useMemo(() => {
+    if (!normalizedProductQuery) return products
+
+    return products.filter((item) => {
+      const keyword = normalizedProductQuery
+      const name = item.name?.toLowerCase() ?? ''
+      const sku = item.sku?.toLowerCase() ?? ''
+      const barcode = item.barcode?.toLowerCase() ?? ''
+
+      if (name.includes(keyword) || sku.includes(keyword) || barcode.includes(keyword)) {
+        return true
+      }
+
+      if (!Array.isArray(item.variants) || item.variants.length === 0) {
+        return false
+      }
+
+      return item.variants.some((variant) => {
+        const variantName = variant.name?.toLowerCase() ?? ''
+        const variantSku = variant.sku?.toLowerCase() ?? ''
+        const variantBarcode = variant.barcode?.toLowerCase() ?? ''
+
+        return (
+          variantName.includes(keyword) ||
+          variantSku.includes(keyword) ||
+          variantBarcode.includes(keyword)
+        )
+      })
+    })
+  }, [normalizedProductQuery, products])
+
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
@@ -1727,7 +1759,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
             {/* Products Grid */}
             <div className="grid min-h-[260px] flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
-              {products.map((item, idx) => (
+              {visibleProducts.map((item, idx) => (
                 <div
                   key={item.product_id}
                   role="button"
@@ -1768,7 +1800,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </div>
               ))}
 
-              {!productLoading && products.length === 0 && (
+              {!productLoading && visibleProducts.length === 0 && (
                 <div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
                   <div className="mb-2 text-4xl">📦</div>
                   <p className="text-sm font-medium text-gray-600">No products found</p>
@@ -1776,13 +1808,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </div>
               )}
 
-              {productLoading && products.length === 0 && (
+              {productLoading && visibleProducts.length === 0 && (
                 <div className="col-span-full py-12 text-center text-sm text-gray-500">Loading products...</div>
               )}
             </div>
 
             {/* Pagination */}
-            {products.length > 0 && productPage < productLastPage && (
+            {visibleProducts.length > 0 && productPage < productLastPage && (
               <div className="mt-4 flex items-center justify-end border-t pt-4">
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
