@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookingProgress } from "@/components/booking/BookingProgress";
@@ -46,10 +47,22 @@ export default function BookingCartPage() {
     return () => clearInterval(timer);
   }, [cart]);
 
+  const premiumCount = useMemo(
+    () => cart?.items?.filter((item) => item.service_type === "premium").length ?? 0,
+    [cart],
+  );
+
+  const standardCount = useMemo(
+    () => cart?.items?.filter((item) => item.service_type === "standard").length ?? 0,
+    [cart],
+  );
+
   const nextExpiryIn = useMemo(() => {
     if (!cart?.next_expiry_at) return null;
     return formatDuration(secondsLeft(cart.next_expiry_at));
   }, [cart]);
+
+  const isCheckoutDisabled = !cart?.items?.length || !cart?.deposit_total;
 
   const onCheckout = async () => {
     await checkoutCart();
@@ -57,35 +70,64 @@ export default function BookingCartPage() {
   };
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
+    <main className="mx-auto max-w-6xl px-4 py-10">
       <BookingProgress step={4} />
       <h1 className="text-3xl font-semibold">Booking Cart</h1>
       {message ? <p className="mt-3 text-amber-700">{message}</p> : null}
-      <p className="mt-3 text-sm text-neutral-600">Deposit is charged per Premium service.</p>
-      <p className="text-sm text-neutral-600">Standard services do not add extra deposit if at least one Premium exists.</p>
-      <p className="text-sm text-neutral-600">If only Standard services selected, base deposit applies.</p>
 
-      <div className="mt-6 space-y-3">
-        {cart?.items?.map((item) => (
-          <div key={item.id} className="rounded-xl border p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="font-medium">{item.service_name} ({item.service_type})</p>
-                <p className="text-sm text-neutral-600">{item.staff_name}</p>
-                <p className="text-sm text-neutral-600">{new Date(item.start_at).toLocaleString("en-MY", { timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
-                <p className="mt-1 text-sm text-red-600">Expires in {formatDuration(secondsLeft(item.expires_at))}</p>
+      {!cart?.items?.length ? (
+        <section className="mt-8 rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center">
+          <h2 className="text-xl font-semibold">Your booking cart is empty</h2>
+          <p className="mt-2 text-sm text-neutral-600">Add services to your cart to reserve a slot before checkout.</p>
+          <Link href="/booking" className="mt-5 inline-flex rounded-full bg-black px-5 py-2.5 text-sm text-white">
+            Browse services
+          </Link>
+        </section>
+      ) : (
+        <div className="mt-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
+          <section className="space-y-3">
+            {cart.items.map((item) => (
+              <div key={item.id} className="rounded-xl border border-neutral-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-medium">{item.service_name}</p>
+                    <p className="text-sm text-neutral-600">Staff: {item.staff_name}</p>
+                    <p className="text-sm text-neutral-600">
+                      {new Date(item.start_at).toLocaleString("en-MY", {
+                        timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur",
+                      })}
+                    </p>
+                    <p className="mt-1 text-sm text-red-600">Expires in {formatDuration(secondsLeft(item.expires_at))}</p>
+                  </div>
+                  <button
+                    className="rounded-full border px-4 py-2 text-sm"
+                    onClick={async () => setCart(await removeCartItem(item.id))}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
-              <button className="rounded-full border px-4 py-2 text-sm" onClick={async () => setCart(await removeCartItem(item.id))}>Remove</button>
-            </div>
-          </div>
-        ))}
-      </div>
+            ))}
+          </section>
 
-      <div className="mt-8 rounded-xl border p-4">
-        <p className="font-semibold">Deposit total: RM {cart?.deposit_total ?? 0}</p>
-        <p className="text-sm text-neutral-600">Next expiry in: {nextExpiryIn ?? "-"}</p>
-        <button onClick={onCheckout} disabled={!cart?.items?.length} className="mt-4 rounded-full bg-black px-6 py-3 text-white disabled:opacity-40">Proceed to Checkout</button>
-      </div>
+          <aside className="h-fit rounded-xl border border-neutral-200 bg-white p-4">
+            <h2 className="font-semibold">Summary</h2>
+            <div className="mt-3 space-y-2 text-sm text-neutral-700">
+              <p>Premium services: {premiumCount}</p>
+              <p>Standard services: {standardCount}</p>
+              <p className="font-medium text-neutral-900">Deposit total: RM {cart.deposit_total}</p>
+              <p>Next expiry in: {nextExpiryIn ?? "--:--"}</p>
+            </div>
+            <button
+              onClick={onCheckout}
+              disabled={isCheckoutDisabled}
+              className="mt-5 w-full rounded-full bg-black px-6 py-3 text-white disabled:opacity-40"
+            >
+              Proceed to Checkout
+            </button>
+          </aside>
+        </div>
+      )}
     </main>
   );
 }
