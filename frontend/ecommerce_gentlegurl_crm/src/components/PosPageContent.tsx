@@ -823,53 +823,29 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return Array.from(map.values())
   }
 
-  const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean) => {
+  const fetchProductPage = useCallback(async (page: number, append: boolean) => {
     setProductLoading(true)
 
-    let mapped: ProductOption[] = []
-    let currentPage = page
-    let lastPage = page
+    const params = new URLSearchParams()
+    params.set('page', String(page))
+    params.set('per_page', '100')
+    params.set('is_active', 'true')
 
-    if (keyword.trim()) {
-      const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
-      const json = await res.json()
-      const paged = extractPaged<ProductOption>(json)
-      mapped = paged.data.map((item) => {
-        const resolvedProductId = Number(item.product_id)
+    const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
+    const json = await res.json()
+    const paged = extractPaged<ProductApiItem>(json)
 
-        return {
-          ...item,
-          product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
-          variants: Array.isArray(item.variants) ? item.variants : [],
-        }
-      })
-      currentPage = paged.current_page
-      lastPage = paged.last_page
-    } else {
-      const params = new URLSearchParams()
-      params.set('page', String(page))
-      params.set('per_page', '100')
-      params.set('is_active', 'true')
-
-      const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
-      const json = await res.json()
-      const paged = extractPaged<ProductApiItem>(json)
-
-      mapped = paged.data
-        .map((item): ProductOption | null => normalizeProductFromApi(item))
-        .filter((item): item is ProductOption => Boolean(item))
-
-      currentPage = paged.current_page
-      lastPage = paged.last_page
-    }
+    const mapped = paged.data
+      .map((item): ProductOption | null => normalizeProductFromApi(item))
+      .filter((item): item is ProductOption => Boolean(item))
 
     // Ensure we never display variants as extra "products" in the grid.
     setProducts((prev) => {
       const next = append ? [...prev, ...mapped] : mapped
       return dedupeByProductId(next)
     })
-    setProductPage(currentPage)
-    setProductLastPage(lastPage)
+    setProductPage(paged.current_page)
+    setProductLastPage(paged.last_page)
     setProductHighlighted(0)
     setProductLoading(false)
   }, [])
@@ -918,17 +894,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     focusScanner()
     void loadCart()
     // Load products on initial mount
-    void fetchProductPage(1, '', false)
+    void fetchProductPage(1, false)
     void fetchActiveStaffs()
-  }, [fetchActiveStaffs])
-
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      void fetchProductPage(1, productQuery, false)
-    }, 300)
-
-    return () => clearTimeout(handle)
-  }, [fetchProductPage, productQuery])
+  }, [fetchActiveStaffs, fetchProductPage])
 
   useEffect(() => {
     if (!memberOpen) return
@@ -1824,7 +1792,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
                   disabled={productLoading}
-                  onClick={() => void fetchProductPage(productPage + 1, productQuery, true)}
+                  onClick={() => void fetchProductPage(productPage + 1, true)}
                 >
                   {productLoading ? (
                     <span className="flex items-center gap-2">
