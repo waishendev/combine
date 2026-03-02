@@ -235,6 +235,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [cart, setCart] = useState<Cart | null>(null)
 
   const [productQuery, setProductQuery] = useState('')
+  const [debouncedSkuQuery, setDebouncedSkuQuery] = useState('')
   const [productSearchMode, setProductSearchMode] = useState<ProductSearchMode>('name')
   const [products, setProducts] = useState<ProductOption[]>([])
   const [productPage, setProductPage] = useState(1)
@@ -300,8 +301,26 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
-  const normalizedProductQuery = useMemo(() => productQuery.trim().toLowerCase(), [productQuery])
+  const normalizedProductQuery = useMemo(() => {
+    const source = productSearchMode === 'sku' ? debouncedSkuQuery : productQuery
+    return source.trim().toLowerCase()
+  }, [debouncedSkuQuery, productQuery, productSearchMode])
   const normalizeSkuSearchValue = useCallback((value: string | null | undefined) => value?.trim().toLowerCase() ?? '', [])
+  const findMatchedVariantSkuId = useCallback((item: ProductOption, keyword: string) => {
+    if (!keyword) return null
+
+    let includesMatchId: number | null = null
+    for (const variant of item.variants) {
+      const variantSku = normalizeSkuSearchValue(variant.sku)
+      if (!variantSku) continue
+      if (variantSku.startsWith(keyword)) return variant.id
+      if (includesMatchId === null && variantSku.includes(keyword)) {
+        includesMatchId = variant.id
+      }
+    }
+
+    return includesMatchId
+  }, [normalizeSkuSearchValue])
   const visibleProducts = useMemo(() => {
     if (!normalizedProductQuery) return products
 
@@ -314,10 +333,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         return productName.includes(keyword)
       }
 
-      const variantSkuMatched = item.variants.some((variant) => normalizeSkuSearchValue(variant.sku) === keyword)
-      return variantSkuMatched || productSku === keyword
+      if (keyword.length < 2) {
+        return true
+      }
+
+      const variantSkuMatched = findMatchedVariantSkuId(item, keyword) !== null
+      const productStartsWith = productSku.startsWith(keyword)
+      const productIncludes = productSku.includes(keyword)
+      return variantSkuMatched || productStartsWith || productIncludes
     })
-  }, [normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
+  }, [findMatchedVariantSkuId, normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -945,6 +970,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     void fetchProductPage(1, '', false)
     void fetchActiveStaffs()
   }, [fetchActiveStaffs])
+
+  useEffect(() => {
+    if (productSearchMode !== 'sku') {
+      setDebouncedSkuQuery('')
+      return
+    }
+
+    const handle = window.setTimeout(() => {
+      setDebouncedSkuQuery(productQuery)
+    }, 180)
+
+    return () => window.clearTimeout(handle)
+  }, [productQuery, productSearchMode])
 
   useEffect(() => {
     if (productQuery.trim()) return
@@ -1811,7 +1849,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   onMouseEnter={() => setProductHighlighted(idx)}
                   onClick={() => {
                     const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
-                      ? (item.variants.find((variant) => normalizeSkuSearchValue(variant.sku) === normalizedProductQuery)?.id ?? null)
+                      ? findMatchedVariantSkuId(item, normalizedProductQuery)
                       : null
                     void onSelectProduct(item, matchedVariantId)
                   }}
@@ -1819,7 +1857,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
-                        ? (item.variants.find((variant) => normalizeSkuSearchValue(variant.sku) === normalizedProductQuery)?.id ?? null)
+                        ? findMatchedVariantSkuId(item, normalizedProductQuery)
                         : null
                       void onSelectProduct(item, matchedVariantId)
                     }
