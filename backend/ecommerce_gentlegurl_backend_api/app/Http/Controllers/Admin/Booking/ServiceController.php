@@ -17,6 +17,7 @@ class ServiceController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string'],
             'description' => ['nullable', 'string'],
+            'service_type' => ['required', 'in:premium,standard'],
             'duration_min' => ['required', 'integer', 'min:1'],
             'deposit_amount' => ['required', 'numeric', 'min:0'],
             'buffer_min' => ['nullable', 'integer', 'min:0'],
@@ -34,6 +35,7 @@ class ServiceController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'string'],
             'description' => ['nullable', 'string'],
+            'service_type' => ['required', 'in:premium,standard'],
             'duration_min' => ['sometimes', 'integer', 'min:1'],
             'deposit_amount' => ['sometimes', 'numeric', 'min:0'],
             'buffer_min' => ['sometimes', 'integer', 'min:0'],

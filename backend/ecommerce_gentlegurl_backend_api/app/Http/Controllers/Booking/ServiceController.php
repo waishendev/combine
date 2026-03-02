@@ -17,6 +17,7 @@ class ServiceController extends Controller
             ->get([
                 'id',
                 'name',
+                'service_type',
                 'duration_min',
                 'deposit_amount',
                 'buffer_min',
@@ -62,6 +63,7 @@ class ServiceController extends Controller
         $payload = [
             'id' => (int) $service->id,
             'name' => $service->name,
+            'service_type' => $service->service_type,
             'duration_min' => (int) $service->duration_min,
             'duration_minutes' => (int) $service->duration_min,
             'deposit_amount' => (float) $service->deposit_amount,

@@ -38,6 +38,8 @@ class BookingTestingSeeder extends Seeder
         $this->seedSchedules([$staffOneId, $staffTwoId, $staffThreeId]);
         $this->seedBlocksAndTimeoffs($staffOneId, $staffTwoId);
 
+        $this->seedBookingSettings();
+
         $bookings = $this->seedBookings($staffOneId, $haircutService, $customerId);
         $this->seedBookingLogs($bookings, $staffOneId);
 
@@ -55,6 +57,9 @@ class BookingTestingSeeder extends Seeder
             'booking_staff_timeoffs',
             'booking_staff_schedules',
             'booking_service_staff',
+            'booking_cart_items',
+            'booking_carts',
+            'booking_settings',
             'booking_services',
         ];
 
@@ -125,12 +130,27 @@ class BookingTestingSeeder extends Seeder
         ]);
     }
 
+
+    private function seedBookingSettings(): void
+    {
+        DB::table('booking_settings')->updateOrInsert(
+            ['id' => 1],
+            [
+                'deposit_amount_per_premium' => 30,
+                'deposit_base_amount_if_only_standard' => 30,
+                'cart_hold_minutes' => 15,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+    }
+
     private function seedServices(): array
     {
         $serviceSpecs = [
-            ['name' => 'Haircut', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
-            ['name' => 'Coloring', 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
-            ['name' => 'Treatment', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
+            ['name' => 'Haircut', 'service_type' => 'standard', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
+            ['name' => 'Coloring', 'service_type' => 'premium', 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
+            ['name' => 'Treatment', 'service_type' => 'premium', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
         ];
 
         $services = [];
@@ -138,6 +158,7 @@ class BookingTestingSeeder extends Seeder
             $services[$spec['name']] = BookingService::query()->create([
                 'name' => $spec['name'],
                 'description' => $spec['name'] . ' service for booking QA demo data.',
+                'service_type' => $spec['service_type'],
                 'duration_min' => $spec['duration_min'],
                 'deposit_amount' => $spec['deposit_amount'],
                 'buffer_min' => $spec['buffer_min'],

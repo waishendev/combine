@@ -13,6 +13,10 @@
     {
       "key": "token",
       "value": ""
+    },
+    {
+      "key": "booking_cart_item_id",
+      "value": "1"
     }
   ],
   "auth": {
@@ -1569,7 +1573,7 @@
                     "header": [],
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"default_title\": \"MyShop 官方商城\",\n  \"default_description\": \"默认站点描述...\",\n  \"default_keywords\": \"myshop, shop, ecommerce\",\n  \"default_og_image\": \"/uploads/seo/default-og.jpg\"\n}",
+                      "raw": "{\n  \"default_title\": \"MyShop \u5b98\u65b9\u5546\u57ce\",\n  \"default_description\": \"\u9ed8\u8ba4\u7ad9\u70b9\u63cf\u8ff0...\",\n  \"default_keywords\": \"myshop, shop, ecommerce\",\n  \"default_og_image\": \"/uploads/seo/default-og.jpg\"\n}",
                       "options": {
                         "raw": {
                           "language": "json"
@@ -6794,6 +6798,128 @@
               "response": []
             },
             {
+              "name": "Get Booking Cart",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/booking/cart",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "cart"
+                  ]
+                },
+                "description": "Get active booking cart with per-item expiry and computed deposit_total."
+              },
+              "response": []
+            },
+            {
+              "name": "Add Booking Cart Item",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/booking/cart/add",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "cart",
+                    "add"
+                  ]
+                },
+                "description": "Add selected service slot into booking cart (creates/reuses active cart).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_id\": {{booking_service_id}},\n  \"staff_id\": {{booking_staff_id}},\n  \"start_at\": \"{{booking_start_at}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Remove Booking Cart Item",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/booking/cart/item/{{booking_cart_item_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "cart",
+                    "item",
+                    "{{booking_cart_item_id}}"
+                  ]
+                },
+                "description": "Remove single cart item.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Checkout Booking Cart",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/booking/cart/checkout",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "booking",
+                    "cart",
+                    "checkout"
+                  ]
+                },
+                "description": "Convert active cart items into bookings and return deposit summary.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
               "name": "Pay Booking Deposit",
               "request": {
                 "method": "POST",
@@ -7042,7 +7168,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Facial Basic\",\n  \"description\": \"60 min facial\",\n  \"duration_min\": 60,\n  \"deposit_amount\": 20,\n  \"buffer_min\": 15,\n  \"is_active\": true\n}",
+                  "raw": "{\n  \"name\": \"Facial Basic\",\n  \"description\": \"60 min facial\",\n  \"service_type\": \"premium\",\n  \"duration_min\": 60,\n  \"deposit_amount\": 20,\n  \"buffer_min\": 15,\n  \"is_active\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
