@@ -45,6 +45,11 @@ type ProductOption = {
 
 type ProductSearchMode = 'name' | 'sku'
 
+type FetchProductOptions = {
+  silent?: boolean
+  resetHighlight?: boolean
+}
+
 type ProductVariantOption = {
   id: number
   name: string
@@ -308,7 +313,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         return productName.includes(keyword)
       }
 
-      return productSku.includes(keyword)
+      const variantSkuMatched = item.variants.some((variant) => (variant.sku?.toLowerCase() ?? '').includes(keyword))
+      return productSku.includes(keyword) || variantSkuMatched
     })
   }, [normalizedProductQuery, productSearchMode, products])
 
@@ -824,10 +830,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return Array.from(map.values())
   }
 
-  const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean) => {
+  const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean, options?: FetchProductOptions) => {
     const requestId = latestProductRequestRef.current + 1
     latestProductRequestRef.current = requestId
-    setProductLoading(true)
+    const silent = options?.silent ?? false
+    const resetHighlight = options?.resetHighlight ?? true
+
+    if (!silent) {
+      setProductLoading(true)
+    }
 
     try {
       let mapped: ProductOption[] = []
@@ -876,9 +887,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       })
       setProductPage(currentPage)
       setProductLastPage(lastPage)
-      setProductHighlighted(0)
+      if (resetHighlight) {
+        setProductHighlighted(0)
+      }
     } finally {
-      if (requestId === latestProductRequestRef.current) {
+      if (!silent && requestId === latestProductRequestRef.current) {
         setProductLoading(false)
       }
     }
@@ -933,12 +946,24 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [fetchActiveStaffs])
 
   useEffect(() => {
+    const trimmedQuery = productQuery.trim()
+    if (productSearchMode !== 'sku' || !trimmedQuery) return
+
     const handle = setTimeout(() => {
-      void fetchProductPage(1, productQuery, false)
-    }, 300)
+      void fetchProductPage(1, trimmedQuery, false)
+    }, 200)
 
     return () => clearTimeout(handle)
-  }, [fetchProductPage, productQuery])
+  }, [fetchProductPage, productQuery, productSearchMode])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (productQuery.trim() || productSelectModalOpen) return
+      void fetchProductPage(1, '', false, { silent: true, resetHighlight: false })
+    }, 60_000)
+
+    return () => window.clearInterval(timer)
+  }, [fetchProductPage, productQuery, productSelectModalOpen])
 
   useEffect(() => {
     if (!memberOpen) return
@@ -1148,10 +1173,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     voucherModalOpen,
   ])
 
-  const onSelectProduct = (item: ProductOption) => {
+  const onSelectProduct = (item: ProductOption, preferredVariantId?: number | null) => {
+    const resolvedPreferredVariantId = Number(preferredVariantId)
+    const hasPreferredVariant = Number.isFinite(resolvedPreferredVariantId) && resolvedPreferredVariantId > 0
+
     setFullProductData(null)
     setSelectedProduct(item)
-    setSelectedVariantId(item.variants.length === 1 ? item.variants[0].id : null)
+    setSelectedVariantId(hasPreferredVariant ? resolvedPreferredVariantId : (item.variants.length === 1 ? item.variants[0].id : null))
     setSelectedProductQty(1)
     setProductSelectModalOpen(true)
     void hydrateProductVariants(item)
@@ -1781,11 +1809,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   tabIndex={0}
                   className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[100px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
-                  onClick={() => void onSelectProduct(item)}
+                  onClick={() => {
+                    const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
+                      ? (item.variants.find((variant) => (variant.sku?.toLowerCase() ?? '').includes(normalizedProductQuery))?.id ?? null)
+                      : null
+                    void onSelectProduct(item, matchedVariantId)
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      void onSelectProduct(item)
+                      const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
+                        ? (item.variants.find((variant) => (variant.sku?.toLowerCase() ?? '').includes(normalizedProductQuery))?.id ?? null)
+                        : null
+                      void onSelectProduct(item, matchedVariantId)
                     }
                   }}
                 >
@@ -1834,7 +1870,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
                   disabled={productLoading}
-                  onClick={() => void fetchProductPage(productPage + 1, productQuery, true)}
+                  onClick={() => void fetchProductPage(productPage + 1, productSearchMode === 'sku' ? productQuery : '', true)}
                 >
                   {productLoading ? (
                     <span className="flex items-center gap-2">
