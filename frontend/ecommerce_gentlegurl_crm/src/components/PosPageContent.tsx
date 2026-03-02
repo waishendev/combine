@@ -892,7 +892,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       let lastPage = page
 
       if (keyword.trim()) {
-        const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
+        const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100&is_reward_only=false`)
         const json = await res.json()
         const paged = extractPaged<ProductOption>(json)
         mapped = paged.data.map((item) => {
@@ -911,6 +911,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         params.set('page', String(page))
         params.set('per_page', '100')
         params.set('is_active', 'true')
+        params.set('is_reward_only', 'false')
 
         const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json()
