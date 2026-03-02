@@ -14,21 +14,24 @@ export default async function MyPosSummaryReport() {
   const hasPermission = user.permissions.some(
     (perm) => perm === 'reports.my-pos-summary.view',
   )
+  const canExport = user.permissions.some(
+    (perm) => perm === 'reports.my-pos-summary.export',
+  )
 
   if (!hasPermission) {
     redirect('/dashboard')
   }
 
   return (
-    <div className="overflow-y-auto px-10 py-6">
-      <div className="mb-4 text-xs">
+    <div className="overflow-y-auto py-6 px-10">
+      <div className="text-xs mb-4">
         <span className="text-gray-500">Reports</span>
         <span className="mx-1">/</span>
         <Link href="/reports/my-pos-summary" className="text-blue-600 hover:underline">
           My POS Summary
         </Link>
       </div>
-      <h2 className="mb-6 text-3xl font-semibold">My POS Summary</h2>
+      <h2 className="text-3xl font-semibold mb-6">My POS Summary</h2>
       <MyPosSummaryPage />
     </div>
   )
