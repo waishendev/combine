@@ -224,6 +224,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const activeTargetRef = useRef<HTMLElement | null>(null)
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastScanMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestProductRequestRef = useRef(0)
   const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
 
   const [cart, setCart] = useState<Cart | null>(null)
@@ -294,22 +295,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
-  const normalizedProductQuery = useMemo(() => productQuery.trim().toLowerCase(), [productQuery])
-  const visibleProducts = useMemo(() => {
-    if (!normalizedProductQuery) return products
-
-    return products.filter((item) => {
-      const keyword = normalizedProductQuery
-      const productName = item.name?.toLowerCase() ?? ''
-      const productSku = item.sku?.toLowerCase() ?? ''
-
-      if (productSearchMode === 'name') {
-        return productName.includes(keyword)
-      }
-
-      return productSku.includes(keyword)
-    })
-  }, [normalizedProductQuery, productSearchMode, products])
+  const visibleProducts = products
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -824,6 +810,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean) => {
+    const requestId = latestProductRequestRef.current + 1
+    latestProductRequestRef.current = requestId
     setProductLoading(true)
 
     let mapped: ProductOption[] = []
@@ -831,7 +819,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     let lastPage = page
 
     if (keyword.trim()) {
-      const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
+      const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&search_mode=${encodeURIComponent(productSearchMode)}&page=${page}&per_page=100`)
       const json = await res.json()
       const paged = extractPaged<ProductOption>(json)
       mapped = paged.data.map((item) => {
@@ -863,6 +851,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       lastPage = paged.last_page
     }
 
+    if (latestProductRequestRef.current !== requestId) {
+      return
+    }
+
     // Ensure we never display variants as extra "products" in the grid.
     setProducts((prev) => {
       const next = append ? [...prev, ...mapped] : mapped
@@ -872,7 +864,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setProductLastPage(lastPage)
     setProductHighlighted(0)
     setProductLoading(false)
-  }, [])
+  }, [productSearchMode])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     setMemberLoading(true)
@@ -1797,6 +1789,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1">{item.name}</p>
                       <p className="text-xs text-gray-500 font-mono truncate">{item.sku || item.barcode}</p>
+                      {item.variants.length > 0 && (
+                        <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                          Has variants
+                        </p>
+                      )}
                     </div>
                     <div className="pt-2 border-t border-gray-100">
                       <span className="text-sm font-bold text-gray-900">RM {Number(item.price ?? 0).toFixed(2)}</span>
