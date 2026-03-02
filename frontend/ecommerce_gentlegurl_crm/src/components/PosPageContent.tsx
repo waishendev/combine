@@ -1673,6 +1673,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
+          <p className="mt-1 text-sm font-medium text-gray-600">
+            Barcode listener is active. Scan to add products instantly, or key in a code and press Enter.
+          </p>
         </div>
       </div>
 
@@ -1684,7 +1687,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
               </svg>
-              Barcode Scanner
+              Barcode Listener
             </label>
             <input
               ref={scannerInputRef}
@@ -1696,7 +1699,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 }
               }}
               className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-4 py-3.5 text-base font-mono focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-              placeholder="Scan barcode (most scanners auto-press Enter) or type manually, then press Enter..."
+              placeholder="Ready to listen... scan barcode or enter code, then press Enter"
               autoFocus
             />
             <p className="mt-2.5 text-xs font-medium text-gray-500 flex items-center gap-1.5">
@@ -1729,7 +1732,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   value={productQuery}
                   onChange={(e) => setProductQuery(e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  placeholder="Search products by name, SKU, or barcode..."
+                  placeholder="Search by SKU / Name"
                 />
               </div>
             </div>
@@ -1826,8 +1829,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </span>
-              Member Assignment
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">Optional</span>
+              Member
             </h3>
 
             <div className="flex-1 flex min-h-0">
@@ -2280,22 +2282,40 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       {checkoutConfirmationOpen && cart?.items?.length ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-5xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-              <h4 className="text-xl font-bold text-gray-900">Checkout confirmation</h4>
+          <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-6 py-4 rounded-t-3xl">
+              <div>
+                <h4 className="text-xl font-bold text-white">Checkout confirmation</h4>
+                <p className="text-xs text-slate-200">Review items, assignments, and payment before finalizing.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setCheckoutConfirmationOpen(false)}
-                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+                className="rounded-lg p-2 text-slate-300 transition-all hover:bg-white/10 hover:text-white"
               >
                 <span className="text-2xl leading-none">×</span>
               </button>
             </div>
 
-            <div className="p-5">
-              <div className="max-h-[55vh] overflow-auto rounded-lg border border-gray-200">
+            <div className="p-5 sm:p-6">
+              <div className="mb-4 grid grid-cols-1 gap-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 via-indigo-50 to-sky-50 p-4 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Total items</p>
+                  <p className="text-lg font-bold text-slate-900">{cart.items.reduce((sum, item) => sum + item.qty, 0)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Subtotal</p>
+                  <p className="text-lg font-bold text-slate-900">RM {Number(cart.subtotal || 0).toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Net amount</p>
+                  <p className="text-lg font-bold text-blue-700">RM {cartTotal.toFixed(2)}</p>
+                </div>
+              </div>
+
+              <div className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-slate-50">
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit Price</th>
@@ -2344,7 +2364,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </table>
               </div>
 
-              <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+              <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-sm font-medium text-gray-700">Net amount</p>
                 <p className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
               </div>
