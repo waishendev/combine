@@ -29,7 +29,6 @@ export default function StaffRow({
       <td className="px-4 py-2 border border-gray-200">{staff.name}</td>
       <td className="px-4 py-2 border border-gray-200">{staff.email}</td>
       <td className="px-4 py-2 border border-gray-200">{staff.phone}</td>
-      <td className="px-4 py-2 border border-gray-200">{staff.loginUsername}</td>
       <td className="px-4 py-2 border border-gray-200">
         {(staff.commissionRate * 100).toFixed(2)}%
       </td>

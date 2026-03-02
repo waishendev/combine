@@ -19,7 +19,6 @@ interface FormState {
   password: string
   username: string
   commissionPercent: string
-  isActive: 'true' | 'false'
 }
 
 const initialFormState: FormState = {
@@ -30,7 +29,6 @@ const initialFormState: FormState = {
   password: '',
   username: '',
   commissionPercent: '0',
-  isActive: 'true',
 }
 
 export default function StaffCreateModal({
@@ -78,7 +76,7 @@ export default function StaffCreateModal({
         password: form.password.trim(),
         username: form.username.trim() || null,
         commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
-        is_active: form.isActive === 'true',
+        is_active: true,
       }
 
       const res = await fetch('/api/proxy/staffs', {
@@ -129,7 +127,7 @@ export default function StaffCreateModal({
             email: form.email.trim(),
             loginUsername: form.username.trim() || '-',
             commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
-            isActive: form.isActive === 'true',
+            isActive: true,
             createdAt: new Date().toISOString(),
           }
 
@@ -166,165 +164,112 @@ export default function StaffCreateModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <h4 className="text-sm font-semibold text-gray-700">Staff Info</h4>
-          
-          <div>
-            <label
-              htmlFor="name"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="name"
-              name="name"
-              type="text"
-              value={form.name}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Name *"
-              disabled={submitting}
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="px-5 py-4">
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  value={form.name}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Name *"
+                  disabled={submitting}
+                />
+              </div>
 
-          <div>
-            <label
-              htmlFor="code"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Code (optional)
-            </label>
-            <input
-              id="code"
-              name="code"
-              type="text"
-              value={form.code}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Code (optional)"
-              disabled={submitting}
-            />
-          </div>
+              <div className="flex-1">
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Email *"
+                  disabled={submitting}
+                />
+              </div>
+            </div>
 
-          <div>
-            <label
-              htmlFor="phone"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Phone
-            </label>
-            <input
-              id="phone"
-              name="phone"
-              type="text"
-              value={form.phone}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Phone"
-              disabled={submitting}
-            />
-          </div>
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Password <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Password *"
+                  disabled={submitting}
+                />
+              </div>
 
-          <div>
-            <label
-              htmlFor="commissionPercent"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Commission Rate (%)
-            </label>
-            <input
-              id="commissionPercent"
-              name="commissionPercent"
-              type="number"
-              min="0"
-              max="100"
-              step="0.01"
-              value={form.commissionPercent}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Commission Rate (%)"
-              disabled={submitting}
-            />
-          </div>
+              <div className="flex-1">
+                <label
+                  htmlFor="phone"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Phone
+                </label>
+                <input
+                  id="phone"
+                  name="phone"
+                  type="text"
+                  value={form.phone}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Phone"
+                  disabled={submitting}
+                />
+              </div>
+            </div>
 
-          <h4 className="pt-2 text-sm font-semibold text-gray-700">Login Info (Role: STAFF)</h4>
-
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Email <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              value={form.email}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Email *"
-              disabled={submitting}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Password <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={form.password}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Password *"
-              disabled={submitting}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="username"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Username (optional)
-            </label>
-            <input
-              id="username"
-              name="username"
-              type="text"
-              value={form.username}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Username (optional)"
-              disabled={submitting}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="isActive"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Status
-            </label>
-            <select
-              id="isActive"
-              name="isActive"
-              value={form.isActive}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              disabled={submitting}
-            >
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
-            </select>
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label
+                  htmlFor="commissionPercent"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Commission Rate (%)
+                </label>
+                <input
+                  id="commissionPercent"
+                  name="commissionPercent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.commissionPercent}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Commission Rate (%)"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="flex-1"></div>
+            </div>
           </div>
 
           {error && (

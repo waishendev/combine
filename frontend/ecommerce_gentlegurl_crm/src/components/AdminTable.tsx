@@ -381,7 +381,7 @@ export default function AdminTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 6 : 5
+  const colCount = showActions ? 5 : 4
 
   const totalPages = meta.last_page || 1
 
@@ -562,7 +562,6 @@ export default function AdminTable({
             <tr>
               {(
                 [
-                  { key: 'username', label: t('common.username') },
                   { key: 'email', label: t('common.email') },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'roleName', label: t('common.role') },

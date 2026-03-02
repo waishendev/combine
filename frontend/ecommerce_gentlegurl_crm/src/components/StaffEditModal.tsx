@@ -255,171 +255,135 @@ export default function StaffEditModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+        <form onSubmit={handleSubmit} className="px-5 py-4">
           {loading ? (
             <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
           ) : (
-            <>
-              <h4 className="text-sm font-semibold text-gray-700">Staff Info</h4>
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label
+                    htmlFor="edit-name"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-name"
+                    name="name"
+                    type="text"
+                    value={form.name}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Name *"
+                    disabled={disableForm}
+                  />
+                </div>
 
-              <div>
-                <label
-                  htmlFor="edit-name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-name"
-                  name="name"
-                  type="text"
-                  value={form.name}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Name *"
-                  disabled={disableForm}
-                />
+                <div className="flex-1">
+                  <label
+                    htmlFor="edit-email"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-email"
+                    name="email"
+                    type="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Email *"
+                    disabled={disableForm}
+                  />
+                </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor="edit-code"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Code (optional)
-                </label>
-                <input
-                  id="edit-code"
-                  name="code"
-                  type="text"
-                  value={form.code}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Code (optional)"
-                  disabled={disableForm}
-                />
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label
+                    htmlFor="edit-password"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Password (leave blank to keep)
+                  </label>
+                  <input
+                    id="edit-password"
+                    name="password"
+                    type="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Password (leave blank to keep)"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div className="flex-1">
+                  <label
+                    htmlFor="edit-phone"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Phone
+                  </label>
+                  <input
+                    id="edit-phone"
+                    name="phone"
+                    type="text"
+                    value={form.phone}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Phone"
+                    disabled={disableForm}
+                  />
+                </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor="edit-phone"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Phone
-                </label>
-                <input
-                  id="edit-phone"
-                  name="phone"
-                  type="text"
-                  value={form.phone}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Phone"
-                  disabled={disableForm}
-                />
-              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label
+                    htmlFor="edit-commissionPercent"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Commission Rate (%)
+                  </label>
+                  <input
+                    id="edit-commissionPercent"
+                    name="commissionPercent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={form.commissionPercent}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Commission Rate (%)"
+                    disabled={disableForm}
+                  />
+                </div>
 
-              <div>
-                <label
-                  htmlFor="edit-commissionPercent"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Commission Rate (%)
-                </label>
-                <input
-                  id="edit-commissionPercent"
-                  name="commissionPercent"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.commissionPercent}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Commission Rate (%)"
-                  disabled={disableForm}
-                />
+                <div className="flex-1">
+                  <label
+                    htmlFor="edit-isActive"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Status
+                  </label>
+                  <select
+                    id="edit-isActive"
+                    name="isActive"
+                    value={form.isActive}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={disableForm}
+                  >
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                  </select>
+                </div>
               </div>
-
-              <h4 className="pt-2 text-sm font-semibold text-gray-700">Login Info (Role: STAFF)</h4>
-
-              <div>
-                <label
-                  htmlFor="edit-email"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Email <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-email"
-                  name="email"
-                  type="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Email *"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-password"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Password (leave blank to keep)
-                </label>
-                <input
-                  id="edit-password"
-                  name="password"
-                  type="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Password (leave blank to keep)"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-username"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Username (optional)
-                </label>
-                <input
-                  id="edit-username"
-                  name="username"
-                  type="text"
-                  value={form.username}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Username (optional)"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-isActive"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Status
-                </label>
-                <select
-                  id="edit-isActive"
-                  name="isActive"
-                  value={form.isActive}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
-              </div>
-            </>
+            </div>
           )}
 
           {error && (
