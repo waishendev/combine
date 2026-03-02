@@ -43,6 +43,8 @@ type ProductOption = {
   default_variant_id?: number | null
 }
 
+type ProductSearchMode = 'name' | 'sku'
+
 type ProductVariantOption = {
   id: number
   name: string
@@ -227,6 +229,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [cart, setCart] = useState<Cart | null>(null)
 
   const [productQuery, setProductQuery] = useState('')
+  const [productSearchMode, setProductSearchMode] = useState<ProductSearchMode>('name')
   const [products, setProducts] = useState<ProductOption[]>([])
   const [productPage, setProductPage] = useState(1)
   const [productLastPage, setProductLastPage] = useState(1)
@@ -297,31 +300,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
     return products.filter((item) => {
       const keyword = normalizedProductQuery
-      const name = item.name?.toLowerCase() ?? ''
-      const sku = item.sku?.toLowerCase() ?? ''
-      const barcode = item.barcode?.toLowerCase() ?? ''
+      const productName = item.name?.toLowerCase() ?? ''
+      const productSku = item.sku?.toLowerCase() ?? ''
 
-      if (name.includes(keyword) || sku.includes(keyword) || barcode.includes(keyword)) {
-        return true
+      if (productSearchMode === 'name') {
+        return productName.includes(keyword)
       }
 
-      if (!Array.isArray(item.variants) || item.variants.length === 0) {
-        return false
-      }
-
-      return item.variants.some((variant) => {
-        const variantName = variant.name?.toLowerCase() ?? ''
-        const variantSku = variant.sku?.toLowerCase() ?? ''
-        const variantBarcode = variant.barcode?.toLowerCase() ?? ''
-
-        return (
-          variantName.includes(keyword) ||
-          variantSku.includes(keyword) ||
-          variantBarcode.includes(keyword)
-        )
-      })
+      return productSku.includes(keyword)
     })
-  }, [normalizedProductQuery, products])
+  }, [normalizedProductQuery, productSearchMode, products])
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -1743,7 +1731,24 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             </h3>
             
             {/* Search Bar */}
-            <div className="mb-5">
+            <div className="mb-5 space-y-3">
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setProductSearchMode('name')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'name' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Search Name
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductSearchMode('sku')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'sku' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Search SKU
+                </button>
+              </div>
+
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1752,7 +1757,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   value={productQuery}
                   onChange={(e) => setProductQuery(e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  placeholder="SKU / Name"
+                  placeholder={productSearchMode === 'name' ? 'Search by product name' : 'Search by product SKU'}
                 />
               </div>
             </div>
