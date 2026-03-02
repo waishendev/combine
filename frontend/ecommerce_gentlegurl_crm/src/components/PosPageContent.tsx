@@ -184,6 +184,11 @@ type ProductApiItem = {
   }>
 }
 
+type PosProductSearchItem = ProductOption & {
+  product_id?: number | string | null
+  variant_id?: number | string | null
+}
+
 function extractPaged<T>(json: unknown): PageResponse<T> {
   const payloadAny: any =
     typeof json === 'object' && json !== null && 'data' in json ? (json as any).data : undefined
@@ -236,6 +241,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [productQuery, setProductQuery] = useState('')
   const [productSearchMode, setProductSearchMode] = useState<ProductSearchMode>('name')
   const [products, setProducts] = useState<ProductOption[]>([])
+  const [skuSearchResults, setSkuSearchResults] = useState<VisibleProductOption[]>([])
+  const [skuSearchLoading, setSkuSearchLoading] = useState(false)
   const [productPage, setProductPage] = useState(1)
   const [productLastPage, setProductLastPage] = useState(1)
   const [productLoading, setProductLoading] = useState(false)
@@ -305,26 +312,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       return products.map((item) => ({ item, matchedVariantId: null }))
     }
 
+    if (productSearchMode === 'sku') {
+      return skuSearchResults
+    }
+
     return products.flatMap((item) => {
-      const keyword = normalizedProductQuery
       const productName = item.name?.toLowerCase() ?? ''
-      const productSku = item.sku?.toLowerCase() ?? ''
-
-      if (productSearchMode === 'name') {
-        if (!productName.includes(keyword)) return []
-        return [{ item, matchedVariantId: null }]
-      }
-
-      if (productSku.includes(keyword)) {
-        return [{ item, matchedVariantId: null }]
-      }
-
-      const matchedVariant = item.variants.find((variant) => (variant.sku?.toLowerCase() ?? '').includes(keyword))
-      if (!matchedVariant) return []
-
-      return [{ item, matchedVariantId: matchedVariant.id }]
+      if (!productName.includes(normalizedProductQuery)) return []
+      return [{ item, matchedVariantId: null }]
     })
-  }, [normalizedProductQuery, productSearchMode, products])
+  }, [normalizedProductQuery, productSearchMode, products, skuSearchResults])
+
+  const effectiveProductLoading =
+    productLoading || (productSearchMode === 'sku' && Boolean(normalizedProductQuery) && skuSearchLoading)
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -912,6 +912,73 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     void fetchProductPage(1, false)
     void fetchActiveStaffs()
   }, [fetchActiveStaffs, fetchProductPage])
+
+  useEffect(() => {
+    if (productSearchMode !== 'sku') {
+      setSkuSearchResults([])
+      setSkuSearchLoading(false)
+      return
+    }
+
+    if (!normalizedProductQuery) {
+      setSkuSearchResults([])
+      setSkuSearchLoading(false)
+      return
+    }
+
+    let cancelled = false
+    const handle = window.setTimeout(async () => {
+      setSkuSearchLoading(true)
+      try {
+        const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(normalizedProductQuery)}&page=1&per_page=100`)
+        const json = await res.json()
+        if (!res.ok || cancelled) return
+
+        const paged = extractPaged<PosProductSearchItem>(json)
+        const map = new Map<number, VisibleProductOption>()
+
+        for (const rawItem of paged.data) {
+          const productId = Number(rawItem.product_id ?? rawItem.id)
+          if (!Number.isFinite(productId) || productId <= 0) continue
+
+          const item: ProductOption = {
+            ...rawItem,
+            product_id: productId,
+            variants: Array.isArray(rawItem.variants) ? rawItem.variants : [],
+          }
+
+          const variantId = Number(rawItem.variant_id)
+          const matchedVariantId = Number.isFinite(variantId) && variantId > 0 ? variantId : null
+
+          if (!map.has(productId)) {
+            map.set(productId, { item, matchedVariantId })
+            continue
+          }
+
+          if (!map.get(productId)?.matchedVariantId && matchedVariantId) {
+            map.set(productId, { item, matchedVariantId })
+          }
+        }
+
+        if (!cancelled) {
+          setSkuSearchResults(Array.from(map.values()))
+        }
+      } catch {
+        if (!cancelled) {
+          setSkuSearchResults([])
+        }
+      } finally {
+        if (!cancelled) {
+          setSkuSearchLoading(false)
+        }
+      }
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(handle)
+    }
+  }, [normalizedProductQuery, productSearchMode])
 
   useEffect(() => {
     if (!memberOpen) return
@@ -1788,7 +1855,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </div>
               ))}
 
-              {!productLoading && visibleProducts.length === 0 && (
+              {!effectiveProductLoading && visibleProducts.length === 0 && (
                 <div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
                   <div className="mb-2 text-4xl">📦</div>
                   <p className="text-sm font-medium text-gray-600">No products found</p>
@@ -1796,13 +1863,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </div>
               )}
 
-              {productLoading && visibleProducts.length === 0 && (
+              {effectiveProductLoading && visibleProducts.length === 0 && (
                 <div className="col-span-full py-12 text-center text-sm text-gray-500">Loading products...</div>
               )}
             </div>
 
             {/* Pagination */}
-            {visibleProducts.length > 0 && productPage < productLastPage && (
+            {visibleProducts.length > 0 && productPage < productLastPage && !(productSearchMode === 'sku' && Boolean(normalizedProductQuery)) && (
               <div className="mt-4 flex items-center justify-end border-t pt-4">
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
