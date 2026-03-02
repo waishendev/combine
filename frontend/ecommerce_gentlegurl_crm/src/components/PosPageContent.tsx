@@ -40,10 +40,15 @@ type ProductOption = {
   price: number
   thumbnail_url?: string | null
   variants: ProductVariantOption[]
+  variant_count?: number | null
   default_variant_id?: number | null
 }
 
 type ProductSearchMode = 'name' | 'sku'
+
+type ProductSearchResult = ProductOption & {
+  matchedVariantId?: number | null
+}
 
 type ProductVariantOption = {
   id: number
@@ -294,22 +299,35 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
-  const normalizedProductQuery = useMemo(() => productQuery.trim().toLowerCase(), [productQuery])
-  const visibleProducts = useMemo(() => {
-    if (!normalizedProductQuery) return products
+  const normalizeSearchKeyword = useCallback((value: string) => value.trim().toLowerCase(), [])
+  const normalizedProductQuery = useMemo(() => normalizeSearchKeyword(productQuery), [normalizeSearchKeyword, productQuery])
+  const visibleProducts = useMemo<ProductSearchResult[]>(() => {
+    if (!normalizedProductQuery) {
+      return products.map((item) => ({ ...item, matchedVariantId: null }))
+    }
 
-    return products.filter((item) => {
-      const keyword = normalizedProductQuery
-      const productName = item.name?.toLowerCase() ?? ''
-      const productSku = item.sku?.toLowerCase() ?? ''
+    if (productSearchMode === 'name') {
+      return products
+        .filter((item) => (item.name?.toLowerCase() ?? '').includes(normalizedProductQuery))
+        .map((item) => ({ ...item, matchedVariantId: null }))
+    }
 
-      if (productSearchMode === 'name') {
-        return productName.includes(keyword)
-      }
+    return products
+      .map((item) => {
+        const matchedVariant = item.variants.find((variant) => normalizeSearchKeyword(variant.sku ?? '') === normalizedProductQuery)
+        if (matchedVariant) {
+          return { ...item, matchedVariantId: matchedVariant.id }
+        }
 
-      return productSku.includes(keyword)
-    })
-  }, [normalizedProductQuery, productSearchMode, products])
+        const productSku = normalizeSearchKeyword(item.sku ?? '')
+        if (productSku && productSku === normalizedProductQuery) {
+          return { ...item, matchedVariantId: null }
+        }
+
+        return null
+      })
+      .filter((item): item is ProductSearchResult => Boolean(item))
+  }, [normalizeSearchKeyword, normalizedProductQuery, productSearchMode, products])
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -729,6 +747,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       price: Number.isFinite(price) ? price : 0,
       thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? null,
       variants,
+      variant_count: variants.length,
       default_variant_id: activeVariant?.id ?? variants[0]?.id ?? null,
     }
   }
@@ -1138,10 +1157,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     voucherModalOpen,
   ])
 
-  const onSelectProduct = (item: ProductOption) => {
+  const onSelectProduct = (item: ProductOption, preselectVariantId?: number | null) => {
     setFullProductData(null)
     setSelectedProduct(item)
-    setSelectedVariantId(item.variants.length === 1 ? item.variants[0].id : null)
+    setSelectedVariantId(preselectVariantId ?? (item.variants.length === 1 ? item.variants[0].id : null))
     setSelectedProductQty(1)
     setProductSelectModalOpen(true)
     void hydrateProductVariants(item)
@@ -1738,14 +1757,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   onClick={() => setProductSearchMode('name')}
                   className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'name' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                 >
-                  Search Name
+                  Name
                 </button>
                 <button
                   type="button"
                   onClick={() => setProductSearchMode('sku')}
                   className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'sku' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                 >
-                  Search SKU
+                  SKU
                 </button>
               </div>
 
@@ -1757,7 +1776,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   value={productQuery}
                   onChange={(e) => setProductQuery(e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  placeholder={productSearchMode === 'name' ? 'Search by product name' : 'Search by product SKU'}
+                  placeholder={productSearchMode === 'name' ? 'Search product name...' : 'Search SKU...'}
                 />
               </div>
             </div>
@@ -1771,11 +1790,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   tabIndex={0}
                   className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[100px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
-                  onClick={() => void onSelectProduct(item)}
+                  onClick={() => void onSelectProduct(item, item.matchedVariantId)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      void onSelectProduct(item)
+                      void onSelectProduct(item, item.matchedVariantId)
                     }
                   }}
                 >
@@ -1795,7 +1814,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   {/* Product Info - Right Side */}
                   <div className="flex flex-col flex-1 p-3 bg-white min-h-0 justify-between">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1">{item.name}</p>
+                      <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1">
+                        {item.name}
+                        {productSearchMode === 'name' && (Number(item.variant_count ?? item.variants.length) > 0) ? (
+                          <span className="ml-1 text-xs font-medium text-gray-500">({Number(item.variant_count ?? item.variants.length)} variants)</span>
+                        ) : null}
+                      </p>
                       <p className="text-xs text-gray-500 font-mono truncate">{item.sku || item.barcode}</p>
                     </div>
                     <div className="pt-2 border-t border-gray-100">
