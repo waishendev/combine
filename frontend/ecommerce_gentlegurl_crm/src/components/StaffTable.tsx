@@ -298,7 +298,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 7 : 6
+  const colCount = showActions ? 6 : 5
 
   const totalPages = meta.last_page || 1
 
@@ -472,7 +472,6 @@ export default function StaffTable({ permissions }: StaffTableProps) {
                   { key: 'name', label: 'Name' },
                   { key: 'email', label: 'Email' },
                   { key: 'phone', label: 'Phone' },
-                  { key: 'loginUsername', label: 'Login Username' },
                   { key: 'commissionRate', label: 'Commission Rate (%)' },
                   { key: 'isActive', label: t('common.status') },
                 ] as const

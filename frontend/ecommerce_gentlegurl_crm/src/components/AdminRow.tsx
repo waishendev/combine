@@ -36,7 +36,6 @@ export default function AdminRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
-      <td className="px-4 py-2 border border-gray-200">{admin.username}</td>
       <td className="px-4 py-2 border border-gray-200">{admin.email}</td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
