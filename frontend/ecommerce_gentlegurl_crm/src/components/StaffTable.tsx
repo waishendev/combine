@@ -60,6 +60,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingStaffId, setEditingStaffId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StaffRowData | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   const canCreate = permissions.includes('staff.create')
   const canUpdate = permissions.includes('staff.update')
@@ -190,7 +191,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
 
     fetchStaffs()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, reloadToken])
 
   const handleSort = (column: keyof StaffRowData) => {
     if (sortColumn === column) {
@@ -319,28 +320,9 @@ export default function StaffTable({ permissions }: StaffTableProps) {
     return value
   }
 
-  const handleStaffCreated = (staff: StaffRowData) => {
-    setRows((prev) => {
-      if (currentPage !== 1) return prev
-      const filtered = prev.filter((item) => item.id !== staff.id)
-      const next = [staff, ...filtered]
-      return next.length > pageSize ? next.slice(0, pageSize) : next
-    })
-
-    setMeta((prevMeta) => {
-      const perPage = prevMeta.per_page || pageSize || 1
-      const total = (prevMeta.total || 0) + 1
-      const last_page = Math.max(
-        prevMeta.last_page || 1,
-        Math.ceil(total / perPage),
-      )
-
-      return {
-        ...prevMeta,
-        total,
-        last_page,
-      }
-    })
+  const refetchStaffs = () => {
+    setCurrentPage(1)
+    setReloadToken((prev) => prev + 1)
   }
 
   const handleStaffUpdated = (staff: StaffRowData) => {
@@ -391,9 +373,9 @@ export default function StaffTable({ permissions }: StaffTableProps) {
       {isCreateModalOpen && (
         <StaffCreateModal
           onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={(staff) => {
+          onSuccess={() => {
             setIsCreateModalOpen(false)
-            handleStaffCreated(staff)
+            refetchStaffs()
           }}
         />
       )}
