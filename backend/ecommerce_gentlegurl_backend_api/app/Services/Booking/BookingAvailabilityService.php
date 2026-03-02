@@ -4,6 +4,7 @@ namespace App\Services\Booking;
 
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingBlock;
+use App\Models\Booking\BookingCartItem;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingStaffSchedule;
 use App\Models\Booking\BookingStaffTimeoff;
@@ -64,6 +65,18 @@ class BookingAvailabilityService
             ->exists();
 
         if ($hasBookingConflict) {
+            return true;
+        }
+
+
+        $hasCartItemConflict = BookingCartItem::where('staff_id', $staffId)
+            ->where('status', 'active')
+            ->where('expires_at', '>', now())
+            ->where('start_at', '<', $blockEnd)
+            ->whereRaw("end_at > ?", [$startAt->toDateTimeString()])
+            ->exists();
+
+        if ($hasCartItemConflict) {
             return true;
         }
 

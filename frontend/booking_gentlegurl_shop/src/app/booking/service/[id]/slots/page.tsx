@@ -3,7 +3,7 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import { createHold, getAvailability } from "@/lib/apiClient";
+import { addCartItem, getAvailability } from "@/lib/apiClient";
 import { BookingSlot } from "@/lib/types";
 
 function todayInTimezone() {
@@ -29,7 +29,7 @@ export default function SlotPage() {
   const [date, setDate] = useState(todayInTimezone());
   const [slots, setSlots] = useState<BookingSlot[]>([]);
   const [loading, setLoading] = useState(false);
-  const [holdMessage, setHoldMessage] = useState<string | null>(null);
+  const [cartMessage, setCartMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const canLoad = useMemo(() => Boolean(serviceId && staffId && date), [serviceId, staffId, date]);
@@ -77,14 +77,14 @@ export default function SlotPage() {
   };
 
   const reserveSlot = async (slot: BookingSlot) => {
-    const hold = await createHold({
+    const cart = await addCartItem({
       service_id: Number(serviceId),
       staff_id: Number(staffId),
       start_at: slot.start_time,
     });
 
-    setHoldMessage(`Slot reserved 15 minutes. Expires at ${new Date(hold.hold_expires_at).toLocaleTimeString("en-MY", { timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}`);
-    router.push(`/booking/checkout?booking_id=${hold.booking_id}&expires_at=${encodeURIComponent(hold.hold_expires_at)}`);
+    setCartMessage(`Slot added to cart. Current deposit RM ${cart.deposit_total}`);
+    router.push(`/booking/cart`);
   };
 
   return (
@@ -97,7 +97,7 @@ export default function SlotPage() {
       </div>
       {loading ? <p className="mt-4">Loading availability...</p> : null}
       {error ? <p className="mt-4 text-red-600">{error}</p> : null}
-      {holdMessage ? <p className="mt-4 text-green-700">{holdMessage}</p> : null}
+      {cartMessage ? <p className="mt-4 text-green-700">{cartMessage}</p> : null}
       <div className="mt-6 grid gap-3 md:grid-cols-3">
         {Array.isArray(slots) && slots.length > 0 ? (
           slots.map((slot) => (

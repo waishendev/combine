@@ -1,5 +1,5 @@
 import { getOrCreateSessionToken } from "./sessionToken";
-import { AuthUser, BookingHold, BookingRecord, BookingSlot, Service, Staff } from "./types";
+import { AuthUser, BookingCart, BookingRecord, BookingSlot, Service, Staff } from "./types";
 
 const API_PREFIX = "/api/proxy";
 
@@ -62,21 +62,35 @@ export async function getAvailability(serviceId: string, staffId: string, date: 
   return unwrapData<BookingSlot[]>(response);
 }
 
-export async function createHold(payload: {
+export async function addCartItem(payload: {
   service_id: number;
   staff_id: number;
   start_at: string;
 }) {
-  const response = await request<{ data: BookingHold } | BookingHold>("/booking/hold", {
+  const response = await request<{ data: BookingCart } | BookingCart>("/booking/cart/add", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 
-  return unwrapData<BookingHold>(response);
+  return unwrapData<BookingCart>(response);
 }
 
-export async function payBooking(bookingId: string) {
-  return request<{ checkout_url?: string; status: string }>(`/booking/${bookingId}/pay`, {
+export async function getBookingCart() {
+  const response = await request<{ data: BookingCart } | BookingCart>("/booking/cart");
+  return unwrapData<BookingCart>(response);
+}
+
+export async function removeCartItem(itemId: number) {
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}`, {
+    method: "DELETE",
+    body: JSON.stringify({}),
+  });
+
+  return unwrapData<BookingCart>(response);
+}
+
+export async function checkoutCart() {
+  return request<{ status: string; booking_ids: number[]; deposit_total: number }>(`/booking/cart/checkout`, {
     method: "POST",
     body: JSON.stringify({}),
   });
