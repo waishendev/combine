@@ -69,6 +69,26 @@ const formatDisplayDate = (dateString: string) => {
   }).format(date)
 }
 
+const formatDateTimeForTable = (dateString: string) => {
+  if (!dateString) return { time: '—', date: '—' }
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) {
+    return { time: '—', date: '—' }
+  }
+  const time = date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+  const dateStr = date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+  return { time, date: dateStr }
+}
+
 export default function StaffCommissionReportPage() {
   const defaultRange = useMemo(() => getDefaultRange(), [])
   const [filterInputs, setFilterInputs] = useState({
@@ -381,34 +401,28 @@ export default function StaffCommissionReportPage() {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Staff
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Commission Rate
               </th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
                 Total Sales
               </th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
                 Total Commission
               </th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                Orders Count
-              </th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                Items Count
-              </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 font-semibold text-center text-gray-600 tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={7} />
+              <TableLoadingRow colSpan={5} />
             ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={7} />
+              <TableEmptyState colSpan={5} />
             ) : (
               rows.map((row) => (
                 <tr key={row.staff_id}>
@@ -424,18 +438,14 @@ export default function StaffCommissionReportPage() {
                   <td className="px-4 py-2 border border-gray-200 text-right">
                     RM {money(Number(row.total_commission))}
                   </td>
-                  <td className="px-4 py-2 border border-gray-200 text-right">
-                    {row.orders_count}
-                  </td>
-                  <td className="px-4 py-2 border border-gray-200 text-right">
-                    {row.items_count}
-                  </td>
-                  <td className="px-4 py-2 border border-gray-200">
+                  <td className="px-4 py-2 border border-gray-200 text-center">
                     <button
-                      className="text-blue-600 hover:text-blue-800"
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
                       onClick={() => openDetails(row)}
+                      aria-label={`View details for ${row.staff_name}`}
                     >
-                      View details
+                      <i className="fa-solid fa-eye" />
                     </button>
                   </td>
                 </tr>
@@ -453,100 +463,166 @@ export default function StaffCommissionReportPage() {
               <td className="border border-gray-300 px-4 py-2 text-right">
                 RM {money(grandTotalCommission)}
               </td>
-              <td className="border border-gray-300 px-4 py-2" colSpan={3} />
+              <td className="border border-gray-300 px-4 py-2" />
             </tr>
           </tfoot>
         </table>
       </div>
 
       {detailOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-lg bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b p-4">
-              <h3 className="text-lg font-semibold">Details — {detailStaff?.staff_name ?? '-'}</h3>
-              <button
-                className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
-                onClick={() => setDetailOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="max-h-[75vh] overflow-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-300/70">
-                  <tr>
-                    <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                      Order No
-                    </th>
-                    <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                      Order Date
-                    </th>
-                    <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
-                      Product
-                    </th>
-                    <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                      Qty
-                    </th>
-                    <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                      Item Net
-                    </th>
-                    <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                      Share %
-                    </th>
-                    <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                      Staff Item Sales
-                    </th>
-                    <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                      Rate
-                    </th>
-                    <th className="px-4 py-2 font-semibold text-right text-gray-600 uppercase tracking-wider">
-                      Staff Item Commission
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detailLoading ? (
-                    <TableLoadingRow colSpan={9} />
-                  ) : detailRows.length === 0 ? (
-                    <TableEmptyState colSpan={9} />
-                  ) : (
-                    detailRows.map((row, index) => (
-                      <tr key={`${row.order_id}-${index}`}>
-                        <td className="px-4 py-2 border border-gray-200">
-                          {row.order_no ?? row.order_id}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-200">
-                          {new Date(row.order_date).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-200">
-                          {row.product_name ?? '—'}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-200 text-right">
-                          {row.qty}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-200 text-right">
-                          RM {money(Number(row.item_net_amount))}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-200 text-right">
-                          {row.share_percent}%
-                        </td>
-                        <td className="px-4 py-2 border border-gray-200 text-right">
-                          RM {money(Number(row.staff_item_sales))}
-                        </td>
-                        <td className="px-4 py-2 border border-gray-200 text-right">
-                          {(Number(row.commission_rate) * 100).toFixed(2)}%
-                        </td>
-                        <td className="px-4 py-2 border border-gray-200 text-right">
-                          RM {money(Number(row.staff_item_commission))}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/50 transition-opacity"
+            onClick={() => setDetailOpen(false)}
+          />
+          {/* Drawer - slides in from right, larger width */}
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-6xl bg-white shadow-2xl transition-transform duration-300 ease-out">
+            <div className="flex h-full flex-col">
+              {/* Header - Dark background */}
+              <div className="flex items-center justify-between border-b border-slate-700 bg-slate-800 px-6 py-4">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400">
+                    Staff Commission Details
+                  </p>
+                  <h3 className="mt-1 text-lg font-bold text-white">
+                    {detailStaff?.staff_name ?? '-'}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-300">
+                    Period: {showingRange}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-700 hover:text-white transition-colors"
+                  onClick={() => setDetailOpen(false)}
+                  aria-label="Close drawer"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+
+              {/* Content - Scrollable */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                {detailStaff && (
+                  <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                      <p className="text-xs font-semibold text-blue-600">
+                        Total Sales
+                      </p>
+                      <p className="mt-1 text-base font-bold text-blue-900">
+                        RM {money(Number(detailStaff.total_sales))}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                      <p className="text-xs font-semibold text-emerald-600">
+                        Total Commission
+                      </p>
+                      <p className="mt-1 text-base font-bold text-emerald-700">
+                        RM {money(Number(detailStaff.total_commission))}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-purple-100 bg-purple-50 px-4 py-3">
+                      <p className="text-xs font-semibold text-purple-600">
+                        Orders
+                      </p>
+                      <p className="mt-1 text-base font-bold text-purple-900">
+                        {detailStaff.orders_count}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-3">
+                      <p className="text-xs font-semibold text-orange-600">
+                        Items
+                      </p>
+                      <p className="mt-1 text-base font-bold text-orange-900">
+                        {detailStaff.items_count}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs sm:text-sm">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-4 py-2 font-semibold text-left text-gray-700">
+                            Order No
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-left text-gray-700">
+                            Date
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-left text-gray-700">
+                            Product
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                            Qty
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                            Total
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                            Share %
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                            Rate
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                            Commission
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailLoading ? (
+                          <TableLoadingRow colSpan={8} />
+                        ) : detailRows.length === 0 ? (
+                          <TableEmptyState colSpan={8} />
+                        ) : (
+                          detailRows.map((row, index) => (
+                            <tr key={`${row.order_id}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
+                              <td className="px-4 py-2">
+                                {row.order_no ?? row.order_id}
+                              </td>
+                              <td className="px-4 py-2">
+                                {(() => {
+                                  const { time, date } = formatDateTimeForTable(row.order_date)
+                                  return (
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-medium text-gray-900">{time}</span>
+                                      <span className="text-xs text-gray-500">{date}</span>
+                                    </div>
+                                  )
+                                })()}
+                              </td>
+                              <td className="px-4 py-2">
+                                {row.product_name ?? '—'}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                {row.qty}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                RM {money(Number(row.item_net_amount))}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                {row.share_percent}%
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                {(Number(row.commission_rate) * 100).toFixed(2)}%
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                RM {money(Number(row.staff_item_commission))}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   )
