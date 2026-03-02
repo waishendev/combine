@@ -88,6 +88,8 @@ export default function ProductTable({
       }
       if (rewardOnly) {
         qs.set('is_reward_only', 'true')
+      } else {
+        qs.set('is_reward_only', 'false')
       }
 
       const res = await fetch(`/api/proxy/ecommerce/products?${qs.toString()}`, {
