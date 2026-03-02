@@ -301,22 +301,23 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
   const normalizedProductQuery = useMemo(() => productQuery.trim().toLowerCase(), [productQuery])
+  const normalizeSkuSearchValue = useCallback((value: string | null | undefined) => value?.trim().toLowerCase() ?? '', [])
   const visibleProducts = useMemo(() => {
     if (!normalizedProductQuery) return products
 
     return products.filter((item) => {
       const keyword = normalizedProductQuery
       const productName = item.name?.toLowerCase() ?? ''
-      const productSku = item.sku?.toLowerCase() ?? ''
+      const productSku = normalizeSkuSearchValue(item.sku)
 
       if (productSearchMode === 'name') {
         return productName.includes(keyword)
       }
 
-      const variantSkuMatched = item.variants.some((variant) => (variant.sku?.toLowerCase() ?? '').includes(keyword))
-      return productSku.includes(keyword) || variantSkuMatched
+      const variantSkuMatched = item.variants.some((variant) => normalizeSkuSearchValue(variant.sku) === keyword)
+      return variantSkuMatched || productSku === keyword
     })
-  }, [normalizedProductQuery, productSearchMode, products])
+  }, [normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -946,15 +947,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [fetchActiveStaffs])
 
   useEffect(() => {
-    const trimmedQuery = productQuery.trim()
-    if (productSearchMode !== 'sku' || !trimmedQuery) return
+    if (productQuery.trim()) return
 
-    const handle = setTimeout(() => {
-      void fetchProductPage(1, trimmedQuery, false)
-    }, 200)
+    const handle = window.setTimeout(() => {
+      void fetchProductPage(1, '', false, { silent: true, resetHighlight: false })
+    }, 150)
 
-    return () => clearTimeout(handle)
-  }, [fetchProductPage, productQuery, productSearchMode])
+    return () => window.clearTimeout(handle)
+  }, [fetchProductPage, productQuery])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1811,7 +1811,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   onMouseEnter={() => setProductHighlighted(idx)}
                   onClick={() => {
                     const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
-                      ? (item.variants.find((variant) => (variant.sku?.toLowerCase() ?? '').includes(normalizedProductQuery))?.id ?? null)
+                      ? (item.variants.find((variant) => normalizeSkuSearchValue(variant.sku) === normalizedProductQuery)?.id ?? null)
                       : null
                     void onSelectProduct(item, matchedVariantId)
                   }}
@@ -1819,7 +1819,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
-                        ? (item.variants.find((variant) => (variant.sku?.toLowerCase() ?? '').includes(normalizedProductQuery))?.id ?? null)
+                        ? (item.variants.find((variant) => normalizeSkuSearchValue(variant.sku) === normalizedProductQuery)?.id ?? null)
                         : null
                       void onSelectProduct(item, matchedVariantId)
                     }
@@ -1870,7 +1870,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
                   disabled={productLoading}
-                  onClick={() => void fetchProductPage(productPage + 1, productSearchMode === 'sku' ? productQuery : '', true)}
+                  onClick={() => void fetchProductPage(productPage + 1, '', true)}
                 >
                   {productLoading ? (
                     <span className="flex items-center gap-2">
