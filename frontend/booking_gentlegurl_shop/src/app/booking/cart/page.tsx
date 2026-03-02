@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { checkoutCart, getBookingCart, removeCartItem } from "@/lib/apiClient";
+import { emitBookingCartChanged, emitOpenBookingCartDrawer } from "@/lib/bookingCartEvents";
 import { BookingCart } from "@/lib/types";
 
 function secondsLeft(expiresAt: string) {
@@ -36,9 +37,10 @@ export default function BookingCartPage() {
       if (!cart?.items?.length) return;
       const expired = cart.items.find((item) => secondsLeft(item.expires_at) <= 0);
       if (expired) {
-        await removeCartItem(expired.id);
+        const next = await removeCartItem(expired.id);
+        setCart(next);
+        emitBookingCartChanged();
         setMessage("Slot expired and removed from cart");
-        await loadCart();
       } else {
         setCart((current) => (current ? { ...current } : current));
       }
@@ -62,17 +64,24 @@ export default function BookingCartPage() {
     return formatDuration(secondsLeft(cart.next_expiry_at));
   }, [cart]);
 
-  const isCheckoutDisabled = !cart?.items?.length || !cart?.deposit_total;
+  const isCheckoutDisabled = !cart?.items?.length;
 
   const onCheckout = async () => {
     await checkoutCart();
+    emitBookingCartChanged();
     router.push("/booking/success");
   };
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
       <BookingProgress step={4} />
-      <h1 className="text-3xl font-semibold">Booking Cart</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold">Booking Cart</h1>
+        <div className="flex items-center gap-2">
+          <button onClick={emitOpenBookingCartDrawer} className="rounded-full border border-neutral-300 px-4 py-2 text-sm">Open Cart</button>
+          <Link href="/booking" className="rounded-full bg-black px-4 py-2 text-sm text-white">Continue booking</Link>
+        </div>
+      </div>
       {message ? <p className="mt-3 text-amber-700">{message}</p> : null}
 
       {!cart?.items?.length ? (
@@ -101,7 +110,10 @@ export default function BookingCartPage() {
                   </div>
                   <button
                     className="rounded-full border px-4 py-2 text-sm"
-                    onClick={async () => setCart(await removeCartItem(item.id))}
+                    onClick={async () => {
+                      setCart(await removeCartItem(item.id));
+                      emitBookingCartChanged();
+                    }}
                   >
                     Remove
                   </button>
