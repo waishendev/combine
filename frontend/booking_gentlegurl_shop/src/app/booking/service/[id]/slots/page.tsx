@@ -16,7 +16,6 @@ type AvailabilityPayload = {
   data?: {
     slots?: BookingSlot[];
   };
-  slots?: BookingSlot[];
 };
 
 export default function SlotPage() {
@@ -42,32 +41,16 @@ export default function SlotPage() {
 
     try {
       const res = await getAvailability(serviceId, staffId, date);
-      console.log("availability response", res);
+      const payload = (res.data ?? res) as AvailabilityPayload["data"];
+      const slotsArr = Array.isArray(payload?.slots) ? payload.slots : [];
 
-      const payload = ((res as AvailabilityPayload)?.data ?? res) as AvailabilityPayload | BookingSlot[];
-      const slotsArr =
-        Array.isArray((payload as AvailabilityPayload)?.slots)
-          ? (payload as AvailabilityPayload).slots!
-          : Array.isArray(payload)
-            ? payload
-            : [];
-
-      if (
-        typeof payload === "object" &&
-        payload !== null &&
-        "success" in payload &&
-        (payload as AvailabilityPayload).success === false
-      ) {
-        setError((payload as AvailabilityPayload).message || "Unable to load available slots.");
+      if (res.success === false) {
+        setError(res.message || "Unable to load available slots.");
         setSlots([]);
         return;
       }
 
       setSlots(slotsArr);
-
-      if (slotsArr.length === 0) {
-        setError("No slots available for selected date");
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load available slots.");
       setSlots([]);
@@ -77,10 +60,13 @@ export default function SlotPage() {
   };
 
   const reserveSlot = async (slot: BookingSlot) => {
+    const slotStartAt = slot.start_at ?? slot.start_time;
+    if (!slotStartAt) return;
+
     const cart = await addCartItem({
       service_id: Number(serviceId),
       staff_id: Number(staffId),
-      start_at: slot.start_time,
+      start_at: slotStartAt,
     });
 
     setCartMessage(`Slot added to cart. Current deposit RM ${cart.deposit_total}`);
@@ -100,12 +86,18 @@ export default function SlotPage() {
       {cartMessage ? <p className="mt-4 text-green-700">{cartMessage}</p> : null}
       <div className="mt-6 grid gap-3 md:grid-cols-3">
         {Array.isArray(slots) && slots.length > 0 ? (
-          slots.map((slot) => (
-            <button key={slot.start_time} onClick={() => reserveSlot(slot)} className="rounded-xl border border-neutral-200 px-4 py-3 text-left">
-              <p className="font-medium">{new Date(slot.start_time).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
-              <p className="text-sm text-neutral-500">to {new Date(slot.end_time).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
-            </button>
-          ))
+          slots.map((slot, idx) => {
+            const startAt = slot.start_at ?? slot.start_time;
+            const endAt = slot.end_at ?? slot.end_time;
+            if (!startAt || !endAt) return null;
+
+            return (
+              <button key={startAt + idx} onClick={() => reserveSlot(slot)} className="rounded-xl border border-neutral-200 px-4 py-3 text-left">
+                <p className="font-medium">{new Date(startAt).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
+                <p className="text-sm text-neutral-500">to {new Date(endAt).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
+              </button>
+            );
+          })
         ) : (
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600 md:col-span-3">
             No slots available for selected date

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingService;
 use App\Services\Booking\BookingAvailabilityService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 class AvailabilityController extends Controller
 {
@@ -15,11 +16,26 @@ class AvailabilityController extends Controller
 
     public function index(Request $request)
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'date' => ['required', 'date_format:Y-m-d'],
         ]);
+
+        if ($validator->fails()) {
+            return $this->respondError('Invalid availability request.', 422, [
+                'date' => (string) $request->input('date', ''),
+                'service_id' => (int) $request->input('service_id', 0),
+                'staff_id' => (int) $request->input('staff_id', 0),
+                'duration_min' => null,
+                'buffer_min' => null,
+                'slot_step_min' => 15,
+                'slots' => [],
+                'errors' => $validator->errors(),
+            ]);
+        }
+
+        $validated = $validator->validated();
 
         $service = BookingService::findOrFail($validated['service_id']);
         $slots = $this->availabilityService->getAvailableSlots($service, (int) $validated['staff_id'], $validated['date']);

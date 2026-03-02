@@ -13,12 +13,14 @@ class Kernel extends ConsoleKernel
         Commands\ExpirePendingOrders::class,
         Commands\ExpireApprovedReturns::class,
         Commands\ExpireBookingHolds::class,
+        Commands\ExpireBookingCartItems::class,
         Commands\BookingSeedTestingCommand::class,
     ];
 
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('booking:expire-holds')->everyMinute();
+        $schedule->command('booking:expire-cart-items')->everyMinute();
 
         $schedule->job(new SendDailyOrderSummaryEmailJob())
             ->dailyAt('10:00')

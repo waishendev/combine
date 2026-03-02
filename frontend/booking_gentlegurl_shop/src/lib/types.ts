@@ -17,8 +17,11 @@ export type Staff = {
 };
 
 export type BookingSlot = {
-  start_time: string;
-  end_time: string;
+  start_at?: string;
+  end_at?: string;
+  start_time?: string;
+  end_time?: string;
+  is_available?: boolean;
   label?: string;
 };
 

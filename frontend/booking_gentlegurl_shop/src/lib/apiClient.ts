@@ -1,4 +1,5 @@
 import { getOrCreateSessionToken } from "./sessionToken";
+import { getOrCreateBookingGuestToken } from "./bookingGuestToken";
 import { AuthUser, BookingCart, BookingRecord, BookingSlot, Service, Staff } from "./types";
 
 const API_PREFIX = "/api/proxy";
@@ -17,7 +18,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   headers.set("Accept", "application/json");
-  headers.set("X-Session-Token", getOrCreateSessionToken());
+  const sessionToken = getOrCreateSessionToken();
+  if (sessionToken) {
+    headers.set("X-Session-Token", sessionToken);
+  }
+
+  if (path.startsWith("/booking/cart")) {
+    const guestToken = getOrCreateBookingGuestToken();
+    if (guestToken) {
+      headers.set("X-Booking-Guest-Token", guestToken);
+    }
+  }
 
   const response = await fetch(`${API_PREFIX}${path}`, {
     ...init,
@@ -56,10 +67,9 @@ export async function getBookingServiceDetail(id: string) {
 }
 
 export async function getAvailability(serviceId: string, staffId: string, date: string) {
-  const response = await request<{ data: BookingSlot[] } | BookingSlot[]>(
+  return request<{ success?: boolean; message?: string; data?: { slots?: BookingSlot[] } }>(
     `/booking/availability?service_id=${serviceId}&staff_id=${staffId}&date=${date}`,
   );
-  return unwrapData<BookingSlot[]>(response);
 }
 
 export async function addCartItem(payload: {
@@ -89,10 +99,14 @@ export async function removeCartItem(itemId: number) {
   return unwrapData<BookingCart>(response);
 }
 
-export async function checkoutCart() {
+export async function checkoutCart(payload?: {
+  guest_name?: string;
+  guest_phone?: string;
+  guest_email?: string;
+}) {
   return request<{ status: string; booking_ids: number[]; deposit_total: number }>(`/booking/cart/checkout`, {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(payload ?? {}),
   });
 }
 
