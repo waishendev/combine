@@ -233,6 +233,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const [cart, setCart] = useState<Cart | null>(null)
 
+  const [productSearchTerm, setProductSearchTerm] = useState('')
   const [productQuery, setProductQuery] = useState('')
   const [productSearchMode, setProductSearchMode] = useState<ProductSearchMode>('name')
   const [products, setProducts] = useState<ProductOption[]>([])
@@ -303,13 +304,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const normalizedProductQuery = useMemo(() => normalizeSearchKeyword(productQuery), [normalizeSearchKeyword, productQuery])
   const visibleProducts = useMemo<ProductSearchResult[]>(() => {
     if (!normalizedProductQuery) {
-      return products.map((item) => ({ ...item, matchedVariantId: null }))
+      return products
     }
 
     if (productSearchMode === 'name') {
-      return products
-        .filter((item) => (item.name?.toLowerCase() ?? '').includes(normalizedProductQuery))
-        .map((item) => ({ ...item, matchedVariantId: null }))
+      return products.filter((item) => (item.name?.toLowerCase() ?? '').includes(normalizedProductQuery))
     }
 
     return products
@@ -849,8 +848,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     let currentPage = page
     let lastPage = page
 
-    if (keyword.trim()) {
-      const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
+    const normalizedKeyword = normalizeSearchKeyword(keyword)
+
+    if (normalizedKeyword && productSearchMode === 'name') {
+      const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(normalizedKeyword)}&page=${page}&per_page=100`)
       const json = await res.json()
       const paged = extractPaged<ProductOption>(json)
       mapped = paged.data.map((item) => {
@@ -860,26 +861,86 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           ...item,
           product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
           variants: Array.isArray(item.variants) ? item.variants : [],
+          variant_count: Number(item.variant_count ?? (Array.isArray(item.variants) ? item.variants.length : 0)),
         }
       })
       currentPage = paged.current_page
       lastPage = paged.last_page
     } else {
-      const params = new URLSearchParams()
-      params.set('page', String(page))
-      params.set('per_page', '100')
-      params.set('is_active', 'true')
+      const fetchCatalogPage = async (catalogPage: number) => {
+        const params = new URLSearchParams()
+        params.set('page', String(catalogPage))
+        params.set('per_page', '100')
+        params.set('is_active', 'true')
 
-      const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
-      const json = await res.json()
-      const paged = extractPaged<ProductApiItem>(json)
+        const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
+        const json = await res.json()
+        const paged = extractPaged<ProductApiItem>(json)
+        const options = paged.data
+          .map((item): ProductOption | null => normalizeProductFromApi(item))
+          .filter((item): item is ProductOption => Boolean(item))
+        return { options, paged }
+      }
 
-      mapped = paged.data
-        .map((item): ProductOption | null => normalizeProductFromApi(item))
-        .filter((item): item is ProductOption => Boolean(item))
+      if (normalizedKeyword && productSearchMode === 'sku') {
+        const enrichForSkuMatch = async (item: ProductOption): Promise<ProductOption | null> => {
+          const directProductMatch = normalizeSearchKeyword(item.sku ?? '') === normalizedKeyword
+          const directVariantMatch = item.variants.some((variant) => normalizeSearchKeyword(variant.sku ?? '') === normalizedKeyword)
+          if (directProductMatch || directVariantMatch) return item
 
-      currentPage = paged.current_page
-      lastPage = paged.last_page
+          const productId = Number(item.product_id || item.id)
+          if (!Number.isFinite(productId) || productId <= 0) return null
+
+          try {
+            const res = await fetch(`/api/proxy/ecommerce/products/${productId}`, { cache: 'no-store' })
+            const json = await res.json()
+            if (!res.ok) return null
+
+            const payload = json?.data?.product ?? json?.data ?? json?.product
+            const normalized = payload ? normalizeProductFromApi(payload as ProductApiItem) : null
+            if (!normalized) return null
+
+            const detailProductMatch = normalizeSearchKeyword(normalized.sku ?? '') === normalizedKeyword
+            const detailVariantMatch = normalized.variants.some((variant) => normalizeSearchKeyword(variant.sku ?? '') === normalizedKeyword)
+            return detailProductMatch || detailVariantMatch ? normalized : null
+          } catch {
+            return null
+          }
+        }
+
+        const findSkuMatches = async (options: ProductOption[]) => {
+          const matches: ProductOption[] = []
+          for (const item of options) {
+            const matched = await enrichForSkuMatch(item)
+            if (matched) matches.push(matched)
+          }
+          return matches
+        }
+
+        const { options: firstPageOptions, paged: firstPage } = await fetchCatalogPage(1)
+        let skuMatches = await findSkuMatches(firstPageOptions)
+
+        mapped = skuMatches
+        currentPage = 1
+        lastPage = skuMatches.length > 0 ? 1 : 0
+
+        if (!skuMatches.length && firstPage.last_page > 1) {
+          for (let nextPage = 2; nextPage <= firstPage.last_page; nextPage += 1) {
+            const { options } = await fetchCatalogPage(nextPage)
+            skuMatches = await findSkuMatches(options)
+            if (skuMatches.length > 0) {
+              mapped = skuMatches
+              lastPage = 1
+              break
+            }
+          }
+        }
+      } else {
+        const { options, paged } = await fetchCatalogPage(page)
+        mapped = options
+        currentPage = paged.current_page
+        lastPage = paged.last_page
+      }
     }
 
     // Ensure we never display variants as extra "products" in the grid.
@@ -891,7 +952,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setProductLastPage(lastPage)
     setProductHighlighted(0)
     setProductLoading(false)
-  }, [])
+  }, [normalizeSearchKeyword, productSearchMode])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     setMemberLoading(true)
@@ -942,12 +1003,20 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [fetchActiveStaffs])
 
   useEffect(() => {
+    const debounceHandle = setTimeout(() => {
+      setProductQuery(productSearchTerm)
+    }, 200)
+
+    return () => clearTimeout(debounceHandle)
+  }, [productSearchTerm])
+
+  useEffect(() => {
     const handle = setTimeout(() => {
       void fetchProductPage(1, productQuery, false)
-    }, 300)
+    }, 200)
 
     return () => clearTimeout(handle)
-  }, [fetchProductPage, productQuery])
+  }, [fetchProductPage, productQuery, productSearchMode])
 
   useEffect(() => {
     if (!memberOpen) return
@@ -1773,8 +1842,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input
-                  value={productQuery}
-                  onChange={(e) => setProductQuery(e.target.value)}
+                  value={productSearchTerm}
+                  onChange={(e) => setProductSearchTerm(e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                   placeholder={productSearchMode === 'name' ? 'Search product name...' : 'Search SKU...'}
                 />
@@ -1848,7 +1917,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
                   disabled={productLoading}
-                  onClick={() => void fetchProductPage(productPage + 1, productQuery, true)}
+                  onClick={() => void fetchProductPage(productPage + 1, productSearchTerm, true)}
                 >
                   {productLoading ? (
                     <span className="flex items-center gap-2">
