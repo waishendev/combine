@@ -225,6 +225,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastScanMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
+  const latestProductRequestRef = useRef(0)
 
   const [cart, setCart] = useState<Cart | null>(null)
 
@@ -824,54 +825,63 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean) => {
+    const requestId = latestProductRequestRef.current + 1
+    latestProductRequestRef.current = requestId
     setProductLoading(true)
 
-    let mapped: ProductOption[] = []
-    let currentPage = page
-    let lastPage = page
+    try {
+      let mapped: ProductOption[] = []
+      let currentPage = page
+      let lastPage = page
 
-    if (keyword.trim()) {
-      const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
-      const json = await res.json()
-      const paged = extractPaged<ProductOption>(json)
-      mapped = paged.data.map((item) => {
-        const resolvedProductId = Number(item.product_id)
+      if (keyword.trim()) {
+        const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100`)
+        const json = await res.json()
+        const paged = extractPaged<ProductOption>(json)
+        mapped = paged.data.map((item) => {
+          const resolvedProductId = Number(item.product_id)
 
-        return {
-          ...item,
-          product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
-          variants: Array.isArray(item.variants) ? item.variants : [],
-        }
+          return {
+            ...item,
+            product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
+            variants: Array.isArray(item.variants) ? item.variants : [],
+          }
+        })
+        currentPage = paged.current_page
+        lastPage = paged.last_page
+      } else {
+        const params = new URLSearchParams()
+        params.set('page', String(page))
+        params.set('per_page', '100')
+        params.set('is_active', 'true')
+
+        const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
+        const json = await res.json()
+        const paged = extractPaged<ProductApiItem>(json)
+
+        mapped = paged.data
+          .map((item): ProductOption | null => normalizeProductFromApi(item))
+          .filter((item): item is ProductOption => Boolean(item))
+
+        currentPage = paged.current_page
+        lastPage = paged.last_page
+      }
+
+      if (requestId !== latestProductRequestRef.current) return
+
+      // Ensure we never display variants as extra "products" in the grid.
+      setProducts((prev) => {
+        const next = append ? [...prev, ...mapped] : mapped
+        return dedupeByProductId(next)
       })
-      currentPage = paged.current_page
-      lastPage = paged.last_page
-    } else {
-      const params = new URLSearchParams()
-      params.set('page', String(page))
-      params.set('per_page', '100')
-      params.set('is_active', 'true')
-
-      const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
-      const json = await res.json()
-      const paged = extractPaged<ProductApiItem>(json)
-
-      mapped = paged.data
-        .map((item): ProductOption | null => normalizeProductFromApi(item))
-        .filter((item): item is ProductOption => Boolean(item))
-
-      currentPage = paged.current_page
-      lastPage = paged.last_page
+      setProductPage(currentPage)
+      setProductLastPage(lastPage)
+      setProductHighlighted(0)
+    } finally {
+      if (requestId === latestProductRequestRef.current) {
+        setProductLoading(false)
+      }
     }
-
-    // Ensure we never display variants as extra "products" in the grid.
-    setProducts((prev) => {
-      const next = append ? [...prev, ...mapped] : mapped
-      return dedupeByProductId(next)
-    })
-    setProductPage(currentPage)
-    setProductLastPage(lastPage)
-    setProductHighlighted(0)
-    setProductLoading(false)
   }, [])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
