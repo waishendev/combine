@@ -45,6 +45,11 @@ type ProductOption = {
 
 type ProductSearchMode = 'name' | 'sku'
 
+type VisibleProductOption = {
+  item: ProductOption
+  matchedVariantId: number | null
+}
+
 type ProductVariantOption = {
   id: number
   name: string
@@ -295,19 +300,29 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
   const normalizedProductQuery = useMemo(() => productQuery.trim().toLowerCase(), [productQuery])
-  const visibleProducts = useMemo(() => {
-    if (!normalizedProductQuery) return products
+  const visibleProducts = useMemo<VisibleProductOption[]>(() => {
+    if (!normalizedProductQuery) {
+      return products.map((item) => ({ item, matchedVariantId: null }))
+    }
 
-    return products.filter((item) => {
+    return products.flatMap((item) => {
       const keyword = normalizedProductQuery
       const productName = item.name?.toLowerCase() ?? ''
       const productSku = item.sku?.toLowerCase() ?? ''
 
       if (productSearchMode === 'name') {
-        return productName.includes(keyword)
+        if (!productName.includes(keyword)) return []
+        return [{ item, matchedVariantId: null }]
       }
 
-      return productSku.includes(keyword)
+      if (productSku.includes(keyword)) {
+        return [{ item, matchedVariantId: null }]
+      }
+
+      const matchedVariant = item.variants.find((variant) => (variant.sku?.toLowerCase() ?? '').includes(keyword))
+      if (!matchedVariant) return []
+
+      return [{ item, matchedVariantId: matchedVariant.id }]
     })
   }, [normalizedProductQuery, productSearchMode, products])
 
@@ -1106,10 +1121,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     voucherModalOpen,
   ])
 
-  const onSelectProduct = (item: ProductOption) => {
+  const onSelectProduct = (item: ProductOption, preferredVariantId: number | null = null) => {
     setFullProductData(null)
     setSelectedProduct(item)
-    setSelectedVariantId(item.variants.length === 1 ? item.variants[0].id : null)
+    setSelectedVariantId(preferredVariantId ?? (item.variants.length === 1 ? item.variants[0].id : null))
     setSelectedProductQty(1)
     setProductSelectModalOpen(true)
     void hydrateProductVariants(item)
@@ -1732,18 +1747,18 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
             {/* Products Grid */}
             <div className="grid min-h-[260px] flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
-              {visibleProducts.map((item, idx) => (
+              {visibleProducts.map(({ item, matchedVariantId }, idx) => (
                 <div
                   key={item.product_id}
                   role="button"
                   tabIndex={0}
                   className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[100px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
-                  onClick={() => void onSelectProduct(item)}
+                  onClick={() => void onSelectProduct(item, matchedVariantId)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      void onSelectProduct(item)
+                      void onSelectProduct(item, matchedVariantId)
                     }
                   }}
                 >
