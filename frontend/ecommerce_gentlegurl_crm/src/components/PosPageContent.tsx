@@ -40,7 +40,14 @@ type ProductOption = {
   price: number
   thumbnail_url?: string | null
   variants: ProductVariantOption[]
+  variants_count?: number
   default_variant_id?: number | null
+}
+
+type ProductSearchHit = {
+  product: ProductOption
+  matchedVariantId?: number
+  matchedVariantSku?: string
 }
 
 type ProductSearchMode = 'name' | 'sku'
@@ -172,6 +179,7 @@ type ProductApiItem = {
   name?: string
   sku?: string
   price?: number | string
+  variants_count?: number | string | null
   cover_image_url?: string | null
   variants?: Array<{
     id?: number
@@ -306,43 +314,50 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return source.trim().toLowerCase()
   }, [debouncedSkuQuery, productQuery, productSearchMode])
   const normalizeSkuSearchValue = useCallback((value: string | null | undefined) => value?.trim().toLowerCase() ?? '', [])
-  const findMatchedVariantSkuId = useCallback((item: ProductOption, keyword: string) => {
+  const findMatchedVariantSku = useCallback((item: ProductOption, keyword: string) => {
     if (!keyword) return null
 
-    let includesMatchId: number | null = null
-    for (const variant of item.variants) {
+    const activeVariants = (item.variants ?? []).filter((variant) => variant.is_active !== false)
+    for (const variant of activeVariants) {
       const variantSku = normalizeSkuSearchValue(variant.sku)
-      if (!variantSku) continue
-      if (variantSku.startsWith(keyword)) return variant.id
-      if (includesMatchId === null && variantSku.includes(keyword)) {
-        includesMatchId = variant.id
+      if (variantSku && variantSku.startsWith(keyword)) {
+        return variant
       }
     }
 
-    return includesMatchId
+    return null
   }, [normalizeSkuSearchValue])
-  const visibleProducts = useMemo(() => {
-    if (!normalizedProductQuery) return products
+  const visibleProductHits = useMemo<ProductSearchHit[]>(() => {
+    if (!normalizedProductQuery) {
+      return products.map((product) => ({ product }))
+    }
 
-    return products.filter((item) => {
-      const keyword = normalizedProductQuery
-      const productName = item.name?.toLowerCase() ?? ''
-      const productSku = normalizeSkuSearchValue(item.sku)
+    if (productSearchMode === 'name') {
+      return products
+        .filter((item) => (item.name?.toLowerCase() ?? '').includes(normalizedProductQuery))
+        .map((product) => ({ product }))
+    }
 
-      if (productSearchMode === 'name') {
-        return productName.includes(keyword)
+    return products.flatMap((product) => {
+      const productSku = normalizeSkuSearchValue(product.sku)
+      if (productSku && productSku.startsWith(normalizedProductQuery)) {
+        return [{ product }]
       }
 
-      if (keyword.length < 2) {
-        return true
-      }
+      const matchedVariant = findMatchedVariantSku(product, normalizedProductQuery)
+      if (!matchedVariant) return []
 
-      const variantSkuMatched = findMatchedVariantSkuId(item, keyword) !== null
-      const productStartsWith = productSku.startsWith(keyword)
-      const productIncludes = productSku.includes(keyword)
-      return variantSkuMatched || productStartsWith || productIncludes
+      return [{
+        product,
+        matchedVariantId: matchedVariant.id,
+        matchedVariantSku: matchedVariant.sku,
+      }]
     })
-  }, [findMatchedVariantSkuId, normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
+  }, [findMatchedVariantSku, normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
+  const firstActiveVariantSku = useCallback((item: ProductOption) => {
+    const firstActive = (item.variants ?? []).find((variant) => variant.is_active !== false && Boolean(variant.sku?.trim()))
+    return firstActive?.sku?.trim() ?? ''
+  }, [])
 
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
@@ -762,6 +777,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       price: Number.isFinite(price) ? price : 0,
       thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? null,
       variants,
+      variants_count: typeof item.variants_count === 'number'
+        ? item.variants_count
+        : Number(item.variants_count ?? variants.length) || variants.length,
       default_variant_id: activeVariant?.id ?? variants[0]?.id ?? null,
     }
   }
@@ -1840,7 +1858,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
             {/* Products Grid */}
             <div className="grid min-h-[260px] flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
-              {visibleProducts.map((item, idx) => (
+              {visibleProductHits.map((hit, idx) => {
+                const item = hit.product
+                const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
+                const variantsCount = item.variants_count ?? item.variants.length
+
+                return (
                 <div
                   key={item.product_id}
                   role="button"
@@ -1848,18 +1871,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[100px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
                   onClick={() => {
-                    const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
-                      ? findMatchedVariantSkuId(item, normalizedProductQuery)
-                      : null
-                    void onSelectProduct(item, matchedVariantId)
+                    void onSelectProduct(item, hit.matchedVariantId ?? null)
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      const matchedVariantId = productSearchMode === 'sku' && normalizedProductQuery
-                        ? findMatchedVariantSkuId(item, normalizedProductQuery)
-                        : null
-                      void onSelectProduct(item, matchedVariantId)
+                      void onSelectProduct(item, hit.matchedVariantId ?? null)
                     }
                   }}
                 >
@@ -1880,16 +1897,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <div className="flex flex-col flex-1 p-3 bg-white min-h-0 justify-between">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1">{item.name}</p>
-                      <p className="text-xs text-gray-500 font-mono truncate">{item.sku || item.barcode}</p>
+                      <p className="text-xs text-gray-500 font-mono truncate">{displaySku}</p>
+                      {variantsCount > 0 && (
+                        <p className="text-[11px] text-blue-600 font-medium mt-0.5">({variantsCount} variants)</p>
+                      )}
                     </div>
                     <div className="pt-2 border-t border-gray-100">
                       <span className="text-sm font-bold text-gray-900">RM {Number(item.price ?? 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
 
-              {!productLoading && visibleProducts.length === 0 && (
+              {!productLoading && visibleProductHits.length === 0 && (
                 <div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
                   <div className="mb-2 text-4xl">📦</div>
                   <p className="text-sm font-medium text-gray-600">No products found</p>
@@ -1897,13 +1917,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </div>
               )}
 
-              {productLoading && visibleProducts.length === 0 && (
+              {productLoading && visibleProductHits.length === 0 && (
                 <div className="col-span-full py-12 text-center text-sm text-gray-500">Loading products...</div>
               )}
             </div>
 
             {/* Pagination */}
-            {visibleProducts.length > 0 && productPage < productLastPage && (
+            {visibleProductHits.length > 0 && productPage < productLastPage && (
               <div className="mt-4 flex items-center justify-end border-t pt-4">
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
