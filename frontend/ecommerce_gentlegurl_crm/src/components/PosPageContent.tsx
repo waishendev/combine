@@ -1496,10 +1496,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setQrProofFileName(null)
   }
 
-  const getStaffLabel = (staff: StaffOption) => {
-    const parts = [staff.name, staff.phone ?? '', staff.email ?? ''].filter(Boolean)
-    return parts.join(' • ')
+  const getStaffInputLabel = (staff: StaffOption) => {
+    const name = String(staff.name ?? '').trim()
+    const phone = String(staff.phone ?? '').trim()
+    return phone ? `${name} (${phone})` : name
   }
+
+  const getStaffDropdownPrimary = (staff: StaffOption) => getStaffInputLabel(staff)
 
   const getSplitSummary = (assignment: CheckoutItemAssignment | undefined) => {
     if (!assignment || assignment.splits.length === 0) return 'No staff assigned'
@@ -1577,7 +1580,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       return createDraftRow({
         staff_id: split.staff_id,
         share_percent: split.share_percent,
-        search: selected ? getStaffLabel(selected) : '',
+         search: selected ? getStaffInputLabel(selected) : '',
         options: nextStaffs,
       })
     })
@@ -1599,7 +1602,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const selectDraftRowStaff = (rowId: string, staff: StaffOption) => {
-    setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, staff_id: staff.id, search: getStaffLabel(staff), open: false } : row))
+    setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, staff_id: staff.id, search: getStaffInputLabel(staff), open: false } : row))
   }
 
   const saveItemSplitEditor = () => {
@@ -1673,45 +1676,33 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
+          <p className="mt-2 text-sm text-gray-600 flex items-center gap-2">
+            <svg className="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+            </svg>
+            <span className="font-medium">Barcode Listener Active</span> - System is listening for barcode scans. Scan items to add them to cart automatically.
+          </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-5 xl:min-h-0">
         <div className="space-y-5 xl:col-span-3 xl:min-h-0">
-          {/* Barcode Scanner Input - moved into left column above Products for better POS flow */}
-          <div className="flex min-h-[200px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[180px]">
-            <label className="mb-3 block text-sm font-bold text-gray-900 flex items-center gap-2">
-              <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-              Barcode Scanner
-            </label>
-            <input
-              ref={scannerInputRef}
-              type="text"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void onScannerEnter()
-                }
-              }}
-              className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-4 py-3.5 text-base font-mono focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-              placeholder="Scan barcode (most scanners auto-press Enter) or type manually, then press Enter..."
-              autoFocus
-            />
-            <p className="mt-2.5 text-xs font-medium text-gray-500 flex items-center gap-1.5">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Scan with barcode scanner to add items. If typing by hand, press Enter to confirm.
-            </p>
-            <p className={`mt-2 text-xs font-mono text-blue-700 transition-opacity duration-300 ${lastScanVisible ? 'opacity-100' : 'opacity-0'}`} aria-live="polite">
-              Last scan: {lastScanValue || '-'}
-            </p>
-          </div>
+          {/* Hidden barcode scanner input for listening */}
+          <input
+            ref={scannerInputRef}
+            type="text"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void onScannerEnter()
+              }
+            }}
+            className="sr-only"
+            autoFocus
+          />
 
           {/* Products Section - Always Visible */}
-          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(70vh-5rem)] xl:min-h-0">
+          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -1729,7 +1720,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   value={productQuery}
                   onChange={(e) => setProductQuery(e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  placeholder="Search products by name, SKU, or barcode..."
+                  placeholder="SKU / Name"
                 />
               </div>
             </div>
@@ -1818,107 +1809,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
         <div className="space-y-5 xl:col-span-2 xl:min-h-0">
 
-                    {/* Member Assignment Section - Moved to Right Side */}
-          <div className="flex min-h-[200px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm sm:p-5 xl:h-[180px]">
-            <h3 className="mb-3 flex flex-wrap items-center gap-2 text-lg font-bold text-gray-900 flex-shrink-0">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </span>
-              Member Assignment
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">Optional</span>
-            </h3>
-
-            <div className="flex-1 flex min-h-0">
-            {selectedMember ? (
-              <div className="w-full overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-3 shadow-sm">
-                <div className="flex items-center gap-2.5">
-                  {selectedMember.avatar_url ? (
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={selectedMember.avatar_url} alt={selectedMember.name} className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300 shadow-md">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/images/default_user_image.jpg" alt={selectedMember.name} className="h-full w-full object-cover" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-900 leading-tight truncate">
-                      {selectedMember.name}
-                      {selectedMember.phone && <span className="ml-1.5 text-xs font-normal text-gray-600">({selectedMember.phone})</span>}
-                    </p>
-                    {selectedMember.email && (
-                      <p className="mt-1 text-xs text-gray-700 truncate flex items-center gap-1">
-                        <svg className="h-3 w-3 shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        <span className="truncate">{selectedMember.email}</span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-blue-200 pt-2">
-                  <button
-                    onClick={() => void toggleMemberDropdown()}
-                    className="inline-flex min-w-[120px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-blue-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5h2m-1-1v2m0 6v7m-7-7h14" />
-                    </svg>
-                    Change
-                  </button>
-                  <button
-                    onClick={() => void onClearMember()}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Clear
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => void toggleMemberDropdown()}
-                className="group relative w-full h-full overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 px-4 py-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-400 hover:from-blue-50 hover:via-blue-100/40 hover:to-indigo-50/30 hover:shadow-lg active:scale-[0.98]"
-              >
-                {/* Decorative background pattern */}
-                <div className="absolute top-0 right-0 h-24 w-24 bg-gradient-to-br from-blue-200/10 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                
-                <div className="relative flex items-center gap-3.5">
-                  {/* Enhanced Icon Container */}
-                  <div className="relative flex-shrink-0">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-100 via-blue-200 to-indigo-200 text-blue-700 shadow-md ring-2 ring-blue-50 transition-all duration-300 group-hover:scale-110 group-hover:from-blue-200 group-hover:via-blue-300 group-hover:to-indigo-300 group-hover:shadow-lg">
-                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </div>
-                  </div>
-                  
-                  {/* Text Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-900 group-hover:text-blue-700 transition-colors duration-300">
-                      Assign Member
-                    </p>
-                  </div>
-                  
-                  {/* Arrow Icon */}
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-slate-400 transition-all duration-300 group-hover:translate-x-1 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </div>
-              </button>
-            )}
-            </div>
-          </div>
-
-            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(70vh-5rem)] xl:min-h-0">
+            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -1927,47 +1818,100 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             </h3>
             {cart?.items.length ? (
               <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 xl:min-h-0">
-                {cart.items.map((item) => (
-                  <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-gray-900 truncate sm:max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
-                        <p className="mt-0.5 text-xs font-mono text-gray-600 truncate sm:max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
+                {cart.items.map((item) => {
+                  // Get current variant stock info
+                  const currentVariant = item.variant_id 
+                    ? (cartVariantOptions[item.id] ?? []).find(v => v.id === item.variant_id)
+                    : null
+                  
+                  const trackStock = currentVariant?.track_stock ?? null
+                  const stockValue = typeof currentVariant?.stock === 'number' && Number.isFinite(currentVariant.stock)
+                    ? currentVariant.stock
+                    : null
+                  
+                  const hasStockLimit = (trackStock ?? true) && stockValue !== null && stockValue >= 0
+                  const canIncreaseQty = !hasStockLimit || (stockValue !== null && item.qty < stockValue)
+                  
+                  return (
+                    <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900 truncate sm:max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
+                          <p className="mt-0.5 text-xs font-mono text-gray-600 truncate sm:max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
+                        </div>
+                        <div className="flex w-fit items-center gap-2 rounded-lg bg-gray-100 p-1">
+                          <button
+                            type="button"
+                            title={item.qty <= 1 ? 'Remove item' : 'Decrease quantity'}
+                            onClick={() => {
+                              if (item.qty <= 1) {
+                                void removeItem(item.id)
+                                return
+                              }
+                              void updateQty(item.id, item.qty - 1)
+                            }}
+                            className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95"
+                          >
+                            -
+                          </button>
+                          <span className="w-8 text-center text-sm font-bold text-gray-900">{item.qty}</span>
+                          <button 
+                            onClick={() => void updateQty(item.id, item.qty + 1)} 
+                            disabled={!canIncreaseQty}
+                            className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-gray-100 disabled:hover:border-gray-200"
+                          >+</button>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 sm:justify-end">
+                          <span className="min-w-[90px] text-left text-sm font-bold text-gray-900 sm:text-right">RM {Number(item.line_total).toFixed(2)}</span>
+                          <button 
+                            onClick={() => void removeItem(item.id)} 
+                            className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
+                            title="Remove item"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex w-fit items-center gap-2 rounded-lg bg-gray-100 p-1">
-                        <button onClick={() => void updateQty(item.id, item.qty - 1)} className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95">-</button>
-                        <span className="w-8 text-center text-sm font-bold text-gray-900">{item.qty}</span>
-                        <button onClick={() => void updateQty(item.id, item.qty + 1)} className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95">+</button>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 sm:justify-end">
-                        <span className="min-w-[90px] text-left text-sm font-bold text-gray-900 sm:text-right">RM {Number(item.line_total).toFixed(2)}</span>
-                        <button 
-                          onClick={() => void removeItem(item.id)} 
-                          className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
-                          title="Remove item"
-                        >
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
+                      {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) && (
+                        <div className="mt-2">
+                          <select
+                            className={`h-9 w-full rounded-lg border px-2 text-xs ${
+                              cartVariantLoading[item.id] 
+                                ? 'border-slate-300 bg-gray-50 text-gray-400 cursor-wait' 
+                                : (cartVariantOptions[item.id] ?? []).length === 0
+                                ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'border-slate-300 bg-white text-gray-900'
+                            }`}
+                            value={item.variant_id ? String(item.variant_id) : ''}
+                            onFocus={() => { if (item.variant_id) void fetchCartItemVariants(item) }}
+                            onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
+                            disabled={cartVariantLoading[item.id] || (cartVariantOptions[item.id] ?? []).length === 0}
+                          >
+                            <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
+                            {(cartVariantOptions[item.id] ?? []).map((variant) => {
+                              const variantTrackStock = variant.track_stock ?? null
+                              const variantStock = typeof variant.stock === 'number' && Number.isFinite(variant.stock) ? variant.stock : null
+                              const variantHasStock = !((variantTrackStock ?? true) && variantStock !== null && variantStock >= 0) || (variantStock !== null && variantStock > 0)
+                              const isDisabled = !variantHasStock || !variant.is_active
+                              
+                              return (
+                                <option 
+                                  key={variant.id} 
+                                  value={String(variant.id)}
+                                  disabled={isDisabled}
+                                >
+                                  {variant.name} ({variant.sku}){!variantHasStock ? ' - Out of Stock' : ''}
+                                </option>
+                              )
+                            })}
+                          </select>
+                        </div>
+                      )}
                     </div>
-                    {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) && (
-                      <div className="mt-2">
-                        <select
-                          className="h-9 w-full rounded-lg border border-slate-300 px-2 text-xs"
-                          value={item.variant_id ? String(item.variant_id) : ''}
-                          onFocus={() => { if (item.variant_id) void fetchCartItemVariants(item) }}
-                          onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
-                          disabled={cartVariantLoading[item.id]}
-                        >
-                          <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
-                          {(cartVariantOptions[item.id] ?? []).map((variant) => <option key={variant.id} value={String(variant.id)}>{variant.name} ({variant.sku})</option>)}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="mt-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
@@ -2279,64 +2223,105 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       )}
 
       {checkoutConfirmationOpen && cart?.items?.length ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-5xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-              <h4 className="text-xl font-bold text-gray-900">Checkout confirmation</h4>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+          <div className="w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-8 py-6 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
+                  <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-2xl font-bold text-gray-900">Checkout Confirmation</h4>
+                  <p className="mt-1 text-sm text-gray-600">Review your order before completing payment</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setCheckoutConfirmationOpen(false)}
-                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+                className="rounded-xl p-2.5 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700 active:scale-95"
               >
-                <span className="text-2xl leading-none">×</span>
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
-            <div className="p-5">
-              <div className="max-h-[55vh] overflow-auto rounded-lg border border-gray-200">
+            <div className="flex-1 overflow-y-auto p-8">
+              <div className="max-h-[400px] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gradient-to-r from-slate-50 to-gray-50">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit Price</th>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Total Price</th>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Staff</th>
+                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Item</th>
+                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Staff Assignment</th>
+                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Unit Price</th>
+                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Total Price</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-gray-100">
                     {cart.items.map((item) => {
                       const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === item.id)
+                      const hasVariant = Boolean(item.variant_id || item.variant_name || item.variant_sku)
+                      const variantDisplay = item.variant_name || item.variant_sku || null
                       return (
-                        <tr key={item.id} className="border-t border-gray-100 align-top">
-                          <td className="px-3 py-2">
-                            <p className="font-medium text-gray-900">{item.product_name}</p>
-                            <p className="text-xs text-gray-500">Qty: {item.qty}</p>
+                        <tr key={item.id} className="hover:bg-gray-50 transition-colors align-top">
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-900">{item.product_name}</p>
+                            {hasVariant && variantDisplay && (
+                              <p className="text-xs text-blue-600 font-medium mt-0.5">Variant: {variantDisplay}</p>
+                            )}
+                            {!hasVariant && item.product_id && (
+                              <p className="text-xs text-gray-400 italic mt-0.5">No variant selected</p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
                           </td>
-                          <td className="px-3 py-2">RM {Number(item.unit_price).toFixed(2)}</td>
-                          <td className="px-3 py-2 font-semibold">RM {Number(item.line_total).toFixed(2)}</td>
-                          <td className="px-3 py-2 min-w-[280px]">
-                            <div className="space-y-1">
-                              <p className="text-xs text-gray-700">{getSplitSummary(assignment)}</p>
+                          <td className="px-4 py-3 min-w-[280px]">
+                            <div className="space-y-2">
+                              <p className="text-xs text-gray-600 font-medium">{getSplitSummary(assignment)}</p>
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => void openItemSplitEditor(item.id)}
-                                  className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                                  className={`inline-flex items-center gap-1.5 rounded-lg border-2 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md active:scale-95 ${
+                                    assignment?.splits?.length
+                                      ? 'border-indigo-500 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700'
+                                      : 'border-emerald-500 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700'
+                                  }`}
                                 >
-                                  {assignment?.splits?.length ? 'Edit' : 'Assign'}
+                                  {assignment?.splits?.length ? (
+                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
+                                      />
+                                    </svg>
+                                  ) : (
+                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                  )}
+                                  {assignment?.splits?.length ? 'Edit Staff' : 'Assign Staff'}
                                 </button>
                                 {assignment?.splits?.length ? (
                                   <button
                                     type="button"
                                     onClick={() => setCheckoutItemAssignments((prev) => prev.map((row) => row.cart_item_id === item.id ? { ...row, splits: [], is_default: false } : row))}
-                                    className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border-2 border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm transition-all hover:bg-red-50 hover:border-red-400 hover:shadow-md active:scale-95"
                                   >
+                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
                                     Clear
                                   </button>
                                 ) : null}
                               </div>
                             </div>
                           </td>
+                          <td className="px-4 py-3 text-gray-700">RM {Number(item.unit_price).toFixed(2)}</td>
+                          <td className="px-4 py-3 font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</td>
                         </tr>
                       )
                     })}
@@ -2344,90 +2329,166 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </table>
               </div>
 
-              <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                <p className="text-sm font-medium text-gray-700">Net amount</p>
-                <p className="text-lg font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
-              </div>
-
-              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-800">Member</p>
-                  <button
-                    type="button"
-                    onClick={() => void toggleMemberDropdown()}
-                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50"
-                  >
-                    {selectedMember ? 'Change Member' : 'Assign Member'}
-                  </button>
-                </div>
-                {selectedMember ? (
-                  <div className="mt-2 space-y-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
-                    <p className="text-xs font-semibold text-blue-800">{selectedMember.name}</p>
-                    <p className="text-xs text-blue-700">{selectedMember.phone || selectedMember.email || `Member #${selectedMember.id}`}</p>
-                    <button type="button" className="text-xs font-semibold text-red-600 underline" onClick={() => void onClearMember()}>Clear member</button>
+              <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 shadow-sm">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-600">Subtotal</p>
+                    <p className="text-sm font-semibold text-gray-900">RM {cartSubtotal.toFixed(2)}</p>
                   </div>
-                ) : <p className="mt-2 text-xs text-gray-600">No member assigned.</p>}
-              </div>
-
-              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-800">Voucher</p>
-                  <button
-                    type="button"
-                    onClick={() => setVoucherModalOpen(true)}
-                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50"
-                  >
-                    {appliedVoucher ? 'Change Voucher' : 'Apply Voucher'}
-                  </button>
-                </div>
-                {appliedVoucher ? (
-                  <div className="mt-2 space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-                    <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
-                    {!!appliedVoucher.discount_amount && <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>}
-                    <button type="button" className="text-xs font-semibold text-red-600 underline" onClick={() => void removeVoucher()}>Remove voucher</button>
+                  {discount > 0 && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-gray-600">Discount</p>
+                      <p className="text-sm font-semibold text-green-600">-RM {discount.toFixed(2)}</p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between border-t border-gray-300 pt-2 mt-2">
+                    <p className="text-base font-semibold text-gray-700">Net Amount</p>
+                    <p className="text-2xl font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
                   </div>
-                ) : <p className="mt-2 text-xs text-gray-600">No voucher applied.</p>}
+                </div>
               </div>
 
-              <div className="mt-4 space-y-2">
-                <p className="text-sm font-semibold text-gray-800">Payment method</p>
-                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <span className={paymentMethod === 'cash' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Cash</span>
-                  <input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="h-4 w-4 text-blue-600" />
-                </label>
-                <label className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${paymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
-                  <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-4 w-4 text-blue-600" />
-                </label>
+              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <p className="text-sm font-bold text-gray-800">Member</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void toggleMemberDropdown()}
+                      className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50 active:scale-95"
+                    >
+                      {selectedMember ? 'Change' : 'Assign'}
+                    </button>
+                  </div>
+                  {selectedMember ? (
+                    <div className="space-y-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
+                      <p className="text-xs font-semibold text-blue-800">{selectedMember.name}</p>
+                      <p className="text-xs text-blue-700">{selectedMember.phone || selectedMember.email || `Member #${selectedMember.id}`}</p>
+                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={() => void onClearMember()}>Clear member</button>
+                    </div>
+                  ) : <p className="text-xs text-gray-500 italic">No member assigned</p>}
+                </div>
+
+                <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-sm font-bold text-gray-800">Voucher</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setVoucherModalOpen(true)}
+                      className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50 active:scale-95"
+                    >
+                      {appliedVoucher ? 'Change' : 'Apply'}
+                    </button>
+                  </div>
+                  {appliedVoucher ? (
+                    <div className="space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
+                      <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
+                      {!!appliedVoucher.discount_amount && <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>}
+                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={() => void removeVoucher()}>Remove voucher</button>
+                    </div>
+                  ) : <p className="text-xs text-gray-500 italic">No voucher applied</p>}
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+                <p className="mb-4 text-sm font-bold text-gray-800">Payment Method</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
+                    <div className="flex items-center gap-2">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      <span className={paymentMethod === 'cash' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Cash</span>
+                    </div>
+                    <input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="h-5 w-5 text-blue-600" />
+                  </label>
+                  <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all ${paymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
+                    <div className="flex items-center gap-2">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
+                    </div>
+                    <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-5 w-5 text-blue-600" />
+                  </label>
+                </div>
               </div>
 
               {paymentMethod === 'cash' && (
-                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
+                <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                   <label className="block text-sm font-bold text-gray-900">Cash Received</label>
-                  <input type="number" min="0" step="0.01" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-11 w-full rounded-lg border-2 border-gray-300 bg-white px-4 text-sm font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="0.00" />
-                  {cashChange > 0 && <div className="flex items-center justify-between rounded-lg bg-green-50 border-2 border-green-200 px-3 py-2"><span className="text-xs font-semibold text-green-800">Change:</span><span className="text-sm font-bold text-green-700">RM {cashChange.toFixed(2)}</span></div>}
+                  <input type="number" min="0" step="0.01" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="0.00" />
+                  {cashChange > 0 && (
+                    <div className="flex items-center justify-between rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 px-4 py-3 shadow-sm">
+                      <span className="text-sm font-semibold text-green-800">Change:</span>
+                      <span className="text-lg font-bold text-green-700">RM {cashChange.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
               {paymentMethod === 'qrpay' && (
-                <div className="mt-4 space-y-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4">
+                <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                   <label className="block text-sm font-bold text-gray-900">Upload Payment Proof</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrUploadInputRef.current?.click()}>📁 Upload</button>
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraBackInputRef.current?.click()}>📷 Back Camera</button>
-                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95" onClick={() => qrCameraFrontInputRef.current?.click()}>📷 Front Camera</button>
+                    <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrUploadInputRef.current?.click()}>
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        Upload
+                      </span>
+                    </button>
+                    <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrCameraBackInputRef.current?.click()}>
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Back Camera
+                      </span>
+                    </button>
+                    <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrCameraFrontInputRef.current?.click()}>
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Front Camera
+                      </span>
+                    </button>
                   </div>
                   <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
                   <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
                   <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
-                  {qrProofFileName && <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2"><p className="truncate pr-2 text-xs font-medium text-green-800">✓ {qrProofFileName}</p><button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline" onClick={clearQrProof}>Clear</button></div>}
+                  {qrProofFileName && (
+                    <div className="flex items-center justify-between rounded-xl border-2 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 px-4 py-3 shadow-sm">
+                      <p className="truncate pr-2 text-sm font-medium text-green-800 flex items-center gap-2">
+                        <svg className="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {qrProofFileName}
+                      </p>
+                      <button type="button" className="text-sm font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={clearQrProof}>Clear</button>
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div className="mt-4 flex gap-3 pt-1">
+              <div className="mt-8 flex gap-4 pt-2 flex-shrink-0">
                 <button
                   type="button"
-                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50"
+                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-6 py-3.5 text-base font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50 active:scale-95 shadow-sm"
                   onClick={() => setCheckoutConfirmationOpen(false)}
                 >
                   Cancel
@@ -2436,9 +2497,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   type="button"
                   onClick={() => void confirmCheckout()}
                   disabled={!canConfirmCheckoutInModal}
-                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none"
+                  className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 px-6 py-3.5 text-base font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:via-blue-700 hover:to-blue-800 hover:shadow-xl disabled:cursor-not-allowed disabled:from-gray-300 disabled:via-gray-300 disabled:to-gray-400 disabled:shadow-none active:scale-95"
                 >
-                  Confirm checkout
+                  Confirm Checkout
                 </button>
               </div>
             </div>
@@ -2447,8 +2508,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       ) : null}
 
       {itemSplitEditorOpen && itemSplitEditorItemId ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
               <h5 className="text-lg font-bold text-gray-900">Item Staff Split</h5>
               <button type="button" onClick={() => setItemSplitEditorOpen(false)} className="text-2xl leading-none text-gray-500">×</button>
@@ -2460,7 +2521,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 Auto Balance
               </label>
 
-              <div className="max-h-[40vh] space-y-3 overflow-auto pr-1">
+              <div className="space-y-3 pr-1">
                 {itemSplitDraftRows.map((row, index) => (
                   <div key={row.id} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[1.6fr_0.8fr_auto] sm:items-end">
                     <div className="relative">
@@ -2472,15 +2533,37 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
                         placeholder="Search staff by name / phone / email"
                       />
-                      {row.open && (
-                        <div className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                          {row.loading ? <p className="px-3 py-2 text-xs text-gray-500">Searching...</p> : row.options.map((staff) => (
-                            <button key={staff.id} type="button" onClick={() => selectDraftRowStaff(row.id, staff)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50">
-                              {getStaffLabel(staff)}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      {row.open && (() => {
+                        // Filter out already selected staff (except the current row's selected staff)
+                        const selectedStaffIds = new Set(
+                          itemSplitDraftRows
+                            .filter(r => r.id !== row.id && r.staff_id !== null)
+                            .map(r => r.staff_id!)
+                        )
+                        const availableOptions = row.options.filter(staff => !selectedStaffIds.has(staff.id))
+                        
+                        return (
+                          <div className="absolute z-[80] mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-2xl ring-1 ring-black/5">
+                            {row.loading ? (
+                              <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>
+                            ) : availableOptions.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-gray-500">No available staff</p>
+                            ) : (
+                              availableOptions.map((staff) => (
+                                <button
+                                  key={staff.id}
+                                  type="button"
+                                  onClick={() => selectDraftRowStaff(row.id, staff)}
+                                  className="block w-full border-b border-gray-100 px-3 py-2 text-left hover:bg-gray-50"
+                                >
+                                  <p className="text-xs font-semibold text-gray-900">{getStaffDropdownPrimary(staff)}</p>
+                                  {!!staff.email && <p className="mt-0.5 text-[11px] text-gray-600">{staff.email}</p>}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
 
                     <div>
@@ -2496,12 +2579,30 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       />
                     </div>
 
-                    <button type="button" onClick={() => onRemoveDraftSplitRow(row.id)} className="h-10 rounded-lg border border-red-300 px-3 text-xs font-semibold text-red-700 hover:bg-red-50">Remove</button>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveDraftSplitRow(row.id)}
+                      className="h-10 rounded-lg border border-red-300 px-3 text-red-700 hover:bg-red-50 flex items-center justify-center transition-colors"
+                      title="Remove"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
                 ))}
               </div>
 
-              <button type="button" onClick={onAddDraftSplitRow} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">+ Add Staff</button>
+              <button
+                type="button"
+                onClick={onAddDraftSplitRow}
+                className="inline-flex items-center gap-1.5 rounded-lg border-2 border-emerald-500 bg-gradient-to-r from-emerald-500 to-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:from-emerald-600 hover:to-emerald-700 hover:shadow-md active:scale-95"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Staff
+              </button>
 
               <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                 <span className="text-sm text-gray-700">Total %</span>
