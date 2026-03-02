@@ -234,10 +234,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const scanBufferRef = useRef('')
   const lastKeyTimeRef = useRef(0)
   const scanModeRef = useRef<'idle' | 'possible' | 'confirmed'>('idle')
-  const possibleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const possibleTimerRef = useRef<number | null>(null)
   const activeTargetRef = useRef<HTMLElement | null>(null)
-  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastScanMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scanTimeoutRef = useRef<number | null>(null)
+  const lastScanMessageTimeoutRef = useRef<number | null>(null)
   const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
   const latestProductRequestRef = useRef(0)
 
@@ -473,9 +473,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     const startAt = voucher.start_at ? new Date(voucher.start_at) : null
     const endAt = item.expires_at ? new Date(item.expires_at) : (voucher.end_at ? new Date(voucher.end_at) : null)
 
-    const isActive = voucher.is_active ?? true
-    const normalizedActive = isActive === true || isActive === 1 || isActive === '1' || isActive === 'true'
-    if (!normalizedActive) {
+    const isActiveValue = voucher.is_active
+    const isInactive = 
+      (typeof isActiveValue === 'boolean' && isActiveValue === false) ||
+      (typeof isActiveValue === 'number' && isActiveValue === 0) ||
+      (typeof isActiveValue === 'string' && (isActiveValue === '0' || isActiveValue === 'false'))
+    if (isInactive) {
       return { eligible: false, reason: 'Voucher is inactive.' }
     }
 
@@ -562,7 +565,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           voucher: {
             id: fallbackId,
             code: typeof fallbackCode === 'string' ? fallbackCode : `Voucher #${fallbackId}`,
-            type: raw.type === 'percent' ? 'percent' : 'fixed',
+            type: (raw.type === 'percent' ? 'percent' : 'fixed') as 'fixed' | 'percent',
             value: Number(raw.value ?? 0),
             min_order_amount: Number(raw.min_order_amount ?? 0),
             max_discount_amount: raw.max_discount_amount != null ? Number(raw.max_discount_amount) : null,
