@@ -46,6 +46,7 @@ class BookingAvailabilityService
             $slots[] = [
                 'start_at' => $candidateStart->toIso8601String(),
                 'end_at' => $candidateEnd->toIso8601String(),
+                'is_available' => true,
             ];
         }
 

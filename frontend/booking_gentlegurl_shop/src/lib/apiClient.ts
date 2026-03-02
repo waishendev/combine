@@ -56,10 +56,9 @@ export async function getBookingServiceDetail(id: string) {
 }
 
 export async function getAvailability(serviceId: string, staffId: string, date: string) {
-  const response = await request<{ data: BookingSlot[] } | BookingSlot[]>(
+  return request<{ success?: boolean; message?: string; data?: { slots?: BookingSlot[] } }>(
     `/booking/availability?service_id=${serviceId}&staff_id=${staffId}&date=${date}`,
   );
-  return unwrapData<BookingSlot[]>(response);
 }
 
 export async function addCartItem(payload: {

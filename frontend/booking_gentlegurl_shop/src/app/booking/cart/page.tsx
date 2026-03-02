@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { checkoutCart, getBookingCart, removeCartItem } from "@/lib/apiClient";
 import { BookingCart } from "@/lib/types";
@@ -52,8 +53,13 @@ export default function BookingCartPage() {
   }, [cart]);
 
   const onCheckout = async () => {
-    await checkoutCart();
-    router.push("/booking/success");
+    try {
+      await checkoutCart();
+      router.push("/booking/success");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Checkout failed. Please review your cart and try again.");
+      router.push("/booking/failed");
+    }
   };
 
   return (
@@ -79,6 +85,12 @@ export default function BookingCartPage() {
             </div>
           </div>
         ))}
+        {!cart?.items?.length ? (
+          <div className="rounded-xl border border-dashed p-6 text-center">
+            <p className="text-neutral-600">Your cart is empty.</p>
+            <Link href="/booking" className="mt-3 inline-flex rounded-full border px-4 py-2 text-sm">Browse services</Link>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-8 rounded-xl border p-4">

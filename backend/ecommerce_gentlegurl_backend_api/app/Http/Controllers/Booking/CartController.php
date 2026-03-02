@@ -9,15 +9,17 @@ use App\Models\Booking\BookingCartItem;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingSetting;
 use App\Services\Booking\BookingAvailabilityService;
+use App\Services\Booking\BookingCartCleanupService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CartController extends Controller
 {
-    public function __construct(private readonly BookingAvailabilityService $availabilityService)
-    {
-    }
+    public function __construct(
+        private readonly BookingAvailabilityService $availabilityService,
+        private readonly BookingCartCleanupService $cartCleanupService,
+    ) {}
 
     public function add(Request $request)
     {
@@ -121,8 +123,16 @@ class CartController extends Controller
             }
 
             $bookingIds = [];
+            $depositTotal = $this->calculateDepositTotal($activeItems->all());
+            $activeItemIds = $activeItems->pluck('id')->all();
+
             foreach ($activeItems as $item) {
                 $service = $item->service;
+
+                if (!$this->isItemStillAvailable($item, (int) $service->buffer_min, $activeItemIds)) {
+                    return $this->respondError('One or more selected slots are no longer available.', 409);
+                }
+
                 $booking = Booking::create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => $request->user('customer') ? 'CUSTOMER' : 'GUEST',
@@ -133,7 +143,7 @@ class CartController extends Controller
                     'end_at' => $item->end_at,
                     'buffer_min' => (int) $service->buffer_min,
                     'status' => 'HOLD',
-                    'deposit_amount' => $this->calculateDepositTotal($activeItems->all()),
+                    'deposit_amount' => $depositTotal,
                     'payment_status' => 'UNPAID',
                     'hold_expires_at' => $item->expires_at,
                 ]);
@@ -147,7 +157,9 @@ class CartController extends Controller
             return $this->respond([
                 'status' => 'success',
                 'booking_ids' => $bookingIds,
-                'deposit_total' => $this->calculateDepositTotal($activeItems->all()),
+                'deposit_total' => $depositTotal,
+                'payment_expires_at' => $activeItems->min('expires_at')?->toIso8601String(),
+                'payment_instruction' => 'Complete payment before hold expires to confirm booking.',
             ]);
         });
     }
@@ -182,11 +194,7 @@ class CartController extends Controller
 
     private function cleanupExpiredItems(BookingCart $cart): void
     {
-        BookingCartItem::query()
-            ->where('booking_cart_id', $cart->id)
-            ->where('status', 'active')
-            ->where('expires_at', '<', now())
-            ->update(['status' => 'expired', 'updated_at' => now()]);
+        $this->cartCleanupService->expireItems($cart);
     }
 
     private function buildCartPayload(BookingCart $cart): array
@@ -215,6 +223,33 @@ class CartController extends Controller
             'deposit_total' => $depositTotal,
             'next_expiry_at' => $nextExpiry?->toIso8601String(),
         ];
+    }
+
+    private function isItemStillAvailable(BookingCartItem $item, int $bufferMin, array $ignoreCartItemIds): bool
+    {
+        $blockEnd = $item->end_at->copy()->addMinutes($bufferMin);
+
+        $bookingConflict = Booking::query()
+            ->where('staff_id', $item->staff_id)
+            ->whereNotIn('status', ['EXPIRED', 'CANCELLED'])
+            ->where('start_at', '<', $blockEnd)
+            ->whereRaw("end_at + (buffer_min * interval '1 minute') > ?", [$item->start_at->toDateTimeString()])
+            ->exists();
+
+        if ($bookingConflict) {
+            return false;
+        }
+
+        $cartConflict = BookingCartItem::query()
+            ->where('staff_id', $item->staff_id)
+            ->where('status', 'active')
+            ->where('expires_at', '>', now())
+            ->whereNotIn('id', $ignoreCartItemIds)
+            ->where('start_at', '<', $blockEnd)
+            ->whereRaw('end_at > ?', [$item->start_at->toDateTimeString()])
+            ->exists();
+
+        return !$cartConflict;
     }
 
     private function calculateDepositTotal(array $items): float
