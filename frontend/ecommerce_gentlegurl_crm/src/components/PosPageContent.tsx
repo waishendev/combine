@@ -48,6 +48,7 @@ type ProductSearchHit = {
   product: ProductOption
   matchedVariantId?: number
   matchedVariantSku?: string
+  matchedVariantName?: string
 }
 
 type ProductSearchMode = 'name' | 'sku'
@@ -351,6 +352,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         product,
         matchedVariantId: matchedVariant.id,
         matchedVariantSku: matchedVariant.sku,
+        matchedVariantName: matchedVariant.name,
       }]
     })
   }, [findMatchedVariantSku, normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
@@ -1862,13 +1864,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 const item = hit.product
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
                 const variantsCount = item.variants_count ?? item.variants.length
+                const titleWithVariant = hit.matchedVariantName ? `${item.name} (${hit.matchedVariantName})` : item.name
 
                 return (
                 <div
                   key={item.product_id}
                   role="button"
                   tabIndex={0}
-                  className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[100px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
+                  className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[124px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
                   onClick={() => {
                     void onSelectProduct(item, hit.matchedVariantId ?? null)
@@ -1881,7 +1884,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   }}
                 >
                   {/* Product Image - Left Side */}
-                  <div className="w-[100px] h-full bg-gradient-to-br from-gray-100 to-gray-50 overflow-hidden flex-shrink-0">
+                  <div className="w-[120px] h-full bg-gradient-to-br from-gray-100 to-gray-50 overflow-hidden flex-shrink-0">
                     {item.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.thumbnail_url} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110" />
@@ -1894,9 +1897,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     )}
                   </div>
                   {/* Product Info - Right Side */}
-                  <div className="flex flex-col flex-1 p-3 bg-white min-h-0 justify-between">
+                  <div className="flex flex-col flex-1 p-4 bg-white min-h-0 justify-between">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1">{item.name}</p>
+                      <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1" title={titleWithVariant}>{titleWithVariant}</p>
                       <p className="text-xs text-gray-500 font-mono truncate">{displaySku}</p>
                       {variantsCount > 0 && (
                         <p className="text-[11px] text-blue-600 font-medium mt-0.5">({variantsCount} variants)</p>
