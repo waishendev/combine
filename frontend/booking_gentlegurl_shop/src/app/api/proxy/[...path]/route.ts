@@ -97,6 +97,21 @@ async function handleRequest(
       fetchHeaders["Cookie"] = cookieHeader;
     }
 
+    const sessionToken = request.headers.get("x-session-token");
+    if (sessionToken) {
+      fetchHeaders["X-Session-Token"] = sessionToken;
+    }
+
+    const bookingGuestToken = request.headers.get("x-booking-guest-token");
+    if (bookingGuestToken) {
+      fetchHeaders["X-Booking-Guest-Token"] = bookingGuestToken;
+    }
+
+    const authorization = request.headers.get("authorization");
+    if (authorization) {
+      fetchHeaders["Authorization"] = authorization;
+    }
+
     const backendResponse = await fetch(fullUrl, {
       method,
       headers: fetchHeaders,

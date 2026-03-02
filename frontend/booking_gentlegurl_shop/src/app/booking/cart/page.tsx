@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import { checkoutCart, getBookingCart, removeCartItem } from "@/lib/apiClient";
+import { checkoutCart, getBookingCart, getMe, removeCartItem } from "@/lib/apiClient";
 import { BookingCart } from "@/lib/types";
 
 function secondsLeft(expiresAt: string) {
@@ -21,6 +21,10 @@ export default function BookingCartPage() {
   const router = useRouter();
   const [cart, setCart] = useState<BookingCart | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
 
   const loadCart = async () => {
     const data = await getBookingCart();
@@ -29,6 +33,10 @@ export default function BookingCartPage() {
 
   useEffect(() => {
     loadCart();
+
+    getMe()
+      .then(() => setIsLoggedIn(true))
+      .catch(() => setIsLoggedIn(false));
   }, []);
 
   useEffect(() => {
@@ -54,11 +62,23 @@ export default function BookingCartPage() {
 
   const onCheckout = async () => {
     try {
-      await checkoutCart();
+      if (!isLoggedIn && (!guestName.trim() || !guestPhone.trim())) {
+        setMessage("Please fill in your name and phone to checkout as guest.");
+        return;
+      }
+
+      await checkoutCart(
+        isLoggedIn
+          ? {}
+          : {
+              guest_name: guestName.trim(),
+              guest_phone: guestPhone.trim(),
+              guest_email: guestEmail.trim() || undefined,
+            },
+      );
       router.push("/booking/success");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Checkout failed. Please review your cart and try again.");
-      router.push("/booking/failed");
     }
   };
 
@@ -94,6 +114,13 @@ export default function BookingCartPage() {
       </div>
 
       <div className="mt-8 rounded-xl border p-4">
+        {!isLoggedIn ? (
+          <div className="mb-4 grid gap-3 md:grid-cols-2">
+            <input value={guestName} onChange={(e) => setGuestName(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="Guest name *" />
+            <input value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="Guest phone *" />
+            <input value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} className="rounded-lg border px-3 py-2 md:col-span-2" placeholder="Guest email (optional)" />
+          </div>
+        ) : null}
         <p className="font-semibold">Deposit total: RM {cart?.deposit_total ?? 0}</p>
         <p className="text-sm text-neutral-600">Next expiry in: {nextExpiryIn ?? "-"}</p>
         <button onClick={onCheckout} disabled={!cart?.items?.length} className="mt-4 rounded-full bg-black px-6 py-3 text-white disabled:opacity-40">Proceed to Checkout</button>

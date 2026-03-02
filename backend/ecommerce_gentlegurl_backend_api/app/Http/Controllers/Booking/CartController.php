@@ -108,6 +108,17 @@ class CartController extends Controller
 
     public function checkout(Request $request)
     {
+        $customer = $request->user('customer');
+        $validated = $request->validate([
+            'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_phone' => ['nullable', 'string', 'max:50'],
+            'guest_email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        if (!$customer && (empty($validated['guest_name']) || empty($validated['guest_phone']))) {
+            return $this->respondError('Guest name and phone are required for guest checkout.', 422);
+        }
+
         return DB::transaction(function () use ($request) {
             $cart = $this->resolveActiveCart($request);
             $this->cleanupExpiredItems($cart);
@@ -133,10 +144,14 @@ class CartController extends Controller
                     return $this->respondError('One or more selected slots are no longer available.', 409);
                 }
 
+                $customer = $request->user('customer');
                 $booking = Booking::create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-                    'source' => $request->user('customer') ? 'CUSTOMER' : 'GUEST',
-                    'customer_id' => $request->user('customer')?->id,
+                    'source' => $customer ? 'CUSTOMER' : 'GUEST',
+                    'customer_id' => $customer?->id,
+                    'guest_name' => $customer ? null : ($request->input('guest_name') ?? null),
+                    'guest_phone' => $customer ? null : ($request->input('guest_phone') ?? null),
+                    'guest_email' => $customer ? null : ($request->input('guest_email') ?? null),
                     'staff_id' => $item->staff_id,
                     'service_id' => $item->service_id,
                     'start_at' => $item->start_at,
@@ -167,29 +182,80 @@ class CartController extends Controller
     private function resolveActiveCart(Request $request, bool $createIfMissing = true): ?BookingCart
     {
         $customerId = $request->user('customer')?->id;
-        $guestToken = $request->header('X-Session-Token');
+        $guestToken = $request->header('X-Booking-Guest-Token') ?: $request->header('X-Session-Token');
 
         if (!$customerId && !$guestToken) {
-            abort(response()->json(['success' => false, 'message' => 'Missing session token.', 'data' => null], 422));
+            abort(response()->json(['success' => false, 'message' => 'Missing booking guest token.', 'data' => null], 422));
         }
 
-        $query = BookingCart::query()->where('status', 'active');
         if ($customerId) {
-            $query->where('customer_id', $customerId);
-        } else {
-            $query->where('guest_token', $guestToken);
+            $this->mergeGuestCartIntoCustomerCart($customerId, $guestToken);
+
+            $query = BookingCart::query()
+                ->where('status', 'active')
+                ->where('customer_id', $customerId)
+                ->whereNull('guest_token');
+
+            $cart = $query->latest()->first();
+            if (!$cart && $createIfMissing) {
+                $cart = BookingCart::create([
+                    'customer_id' => $customerId,
+                    'guest_token' => null,
+                    'status' => 'active',
+                ]);
+            }
+
+            return $cart;
         }
 
+        $query = BookingCart::query()->where('status', 'active')->where('guest_token', $guestToken);
         $cart = $query->latest()->first();
         if (!$cart && $createIfMissing) {
             $cart = BookingCart::create([
-                'customer_id' => $customerId,
-                'guest_token' => $customerId ? null : $guestToken,
+                'customer_id' => null,
+                'guest_token' => $guestToken,
                 'status' => 'active',
             ]);
         }
 
         return $cart;
+    }
+
+    private function mergeGuestCartIntoCustomerCart(int $customerId, ?string $guestToken): void
+    {
+        if (!$guestToken) {
+            return;
+        }
+
+        $guestCart = BookingCart::query()
+            ->where('status', 'active')
+            ->where('guest_token', $guestToken)
+            ->whereNull('customer_id')
+            ->latest()
+            ->first();
+
+        if (!$guestCart) {
+            return;
+        }
+
+        $customerCart = BookingCart::query()
+            ->where('status', 'active')
+            ->where('customer_id', $customerId)
+            ->whereNull('guest_token')
+            ->latest()
+            ->first();
+
+        if (!$customerCart) {
+            $guestCart->update(['customer_id' => $customerId, 'guest_token' => null]);
+            return;
+        }
+
+        BookingCartItem::query()
+            ->where('booking_cart_id', $guestCart->id)
+            ->where('status', 'active')
+            ->update(['booking_cart_id' => $customerCart->id, 'updated_at' => now()]);
+
+        $guestCart->update(['status' => 'converted']);
     }
 
     private function cleanupExpiredItems(BookingCart $cart): void
