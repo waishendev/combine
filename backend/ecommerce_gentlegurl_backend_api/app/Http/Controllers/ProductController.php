@@ -10,6 +10,8 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -243,6 +245,314 @@ class ProductController extends Controller
         $this->syncVariants($product, $request);
 
         return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Product updated successfully.'));
+    }
+
+
+    public function exportCsv(Request $request)
+    {
+        $products = Product::with(['categories', 'images', 'video', 'variants.bundleItems'])
+            ->when($request->has('is_reward_only'), function ($query) use ($request) {
+                $query->where('is_reward_only', filter_var($request->get('is_reward_only'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->get();
+
+        $rows = $products->map(function (Product $product) {
+            $payload = $product->toArray();
+            $payload['category_ids'] = $product->categories->pluck('id')->values()->all();
+
+            return $payload;
+        })->values()->all();
+
+        $headers = [];
+        foreach ($rows as $row) {
+            foreach (array_keys($row) as $key) {
+                if (! in_array($key, $headers, true)) {
+                    $headers[] = $key;
+                }
+            }
+        }
+
+        if (empty($headers)) {
+            $headers = [
+                'id', 'name', 'slug', 'sku', 'type', 'description', 'price', 'sale_price',
+                'sale_price_start_at', 'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold',
+                'track_stock', 'dummy_sold_count', 'is_active', 'is_featured', 'is_reward_only',
+                'meta_title', 'meta_description', 'meta_keywords', 'meta_og_image',
+                'created_at', 'updated_at', 'category_ids', 'categories', 'images', 'video', 'variants',
+            ];
+        }
+
+        $filename = 'products_export_' . now()->format('Ymd_His') . '.csv';
+
+        $callback = function () use ($headers, $rows) {
+            $stream = fopen('php://output', 'w');
+            if (! $stream) {
+                return;
+            }
+
+            fwrite($stream, "ï»¿");
+            fputcsv($stream, $headers);
+
+            foreach ($rows as $row) {
+                $line = [];
+                foreach ($headers as $header) {
+                    $value = $row[$header] ?? null;
+                    if (is_array($value) || is_object($value)) {
+                        $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    }
+                    $line[] = $value;
+                }
+                fputcsv($stream, $line);
+            }
+
+            fclose($stream);
+        };
+
+        return response()->streamDownload($callback, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt'],
+        ]);
+
+        $file = $validated['file'];
+        $handle = fopen($file->getRealPath(), 'r');
+
+        if (! $handle) {
+            return response()->json([
+                'message' => 'Unable to open CSV file.',
+            ], 422);
+        }
+
+        $headers = fgetcsv($handle);
+        if (! is_array($headers)) {
+            fclose($handle);
+            return response()->json([
+                'message' => 'Invalid CSV header row.',
+            ], 422);
+        }
+
+        $headers = array_map(function ($header) {
+            return trim((string) preg_replace('/^ï»¿/', '', (string) $header));
+        }, $headers);
+
+        $allowedFields = [
+            'name', 'slug', 'sku', 'type', 'description', 'price', 'sale_price', 'sale_price_start_at',
+            'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold', 'track_stock', 'dummy_sold_count',
+            'is_active', 'is_featured', 'is_reward_only', 'meta_title', 'meta_description', 'meta_keywords',
+            'meta_og_image', 'category_ids', 'variants',
+        ];
+
+        $hasSkuHeader = in_array('sku', $headers, true);
+        $uniqueField = $hasSkuHeader ? 'sku' : 'slug';
+
+        $existingSkus = Product::query()
+            ->whereNotNull('sku')
+            ->pluck('sku')
+            ->map(fn($value) => mb_strtolower(trim((string) $value)))
+            ->filter()
+            ->all();
+        $existingSlugs = Product::query()
+            ->whereNotNull('slug')
+            ->pluck('slug')
+            ->map(fn($value) => mb_strtolower(trim((string) $value)))
+            ->filter()
+            ->all();
+
+        $existingSkuLookup = array_fill_keys($existingSkus, true);
+        $existingSlugLookup = array_fill_keys($existingSlugs, true);
+
+        $summary = [
+            'totalRows' => 0,
+            'created' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'failedRows' => [],
+        ];
+
+        $rowNumber = 1;
+        while (($cells = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if (! is_array($cells)) {
+                continue;
+            }
+
+            $isAllEmpty = count(array_filter($cells, fn($v) => trim((string) $v) !== '')) === 0;
+            if ($isAllEmpty) {
+                continue;
+            }
+
+            $summary['totalRows']++;
+
+            $raw = [];
+            foreach ($headers as $index => $header) {
+                if ($header === '') {
+                    continue;
+                }
+                $raw[$header] = isset($cells[$index]) ? trim((string) $cells[$index]) : '';
+            }
+
+            $uniqueValue = mb_strtolower(trim((string) ($raw[$uniqueField] ?? '')));
+            if ($uniqueValue === '') {
+                $summary['skipped']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => "Missing unique key: {$uniqueField}",
+                ];
+                continue;
+            }
+
+            $exists = $uniqueField === 'sku'
+                ? isset($existingSkuLookup[$uniqueValue])
+                : isset($existingSlugLookup[$uniqueValue]);
+
+            if ($exists) {
+                $summary['skipped']++;
+                continue;
+            }
+
+            $payload = [];
+            foreach ($raw as $key => $value) {
+                if (! in_array($key, $allowedFields, true)) {
+                    continue;
+                }
+
+                if ($value === '') {
+                    $payload[$key] = '';
+                    continue;
+                }
+
+                if (in_array($key, ['category_ids', 'variants'], true)) {
+                    $decoded = json_decode($value, true);
+                    $payload[$key] = json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
+                    continue;
+                }
+
+                if (in_array($key, ['price', 'sale_price', 'cost_price'], true) && is_numeric($value)) {
+                    $payload[$key] = (float) $value;
+                    continue;
+                }
+
+                if (in_array($key, ['stock', 'low_stock_threshold', 'dummy_sold_count'], true) && is_numeric($value)) {
+                    $payload[$key] = (int) $value;
+                    continue;
+                }
+
+                if (in_array($key, ['track_stock', 'is_active', 'is_featured', 'is_reward_only'], true)) {
+                    $payload[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+                    continue;
+                }
+
+                $payload[$key] = $value;
+            }
+
+            $validator = Validator::make($payload, [
+                'name' => ['required', 'string', 'max:255'],
+                'slug' => ['required', 'string', 'max:255', 'unique:products,slug'],
+                'sku' => [
+                    Rule::requiredIf(fn() => ($payload['type'] ?? 'single') !== 'variant'),
+                    'nullable',
+                    'string',
+                    'max:100',
+                    'unique:products,sku',
+                ],
+                'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
+                'description' => ['nullable', 'string'],
+                'price' => ['required', 'numeric', 'gt:0'],
+                'sale_price' => ['nullable', 'numeric', 'gte:0'],
+                'sale_price_start_at' => ['nullable', 'date'],
+                'sale_price_end_at' => ['nullable', 'date'],
+                'cost_price' => ['nullable', 'numeric'],
+                'stock' => ['sometimes', 'integer'],
+                'low_stock_threshold' => ['sometimes', 'integer'],
+                'dummy_sold_count' => ['nullable', 'integer', 'min:0', 'max:999999'],
+                'is_active' => ['sometimes', 'boolean'],
+                'is_featured' => ['sometimes', 'boolean'],
+                'is_reward_only' => ['sometimes', 'boolean'],
+                'meta_title' => ['nullable', 'string', 'max:255'],
+                'meta_description' => ['nullable', 'string'],
+                'meta_keywords' => ['nullable', 'string'],
+                'meta_og_image' => ['nullable'],
+                'category_ids' => ['array'],
+                'category_ids.*' => ['integer', 'exists:categories,id'],
+                'variants' => ['nullable', 'array'],
+            ]);
+
+            if ($validator->fails()) {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => $validator->errors()->first(),
+                ];
+                continue;
+            }
+
+            $clean = $validator->validated();
+
+            try {
+                DB::transaction(function () use ($clean, &$existingSkuLookup, &$existingSlugLookup, &$summary) {
+                    $product = Product::create($clean + [
+                        'type' => $clean['type'] ?? 'single',
+                        'is_active' => $clean['is_active'] ?? true,
+                        'is_featured' => $clean['is_featured'] ?? false,
+                        'is_reward_only' => $clean['is_reward_only'] ?? false,
+                        'stock' => $clean['stock'] ?? 0,
+                        'low_stock_threshold' => $clean['low_stock_threshold'] ?? 0,
+                        'dummy_sold_count' => $clean['dummy_sold_count'] ?? 0,
+                    ]);
+
+                    if (! empty($clean['category_ids']) && is_array($clean['category_ids'])) {
+                        $product->categories()->sync($clean['category_ids']);
+                    }
+
+                    if (! empty($clean['variants']) && is_array($clean['variants'])) {
+                        foreach ($clean['variants'] as $variantData) {
+                            if (! is_array($variantData)) {
+                                continue;
+                            }
+                            $product->variants()->create([
+                                'sku' => $variantData['sku'] ?? null,
+                                'title' => $variantData['title'] ?? ($variantData['name'] ?? null),
+                                'price' => isset($variantData['price']) ? (float) $variantData['price'] : null,
+                                'sale_price' => isset($variantData['sale_price']) ? (float) $variantData['sale_price'] : null,
+                                'sale_price_start_at' => $variantData['sale_price_start_at'] ?? null,
+                                'sale_price_end_at' => $variantData['sale_price_end_at'] ?? null,
+                                'cost_price' => isset($variantData['cost_price']) ? (float) $variantData['cost_price'] : null,
+                                'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
+                                'low_stock_threshold' => isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0,
+                                'track_stock' => filter_var($variantData['track_stock'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                                'is_bundle' => filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                                'is_active' => filter_var($variantData['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                                'sort_order' => isset($variantData['sort_order']) ? (int) $variantData['sort_order'] : 0,
+                            ]);
+                        }
+                    }
+
+                    if (! empty($product->sku)) {
+                        $existingSkuLookup[mb_strtolower(trim((string) $product->sku))] = true;
+                    }
+                    if (! empty($product->slug)) {
+                        $existingSlugLookup[mb_strtolower(trim((string) $product->slug))] = true;
+                    }
+
+                    $summary['created']++;
+                });
+            } catch (\Throwable $e) {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => $e->getMessage(),
+                ];
+            }
+        }
+
+        fclose($handle);
+
+        return $this->respond($summary, __('Products import completed.'));
     }
 
     public function bulkUpdate(Request $request)
