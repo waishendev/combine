@@ -161,6 +161,7 @@ class CategoryController extends Controller
             ->filter()
             ->all();
         $existingLookup = array_fill_keys($existingSlugs, true);
+        $existingDbCategoryIds = array_fill_keys(Category::query()->pluck('id')->all(), true);
 
         $summary = [
             'totalRows' => 0,
@@ -170,6 +171,7 @@ class CategoryController extends Controller
             'failedRows' => [],
         ];
 
+        $pendingRows = [];
         $rowNumber = 1;
         while (($cells = fgetcsv($handle)) !== false) {
             $rowNumber++;
@@ -212,6 +214,17 @@ class CategoryController extends Controller
                     continue;
                 }
 
+                if ($key === 'parent_id') {
+                    if ($value === '') {
+                        $payload[$key] = null;
+                    } elseif (is_numeric($value)) {
+                        $payload[$key] = (int) $value;
+                    } else {
+                        $payload[$key] = $value;
+                    }
+                    continue;
+                }
+
                 if ($value === '') {
                     $payload[$key] = '';
                     continue;
@@ -223,7 +236,7 @@ class CategoryController extends Controller
                     continue;
                 }
 
-                if (in_array($key, ['parent_id', 'sort_order'], true) && is_numeric($value)) {
+                if ($key === 'sort_order' && is_numeric($value)) {
                     $payload[$key] = (int) $value;
                     continue;
                 }
@@ -236,58 +249,110 @@ class CategoryController extends Controller
                 $payload[$key] = $value;
             }
 
-            $validator = Validator::make($payload, [
-                'parent_id' => ['nullable', 'integer', 'exists:categories,id'],
-                'name' => ['required', 'string', 'max:150'],
-                'slug' => ['required', 'string', 'max:150', 'unique:categories,slug'],
-                'description' => ['nullable', 'string'],
-                'meta_title' => ['nullable', 'string', 'max:255'],
-                'meta_description' => ['nullable', 'string'],
-                'meta_keywords' => ['nullable', 'string'],
-                'meta_og_image' => ['nullable', 'string', 'max:255'],
-                'is_active' => ['sometimes', 'boolean'],
-                'sort_order' => ['sometimes', 'integer'],
-                'menu_ids' => ['array', 'nullable'],
-                'menu_ids.*' => ['integer', 'exists:shop_menu_items,id'],
-            ]);
-
-            if ($validator->fails()) {
-                $summary['failed']++;
-                $summary['failedRows'][] = [
-                    'row' => $rowNumber,
-                    'reason' => $validator->errors()->first(),
-                ];
-                continue;
-            }
-
-            $clean = $validator->validated();
-
-            try {
-                DB::transaction(function () use ($clean, &$existingLookup, &$summary) {
-                    $menuIds = $clean['menu_ids'] ?? [];
-                    unset($clean['menu_ids']);
-
-                    $category = Category::create($clean + [
-                        'is_active' => $clean['is_active'] ?? true,
-                    ]);
-
-                    if (is_array($menuIds)) {
-                        $category->shopMenus()->sync($menuIds);
-                    }
-
-                    $existingLookup[mb_strtolower(trim((string) $category->slug))] = true;
-                    $summary['created']++;
-                });
-            } catch (\Throwable $e) {
-                $summary['failed']++;
-                $summary['failedRows'][] = [
-                    'row' => $rowNumber,
-                    'reason' => $e->getMessage(),
-                ];
-            }
+            $pendingRows[] = [
+                'row' => $rowNumber,
+                'source_id' => isset($raw['id']) && is_numeric($raw['id']) ? (int) $raw['id'] : null,
+                'parent_source_id' => isset($raw['parent_id']) && $raw['parent_id'] !== '' && is_numeric($raw['parent_id']) ? (int) $raw['parent_id'] : null,
+                'payload' => $payload,
+            ];
         }
 
         fclose($handle);
+
+        $importedIdMap = [];
+        $remaining = $pendingRows;
+
+        while (! empty($remaining)) {
+            $next = [];
+            $createdInPass = 0;
+
+            foreach ($remaining as $entry) {
+                $payload = $entry['payload'];
+                $parentSourceId = $entry['parent_source_id'];
+
+                if ($parentSourceId !== null) {
+                    if (isset($importedIdMap[$parentSourceId])) {
+                        $payload['parent_id'] = $importedIdMap[$parentSourceId];
+                    } elseif (isset($existingDbCategoryIds[$parentSourceId])) {
+                        $payload['parent_id'] = $parentSourceId;
+                    } else {
+                        $next[] = $entry;
+                        continue;
+                    }
+                } else {
+                    $payload['parent_id'] = null;
+                }
+
+                $validator = Validator::make($payload, [
+                    'parent_id' => ['nullable', 'integer', 'exists:categories,id'],
+                    'name' => ['required', 'string', 'max:150'],
+                    'slug' => ['required', 'string', 'max:150', 'unique:categories,slug'],
+                    'description' => ['nullable', 'string'],
+                    'meta_title' => ['nullable', 'string', 'max:255'],
+                    'meta_description' => ['nullable', 'string'],
+                    'meta_keywords' => ['nullable', 'string'],
+                    'meta_og_image' => ['nullable', 'string', 'max:255'],
+                    'is_active' => ['sometimes', 'boolean'],
+                    'sort_order' => ['sometimes', 'integer'],
+                    'menu_ids' => ['array', 'nullable'],
+                    'menu_ids.*' => ['integer', 'exists:shop_menu_items,id'],
+                ]);
+
+                if ($validator->fails()) {
+                    $summary['failed']++;
+                    $summary['failedRows'][] = [
+                        'row' => $entry['row'],
+                        'reason' => $validator->errors()->first(),
+                    ];
+                    continue;
+                }
+
+                $clean = $validator->validated();
+
+                try {
+                    DB::transaction(function () use ($clean, &$existingLookup, &$summary, &$importedIdMap, &$existingDbCategoryIds, $entry, &$createdInPass) {
+                        $menuIds = $clean['menu_ids'] ?? [];
+                        unset($clean['menu_ids']);
+
+                        $category = Category::create($clean + [
+                            'is_active' => $clean['is_active'] ?? true,
+                        ]);
+
+                        if (is_array($menuIds)) {
+                            $category->shopMenus()->sync($menuIds);
+                        }
+
+                        if ($entry['source_id'] !== null) {
+                            $importedIdMap[$entry['source_id']] = $category->id;
+                        }
+
+                        $existingDbCategoryIds[$category->id] = true;
+                        $existingLookup[mb_strtolower(trim((string) $category->slug))] = true;
+                        $summary['created']++;
+                        $createdInPass++;
+                    });
+                } catch (\Throwable $e) {
+                    $summary['failed']++;
+                    $summary['failedRows'][] = [
+                        'row' => $entry['row'],
+                        'reason' => $e->getMessage(),
+                    ];
+                }
+            }
+
+            if ($createdInPass === 0) {
+                foreach ($next as $entry) {
+                    $summary['failed']++;
+                    $summary['failedRows'][] = [
+                        'row' => $entry['row'],
+                        'reason' => 'Parent category not found in this import batch or existing categories.',
+                    ];
+                }
+                break;
+            }
+
+            $remaining = $next;
+        }
 
         return $this->respond($summary, __('Categories import completed.'));
     }
