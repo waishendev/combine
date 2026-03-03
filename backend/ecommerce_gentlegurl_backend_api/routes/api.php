@@ -366,6 +366,12 @@ $protectedRoutes = function () {
         Route::get('/categories', [CategoryController::class, 'index'])
             ->middleware('permission:ecommerce.categories.view');
 
+        Route::get('/categories/export', [CategoryController::class, 'exportCsv'])
+            ->middleware('permission:ecommerce.categories.view');
+
+        Route::post('/categories/import', [CategoryController::class, 'importCsv'])
+            ->middleware('permission:ecommerce.categories.create');
+
         Route::post('/categories', [CategoryController::class, 'store'])
             ->middleware('permission:ecommerce.categories.create');
 
