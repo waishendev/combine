@@ -352,7 +352,7 @@ class ProductController extends Controller
         ];
 
         $hasSkuHeader = in_array('sku', $headers, true);
-        $uniqueField = $hasSkuHeader ? 'sku' : 'slug';
+        $hasSlugHeader = in_array('slug', $headers, true);
 
         $existingSkus = Product::query()
             ->whereNotNull('sku')
@@ -400,12 +400,18 @@ class ProductController extends Controller
                 $raw[$header] = isset($cells[$index]) ? trim((string) $cells[$index]) : '';
             }
 
-            $uniqueValue = mb_strtolower(trim((string) ($raw[$uniqueField] ?? '')));
+            $skuUniqueValue = mb_strtolower(trim((string) ($raw['sku'] ?? '')));
+            $slugUniqueValue = mb_strtolower(trim((string) ($raw['slug'] ?? '')));
+
+            $uniqueValue = $skuUniqueValue !== '' ? $skuUniqueValue : $slugUniqueValue;
+            $uniqueField = $skuUniqueValue !== '' ? 'sku' : 'slug';
+
             if ($uniqueValue === '') {
+                $missingKey = $hasSkuHeader ? 'sku/slug' : ($hasSlugHeader ? 'slug' : 'sku/slug');
                 $summary['skipped']++;
                 $summary['failedRows'][] = [
                     'row' => $rowNumber,
-                    'reason' => "Missing unique key: {$uniqueField}",
+                    'reason' => "Missing unique key: {$missingKey}",
                 ];
                 continue;
             }
@@ -419,6 +425,24 @@ class ProductController extends Controller
                 continue;
             }
 
+            $nullableFields = [
+                'sku',
+                'sale_price',
+                'sale_price_start_at',
+                'sale_price_end_at',
+                'cost_price',
+                'description',
+                'meta_title',
+                'meta_description',
+                'meta_keywords',
+                'meta_og_image',
+                'track_stock',
+                'is_active',
+                'is_featured',
+                'is_reward_only',
+                'dummy_sold_count',
+            ];
+
             $payload = [];
             foreach ($raw as $key => $value) {
                 if (! in_array($key, $allowedFields, true)) {
@@ -426,7 +450,13 @@ class ProductController extends Controller
                 }
 
                 if ($value === '') {
-                    $payload[$key] = '';
+                    if ($key === 'category_ids') {
+                        $payload[$key] = [];
+                    } elseif ($key === 'variants') {
+                        $payload[$key] = [];
+                    } elseif (in_array($key, $nullableFields, true)) {
+                        $payload[$key] = null;
+                    }
                     continue;
                 }
 
@@ -447,7 +477,7 @@ class ProductController extends Controller
                 }
 
                 if (in_array($key, ['track_stock', 'is_active', 'is_featured', 'is_reward_only'], true)) {
-                    $payload[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+                    $payload[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
                     continue;
                 }
 
