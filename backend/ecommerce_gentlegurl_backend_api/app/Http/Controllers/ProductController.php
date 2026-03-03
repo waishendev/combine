@@ -509,6 +509,17 @@ class ProductController extends Controller
                     }
                 }
 
+                $categoryMetaByOldId = [];
+                foreach ($categoryMetaList as $metaItem) {
+                    if (! is_array($metaItem)) {
+                        continue;
+                    }
+                    $oldId = $metaItem['id'] ?? null;
+                    if (is_numeric($oldId)) {
+                        $categoryMetaByOldId[(int) $oldId] = $metaItem;
+                    }
+                }
+
                 $resolvedCategoryIds = [];
                 foreach ($payload['category_ids'] as $index => $categoryId) {
                     if (is_numeric($categoryId) && isset($existingCategoryIds[(int) $categoryId])) {
@@ -517,9 +528,13 @@ class ProductController extends Controller
                     }
 
                     $mappedId = null;
-                    $categoryMeta = isset($categoryMetaList[$index]) && is_array($categoryMetaList[$index])
-                        ? $categoryMetaList[$index]
-                        : null;
+                    $categoryMeta = null;
+
+                    if (is_numeric($categoryId) && isset($categoryMetaByOldId[(int) $categoryId])) {
+                        $categoryMeta = $categoryMetaByOldId[(int) $categoryId];
+                    } elseif (isset($categoryMetaList[$index]) && is_array($categoryMetaList[$index])) {
+                        $categoryMeta = $categoryMetaList[$index];
+                    }
 
                     if ($categoryMeta) {
                         $categorySlug = mb_strtolower(trim((string) ($categoryMeta['slug'] ?? '')));
