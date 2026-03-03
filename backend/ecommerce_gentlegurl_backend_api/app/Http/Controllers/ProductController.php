@@ -436,12 +436,10 @@ class ProductController extends Controller
                 'meta_description',
                 'meta_keywords',
                 'meta_og_image',
-                'track_stock',
-                'is_active',
-                'is_featured',
-                'is_reward_only',
                 'dummy_sold_count',
             ];
+
+            $booleanFields = ['track_stock', 'is_active', 'is_featured', 'is_reward_only'];
 
             $payload = [];
             foreach ($raw as $key => $value) {
@@ -476,8 +474,15 @@ class ProductController extends Controller
                     continue;
                 }
 
-                if (in_array($key, ['track_stock', 'is_active', 'is_featured', 'is_reward_only'], true)) {
-                    $payload[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if (in_array($key, $booleanFields, true)) {
+                    $normalized = mb_strtolower(trim((string) $value));
+                    if (in_array($normalized, ['1', 'true', 'yes'], true)) {
+                        $payload[$key] = true;
+                    } elseif (in_array($normalized, ['0', 'false', 'no'], true)) {
+                        $payload[$key] = false;
+                    } else {
+                        $payload[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    }
                     continue;
                 }
 
