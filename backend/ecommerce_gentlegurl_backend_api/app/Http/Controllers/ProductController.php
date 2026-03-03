@@ -509,37 +509,25 @@ class ProductController extends Controller
                     }
                 }
 
-                $categoryMetaByOldId = [];
-                foreach ($categoryMetaList as $metaItem) {
-                    if (! is_array($metaItem)) {
-                        continue;
-                    }
-                    $oldId = $metaItem['id'] ?? null;
-                    if (is_numeric($oldId)) {
-                        $categoryMetaByOldId[(int) $oldId] = $metaItem;
-                    }
-                }
-
                 $resolvedCategoryIds = [];
-                foreach ($payload['category_ids'] as $index => $categoryId) {
-                    if (is_numeric($categoryId) && isset($existingCategoryIds[(int) $categoryId])) {
-                        $resolvedCategoryIds[] = (int) $categoryId;
-                        continue;
-                    }
 
-                    $mappedId = null;
-                    $categoryMeta = null;
+                if (! empty($categoryMetaList)) {
+                    foreach ($categoryMetaList as $categoryMeta) {
+                        if (! is_array($categoryMeta)) {
+                            continue;
+                        }
 
-                    if (is_numeric($categoryId) && isset($categoryMetaByOldId[(int) $categoryId])) {
-                        $categoryMeta = $categoryMetaByOldId[(int) $categoryId];
-                    } elseif (isset($categoryMetaList[$index]) && is_array($categoryMetaList[$index])) {
-                        $categoryMeta = $categoryMetaList[$index];
-                    }
+                        $mappedId = null;
+                        $metaId = $categoryMeta['id'] ?? null;
+                        if (is_numeric($metaId) && isset($existingCategoryIds[(int) $metaId])) {
+                            $mappedId = (int) $metaId;
+                        }
 
-                    if ($categoryMeta) {
-                        $categorySlug = mb_strtolower(trim((string) ($categoryMeta['slug'] ?? '')));
-                        if ($categorySlug !== '' && isset($categorySlugToId[$categorySlug])) {
-                            $mappedId = $categorySlugToId[$categorySlug];
+                        if ($mappedId === null) {
+                            $categorySlug = mb_strtolower(trim((string) ($categoryMeta['slug'] ?? '')));
+                            if ($categorySlug !== '' && isset($categorySlugToId[$categorySlug])) {
+                                $mappedId = $categorySlugToId[$categorySlug];
+                            }
                         }
 
                         if ($mappedId === null) {
@@ -548,19 +536,33 @@ class ProductController extends Controller
                                 $mappedId = $categoryNameToId[$categoryName];
                             }
                         }
-                    }
 
-                    if ($mappedId !== null) {
-                        $resolvedCategoryIds[] = (int) $mappedId;
-                        continue;
-                    }
+                        if ($mappedId !== null) {
+                            $resolvedCategoryIds[] = (int) $mappedId;
+                            continue;
+                        }
 
-                    $summary['failed']++;
-                    $summary['failedRows'][] = [
-                        'row' => $rowNumber,
-                        'reason' => 'Unable to map category_ids from import data.',
-                    ];
-                    continue 2;
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $rowNumber,
+                            'reason' => 'Unable to map categories JSON data to current categories.',
+                        ];
+                        continue 2;
+                    }
+                } else {
+                    foreach ($payload['category_ids'] as $categoryId) {
+                        if (is_numeric($categoryId) && isset($existingCategoryIds[(int) $categoryId])) {
+                            $resolvedCategoryIds[] = (int) $categoryId;
+                            continue;
+                        }
+
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $rowNumber,
+                            'reason' => 'Unable to map category_ids from import data.',
+                        ];
+                        continue 2;
+                    }
                 }
 
                 $payload['category_ids'] = array_values(array_unique($resolvedCategoryIds));
