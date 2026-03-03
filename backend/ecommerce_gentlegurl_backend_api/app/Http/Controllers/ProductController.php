@@ -282,34 +282,38 @@ class ProductController extends Controller
             ];
         }
 
-        $filename = 'products_export_' . now()->format('Ymd_His') . '.csv';
+        $stream = fopen('php://temp', 'r+');
+        if (! $stream) {
+            return response()->json([
+                'message' => 'Unable to build CSV export.',
+            ], 500);
+        }
 
-        $callback = function () use ($headers, $rows) {
-            $stream = fopen('php://output', 'w');
-            if (! $stream) {
-                return;
-            }
+        fputcsv($stream, $headers);
 
-            fwrite($stream, "ï»¿");
-            fputcsv($stream, $headers);
-
-            foreach ($rows as $row) {
-                $line = [];
-                foreach ($headers as $header) {
-                    $value = $row[$header] ?? null;
-                    if (is_array($value) || is_object($value)) {
-                        $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                    }
-                    $line[] = $value;
+        foreach ($rows as $row) {
+            $line = [];
+            foreach ($headers as $header) {
+                $value = $row[$header] ?? null;
+                if (is_array($value) || is_object($value)) {
+                    $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 }
-                fputcsv($stream, $line);
+                $line[] = $value;
             }
+            fputcsv($stream, $line);
+        }
 
-            fclose($stream);
-        };
+        rewind($stream);
+        $csv = stream_get_contents($stream) ?: '';
+        fclose($stream);
 
-        return response()->streamDownload($callback, $filename, [
+        $csv = mb_convert_encoding($csv, 'UTF-8', 'UTF-8');
+        $csv = "\xEF\xBB\xBF" . $csv;
+
+        return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="products_export_' . now()->format('Y-m-d_His') . '.csv"',
+            'Cache-Control' => 'no-store, no-cache',
         ]);
     }
 
@@ -337,7 +341,7 @@ class ProductController extends Controller
         }
 
         $headers = array_map(function ($header) {
-            return trim((string) preg_replace('/^ï»¿/', '', (string) $header));
+            return trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header));
         }, $headers);
 
         $allowedFields = [
