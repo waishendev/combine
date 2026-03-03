@@ -163,6 +163,17 @@ class CategoryController extends Controller
         $existingLookup = array_fill_keys($existingSlugs, true);
         $existingDbCategoryIds = array_fill_keys(Category::query()->pluck('id')->all(), true);
 
+        $shopMenus = ShopMenuItem::query()->get(['id', 'slug', 'name']);
+        $existingShopMenuIds = array_fill_keys($shopMenus->pluck('id')->all(), true);
+        $shopMenuSlugToId = $shopMenus
+            ->filter(fn(ShopMenuItem $item) => ! empty($item->slug))
+            ->mapWithKeys(fn(ShopMenuItem $item) => [mb_strtolower(trim((string) $item->slug)) => $item->id])
+            ->all();
+        $shopMenuNameToId = $shopMenus
+            ->filter(fn(ShopMenuItem $item) => ! empty($item->name))
+            ->mapWithKeys(fn(ShopMenuItem $item) => [mb_strtolower(trim((string) $item->name)) => $item->id])
+            ->all();
+
         $summary = [
             'totalRows' => 0,
             'created' => 0,
@@ -253,6 +264,7 @@ class CategoryController extends Controller
                 'row' => $rowNumber,
                 'source_id' => isset($raw['id']) && is_numeric($raw['id']) ? (int) $raw['id'] : null,
                 'parent_source_id' => isset($raw['parent_id']) && $raw['parent_id'] !== '' && is_numeric($raw['parent_id']) ? (int) $raw['parent_id'] : null,
+                'raw' => $raw,
                 'payload' => $payload,
             ];
         }
@@ -268,6 +280,7 @@ class CategoryController extends Controller
 
             foreach ($remaining as $entry) {
                 $payload = $entry['payload'];
+                $raw = is_array($entry['raw'] ?? null) ? $entry['raw'] : [];
                 $parentSourceId = $entry['parent_source_id'];
 
                 if ($parentSourceId !== null) {
@@ -281,6 +294,57 @@ class CategoryController extends Controller
                     }
                 } else {
                     $payload['parent_id'] = null;
+                }
+
+                if (array_key_exists('menu_ids', $payload) && is_array($payload['menu_ids'])) {
+                    $menuMetaList = [];
+                    if (! empty($raw['menus'])) {
+                        $decodedMenus = json_decode((string) $raw['menus'], true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($decodedMenus)) {
+                            $menuMetaList = $decodedMenus;
+                        }
+                    }
+
+                    $resolvedMenuIds = [];
+                    foreach ($payload['menu_ids'] as $index => $menuId) {
+                        if (is_numeric($menuId) && isset($existingShopMenuIds[(int) $menuId])) {
+                            $resolvedMenuIds[] = (int) $menuId;
+                            continue;
+                        }
+
+                        $mappedId = null;
+                        $menuMeta = isset($menuMetaList[$index]) && is_array($menuMetaList[$index])
+                            ? $menuMetaList[$index]
+                            : null;
+
+                        if ($menuMeta) {
+                            $menuSlug = mb_strtolower(trim((string) ($menuMeta['slug'] ?? '')));
+                            if ($menuSlug !== '' && isset($shopMenuSlugToId[$menuSlug])) {
+                                $mappedId = $shopMenuSlugToId[$menuSlug];
+                            }
+
+                            if ($mappedId === null) {
+                                $menuName = mb_strtolower(trim((string) ($menuMeta['name'] ?? '')));
+                                if ($menuName !== '' && isset($shopMenuNameToId[$menuName])) {
+                                    $mappedId = $shopMenuNameToId[$menuName];
+                                }
+                            }
+                        }
+
+                        if ($mappedId !== null) {
+                            $resolvedMenuIds[] = (int) $mappedId;
+                            continue;
+                        }
+
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $entry['row'],
+                            'reason' => 'Unable to map menu_ids from import data.',
+                        ];
+                        continue 2;
+                    }
+
+                    $payload['menu_ids'] = array_values(array_unique($resolvedMenuIds));
                 }
 
                 $validator = Validator::make($payload, [
