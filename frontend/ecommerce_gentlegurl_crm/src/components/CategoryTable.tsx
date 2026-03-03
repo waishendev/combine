@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import CategoryFiltersWrapper from './CategoryFiltersWrapper'
 import TableEmptyState from './TableEmptyState'
@@ -47,6 +47,15 @@ type CategoryApiResponse = {
   message?: string
 }
 
+
+type ImportSummary = {
+  totalRows: number
+  created: number
+  skipped: number
+  failed: number
+  failedRows?: Array<{ row: number; reason: string }>
+}
+
 export default function CategoryTable({
   permissions,
 }: CategoryTableProps) {
@@ -75,6 +84,11 @@ export default function CategoryTable({
     total: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
+  const [importFailedRows, setImportFailedRows] = useState<Array<{ row: number; reason: string }>>([])
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   function DualSortIcons({
     active,
@@ -105,95 +119,163 @@ export default function CategoryTable({
     )
   }
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const fetchCategories = async () => {
-      setLoading(true)
-      try {
-        const qs = new URLSearchParams()
-        qs.set('page', String(currentPage))
-        qs.set('per_page', String(pageSize))
-        if (filters.name) qs.set('name', filters.name)
-        if (filters.slug) qs.set('slug', filters.slug)
-        if (filters.isActive) {
-          qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
-        }
+  const fetchCategories = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams()
+      qs.set('page', String(currentPage))
+      qs.set('per_page', String(pageSize))
+      if (filters.name) qs.set('name', filters.name)
+      if (filters.slug) qs.set('slug', filters.slug)
+      if (filters.isActive) {
+        qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
+      }
 
-        const res = await fetch(`/api/proxy/ecommerce/categories?${qs.toString()}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
+      const res = await fetch(`/api/proxy/ecommerce/categories?${qs.toString()}`, {
+        cache: 'no-store',
+        signal,
+      })
 
-        if (!res.ok) {
-          setRows([])
-          setMeta((prev) => ({ ...prev, total: 0 }))
-          return
-        }
+      if (!res.ok) {
+        setRows([])
+        setMeta((prev) => ({ ...prev, total: 0 }))
+        return
+      }
 
-        const response: CategoryApiResponse = await res
-          .json()
-          .catch(() => ({} as CategoryApiResponse))
-        if (response?.success === false && response?.message === 'Unauthorized') {
-          window.location.replace('/dashboard')
-          return
-        }
+      const response: CategoryApiResponse = await res
+        .json()
+        .catch(() => ({} as CategoryApiResponse))
+      if (response?.success === false && response?.message === 'Unauthorized') {
+        window.location.replace('/dashboard')
+        return
+      }
 
-        // Handle nested data structure: { data: { data: [...], current_page: 1, ... } }
-        let categoryItems: CategoryApiItem[] = []
-        let paginationData: Partial<Meta> = {}
+      let categoryItems: CategoryApiItem[] = []
+      let paginationData: Partial<Meta> = {}
 
-        if (response?.data) {
-          if (Array.isArray(response.data)) {
-            // Direct array format
-            categoryItems = response.data
-          } else if (typeof response.data === 'object' && 'data' in response.data) {
-            // Nested format: { data: { data: [...], current_page: 1, ... } }
-            const nestedData = response.data as {
-              data?: CategoryApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            categoryItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
+      if (response?.data) {
+        if (Array.isArray(response.data)) {
+          categoryItems = response.data
+        } else if (typeof response.data === 'object' && 'data' in response.data) {
+          const nestedData = response.data as {
+            data?: CategoryApiItem[]
+            current_page?: number
+            last_page?: number
+            per_page?: number
+            total?: number
+          }
+          categoryItems = Array.isArray(nestedData.data) ? nestedData.data : []
+          paginationData = {
+            current_page: nestedData.current_page,
+            last_page: nestedData.last_page,
+            per_page: nestedData.per_page,
+            total: nestedData.total,
           }
         }
+      }
 
-        // Fallback to meta if available
-        if (response?.meta) {
-          paginationData = { ...paginationData, ...response.meta }
-        }
+      if (response?.meta) {
+        paginationData = { ...paginationData, ...response.meta }
+      }
 
-        const list: CategoryRowData[] = categoryItems.map((item) => mapCategoryApiItemToRow(item))
+      const list: CategoryRowData[] = categoryItems.map((item) => mapCategoryApiItemToRow(item))
 
-        setRows(list)
-        setMeta({
-          current_page: Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setRows([])
-          setMeta((prev) => ({ ...prev, total: 0 }))
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false)
-        }
+      setRows(list)
+      setMeta({
+        current_page: Number(paginationData.current_page ?? currentPage) || 1,
+        last_page: Number(paginationData.last_page ?? 1) || 1,
+        per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
+        total: Number(paginationData.total ?? list.length) || list.length,
+      })
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        setRows([])
+        setMeta((prev) => ({ ...prev, total: 0 }))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [currentPage, filters, pageSize])
+
+  const handleExportCsv = async () => {
+    setIsExporting(true)
+    try {
+      const res = await fetch('/api/proxy/ecommerce/categories/export', { cache: 'no-store' })
+      if (!res.ok) {
+        throw new Error('Export CSV failed.')
+      }
+
+      const blob = await res.blob()
+      const disposition = res.headers.get('content-disposition')
+      const fileNameMatch = disposition?.match(/filename="?([^";]+)"?/) ?? null
+      const fileName = fileNameMatch?.[1] ?? `categories_export_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error(error)
+      window.alert('Export CSV failed. Please retry.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleImportCsvFile = async (file: File) => {
+    setIsImporting(true)
+    setImportSummary(null)
+    setImportFailedRows([])
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/proxy/ecommerce/categories/import', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        const message =
+          json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
+            ? json.message
+            : 'Import CSV failed. Please retry.'
+        throw new Error(message)
+      }
+
+      const summaryPayload =
+        json && typeof json === 'object' && 'data' in json && json.data && typeof json.data === 'object'
+          ? (json.data as ImportSummary)
+          : null
+
+      if (!summaryPayload) {
+        throw new Error('Import summary is missing from API response.')
+      }
+
+      setImportSummary(summaryPayload)
+      setImportFailedRows(Array.isArray(summaryPayload.failedRows) ? summaryPayload.failedRows : [])
+      await fetchCategories()
+    } catch (error) {
+      console.error(error)
+      window.alert(error instanceof Error ? error.message : 'Import CSV failed. Please retry.')
+    } finally {
+      setIsImporting(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
       }
     }
+  }
 
-    fetchCategories()
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchCategories(controller.signal)
     return () => controller.abort()
-  }, [filters, currentPage, pageSize])
+  }, [fetchCategories])
 
   const handleSort = (column: keyof CategoryRowData) => {
     if (sortColumn === column) {
@@ -399,6 +481,34 @@ export default function CategoryTable({
         </div>
 
         <div className="flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) {
+                void handleImportCsvFile(file)
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="bg-violet-500 hover:bg-violet-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+            onClick={handleExportCsv}
+            disabled={loading || isExporting || isImporting}
+          >
+            {isExporting ? 'Exporting...' : 'Export CSV'}
+          </button>
+          <button
+            type="button"
+            className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading || isExporting || isImporting}
+          >
+            {isImporting ? 'Importing...' : 'Import CSV'}
+          </button>
           <label htmlFor="pageSize" className="text-sm text-gray-700">
             {t('common.show')}
           </label>
@@ -417,6 +527,28 @@ export default function CategoryTable({
           </select>
         </div>
       </div>
+
+      {(isImporting || importSummary) && (
+        <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+          <div>Import status: processing file on server...</div>
+          {importSummary && (
+            <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div>Total rows: {importSummary.totalRows}</div>
+              <div>Created: {importSummary.created}</div>
+              <div>Skipped: {importSummary.skipped}</div>
+              <div>Failed: {importSummary.failed}</div>
+            </div>
+          )}
+          {importFailedRows.length > 0 && (
+            <div className="mt-2 max-h-40 overflow-auto text-xs text-red-600">
+              {importFailedRows.slice(0, 20).map((item) => (
+                <div key={`${item.row}-${item.reason}`}>Row {item.row}: {item.reason}</div>
+              ))}
+              {importFailedRows.length > 20 && <div>...and {importFailedRows.length - 20} more</div>}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeFilters.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-4">

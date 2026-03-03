@@ -366,6 +366,12 @@ $protectedRoutes = function () {
         Route::get('/categories', [CategoryController::class, 'index'])
             ->middleware('permission:ecommerce.categories.view');
 
+        Route::get('/categories/export', [CategoryController::class, 'exportCsv'])
+            ->middleware('permission:ecommerce.categories.view');
+
+        Route::post('/categories/import', [CategoryController::class, 'importCsv'])
+            ->middleware('permission:ecommerce.categories.create');
+
         Route::post('/categories', [CategoryController::class, 'store'])
             ->middleware('permission:ecommerce.categories.create');
 
@@ -381,6 +387,12 @@ $protectedRoutes = function () {
         // Products
         Route::get('/products', [ProductController::class, 'index'])
             ->middleware('permission:ecommerce.products.view');
+
+        Route::get('/products/export', [ProductController::class, 'exportCsv'])
+            ->middleware('permission:ecommerce.products.view');
+
+        Route::post('/products/import', [ProductController::class, 'importCsv'])
+            ->middleware('permission:ecommerce.products.create');
 
         Route::post('/products', [ProductController::class, 'store'])
             ->middleware('permission:ecommerce.products.create');
@@ -416,6 +428,12 @@ $protectedRoutes = function () {
         // Shop Menu Items
         Route::get('/shop-menu-items', [ShopMenuItemController::class, 'index'])
             ->middleware('permission:ecommerce.shop-menu.view');
+
+        Route::get('/shop-menu-items/export', [ShopMenuItemController::class, 'exportCsv'])
+            ->middleware('permission:ecommerce.shop-menu.view');
+
+        Route::post('/shop-menu-items/import', [ShopMenuItemController::class, 'importCsv'])
+            ->middleware('permission:ecommerce.shop-menu.create');
 
         Route::post('/shop-menu-items', [ShopMenuItemController::class, 'store'])
             ->middleware('permission:ecommerce.shop-menu.create');

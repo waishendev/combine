@@ -10,6 +10,8 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -243,6 +245,456 @@ class ProductController extends Controller
         $this->syncVariants($product, $request);
 
         return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Product updated successfully.'));
+    }
+
+
+    public function exportCsv(Request $request)
+    {
+        $products = Product::with(['categories', 'images', 'video', 'variants.bundleItems'])
+            ->when($request->has('is_reward_only'), function ($query) use ($request) {
+                $query->where('is_reward_only', filter_var($request->get('is_reward_only'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->get();
+
+        $rows = $products->map(function (Product $product) {
+            $payload = $product->toArray();
+            $payload['category_ids'] = $product->categories->pluck('id')->values()->all();
+
+            return $payload;
+        })->values()->all();
+
+        $headers = [];
+        foreach ($rows as $row) {
+            foreach (array_keys($row) as $key) {
+                if (! in_array($key, $headers, true)) {
+                    $headers[] = $key;
+                }
+            }
+        }
+
+        if (empty($headers)) {
+            $headers = [
+                'id', 'name', 'slug', 'sku', 'type', 'description', 'price', 'sale_price',
+                'sale_price_start_at', 'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold',
+                'track_stock', 'dummy_sold_count', 'is_active', 'is_featured', 'is_reward_only',
+                'meta_title', 'meta_description', 'meta_keywords', 'meta_og_image',
+                'created_at', 'updated_at', 'category_ids', 'categories', 'images', 'video', 'variants',
+            ];
+        }
+
+        $stream = fopen('php://temp', 'r+');
+        if (! $stream) {
+            return response()->json([
+                'message' => 'Unable to build CSV export.',
+            ], 500);
+        }
+
+        fputcsv($stream, $headers);
+
+        foreach ($rows as $row) {
+            $line = [];
+            foreach ($headers as $header) {
+                $value = $row[$header] ?? null;
+                if (is_array($value) || is_object($value)) {
+                    $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+                $line[] = $value;
+            }
+            fputcsv($stream, $line);
+        }
+
+        rewind($stream);
+        $csv = stream_get_contents($stream) ?: '';
+        fclose($stream);
+
+        $csv = mb_convert_encoding($csv, 'UTF-8', 'UTF-8');
+        $csv = "\xEF\xBB\xBF" . $csv;
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="products_export_' . now()->format('Y-m-d_His') . '.csv"',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt'],
+        ]);
+
+        $file = $validated['file'];
+        $handle = fopen($file->getRealPath(), 'r');
+
+        if (! $handle) {
+            return response()->json([
+                'message' => 'Unable to open CSV file.',
+            ], 422);
+        }
+
+        $headers = fgetcsv($handle);
+        if (! is_array($headers)) {
+            fclose($handle);
+            return response()->json([
+                'message' => 'Invalid CSV header row.',
+            ], 422);
+        }
+
+        $headers = array_map(function ($header) {
+            return trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header));
+        }, $headers);
+
+        $allowedFields = [
+            'name', 'slug', 'sku', 'type', 'description', 'price', 'sale_price', 'sale_price_start_at',
+            'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold', 'track_stock', 'dummy_sold_count',
+            'is_active', 'is_featured', 'is_reward_only', 'meta_title', 'meta_description', 'meta_keywords',
+            'meta_og_image', 'category_ids', 'variants',
+        ];
+
+        $hasSkuHeader = in_array('sku', $headers, true);
+        $hasSlugHeader = in_array('slug', $headers, true);
+
+        $existingSkus = Product::query()
+            ->whereNotNull('sku')
+            ->pluck('sku')
+            ->map(fn($value) => mb_strtolower(trim((string) $value)))
+            ->filter()
+            ->all();
+        $existingSlugs = Product::query()
+            ->whereNotNull('slug')
+            ->pluck('slug')
+            ->map(fn($value) => mb_strtolower(trim((string) $value)))
+            ->filter()
+            ->all();
+
+        $existingSkuLookup = array_fill_keys($existingSkus, true);
+        $existingSlugLookup = array_fill_keys($existingSlugs, true);
+
+        $categories = Category::query()->get(['id', 'slug', 'name']);
+        $existingCategoryIds = array_fill_keys($categories->pluck('id')->all(), true);
+        $categorySlugToId = $categories
+            ->filter(fn(Category $category) => ! empty($category->slug))
+            ->mapWithKeys(fn(Category $category) => [mb_strtolower(trim((string) $category->slug)) => $category->id])
+            ->all();
+        $categoryNameToId = $categories
+            ->filter(fn(Category $category) => ! empty($category->name))
+            ->mapWithKeys(fn(Category $category) => [mb_strtolower(trim((string) $category->name)) => $category->id])
+            ->all();
+
+        $summary = [
+            'totalRows' => 0,
+            'created' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'failedRows' => [],
+        ];
+
+        $rowNumber = 1;
+        while (($cells = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if (! is_array($cells)) {
+                continue;
+            }
+
+            $isAllEmpty = count(array_filter($cells, fn($v) => trim((string) $v) !== '')) === 0;
+            if ($isAllEmpty) {
+                continue;
+            }
+
+            $summary['totalRows']++;
+
+            $raw = [];
+            foreach ($headers as $index => $header) {
+                if ($header === '') {
+                    continue;
+                }
+                $raw[$header] = isset($cells[$index]) ? trim((string) $cells[$index]) : '';
+            }
+
+            $skuUniqueValue = mb_strtolower(trim((string) ($raw['sku'] ?? '')));
+            $slugUniqueValue = mb_strtolower(trim((string) ($raw['slug'] ?? '')));
+
+            $uniqueValue = $skuUniqueValue !== '' ? $skuUniqueValue : $slugUniqueValue;
+            $uniqueField = $skuUniqueValue !== '' ? 'sku' : 'slug';
+
+            if ($uniqueValue === '') {
+                $missingKey = $hasSkuHeader ? 'sku/slug' : ($hasSlugHeader ? 'slug' : 'sku/slug');
+                $summary['skipped']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => "Missing unique key: {$missingKey}",
+                ];
+                continue;
+            }
+
+            $exists = $uniqueField === 'sku'
+                ? isset($existingSkuLookup[$uniqueValue])
+                : isset($existingSlugLookup[$uniqueValue]);
+
+            if ($exists) {
+                $summary['skipped']++;
+                continue;
+            }
+
+            $nullableFields = [
+                'sku',
+                'sale_price',
+                'sale_price_start_at',
+                'sale_price_end_at',
+                'cost_price',
+                'description',
+                'meta_title',
+                'meta_description',
+                'meta_keywords',
+                'meta_og_image',
+                'dummy_sold_count',
+            ];
+
+            $booleanFields = ['track_stock', 'is_active', 'is_featured', 'is_reward_only'];
+
+            $payload = [];
+            foreach ($raw as $key => $value) {
+                if (! in_array($key, $allowedFields, true)) {
+                    continue;
+                }
+
+                if ($value === '') {
+                    if ($key === 'category_ids') {
+                        $payload[$key] = [];
+                    } elseif ($key === 'variants') {
+                        $payload[$key] = [];
+                    } elseif (in_array($key, $nullableFields, true)) {
+                        $payload[$key] = null;
+                    }
+                    continue;
+                }
+
+                if (in_array($key, ['category_ids', 'variants'], true)) {
+                    $decoded = json_decode($value, true);
+                    $payload[$key] = json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
+                    continue;
+                }
+
+                if (in_array($key, ['price', 'sale_price', 'cost_price'], true) && is_numeric($value)) {
+                    $payload[$key] = (float) $value;
+                    continue;
+                }
+
+                if (in_array($key, ['stock', 'low_stock_threshold', 'dummy_sold_count'], true) && is_numeric($value)) {
+                    $payload[$key] = (int) $value;
+                    continue;
+                }
+
+                if (in_array($key, $booleanFields, true)) {
+                    $normalized = mb_strtolower(trim((string) $value));
+                    if (in_array($normalized, ['1', 'true', 'yes'], true)) {
+                        $payload[$key] = true;
+                    } elseif (in_array($normalized, ['0', 'false', 'no'], true)) {
+                        $payload[$key] = false;
+                    } else {
+                        $payload[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    }
+                    continue;
+                }
+
+                $payload[$key] = $value;
+            }
+
+            if (array_key_exists('category_ids', $payload) && is_array($payload['category_ids'])) {
+                $categoryMetaList = [];
+                if (! empty($raw['categories'])) {
+                    $decodedCategories = json_decode((string) $raw['categories'], true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decodedCategories)) {
+                        $categoryMetaList = $decodedCategories;
+                    }
+                }
+
+                $resolvedCategoryIds = [];
+
+                if (! empty($categoryMetaList)) {
+                    foreach ($categoryMetaList as $categoryMeta) {
+                        if (! is_array($categoryMeta)) {
+                            continue;
+                        }
+
+                        $metaId = $categoryMeta['id'] ?? null;
+                        $categorySlug = mb_strtolower(trim((string) ($categoryMeta['slug'] ?? '')));
+                        $categoryName = mb_strtolower(trim((string) ($categoryMeta['name'] ?? '')));
+
+                        $mappedId = null;
+                        $slugId = null;
+                        $nameId = null;
+
+                        // 优先检查 slug 和 name
+                        if ($categorySlug !== '' && isset($categorySlugToId[$categorySlug])) {
+                            $slugId = $categorySlugToId[$categorySlug];
+                        }
+
+                        if ($categoryName !== '' && isset($categoryNameToId[$categoryName])) {
+                            $nameId = $categoryNameToId[$categoryName];
+                        }
+
+                        // 如果 slug 和 name 都提供了，验证它们是否指向同一个 category
+                        if ($slugId !== null && $nameId !== null) {
+                            if ($slugId !== $nameId) {
+                                $summary['failed']++;
+                                $summary['failedRows'][] = [
+                                    'row' => $rowNumber,
+                                    'reason' => 'Category slug and name do not match the same category.',
+                                ];
+                                continue 2;
+                            }
+                            $mappedId = $slugId;
+                        } elseif ($slugId !== null) {
+                            // 只有 slug 匹配
+                            $mappedId = $slugId;
+                        } elseif ($nameId !== null) {
+                            // 只有 name 匹配
+                            $mappedId = $nameId;
+                        }
+
+                        // 如果 slug 和 name 都没有匹配，才检查 ID
+                        if ($mappedId === null) {
+                            if (is_numeric($metaId) && isset($existingCategoryIds[(int) $metaId])) {
+                                $mappedId = (int) $metaId;
+                            }
+                        }
+                        // 如果通过 slug/name 匹配到了，直接使用，不再验证 ID（因为导入数据的 ID 可能不同）
+
+                        if ($mappedId !== null) {
+                            $resolvedCategoryIds[] = (int) $mappedId;
+                            continue;
+                        }
+
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $rowNumber,
+                            'reason' => 'Unable to map categories JSON data to current categories.',
+                        ];
+                        continue 2;
+                    }
+                } else {
+                    foreach ($payload['category_ids'] as $categoryId) {
+                        if (is_numeric($categoryId) && isset($existingCategoryIds[(int) $categoryId])) {
+                            $resolvedCategoryIds[] = (int) $categoryId;
+                            continue;
+                        }
+
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $rowNumber,
+                            'reason' => 'Unable to map category_ids from import data.',
+                        ];
+                        continue 2;
+                    }
+                }
+
+                $payload['category_ids'] = array_values(array_unique($resolvedCategoryIds));
+            }
+
+            $validator = Validator::make($payload, [
+                'name' => ['required', 'string', 'max:255'],
+                'slug' => ['required', 'string', 'max:255', 'unique:products,slug'],
+                'sku' => [
+                    Rule::requiredIf(fn() => ($payload['type'] ?? 'single') !== 'variant'),
+                    'nullable',
+                    'string',
+                    'max:100',
+                    'unique:products,sku',
+                ],
+                'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
+                'description' => ['nullable', 'string'],
+                'price' => ['required', 'numeric', 'gt:0'],
+                'sale_price' => ['nullable', 'numeric', 'gte:0'],
+                'sale_price_start_at' => ['nullable', 'date'],
+                'sale_price_end_at' => ['nullable', 'date'],
+                'cost_price' => ['nullable', 'numeric'],
+                'stock' => ['sometimes', 'integer'],
+                'low_stock_threshold' => ['sometimes', 'integer'],
+                'dummy_sold_count' => ['nullable', 'integer', 'min:0', 'max:999999'],
+                'is_active' => ['sometimes', 'boolean'],
+                'is_featured' => ['sometimes', 'boolean'],
+                'is_reward_only' => ['sometimes', 'boolean'],
+                'meta_title' => ['nullable', 'string', 'max:255'],
+                'meta_description' => ['nullable', 'string'],
+                'meta_keywords' => ['nullable', 'string'],
+                'meta_og_image' => ['nullable'],
+                'category_ids' => ['array'],
+                'category_ids.*' => ['integer', 'exists:categories,id'],
+                'variants' => ['nullable', 'array'],
+            ]);
+
+            if ($validator->fails()) {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => $validator->errors()->first(),
+                ];
+                continue;
+            }
+
+            $clean = $validator->validated();
+
+            try {
+                DB::transaction(function () use ($clean, &$existingSkuLookup, &$existingSlugLookup, &$summary) {
+                    $product = Product::create($clean + [
+                        'type' => $clean['type'] ?? 'single',
+                        'is_active' => $clean['is_active'] ?? true,
+                        'is_featured' => $clean['is_featured'] ?? false,
+                        'is_reward_only' => $clean['is_reward_only'] ?? false,
+                        'stock' => $clean['stock'] ?? 0,
+                        'low_stock_threshold' => $clean['low_stock_threshold'] ?? 0,
+                        'dummy_sold_count' => $clean['dummy_sold_count'] ?? 0,
+                    ]);
+
+                    if (! empty($clean['category_ids']) && is_array($clean['category_ids'])) {
+                        $product->categories()->sync($clean['category_ids']);
+                    }
+
+                    if (! empty($clean['variants']) && is_array($clean['variants'])) {
+                        foreach ($clean['variants'] as $variantData) {
+                            if (! is_array($variantData)) {
+                                continue;
+                            }
+                            $product->variants()->create([
+                                'sku' => $variantData['sku'] ?? null,
+                                'title' => $variantData['title'] ?? ($variantData['name'] ?? null),
+                                'price' => isset($variantData['price']) ? (float) $variantData['price'] : null,
+                                'sale_price' => isset($variantData['sale_price']) ? (float) $variantData['sale_price'] : null,
+                                'sale_price_start_at' => $variantData['sale_price_start_at'] ?? null,
+                                'sale_price_end_at' => $variantData['sale_price_end_at'] ?? null,
+                                'cost_price' => isset($variantData['cost_price']) ? (float) $variantData['cost_price'] : null,
+                                'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
+                                'low_stock_threshold' => isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0,
+                                'track_stock' => filter_var($variantData['track_stock'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                                'is_bundle' => filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                                'is_active' => filter_var($variantData['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                                'sort_order' => isset($variantData['sort_order']) ? (int) $variantData['sort_order'] : 0,
+                            ]);
+                        }
+                    }
+
+                    if (! empty($product->sku)) {
+                        $existingSkuLookup[mb_strtolower(trim((string) $product->sku))] = true;
+                    }
+                    if (! empty($product->slug)) {
+                        $existingSlugLookup[mb_strtolower(trim((string) $product->slug))] = true;
+                    }
+
+                    $summary['created']++;
+                });
+            } catch (\Throwable $e) {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => $e->getMessage(),
+                ];
+            }
+        }
+
+        fclose($handle);
+
+        return $this->respond($summary, __('Products import completed.'));
     }
 
     public function bulkUpdate(Request $request)
