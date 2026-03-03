@@ -370,6 +370,17 @@ class ProductController extends Controller
         $existingSkuLookup = array_fill_keys($existingSkus, true);
         $existingSlugLookup = array_fill_keys($existingSlugs, true);
 
+        $categories = Category::query()->get(['id', 'slug', 'name']);
+        $existingCategoryIds = array_fill_keys($categories->pluck('id')->all(), true);
+        $categorySlugToId = $categories
+            ->filter(fn(Category $category) => ! empty($category->slug))
+            ->mapWithKeys(fn(Category $category) => [mb_strtolower(trim((string) $category->slug)) => $category->id])
+            ->all();
+        $categoryNameToId = $categories
+            ->filter(fn(Category $category) => ! empty($category->name))
+            ->mapWithKeys(fn(Category $category) => [mb_strtolower(trim((string) $category->name)) => $category->id])
+            ->all();
+
         $summary = [
             'totalRows' => 0,
             'created' => 0,
@@ -487,6 +498,57 @@ class ProductController extends Controller
                 }
 
                 $payload[$key] = $value;
+            }
+
+            if (array_key_exists('category_ids', $payload) && is_array($payload['category_ids'])) {
+                $categoryMetaList = [];
+                if (! empty($raw['categories'])) {
+                    $decodedCategories = json_decode((string) $raw['categories'], true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decodedCategories)) {
+                        $categoryMetaList = $decodedCategories;
+                    }
+                }
+
+                $resolvedCategoryIds = [];
+                foreach ($payload['category_ids'] as $index => $categoryId) {
+                    if (is_numeric($categoryId) && isset($existingCategoryIds[(int) $categoryId])) {
+                        $resolvedCategoryIds[] = (int) $categoryId;
+                        continue;
+                    }
+
+                    $mappedId = null;
+                    $categoryMeta = isset($categoryMetaList[$index]) && is_array($categoryMetaList[$index])
+                        ? $categoryMetaList[$index]
+                        : null;
+
+                    if ($categoryMeta) {
+                        $categorySlug = mb_strtolower(trim((string) ($categoryMeta['slug'] ?? '')));
+                        if ($categorySlug !== '' && isset($categorySlugToId[$categorySlug])) {
+                            $mappedId = $categorySlugToId[$categorySlug];
+                        }
+
+                        if ($mappedId === null) {
+                            $categoryName = mb_strtolower(trim((string) ($categoryMeta['name'] ?? '')));
+                            if ($categoryName !== '' && isset($categoryNameToId[$categoryName])) {
+                                $mappedId = $categoryNameToId[$categoryName];
+                            }
+                        }
+                    }
+
+                    if ($mappedId !== null) {
+                        $resolvedCategoryIds[] = (int) $mappedId;
+                        continue;
+                    }
+
+                    $summary['failed']++;
+                    $summary['failedRows'][] = [
+                        'row' => $rowNumber,
+                        'reason' => 'Unable to map category_ids from import data.',
+                    ];
+                    continue 2;
+                }
+
+                $payload['category_ids'] = array_values(array_unique($resolvedCategoryIds));
             }
 
             $validator = Validator::make($payload, [
