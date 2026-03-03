@@ -517,25 +517,49 @@ class ProductController extends Controller
                             continue;
                         }
 
-                        $mappedId = null;
                         $metaId = $categoryMeta['id'] ?? null;
-                        if (is_numeric($metaId) && isset($existingCategoryIds[(int) $metaId])) {
-                            $mappedId = (int) $metaId;
+                        $categorySlug = mb_strtolower(trim((string) ($categoryMeta['slug'] ?? '')));
+                        $categoryName = mb_strtolower(trim((string) ($categoryMeta['name'] ?? '')));
+
+                        $mappedId = null;
+                        $slugId = null;
+                        $nameId = null;
+
+                        // 优先检查 slug 和 name
+                        if ($categorySlug !== '' && isset($categorySlugToId[$categorySlug])) {
+                            $slugId = $categorySlugToId[$categorySlug];
                         }
 
-                        if ($mappedId === null) {
-                            $categorySlug = mb_strtolower(trim((string) ($categoryMeta['slug'] ?? '')));
-                            if ($categorySlug !== '' && isset($categorySlugToId[$categorySlug])) {
-                                $mappedId = $categorySlugToId[$categorySlug];
-                            }
+                        if ($categoryName !== '' && isset($categoryNameToId[$categoryName])) {
+                            $nameId = $categoryNameToId[$categoryName];
                         }
 
+                        // 如果 slug 和 name 都提供了，验证它们是否指向同一个 category
+                        if ($slugId !== null && $nameId !== null) {
+                            if ($slugId !== $nameId) {
+                                $summary['failed']++;
+                                $summary['failedRows'][] = [
+                                    'row' => $rowNumber,
+                                    'reason' => 'Category slug and name do not match the same category.',
+                                ];
+                                continue 2;
+                            }
+                            $mappedId = $slugId;
+                        } elseif ($slugId !== null) {
+                            // 只有 slug 匹配
+                            $mappedId = $slugId;
+                        } elseif ($nameId !== null) {
+                            // 只有 name 匹配
+                            $mappedId = $nameId;
+                        }
+
+                        // 如果 slug 和 name 都没有匹配，才检查 ID
                         if ($mappedId === null) {
-                            $categoryName = mb_strtolower(trim((string) ($categoryMeta['name'] ?? '')));
-                            if ($categoryName !== '' && isset($categoryNameToId[$categoryName])) {
-                                $mappedId = $categoryNameToId[$categoryName];
+                            if (is_numeric($metaId) && isset($existingCategoryIds[(int) $metaId])) {
+                                $mappedId = (int) $metaId;
                             }
                         }
+                        // 如果通过 slug/name 匹配到了，直接使用，不再验证 ID（因为导入数据的 ID 可能不同）
 
                         if ($mappedId !== null) {
                             $resolvedCategoryIds[] = (int) $mappedId;
