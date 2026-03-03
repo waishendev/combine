@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 
 import { useI18n } from '@/lib/i18n'
+import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
 
 type HeaderProps = {
   onLogout: () => Promise<void> | void
@@ -128,6 +129,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
       </div>
 
       <div className="flex items-center gap-4">
+        <WorkspaceSwitcher />
         <div className="relative" ref={accountRef}>
           <button
             type="button"

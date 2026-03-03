@@ -42,7 +42,7 @@ class DatabaseSeeder extends Seeder
             LoyaltyDemoCustomerSeederTesting::class,
             SelfPickupCompletedOrderSeeder::class,
             GuestCompletedOrderSeeder::class,
-
+            BookingTestingSeeder::class,
 
             //ReturnDemoSeeder::class,
             // SalesReportSeeder::class,

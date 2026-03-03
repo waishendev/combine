@@ -45,6 +45,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.orders' => 'Ecommerce Orders',
             'pos' => 'POS',
             'ecommerce.returns' => 'Ecommerce Returns',
+            'booking' => 'Booking',
         ];
 
         $groupModels = [];
@@ -92,6 +93,27 @@ class PermissionSeeder extends Seeder
             'reports.my-pos-summary' => ['view'],
             'ecommerce.dashboard' => ['view'],
             'ecommerce.settings' => ['view', 'update'],
+            'booking' => [
+                'appointments.view',
+                'appointments.update_status',
+                'appointments.reschedule',
+                'services.view',
+                'services.create',
+                'services.update',
+                'services.delete',
+                'schedules.view',
+                'schedules.create',
+                'schedules.update',
+                'schedules.delete',
+                'blocks.view',
+                'blocks.create',
+                'blocks.update',
+                'blocks.delete',
+                'reports.view',
+                'logs.view',
+                'settings.view',
+                'settings.update',
+            ],
         ];
 
         foreach ($definitions as $module => $actions) {

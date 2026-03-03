@@ -873,3 +873,44 @@ $protectedRoutes = function () {
 
 // 🟢 Session + Sanctum token 共用一套受保护路由（Cookie 或 Bearer token 都可）
 Route::middleware(['api.session', 'auth:web,sanctum'])->group($protectedRoutes);
+
+Route::prefix('/booking')->middleware('api.session')->group(function () {
+    Route::get('/services', [\App\Http\Controllers\Booking\ServiceController::class, 'index']);
+    Route::get('/services/{id}', [\App\Http\Controllers\Booking\ServiceController::class, 'show']);
+    Route::get('/availability', [\App\Http\Controllers\Booking\AvailabilityController::class, 'index']);
+    Route::post('/hold', [\App\Http\Controllers\Booking\HoldController::class, 'store']);
+    Route::get('/cart', [\App\Http\Controllers\Booking\CartController::class, 'show']);
+    Route::post('/cart/add', [\App\Http\Controllers\Booking\CartController::class, 'add']);
+    Route::delete('/cart/item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removeItem']);
+    Route::post('/cart/checkout', [\App\Http\Controllers\Booking\CartController::class, 'checkout']);
+    Route::post('/{id}/pay', [\App\Http\Controllers\Booking\PaymentController::class, 'pay']);
+    Route::post('/{id}/reschedule', [\App\Http\Controllers\Booking\RescheduleController::class, 'store']);
+    Route::post('/payment/callback', [\App\Http\Controllers\Booking\PaymentController::class, 'callback']);
+
+    Route::middleware('auth:customer,sanctum')->group(function () {
+        Route::get('/my', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
+    });
+});
+
+Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')->group(function () {
+    Route::get('/appointments', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'index']);
+    Route::get('/appointments/{id}', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'show']);
+    Route::patch('/appointments/{id}/status', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'updateStatus']);
+    Route::post('/appointments/{id}/photos', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'uploadPhoto']);
+    Route::post('/{id}/reschedule', [\App\Http\Controllers\Admin\Booking\RescheduleController::class, 'store']);
+
+    Route::get('/reports/staff', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'staff']);
+    Route::get('/reports/staff/export.csv', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'staffExport']);
+    Route::get('/reports/summary', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'summary']);
+    Route::get('/reports/summary/export.csv', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'summaryExport']);
+
+    Route::get('/logs', [\App\Http\Controllers\Admin\Booking\LogController::class, 'index']);
+    Route::get('/logs/export.csv', [\App\Http\Controllers\Admin\Booking\LogController::class, 'export']);
+
+    Route::get('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'show']);
+    Route::put('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'update']);
+
+    Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
+    Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
+    Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);
+});

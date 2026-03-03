@@ -223,6 +223,54 @@
       "value": "ecommerce/dashboard/overview",
       "type": "default",
       "enabled": true
+    },
+    {
+      "key": "booking_service_id",
+      "value": "1",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "booking_staff_id",
+      "value": "1",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "booking_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "booking_date",
+      "value": "2026-03-01",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "booking_start_at",
+      "value": "2026-03-01T10:00:00+08:00",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "booking_block_start_at",
+      "value": "2026-03-01T12:00:00+08:00",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "booking_block_end_at",
+      "value": "2026-03-01T13:00:00+08:00",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "booking_reschedule_start_at",
+      "value": "2026-03-05T10:00:00+08:00",
+      "type": "default",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment",

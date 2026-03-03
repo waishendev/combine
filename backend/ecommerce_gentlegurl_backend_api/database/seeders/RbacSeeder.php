@@ -66,6 +66,7 @@ class RbacSeeder extends Seeder
             'ecommerce.dashboard' => 'Ecommerce Dashboard',
             'ecommerce.settings' => 'Ecommerce Settings',
             'ecommerce.orders' => 'Ecommerce Orders',
+            'booking' => 'Booking',
         ];
 
         $groupModels = [];
@@ -107,6 +108,27 @@ class RbacSeeder extends Seeder
             'reports.my-pos-summary' => ['view'],
             'ecommerce.dashboard' => ['view'],
             'ecommerce.settings' => ['view', 'update'],
+            'booking' => [
+                'appointments.view',
+                'appointments.update_status',
+                'appointments.reschedule',
+                'services.view',
+                'services.create',
+                'services.update',
+                'services.delete',
+                'schedules.view',
+                'schedules.create',
+                'schedules.update',
+                'schedules.delete',
+                'blocks.view',
+                'blocks.create',
+                'blocks.update',
+                'blocks.delete',
+                'reports.view',
+                'logs.view',
+                'settings.view',
+                'settings.update',
+            ],
             'ecommerce.orders' => ['view', 'create', 'update', 'confirm-payment'],
         ];
 
