@@ -429,6 +429,12 @@ $protectedRoutes = function () {
         Route::get('/shop-menu-items', [ShopMenuItemController::class, 'index'])
             ->middleware('permission:ecommerce.shop-menu.view');
 
+        Route::get('/shop-menu-items/export', [ShopMenuItemController::class, 'exportCsv'])
+            ->middleware('permission:ecommerce.shop-menu.view');
+
+        Route::post('/shop-menu-items/import', [ShopMenuItemController::class, 'importCsv'])
+            ->middleware('permission:ecommerce.shop-menu.create');
+
         Route::post('/shop-menu-items', [ShopMenuItemController::class, 'store'])
             ->middleware('permission:ecommerce.shop-menu.create');
 
