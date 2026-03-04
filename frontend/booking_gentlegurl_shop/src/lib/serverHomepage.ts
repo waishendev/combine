@@ -6,6 +6,17 @@ export type HomepageFooter = {
     email?: string | null;
     address?: string | null;
   } | null;
+  social?: {
+    instagram?: string | null;
+    facebook?: string | null;
+    tiktok?: string | null;
+  } | null;
+  links?: {
+    shipping_policy?: string | null;
+    return_refund?: string | null;
+    privacy?: string | null;
+    terms?: string | null;
+  } | null;
 };
 
 export type HomepageData = {

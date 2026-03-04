@@ -18,6 +18,27 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
+    keywords: homepage?.seo?.meta_keywords?.split(",").map((item) => item.trim()).filter(Boolean),
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      ...(homepage?.seo?.meta_og_image
+        ? {
+            images: [
+              {
+                url: homepage.seo.meta_og_image,
+              },
+            ],
+          }
+        : {}),
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      ...(homepage?.seo?.meta_og_image ? { images: [homepage.seo.meta_og_image] } : {}),
+    },
     ...(homepage?.shop_favicon_url
       ? {
           icons: {
@@ -40,6 +61,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           crossOrigin="anonymous"
           referrerPolicy="no-referrer"
         />
+              {homepage?.shop_logo_url && (
+          <link rel="preload" href={homepage.shop_logo_url} as="image" fetchPriority="high" />
+        )}
       </head>
       <body className={`${heading.variable} ${body.variable} bg-[#fffdf9] text-neutral-900 antialiased`}>
         <Providers>
