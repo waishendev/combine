@@ -1,10 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 
-export function Header() {
+export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -19,7 +20,13 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-neutral-200 bg-white/95 backdrop-blur">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-        <Link href="/" className="text-lg font-semibold tracking-wide">GentleGurls</Link>
+        <Link href="/" className="text-lg font-semibold tracking-wide">
+          {logoUrl ? (
+            <Image src={logoUrl} alt="Shop logo" width={140} height={40} className="h-10 w-auto object-contain" unoptimized />
+          ) : (
+            "GentleGurls"
+          )}
+        </Link>
         <div className="flex items-center gap-4 text-sm font-medium">
           <Link href="/" className={isActive("/")}>Home</Link>
           <Link href="/booking" className={isActive("/booking")}>Book</Link>

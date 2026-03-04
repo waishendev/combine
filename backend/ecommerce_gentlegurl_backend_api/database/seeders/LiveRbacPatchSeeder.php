@@ -262,6 +262,8 @@ class LiveRbacPatchSeeder extends Seeder
             'ecommerce.dashboard.update',
             'ecommerce.settings.view',
             'ecommerce.settings.update',
+            'booking.settings.view',
+            'booking.seo.view',
         ];
 
         $adminPermissionIds = Permission::whereIn('slug', $adminPermissionSlugs)->pluck('id')->all();

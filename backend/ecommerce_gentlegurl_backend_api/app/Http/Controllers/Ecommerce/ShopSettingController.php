@@ -179,6 +179,8 @@ class ShopSettingController extends Controller
         );
 
         Cache::forget('public_homepage_v1');
+        Cache::forget('public_homepage_v2_ecommerce');
+        Cache::forget('public_homepage_v2_booking');
 
         return response()->json([
             'data' => [

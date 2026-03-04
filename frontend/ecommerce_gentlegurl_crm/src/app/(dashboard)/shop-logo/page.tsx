@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import LogoUploadForm from '@/components/LogoUploadForm'
@@ -10,13 +11,15 @@ import { getTranslator } from '@/lib/i18n-server'
 
 export default async function ShopLogoPage() {
   const user = await getCurrentUser()
+  const cookieStore = await cookies()
+  const workspace = cookieStore.get('crm_workspace')?.value === 'booking' ? 'booking' : 'ecommerce'
 
   if (!user) {
     redirect('/login')
   }
 
-  const canView = user.permissions.includes('ecommerce.settings.view')
-  const canEdit = user.permissions.includes('ecommerce.settings.update')
+  const canView = user.permissions.includes(`${workspace}.settings.view`)
+  const canEdit = user.permissions.includes(`${workspace}.settings.update`) || (workspace === 'booking' && user.permissions.includes('booking.settings.view'))
 
   if (!canView && !canEdit) {
     redirect('/dashboard')

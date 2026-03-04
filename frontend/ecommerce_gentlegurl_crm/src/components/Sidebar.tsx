@@ -451,11 +451,29 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
         requiredPermission: 'booking.logs.view',
       },
       {
-        key: 'booking-settings',
-        label: 'Settings',
+        key: 'settings',
+        label: 'Shop Settings',
         icon: 'fa-solid fa-gear',
-        href: '/booking/settings',
-        requiredPermission: 'booking.settings.view',
+        children: [
+          {
+            key: 'shop-settings',
+            label: 'General Settings',
+            href: '/general-settings',
+            requiredPermission: 'booking.settings.view',
+          },
+          {
+            key: 'seo-settings',
+            label: 'Global SEO',
+            href: '/seo-settings',
+            requiredPermission: 'booking.seo.view',
+          },
+          {
+            key: 'shop-logo',
+            label: 'Upload Logo',
+            href: '/shop-logo',
+            requiredPermission: 'booking.settings.view',
+          },
+        ],
       },
     ],
     [],

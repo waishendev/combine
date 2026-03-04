@@ -118,7 +118,8 @@ class BrandingController extends Controller
             $branding[$key] = $path;
             SettingService::set(self::BRANDING_KEY, $branding, $type);
 
-            Cache::forget('public_homepage_v2');
+            Cache::forget('public_homepage_v2_ecommerce');
+            Cache::forget('public_homepage_v2_booking');
             Cache::forget('public_homepage_v1');
         }
 
