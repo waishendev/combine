@@ -1000,7 +1000,7 @@ class PublicShopController extends Controller
                 'sort_order',
             ]);
 
-        $seoGlobal = SeoGlobal::query()->first();
+        $seoGlobal = SeoGlobal::query()->where('type', 'ecommerce')->first();
 
         $seo = null;
         if ($seoGlobal) {

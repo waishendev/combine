@@ -128,6 +128,7 @@ class RbacSeeder extends Seeder
                 'logs.view',
                 'settings.view',
                 'settings.update',
+                'seo.view',
             ],
             'ecommerce.orders' => ['view', 'create', 'update', 'confirm-payment'],
         ];

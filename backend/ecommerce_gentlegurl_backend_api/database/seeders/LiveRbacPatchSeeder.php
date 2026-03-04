@@ -50,6 +50,7 @@ class LiveRbacPatchSeeder extends Seeder
             'ecommerce.settings' => 'Ecommerce Settings',
             'ecommerce.orders' => 'Ecommerce Orders',
             'ecommerce.returns' => 'Ecommerce Returns',
+            'booking' => 'Booking',
 
             // POS / Staff / Reports (needed by StaffRbacSeeder + POS screens)
             'staff' => 'Staff',
@@ -115,6 +116,28 @@ class LiveRbacPatchSeeder extends Seeder
             'ecommerce.reports.sales' => ['view', 'export'],
             'ecommerce.dashboard' => ['view'],
             'ecommerce.settings' => ['view', 'update'],
+            'booking' => [
+                'appointments.view',
+                'appointments.update_status',
+                'appointments.reschedule',
+                'services.view',
+                'services.create',
+                'services.update',
+                'services.delete',
+                'schedules.view',
+                'schedules.create',
+                'schedules.update',
+                'schedules.delete',
+                'blocks.view',
+                'blocks.create',
+                'blocks.update',
+                'blocks.delete',
+                'reports.view',
+                'logs.view',
+                'settings.view',
+                'settings.update',
+                'seo.view',
+            ],
 
             // POS / Staff / Reports
             'staff' => ['view'],
@@ -262,6 +285,8 @@ class LiveRbacPatchSeeder extends Seeder
             'ecommerce.dashboard.update',
             'ecommerce.settings.view',
             'ecommerce.settings.update',
+            'booking.settings.view',
+            'booking.seo.view',
         ];
 
         $adminPermissionIds = Permission::whereIn('slug', $adminPermissionSlugs)->pluck('id')->all();

@@ -10,7 +10,7 @@ class SettingController extends Controller
 {
     public function show()
     {
-        $value = Setting::where('key', 'BOOKING_NOTIFIED_CANCELLATION_VOUCHER')->value('value');
+        $value = Setting::where('type', 'booking')->where('key', 'BOOKING_NOTIFIED_CANCELLATION_VOUCHER')->value('value');
 
         return $this->respond($value ?? [
             'enabled' => false,
@@ -38,7 +38,7 @@ class SettingController extends Controller
         ]);
 
         Setting::updateOrCreate(
-            ['key' => 'BOOKING_NOTIFIED_CANCELLATION_VOUCHER'],
+            ['type' => 'booking', 'key' => 'BOOKING_NOTIFIED_CANCELLATION_VOUCHER'],
             ['value' => $validated]
         );
 

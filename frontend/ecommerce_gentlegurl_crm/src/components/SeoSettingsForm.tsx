@@ -2,6 +2,8 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
+import { getWorkspace, type Workspace } from '@/lib/workspace'
+
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 type SeoSettings = {
@@ -25,9 +27,10 @@ type FeedbackState = {
 
 type SeoSettingsFormProps = {
   canEdit: boolean
+  forcedWorkspace?: Workspace
 }
 
-export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
+export default function SeoSettingsForm({ canEdit, forcedWorkspace }: SeoSettingsFormProps) {
   const [formState, setFormState] = useState<SeoSettings>({
     default_title: '',
     default_description: '',
@@ -42,6 +45,7 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const [workspaceType, setWorkspaceType] = useState<Workspace>(forcedWorkspace ?? 'ecommerce')
 
   const lastUpdatedLabel = useMemo(() => {
     if (!formState.updated_at) return null
@@ -51,10 +55,23 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
   }, [formState.updated_at])
 
   useEffect(() => {
+    if (forcedWorkspace) {
+      setWorkspaceType(forcedWorkspace)
+      return
+    }
+
+    const syncWorkspace = () => setWorkspaceType(getWorkspace())
+    syncWorkspace()
+    window.addEventListener('crm_workspace_changed', syncWorkspace)
+
+    return () => window.removeEventListener('crm_workspace_changed', syncWorkspace)
+  }, [forcedWorkspace])
+
+  useEffect(() => {
     let abort = false
     const fetchSeoSettings = async () => {
       try {
-        const response = await fetch('/api/proxy/ecommerce/seo-global', {
+        const response = await fetch(`/api/proxy/ecommerce/seo-global?type=${workspaceType}`, {
           cache: 'no-store',
         })
 
@@ -110,7 +127,7 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
     return () => {
       abort = true
     }
-  }, [])
+  }, [workspaceType])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -127,7 +144,7 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
         const formData = new FormData()
         formData.append('image_file', imageFile)
         
-        const uploadResponse = await fetch('/api/proxy/ecommerce/seo-global/upload-image', {
+        const uploadResponse = await fetch(`/api/proxy/ecommerce/seo-global/upload-image?type=${workspaceType}`, {
           method: 'POST',
           body: formData,
         })
@@ -140,12 +157,13 @@ export default function SeoSettingsForm({ canEdit }: SeoSettingsFormProps) {
         }
       }
 
-      const response = await fetch('/api/proxy/ecommerce/seo-global', {
+      const response = await fetch(`/api/proxy/ecommerce/seo-global?type=${workspaceType}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           default_title: formState.default_title,
           default_description: formState.default_description,
           default_keywords: formState.default_keywords,

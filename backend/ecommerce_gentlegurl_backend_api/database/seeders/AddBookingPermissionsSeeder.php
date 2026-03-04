@@ -48,6 +48,7 @@ class AddBookingPermissionsSeeder extends Seeder
             'logs.view',
             'settings.view',
             'settings.update',
+            'seo.view',
         ];
 
         $createdPermissionIds = [];

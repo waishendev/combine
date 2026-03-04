@@ -26,7 +26,9 @@ class PublicHomepageController extends Controller
 
     public function show(Request $request)
     {
-        $data = Cache::remember('public_homepage_v2', 300, function () {
+        $type = $this->resolveType($request);
+
+        $data = Cache::remember("public_homepage_v2_{$type}", 300, function () use ($type) {
             $now = Carbon::now();
 
             $sliders = HomeSlider::query()
@@ -103,8 +105,8 @@ class PublicHomepageController extends Controller
                 ]);
 
             // Get product sections
-            $newProductConfig = SettingService::get('new_products', ['days' => 30]);
-            $bestSellerConfig = SettingService::get('best_sellers', ['days' => 60]);
+            $newProductConfig = SettingService::get('new_products', ['days' => 30], $type);
+            $bestSellerConfig = SettingService::get('best_sellers', ['days' => 60], $type);
 
             $newProductDays = (int) ($newProductConfig['days'] ?? 30);
             $bestSellerDays = (int) ($bestSellerConfig['days'] ?? 60);
@@ -146,7 +148,7 @@ class PublicHomepageController extends Controller
                 ->limit(20)
                 ->get();
 
-            $seoGlobal = SeoGlobal::query()->first();
+            $seoGlobal = SeoGlobal::query()->where('type', $type)->first();
 
             $seo = null;
             if ($seoGlobal) {
@@ -159,11 +161,11 @@ class PublicHomepageController extends Controller
             }
 
             $settings = [
-                'shop_contact_widget' => SettingService::get('shop_contact_widget', $this->defaultShopContactWidget()),
-                'homepage_products' => SettingService::get('homepage_products', $this->defaultHomepageProducts()),
-                'shipping' => SettingService::get('shipping', $this->defaultShippingSetting()),
-                'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
-                'page_reviews' => SettingService::get('page_reviews', ['enabled' => true]),
+                'shop_contact_widget' => SettingService::get('shop_contact_widget', $this->defaultShopContactWidget(), $type),
+                'homepage_products' => SettingService::get('homepage_products', $this->defaultHomepageProducts(), $type),
+                'shipping' => SettingService::get('shipping', $this->defaultShippingSetting(), $type),
+                'footer' => SettingService::get('footer', $this->defaultFooterSetting(), $type),
+                'page_reviews' => SettingService::get('page_reviews', ['enabled' => true], $type),
             ];
 
             $paymentGateways = PaymentGateway::query()
@@ -184,7 +186,7 @@ class PublicHomepageController extends Controller
                 'crm_logo_path' => null,
                 'shop_favicon_path' => null,
                 'crm_favicon_path' => null,
-            ]);
+            ], $type);
 
             return [
                 'sliders' => $sliders,
@@ -221,6 +223,13 @@ class PublicHomepageController extends Controller
             'success' => true,
             'message' => null,
         ]);
+    }
+
+    protected function resolveType(Request $request): string
+    {
+        $type = strtolower((string) $request->query('type', 'ecommerce'));
+
+        return in_array($type, ['ecommerce', 'booking'], true) ? $type : 'ecommerce';
     }
 
     protected function resolveLogoUrl(?string $path): ?string
@@ -325,17 +334,30 @@ class PublicHomepageController extends Controller
     public function flushCache(Request $request)
     {
         try {
-            // Clear the homepage cache
-            Cache::forget('public_homepage_v2');
-            
-            // Optionally clear all homepage related caches
+            $type = strtolower((string) $request->query('type', 'all'));
+            $isScopedType = in_array($type, ['ecommerce', 'booking'], true);
+
+            $clearedKeys = [];
+
+            if ($isScopedType) {
+                $cacheKey = "public_homepage_v2_{$type}";
+                Cache::forget($cacheKey);
+                $clearedKeys[] = $cacheKey;
+            } else {
+                Cache::forget('public_homepage_v2_ecommerce');
+                Cache::forget('public_homepage_v2_booking');
+                $clearedKeys = ['public_homepage_v2_ecommerce', 'public_homepage_v2_booking'];
+            }
+
             Cache::forget('public_homepage_v1');
-            
+            $clearedKeys[] = 'public_homepage_v1';
+
             return response()->json([
                 'success' => true,
                 'message' => 'Homepage cache cleared successfully',
                 'data' => [
-                    'cleared_keys' => ['public_homepage_v2', 'public_homepage_v1'],
+                    'scope' => $isScopedType ? $type : 'all',
+                    'cleared_keys' => $clearedKeys,
                 ],
             ]);
         } catch (\Exception $e) {

@@ -10,7 +10,6 @@ import { getTranslator } from '@/lib/i18n-server'
 
 export default async function SeoSettingsPage() {
   const user = await getCurrentUser()
-
   if (!user) {
     redirect('/login')
   }

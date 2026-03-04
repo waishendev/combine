@@ -12,6 +12,7 @@ class SeoGlobal extends Model
     protected $table = 'seo_global';
 
     protected $fillable = [
+        'type',
         'default_title',
         'default_description',
         'default_keywords',

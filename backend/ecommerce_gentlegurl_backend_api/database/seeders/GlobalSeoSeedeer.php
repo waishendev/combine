@@ -9,11 +9,18 @@ class GlobalSeoSeedeer extends Seeder
 {
     public function run(): void
     {
-        SeoGlobal::firstOrCreate([], [
+        $defaults = [
             'default_title' => 'My Shop',
             'default_description' => 'Default SEO description',
             'default_keywords' => 'shop, ecommerce',
             'default_og_image' => null,
-        ]);
-    }   
+        ];
+
+        foreach (['ecommerce', 'booking'] as $type) {
+            SeoGlobal::updateOrCreate(
+                ['type' => $type],
+                $defaults
+            );
+        }
+    }
 }
