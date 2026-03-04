@@ -19,6 +19,26 @@ class ShopSettingController extends Controller
     {
         $type = $this->resolveType($request);
 
+        if ($type === 'booking') {
+            $data = [
+                'shop_contact_widget' => SettingService::get('shop_contact_widget', [
+                    'whatsapp' => [
+                        'enabled' => false,
+                        'phone' => null,
+                        'default_message' => null,
+                    ],
+                ], $type),
+                'footer' => SettingService::get('footer', $this->defaultFooterSetting(), $type),
+                'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting(), $type),
+            ];
+
+            return response()->json([
+                'data' => $data,
+                'message' => null,
+                'success' => true,
+            ]);
+        }
+
         $data = [
             'shop_contact_widget' => SettingService::get('shop_contact_widget', [
                 'whatsapp' => [
@@ -62,7 +82,10 @@ class ShopSettingController extends Controller
      */
     public function show(Request $request, string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews', 'ecommerce.return_window_days', 'ecommerce.return_tracking_submit_days'], true)) {
+        $type = $this->resolveType($request);
+        $supportedKeys = $this->supportedRouteKeys($type);
+
+        if (! in_array($key, $supportedKeys, true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -96,8 +119,6 @@ class ShopSettingController extends Controller
             'ecommerce.return_tracking_submit_days' => 7,
         ];
 
-        $type = $this->resolveType($request);
-
         $settingKey = $this->resolveSettingKey($key);
         $defaultKey = $settingKey === 'ecommerce.invoice_profile' ? 'invoice_profile' : $key;
         $value = SettingService::get($settingKey, $defaultValues[$defaultKey], $type);
@@ -120,7 +141,10 @@ class ShopSettingController extends Controller
      */
     public function update(Request $request, string $key)
     {
-        if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews', 'ecommerce.return_window_days', 'ecommerce.return_tracking_submit_days'], true)) {
+        $type = $this->resolveType($request);
+        $supportedKeys = $this->supportedRouteKeys($type);
+
+        if (! in_array($key, $supportedKeys, true)) {
             return response()->json([
                 'data' => null,
                 'message' => 'Setting key not supported.',
@@ -168,8 +192,6 @@ class ShopSettingController extends Controller
                     'key' => ['Unsupported setting key.'],
                 ]);
         }
-
-        $type = $this->resolveType($request);
 
         $settingKey = $this->resolveSettingKey($key);
 
@@ -507,6 +529,30 @@ class ShopSettingController extends Controller
         ];
     }
 
+
+
+    protected function supportedRouteKeys(string $type): array
+    {
+        if ($type === 'booking') {
+            return [
+                'shop_contact_widget',
+                'footer',
+                'invoice_profile',
+            ];
+        }
+
+        return [
+            'shop_contact_widget',
+            'homepage_products',
+            'shipping',
+            'footer',
+            'invoice_profile',
+            'page_reviews',
+            'product_reviews',
+            'ecommerce.return_window_days',
+            'ecommerce.return_tracking_submit_days',
+        ];
+    }
 
     protected function resolveType(Request $request): string
     {
