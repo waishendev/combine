@@ -17,7 +17,7 @@ export default function FlushCachePage() {
     setResult(null);
 
     try {
-      const response = await fetch("/api/proxy/homepage/flush-cache?type=booking", {
+      const response = await fetch("/api/proxy/public/shop/homepage/flush-cache?type=booking", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

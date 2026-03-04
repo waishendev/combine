@@ -43,7 +43,7 @@ export type HomepageData = {
 export async function getBookingHomepage(): Promise<HomepageData | null> {
   try {
     const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
-    const response = await fetch(`${base}/api/homepage?type=booking`, { cache: 'no-store' });
+    const response = await fetch(`${base}/api/public/shop/homepage?type=booking`, { cache: 'no-store' });
     if (!response.ok) return null;
     const payload = await response.json();
     return payload?.data ?? null;

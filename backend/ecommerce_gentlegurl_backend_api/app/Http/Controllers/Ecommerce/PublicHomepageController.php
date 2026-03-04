@@ -334,18 +334,30 @@ class PublicHomepageController extends Controller
     public function flushCache(Request $request)
     {
         try {
-            // Clear the homepage cache
-            Cache::forget('public_homepage_v2_ecommerce');
-            Cache::forget('public_homepage_v2_booking');
-            
-            // Optionally clear all homepage related caches
+            $type = strtolower((string) $request->query('type', 'all'));
+            $isScopedType = in_array($type, ['ecommerce', 'booking'], true);
+
+            $clearedKeys = [];
+
+            if ($isScopedType) {
+                $cacheKey = "public_homepage_v2_{$type}";
+                Cache::forget($cacheKey);
+                $clearedKeys[] = $cacheKey;
+            } else {
+                Cache::forget('public_homepage_v2_ecommerce');
+                Cache::forget('public_homepage_v2_booking');
+                $clearedKeys = ['public_homepage_v2_ecommerce', 'public_homepage_v2_booking'];
+            }
+
             Cache::forget('public_homepage_v1');
-            
+            $clearedKeys[] = 'public_homepage_v1';
+
             return response()->json([
                 'success' => true,
                 'message' => 'Homepage cache cleared successfully',
                 'data' => [
-                    'cleared_keys' => ['public_homepage_v2_ecommerce', 'public_homepage_v2_booking', 'public_homepage_v1'],
+                    'scope' => $isScopedType ? $type : 'all',
+                    'cleared_keys' => $clearedKeys,
                 ],
             ]);
         } catch (\Exception $e) {
