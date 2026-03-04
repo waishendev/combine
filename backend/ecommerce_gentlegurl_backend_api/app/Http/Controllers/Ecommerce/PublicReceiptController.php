@@ -46,8 +46,8 @@ class PublicReceiptController extends Controller
                 'variant_name' => $item->variant_name_snapshot,
                 'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
                 'qty' => $item->quantity,
-                'unit_price' => $item->price_snapshot,
-                'line_total' => $item->line_total,
+                'unit_price' => $item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot,
+                'line_total' => $item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total,
             ])->values(),
         ]);
     }

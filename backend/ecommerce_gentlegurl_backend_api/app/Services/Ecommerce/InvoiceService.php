@@ -19,8 +19,8 @@ class InvoiceService
                 'variant_name' => $item->variant_name_snapshot,
                 'variant_sku' => $item->variant_sku_snapshot,
                 'quantity' => (int) $item->quantity,
-                'unit_price' => (float) $item->price_snapshot,
-                'line_total' => (float) $item->line_total,
+                'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
+                'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
             ];
         })->values();
 

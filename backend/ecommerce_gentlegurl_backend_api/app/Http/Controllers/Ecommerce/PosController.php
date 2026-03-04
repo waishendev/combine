@@ -520,8 +520,12 @@ class PosController extends Controller
 
         [$order, $receiptUrl] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
             $customerId = $validated['member_id'] ?? null;
+            $isStaffUser = !empty($request->user()?->staff_id);
 
-            $subtotal = $cart->items->sum(fn (PosCartItem $item) => ((float) $item->price_snapshot) * $item->qty);
+            $subtotal = $cart->items->sum(function (PosCartItem $item) use ($isStaffUser) {
+                $pricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
+                return (float) $pricing['effective_line_total'];
+            });
             $discountTotal = 0.0;
             $voucherData = null;
 
@@ -614,6 +618,7 @@ class PosController extends Controller
                     abort(422, __('Insufficient stock for :sku', ['sku' => $product->sku ?? $product->id]));
                 }
 
+                $pricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
                 $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
                 $orderItem = OrderItem::create([
                     'order_id' => $order->id,
@@ -623,11 +628,16 @@ class PosController extends Controller
                     'sku_snapshot' => $product->sku,
                     'variant_name_snapshot' => $variant?->title,
                     'variant_sku_snapshot' => $variant?->sku,
-                    'price_snapshot' => $item->price_snapshot,
+                    'price_snapshot' => $pricing['unit_price_snapshot'],
+                    'unit_price_snapshot' => $pricing['unit_price_snapshot'],
                     'variant_price_snapshot' => $variant?->price,
                     'variant_cost_snapshot' => $variant?->cost_price,
                     'quantity' => $item->qty,
-                    'line_total' => ((float) $item->price_snapshot) * $item->qty,
+                    'line_total' => $pricing['effective_line_total'],
+                    'line_total_snapshot' => $pricing['line_total_snapshot'],
+                    'effective_unit_price' => $pricing['effective_unit_price'],
+                    'effective_line_total' => $pricing['effective_line_total'],
+                    'is_staff_free_applied' => $pricing['is_staff_free_applied'],
                     'staff_id' => $itemSplits->first()['staff_id'] ?? null,
                     'locked' => true,
                 ]);
@@ -720,7 +730,7 @@ class PosController extends Controller
             items: $order->items->map(fn (OrderItem $item) => [
                 'name' => $item->product_name_snapshot ?: 'Item #' . $item->id,
                 'qty' => (int) $item->quantity,
-                'line_total' => (float) $item->line_total,
+                'line_total' => (float) ($item->effective_line_total ?? $item->line_total),
             ])->values()->all(),
         ));
 
@@ -739,14 +749,21 @@ class PosController extends Controller
 
     protected function serializeCart(PosCart $cart): array
     {
-        $items = $cart->items->map(function (PosCartItem $item) {
+        $isStaffUser = !empty($cart->staffUser?->staff_id);
+
+        $items = $cart->items->map(function (PosCartItem $item) use ($isStaffUser) {
             $variant = $item->variant;
             $product = $variant?->product ?? $item->product;
+            $pricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
+
             return [
                 'id' => $item->id,
                 'qty' => $item->qty,
-                'unit_price' => (float) $item->price_snapshot,
-                'line_total' => (float) $item->price_snapshot * $item->qty,
+                'unit_price' => (float) $pricing['effective_unit_price'],
+                'line_total' => (float) $pricing['effective_line_total'],
+                'unit_price_snapshot' => (float) $pricing['unit_price_snapshot'],
+                'line_total_snapshot' => (float) $pricing['line_total_snapshot'],
+                'is_staff_free_applied' => (bool) $pricing['is_staff_free_applied'],
                 'product_id' => $product?->id,
                 'variant_id' => $variant?->id,
                 'variant_name' => $variant?->title,
@@ -776,14 +793,39 @@ class PosController extends Controller
 
     protected function serializeCartItemsForVoucher(PosCart $cart): array
     {
-        return $cart->items->map(function (PosCartItem $item) {
+        $isStaffUser = !empty($cart->staffUser?->staff_id);
+
+        return $cart->items->map(function (PosCartItem $item) use ($isStaffUser) {
             $variant = $item->variant;
             $product = $variant?->product ?? $item->product;
+            $pricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
+
             return [
                 'product_id' => $product?->id,
-                'line_total' => (float) $item->price_snapshot * (int) $item->qty,
+                'line_total' => (float) $pricing['effective_line_total'],
             ];
         })->values()->all();
+    }
+
+    protected function resolvePosCartItemPricing(PosCartItem $item, bool $isStaffUser): array
+    {
+        $variant = $item->variant;
+        $product = $variant?->product ?? $item->product;
+
+        $unitPriceSnapshot = (float) $item->price_snapshot;
+        $lineTotalSnapshot = $unitPriceSnapshot * (int) $item->qty;
+
+        $isStaffFreeApplied = $isStaffUser && (bool) ($product?->is_staff_free ?? false);
+        $effectiveUnitPrice = $isStaffFreeApplied ? 0.0 : $unitPriceSnapshot;
+        $effectiveLineTotal = $isStaffFreeApplied ? 0.0 : $lineTotalSnapshot;
+
+        return [
+            'unit_price_snapshot' => $unitPriceSnapshot,
+            'line_total_snapshot' => $lineTotalSnapshot,
+            'effective_unit_price' => $effectiveUnitPrice,
+            'effective_line_total' => $effectiveLineTotal,
+            'is_staff_free_applied' => $isStaffFreeApplied,
+        ];
     }
 
     protected function clearVoucherFromCart(PosCart $cart): void
