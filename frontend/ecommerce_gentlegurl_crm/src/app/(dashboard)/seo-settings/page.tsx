@@ -1,7 +1,6 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import SeoSettingsForm from '@/components/SeoSettingsForm'
@@ -11,15 +10,12 @@ import { getTranslator } from '@/lib/i18n-server'
 
 export default async function SeoSettingsPage() {
   const user = await getCurrentUser()
-  const cookieStore = await cookies()
-  const workspace = cookieStore.get('crm_workspace')?.value === 'booking' ? 'booking' : 'ecommerce'
-
   if (!user) {
     redirect('/login')
   }
 
   const canViewSeo = user.permissions.some(
-    (permission) => permission === `${workspace}.seo.view`
+    (permission) => permission === 'ecommerce.seo.view'
   )
 
   if (!canViewSeo) {
@@ -27,7 +23,7 @@ export default async function SeoSettingsPage() {
   }
 
   const canUpdateSeo = user.permissions.some(
-    (permission) => permission === `${workspace}.seo.update` || (workspace === 'booking' && permission === 'booking.seo.view')
+    (permission) => permission === 'ecommerce.seo.update'
   )
 
   const lang: LangCode = 'EN'

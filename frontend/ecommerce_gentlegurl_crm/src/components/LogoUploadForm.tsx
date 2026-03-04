@@ -35,6 +35,7 @@ type LogoUploadFormProps = {
   fileLabel?: string
   previewAlt?: string
   accept?: string
+  forcedWorkspace?: Workspace
 }
 
 export default function LogoUploadForm({
@@ -48,6 +49,7 @@ export default function LogoUploadForm({
   fileLabel,
   previewAlt,
   accept,
+  forcedWorkspace,
 }: LogoUploadFormProps) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -57,7 +59,7 @@ export default function LogoUploadForm({
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const storageKey = `branding.${logoKey}`
-  const [workspaceType, setWorkspaceType] = useState<Workspace>('ecommerce')
+  const [workspaceType, setWorkspaceType] = useState<Workspace>(forcedWorkspace ?? 'ecommerce')
 
   const currentLogo = previewUrl ?? logoUrl
 
@@ -88,12 +90,17 @@ export default function LogoUploadForm({
   }, [logoKey, recommendation])
 
   useEffect(() => {
+    if (forcedWorkspace) {
+      setWorkspaceType(forcedWorkspace)
+      return
+    }
+
     const syncWorkspace = () => setWorkspaceType(getWorkspace())
     syncWorkspace()
     window.addEventListener('crm_workspace_changed', syncWorkspace)
 
     return () => window.removeEventListener('crm_workspace_changed', syncWorkspace)
-  }, [])
+  }, [forcedWorkspace])
 
   useEffect(() => {
     let abort = false

@@ -458,19 +458,19 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
           {
             key: 'shop-settings',
             label: 'General Settings',
-            href: '/general-settings',
+            href: '/booking/general-settings',
             requiredPermission: 'booking.settings.view',
           },
           {
             key: 'seo-settings',
             label: 'Global SEO',
-            href: '/seo-settings',
+            href: '/booking/seo-settings',
             requiredPermission: 'booking.seo.view',
           },
           {
             key: 'shop-logo',
             label: 'Upload Logo',
-            href: '/shop-logo',
+            href: '/booking/shop-logo',
             requiredPermission: 'booking.settings.view',
           },
         ],

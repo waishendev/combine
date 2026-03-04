@@ -228,9 +228,10 @@ const defaultReturnSettings = {
 
 type ShopSettingsPageContentProps = {
   canEdit: boolean
+  forcedWorkspace?: Workspace
 }
 
-export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageContentProps) {
+export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: ShopSettingsPageContentProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -260,18 +261,23 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
   const [productReviewsFeedback, setProductReviewsFeedback] = useState<FeedbackState | null>(null)
   const [returnFeedback, setReturnFeedback] = useState<FeedbackState | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
-  const [workspaceType, setWorkspaceType] = useState<Workspace>('ecommerce')
+  const [workspaceType, setWorkspaceType] = useState<Workspace>(forcedWorkspace ?? 'ecommerce')
   const isBookingWorkspace = workspaceType === 'booking'
 
   const withType = useMemo(() => (path: string) => `${path}?type=${workspaceType}`, [workspaceType])
 
   useEffect(() => {
+    if (forcedWorkspace) {
+      setWorkspaceType(forcedWorkspace)
+      return
+    }
+
     const syncWorkspace = () => setWorkspaceType(getWorkspace())
     syncWorkspace()
     window.addEventListener('crm_workspace_changed', syncWorkspace)
 
     return () => window.removeEventListener('crm_workspace_changed', syncWorkspace)
-  }, [])
+  }, [forcedWorkspace])
 
   useEffect(() => {
     const controller = new AbortController()
