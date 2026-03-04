@@ -53,6 +53,11 @@ type ProductSearchHit = {
 
 type ProductSearchMode = 'name' | 'sku'
 
+type CategoryOption = {
+  id: number
+  name: string
+}
+
 type FetchProductOptions = {
   silent?: boolean
   resetHighlight?: boolean
@@ -228,6 +233,7 @@ function extractPaged<T>(json: unknown): PageResponse<T> {
 
 export default function PosPageContent({ currentUser }: { currentUser: PosCurrentUser }) {
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
+  const productsGridRef = useRef<HTMLDivElement | null>(null)
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
@@ -240,6 +246,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const lastScanMessageTimeoutRef = useRef<number | null>(null)
   const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
   const latestProductRequestRef = useRef(0)
+  const previousCategoryIdRef = useRef<number | null>(null)
 
   const [cart, setCart] = useState<Cart | null>(null)
 
@@ -252,6 +259,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [productLoading, setProductLoading] = useState(false)
   const [productHighlighted, setProductHighlighted] = useState(0)
   const [productSelectModalOpen, setProductSelectModalOpen] = useState(false)
+  const [categories, setCategories] = useState<CategoryOption[]>([])
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null)
   const [productVariantLoading, setProductVariantLoading] = useState(false)
@@ -315,6 +324,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return source.trim().toLowerCase()
   }, [debouncedSkuQuery, productQuery, productSearchMode])
   const normalizeSkuSearchValue = useCallback((value: string | null | undefined) => value?.trim().toLowerCase() ?? '', [])
+  const effectiveServerProductQuery = useMemo(
+    () => (productSearchMode === 'sku' ? debouncedSkuQuery.trim() : ''),
+    [debouncedSkuQuery, productSearchMode],
+  )
   const findMatchedVariantSku = useCallback((item: ProductOption, keyword: string) => {
     if (!keyword) return null
 
@@ -879,7 +892,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return Array.from(map.values())
   }
 
-  const fetchProductPage = useCallback(async (page: number, keyword: string, append: boolean, options?: FetchProductOptions) => {
+  const fetchProductPage = useCallback(async (
+    page: number,
+    keyword: string,
+    append: boolean,
+    options?: FetchProductOptions & { categoryId?: number | null },
+  ) => {
     const requestId = latestProductRequestRef.current + 1
     latestProductRequestRef.current = requestId
     const silent = options?.silent ?? false
@@ -894,8 +912,20 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       let currentPage = page
       let lastPage = page
 
+      const normalizedCategoryId = Number(options?.categoryId)
+      const hasCategoryFilter = Number.isFinite(normalizedCategoryId) && normalizedCategoryId > 0
+
       if (keyword.trim()) {
-        const res = await fetch(`/api/proxy/pos/products/search?q=${encodeURIComponent(keyword.trim())}&page=${page}&per_page=100&is_reward_only=false`)
+        const searchParams = new URLSearchParams({
+          q: keyword.trim(),
+          page: String(page),
+          per_page: '100',
+          is_reward_only: 'false',
+        })
+        if (hasCategoryFilter) {
+          searchParams.set('category_id', String(normalizedCategoryId))
+        }
+        const res = await fetch(`/api/proxy/pos/products/search?${searchParams.toString()}`)
         const json = await res.json()
         const paged = extractPaged<ProductOption>(json)
         mapped = paged.data.map((item) => {
@@ -915,6 +945,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         params.set('per_page', '100')
         params.set('is_active', 'true')
         params.set('is_reward_only', 'false')
+        if (hasCategoryFilter) {
+          params.set('category_id', String(normalizedCategoryId))
+        }
 
         const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json()
@@ -990,8 +1023,34 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   useEffect(() => {
     focusScanner()
     void loadCart()
-    // Load products on initial mount
-    void fetchProductPage(1, '', false)
+    const loadCategories = async () => {
+      const params = new URLSearchParams({
+        page: '1',
+        per_page: '200',
+        is_active: 'true',
+      })
+      try {
+        const res = await fetch(`/api/proxy/ecommerce/categories?${params.toString()}`, { cache: 'no-store' })
+        if (!res.ok) {
+          setCategories([])
+          return
+        }
+        const json = await res.json()
+        const paged = extractPaged<{ id?: number | string; name?: string }>(json)
+        const mapped = paged.data
+          .map((item) => {
+            const id = Number(item?.id)
+            if (!Number.isFinite(id) || id <= 0 || !item?.name?.trim()) return null
+            return { id, name: item.name.trim() }
+          })
+          .filter((item): item is CategoryOption => Boolean(item))
+        setCategories(mapped)
+      } catch {
+        setCategories([])
+      }
+    }
+
+    void loadCategories()
     void fetchActiveStaffs()
   }, [fetchActiveStaffs])
 
@@ -1009,23 +1068,46 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [productQuery, productSearchMode])
 
   useEffect(() => {
-    if (productQuery.trim()) return
-
-    const handle = window.setTimeout(() => {
-      void fetchProductPage(1, '', false, { silent: true, resetHighlight: false })
-    }, 150)
-
-    return () => window.clearTimeout(handle)
-  }, [fetchProductPage, productQuery])
+    void fetchProductPage(1, effectiveServerProductQuery, false, { categoryId: selectedCategoryId })
+  }, [effectiveServerProductQuery, fetchProductPage, selectedCategoryId])
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (productQuery.trim() || productSelectModalOpen) return
-      void fetchProductPage(1, '', false, { silent: true, resetHighlight: false })
-    }, 60_000)
+    const previousCategoryId = Number(previousCategoryIdRef.current)
+    if (previousCategoryId !== Number(selectedCategoryId)) {
+      productsGridRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    previousCategoryIdRef.current = selectedCategoryId
+  }, [selectedCategoryId])
 
-    return () => window.clearInterval(timer)
-  }, [fetchProductPage, productQuery, productSelectModalOpen])
+  useEffect(() => {
+    let timeoutId: number | null = null
+    let cancelled = false
+
+    const tick = async () => {
+      if (cancelled) return
+
+      if (!productSelectModalOpen && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        await fetchProductPage(1, effectiveServerProductQuery, false, {
+          silent: true,
+          resetHighlight: false,
+          categoryId: selectedCategoryId,
+        })
+      }
+
+      if (!cancelled) {
+        timeoutId = window.setTimeout(tick, 60_000)
+      }
+    }
+
+    timeoutId = window.setTimeout(tick, 60_000)
+
+    return () => {
+      cancelled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [effectiveServerProductQuery, fetchProductPage, productSelectModalOpen, selectedCategoryId])
 
   useEffect(() => {
     if (!memberOpen) return
@@ -1828,42 +1910,76 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
               Products
+              {productLoading && (
+                <svg className="h-4 w-4 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+              )}
             </h3>
             
-            {/* Search Bar */}
+            {/* Search + Category Filters */}
             <div className="mb-5 space-y-3">
-              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
-                <button
-                  type="button"
-                  onClick={() => setProductSearchMode('name')}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'name' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                >
-                  Search Name
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setProductSearchMode('sku')}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'sku' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                >
-                  Search SKU
-                </button>
+              <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setProductSearchMode('name')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'name' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
+                    Search Name
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProductSearchMode('sku')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'sku' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
+                    Search SKU
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    value={productQuery}
+                    onChange={(e) => setProductQuery(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    placeholder={productSearchMode === 'name' ? 'Search by product name' : 'Search by product SKU'}
+                  />
+                </div>
               </div>
 
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  value={productQuery}
-                  onChange={(e) => setProductQuery(e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  placeholder={productSearchMode === 'name' ? 'Search by product name' : 'Search by product SKU'}
-                />
+              <div className="border-b border-gray-200 pb-2">
+                <div className="flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:thin]">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoryId(null)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${selectedCategoryId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  >
+                    All
+                  </button>
+                  {categories.map((category) => {
+                    const isActive = selectedCategoryId === category.id
+
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setSelectedCategoryId(category.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                      >
+                        {category.name}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
 
             {/* Products Grid */}
-            <div className="grid min-h-[260px] flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
+            <div ref={productsGridRef} className="grid min-h-[260px] flex-1 auto-rows-max content-start grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
               {visibleProductHits.map((hit, idx) => {
                 const item = hit.product
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
@@ -1935,7 +2051,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
                   disabled={productLoading}
-                  onClick={() => void fetchProductPage(productPage + 1, '', true)}
+                  onClick={() => void fetchProductPage(productPage + 1, effectiveServerProductQuery, true, { categoryId: selectedCategoryId })}
                 >
                   {productLoading ? (
                     <span className="flex items-center gap-2">
