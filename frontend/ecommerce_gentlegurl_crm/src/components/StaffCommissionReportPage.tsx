@@ -21,6 +21,9 @@ type SummaryRow = {
   total_commission: number
   orders_count: number
   items_count: number
+  free_items_count: number
+  free_items_snapshot_total: number
+  free_items_effective_total: number
 }
 
 type DetailRow = {
@@ -30,6 +33,8 @@ type DetailRow = {
   product_name: string | null
   qty: number
   item_net_amount: number
+  item_snapshot_amount: number
+  is_staff_free_applied: boolean
   share_percent: number
   staff_item_sales: number
   commission_rate: number
@@ -106,6 +111,9 @@ export default function StaffCommissionReportPage() {
   const [rows, setRows] = useState<SummaryRow[]>([])
   const [grandTotalSales, setGrandTotalSales] = useState(0)
   const [grandTotalCommission, setGrandTotalCommission] = useState(0)
+  const [freeItemsCount, setFreeItemsCount] = useState(0)
+  const [freeItemsSnapshotTotal, setFreeItemsSnapshotTotal] = useState(0)
+  const [freeItemsEffectiveTotal, setFreeItemsEffectiveTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
 
@@ -155,6 +163,9 @@ export default function StaffCommissionReportPage() {
         setRows([])
         setGrandTotalSales(0)
         setGrandTotalCommission(0)
+        setFreeItemsCount(0)
+        setFreeItemsSnapshotTotal(0)
+        setFreeItemsEffectiveTotal(0)
         return
       }
 
@@ -162,6 +173,9 @@ export default function StaffCommissionReportPage() {
       setRows(Array.isArray(json?.rows) ? json.rows : [])
       setGrandTotalSales(Number(json?.grand_total_sales ?? 0))
       setGrandTotalCommission(Number(json?.grand_total_commission ?? 0))
+      setFreeItemsCount(Number(json?.free_items_count ?? 0))
+      setFreeItemsSnapshotTotal(Number(json?.free_items_snapshot_total ?? 0))
+      setFreeItemsEffectiveTotal(Number(json?.free_items_effective_total ?? 0))
     } finally {
       setLoading(false)
     }
@@ -397,6 +411,14 @@ export default function StaffCommissionReportPage() {
         </div>
       )}
 
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <Card label="Grand Total Sales" value={`RM ${money(grandTotalSales)}`} color="indigo" />
+        <Card label="Grand Total Commission" value={`RM ${money(grandTotalCommission)}`} color="teal" />
+        <Card label="Free Items Count" value={String(freeItemsCount)} color="orange" />
+        <Card label="Free Items Value (Snapshot)" value={`RM ${money(freeItemsSnapshotTotal)}`} color="purple" />
+        <Card label="Free Items Actual (Effective)" value={`RM ${money(freeItemsEffectiveTotal)}`} color="emerald" />
+      </div>
+
       <div className="bg-white shadow rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
@@ -413,6 +435,15 @@ export default function StaffCommissionReportPage() {
               <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
                 Total Commission
               </th>
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
+                Free Count
+              </th>
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
+                Free Snapshot
+              </th>
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
+                Free Effective
+              </th>
               <th className="px-4 py-2 font-semibold text-center text-gray-600 tracking-wider">
                 Actions
               </th>
@@ -420,9 +451,9 @@ export default function StaffCommissionReportPage() {
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={5} />
+              <TableLoadingRow colSpan={10} />
             ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={5} />
+              <TableEmptyState colSpan={10} />
             ) : (
               rows.map((row) => (
                 <tr key={row.staff_id}>
@@ -437,6 +468,15 @@ export default function StaffCommissionReportPage() {
                   </td>
                   <td className="px-4 py-2 border border-gray-200 text-right">
                     RM {money(Number(row.total_commission))}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200 text-right">
+                    {row.free_items_count}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200 text-right">
+                    RM {money(Number(row.free_items_snapshot_total))}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200 text-right">
+                    RM {money(Number(row.free_items_effective_total))}
                   </td>
                   <td className="px-4 py-2 border border-gray-200 text-center">
                     <button
@@ -462,6 +502,15 @@ export default function StaffCommissionReportPage() {
               </td>
               <td className="border border-gray-300 px-4 py-2 text-right">
                 RM {money(grandTotalCommission)}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-right">
+                {freeItemsCount}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-right">
+                RM {money(freeItemsSnapshotTotal)}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-right">
+                RM {money(freeItemsEffectiveTotal)}
               </td>
               <td className="border border-gray-300 px-4 py-2" />
             </tr>
@@ -559,7 +608,13 @@ export default function StaffCommissionReportPage() {
                             Qty
                           </th>
                           <th className="px-4 py-2 font-semibold text-right text-gray-700">
-                            Total
+                            Snapshot
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                            Effective
+                          </th>
+                          <th className="px-4 py-2 font-semibold text-left text-gray-700">
+                            Staff-Free
                           </th>
                           <th className="px-4 py-2 font-semibold text-right text-gray-700">
                             Share %
@@ -574,9 +629,9 @@ export default function StaffCommissionReportPage() {
                       </thead>
                       <tbody>
                         {detailLoading ? (
-                          <TableLoadingRow colSpan={8} />
+                          <TableLoadingRow colSpan={10} />
                         ) : detailRows.length === 0 ? (
-                          <TableEmptyState colSpan={8} />
+                          <TableEmptyState colSpan={10} />
                         ) : (
                           detailRows.map((row, index) => (
                             <tr key={`${row.order_id}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
@@ -601,7 +656,13 @@ export default function StaffCommissionReportPage() {
                                 {row.qty}
                               </td>
                               <td className="px-4 py-2 text-right">
+                                RM {money(Number(row.item_snapshot_amount))}
+                              </td>
+                              <td className="px-4 py-2 text-right">
                                 RM {money(Number(row.item_net_amount))}
+                              </td>
+                              <td className="px-4 py-2">
+                                {row.is_staff_free_applied ? 'Yes' : 'No'}
                               </td>
                               <td className="px-4 py-2 text-right">
                                 {row.share_percent}%
@@ -624,6 +685,41 @@ export default function StaffCommissionReportPage() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+
+function Card({ label, value, color = 'gray' }: { label: string; value: string; color?: string }) {
+  const colorClasses = {
+    blue: 'border-blue-100 bg-blue-50 text-blue-600',
+    purple: 'border-purple-100 bg-purple-50 text-purple-600',
+    emerald: 'border-emerald-100 bg-emerald-50 text-emerald-600',
+    orange: 'border-orange-100 bg-orange-50 text-orange-600',
+    indigo: 'border-indigo-100 bg-indigo-50 text-indigo-600',
+    teal: 'border-teal-100 bg-teal-50 text-teal-600',
+    pink: 'border-pink-100 bg-pink-50 text-pink-600',
+    gray: 'border-gray-100 bg-gray-50 text-gray-600',
+  }
+
+  const valueColorClasses = {
+    blue: 'text-blue-900',
+    purple: 'text-purple-900',
+    emerald: 'text-emerald-700',
+    orange: 'text-orange-900',
+    indigo: 'text-indigo-900',
+    teal: 'text-teal-700',
+    pink: 'text-pink-900',
+    gray: 'text-gray-900',
+  }
+
+  const classes = colorClasses[color as keyof typeof colorClasses] || colorClasses.gray
+  const valueClasses = valueColorClasses[color as keyof typeof valueColorClasses] || valueColorClasses.gray
+
+  return (
+    <div className={`rounded-xl border ${classes} px-4 py-3 shadow-sm`}>
+      <p className="text-xs font-semibold">{label}</p>
+      <p className={`mt-1 text-lg font-bold ${valueClasses}`}>{value}</p>
     </div>
   )
 }
