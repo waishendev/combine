@@ -7,9 +7,10 @@ use Illuminate\Http\Request;
 
 class SeoGlobalController extends Controller
 {
-    public function show()
+    public function show(Request $request)
     {
-        $seo = SeoGlobal::first();
+        $type = $this->resolveType($request);
+        $seo = SeoGlobal::query()->where('type', $type)->first();
 
         return $this->respond($seo ?? [
             'default_title' => null,
@@ -21,6 +22,7 @@ class SeoGlobalController extends Controller
 
     public function update(Request $request)
     {
+        $type = $this->resolveType($request);
         $validated = $request->validate([
             'default_title' => ['nullable', 'string', 'max:255'],
             'default_description' => ['nullable', 'string'],
@@ -28,14 +30,21 @@ class SeoGlobalController extends Controller
             'default_og_image' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $seo = SeoGlobal::query()->first();
+        $seo = SeoGlobal::query()->where('type', $type)->first();
 
         if ($seo) {
             $seo->update($validated);
         } else {
-            $seo = SeoGlobal::create($validated);
+            $seo = SeoGlobal::create(array_merge($validated, ['type' => $type]));
         }
 
         return $this->respond($seo, __('SEO settings updated successfully.'));
+    }
+
+    private function resolveType(Request $request): string
+    {
+        $type = strtolower((string) $request->query('type', $request->input('type', 'ecommerce')));
+
+        return in_array($type, ['ecommerce', 'booking'], true) ? $type : 'ecommerce';
     }
 }

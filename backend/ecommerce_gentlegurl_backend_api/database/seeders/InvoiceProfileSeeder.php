@@ -9,21 +9,23 @@ class InvoiceProfileSeeder extends Seeder
 {
     public function run(): void
     {
-        Setting::updateOrCreate(
-            ['key' => 'ecommerce.invoice_profile'],
-            [
-                'value' => [
-                    'company_logo_url' => null,
-                    'company_name' => 'Gentlegurl Shop',
-                    'company_reg_no' => null,
-                    'company_address' => "123 Gentle Lane\nKuala Lumpur\nMalaysia",
-                    'company_phone' => null,
-                    'company_email' => null,
-                    'company_website' => null,
-                    'footer_note' => 'This is a computer-generated invoice.',
-                    'currency' => 'MYR',
-                ],
-            ]
-        );
+        $value = [
+            'company_logo_url' => null,
+            'company_name' => 'Gentlegurl Shop',
+            'company_reg_no' => null,
+            'company_address' => "123 Gentle Lane\nKuala Lumpur\nMalaysia",
+            'company_phone' => null,
+            'company_email' => null,
+            'company_website' => null,
+            'footer_note' => 'This is a computer-generated invoice.',
+            'currency' => 'MYR',
+        ];
+
+        foreach (['ecommerce', 'booking'] as $type) {
+            Setting::updateOrCreate(
+                ['type' => $type, 'key' => 'ecommerce.invoice_profile'],
+                ['value' => $value]
+            );
+        }
     }
 }

@@ -15,8 +15,10 @@ class ShopSettingController extends Controller
      * 返回当前支持的所有 shop 设置
      * GET /api/ecommerce/shop-settings
      */
-    public function index()
+    public function index(Request $request)
     {
+        $type = $this->resolveType($request);
+
         $data = [
             'shop_contact_widget' => SettingService::get('shop_contact_widget', [
                 'whatsapp' => [
@@ -24,23 +26,23 @@ class ShopSettingController extends Controller
                     'phone' => null,
                     'default_message' => null,
                 ],
-            ]),
+            ], $type),
             'homepage_products' => SettingService::get('homepage_products', [
                 'new_products_days' => 30,
                 'best_sellers_days' => 60,
-            ]),
-            'shipping' => SettingService::get('shipping', $this->defaultShippingSetting()),
-            'footer' => SettingService::get('footer', $this->defaultFooterSetting()),
-            'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting()),
+            ], $type),
+            'shipping' => SettingService::get('shipping', $this->defaultShippingSetting(), $type),
+            'footer' => SettingService::get('footer', $this->defaultFooterSetting(), $type),
+            'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting(), $type),
             'page_reviews' => SettingService::get('page_reviews', [
                 'enabled' => true,
-            ]),
+            ], $type),
             'product_reviews' => SettingService::get('product_reviews', [
                 'enabled' => true,
                 'review_window_days' => 30,
-            ]),
-            'return_window_days' => (int) SettingService::get('ecommerce.return_window_days', 7),
-            'return_tracking_submit_days' => (int) SettingService::get('ecommerce.return_tracking_submit_days', 7),
+            ], $type),
+            'return_window_days' => (int) SettingService::get('ecommerce.return_window_days', 7, $type),
+            'return_tracking_submit_days' => (int) SettingService::get('ecommerce.return_tracking_submit_days', 7, $type),
         ];
 
         return response()->json([
@@ -58,7 +60,7 @@ class ShopSettingController extends Controller
      * - shop_contact_widget
      * - homepage_products
      */
-    public function show(string $key)
+    public function show(Request $request, string $key)
     {
         if (! in_array($key, ['shop_contact_widget', 'homepage_products', 'shipping', 'footer', 'invoice_profile', 'page_reviews', 'product_reviews', 'ecommerce.return_window_days', 'ecommerce.return_tracking_submit_days'], true)) {
             return response()->json([
@@ -94,9 +96,11 @@ class ShopSettingController extends Controller
             'ecommerce.return_tracking_submit_days' => 7,
         ];
 
+        $type = $this->resolveType($request);
+
         $settingKey = $this->resolveSettingKey($key);
         $defaultKey = $settingKey === 'ecommerce.invoice_profile' ? 'invoice_profile' : $key;
-        $value = SettingService::get($settingKey, $defaultValues[$defaultKey]);
+        $value = SettingService::get($settingKey, $defaultValues[$defaultKey], $type);
 
         return response()->json([
             'data' => [
@@ -165,9 +169,12 @@ class ShopSettingController extends Controller
                 ]);
         }
 
+        $type = $this->resolveType($request);
+
         $settingKey = $this->resolveSettingKey($key);
+
         $setting = Setting::updateOrCreate(
-            ['key' => $settingKey],
+            ['type' => $type, 'key' => $settingKey],
             ['value' => $data]
         );
 
@@ -496,6 +503,14 @@ class ShopSettingController extends Controller
                 'default_fee' => 0,
             ],
         ];
+    }
+
+
+    protected function resolveType(Request $request): string
+    {
+        $type = strtolower((string) $request->query('type', $request->input('type', 'ecommerce')));
+
+        return in_array($type, ['ecommerce', 'booking'], true) ? $type : 'ecommerce';
     }
 
     protected function resolveSettingKey(string $key): string

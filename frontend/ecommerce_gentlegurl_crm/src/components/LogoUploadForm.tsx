@@ -2,6 +2,8 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
+import { getWorkspace, type Workspace } from '@/lib/workspace'
+
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 type BrandingPayload = {
@@ -55,6 +57,7 @@ export default function LogoUploadForm({
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const storageKey = `branding.${logoKey}`
+  const [workspaceType, setWorkspaceType] = useState<Workspace>('ecommerce')
 
   const currentLogo = previewUrl ?? logoUrl
 
@@ -85,6 +88,14 @@ export default function LogoUploadForm({
   }, [logoKey, recommendation])
 
   useEffect(() => {
+    const syncWorkspace = () => setWorkspaceType(getWorkspace())
+    syncWorkspace()
+    window.addEventListener('crm_workspace_changed', syncWorkspace)
+
+    return () => window.removeEventListener('crm_workspace_changed', syncWorkspace)
+  }, [])
+
+  useEffect(() => {
     let abort = false
     const controller = new AbortController()
 
@@ -96,7 +107,7 @@ export default function LogoUploadForm({
             setLogoUrl(cachedLogo)
           }
         }
-        const response = await fetch('/api/proxy/ecommerce/branding', {
+        const response = await fetch(`/api/proxy/ecommerce/branding?type=${workspaceType}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -136,7 +147,7 @@ export default function LogoUploadForm({
       abort = true
       controller.abort()
     }
-  }, [logoKey])
+  }, [logoKey, workspaceType])
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -166,8 +177,9 @@ export default function LogoUploadForm({
     try {
       const formData = new FormData()
       formData.append('logo_file', logoFile)
+      formData.append('type', workspaceType)
 
-      const response = await fetch(uploadEndpoint, {
+      const response = await fetch(`${uploadEndpoint}?type=${workspaceType}`, {
         method: 'POST',
         body: formData,
       })

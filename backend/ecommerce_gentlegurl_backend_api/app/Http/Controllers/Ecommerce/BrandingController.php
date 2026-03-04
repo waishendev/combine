@@ -14,9 +14,10 @@ class BrandingController extends Controller
 {
     private const BRANDING_KEY = 'branding';
 
-    public function show(): JsonResponse
+    public function show(Request $request): JsonResponse
     {
-        $branding = SettingService::get(self::BRANDING_KEY, $this->defaultBranding());
+        $type = $this->resolveType($request);
+        $branding = SettingService::get(self::BRANDING_KEY, $this->defaultBranding(), $type);
 
         return response()->json([
             'success' => true,
@@ -32,8 +33,11 @@ class BrandingController extends Controller
 
     public function uploadShopLogo(Request $request): JsonResponse
     {
+        $type = $this->resolveType($request);
+
         return $this->uploadBrandingFile(
             $request,
+            $type,
             'shop_logo_path',
             'shop-logo',
             ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
@@ -43,8 +47,11 @@ class BrandingController extends Controller
 
     public function uploadCrmLogo(Request $request): JsonResponse
     {
+        $type = $this->resolveType($request);
+
         return $this->uploadBrandingFile(
             $request,
+            $type,
             'crm_logo_path',
             'crm-logo',
             ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
@@ -54,8 +61,11 @@ class BrandingController extends Controller
 
     public function uploadShopFavicon(Request $request): JsonResponse
     {
+        $type = $this->resolveType($request);
+
         return $this->uploadBrandingFile(
             $request,
+            $type,
             'shop_favicon_path',
             'shop-favicon',
             ['required', 'mimes:png,ico', 'max:2048'],
@@ -65,8 +75,11 @@ class BrandingController extends Controller
 
     public function uploadCrmFavicon(Request $request): JsonResponse
     {
+        $type = $this->resolveType($request);
+
         return $this->uploadBrandingFile(
             $request,
+            $type,
             'crm_favicon_path',
             'crm-favicon',
             ['required', 'mimes:png,ico', 'max:2048'],
@@ -76,6 +89,7 @@ class BrandingController extends Controller
 
     private function uploadBrandingFile(
         Request $request,
+        string $type,
         string $key,
         string $prefix,
         array $rules,
@@ -86,7 +100,7 @@ class BrandingController extends Controller
             'logo_file' => $rules,
         ]);
 
-        $branding = SettingService::get(self::BRANDING_KEY, $this->defaultBranding());
+        $branding = SettingService::get(self::BRANDING_KEY, $this->defaultBranding(), $type);
         $existingPath = $branding[$key] ?? null;
 
         if ($request->hasFile('logo_file')) {
@@ -102,7 +116,7 @@ class BrandingController extends Controller
             }
 
             $branding[$key] = $path;
-            SettingService::set(self::BRANDING_KEY, $branding);
+            SettingService::set(self::BRANDING_KEY, $branding, $type);
 
             Cache::forget('public_homepage_v2');
             Cache::forget('public_homepage_v1');
@@ -128,6 +142,13 @@ class BrandingController extends Controller
             'shop_favicon_path' => null,
             'crm_favicon_path' => null,
         ];
+    }
+
+    private function resolveType(Request $request): string
+    {
+        $type = strtolower((string) $request->query('type', $request->input('type', 'ecommerce')));
+
+        return in_array($type, ['ecommerce', 'booking'], true) ? $type : 'ecommerce';
     }
 
     private function resolveLogoUrl(?string $path): ?string

@@ -9,9 +9,9 @@ class SettingSeeder extends Seeder
 {
     public function run(): void
     {
-        Setting::updateOrCreate(
-            ['key' => 'shop_contact_widget'],
+        $rows = [
             [
+                'key' => 'shop_contact_widget',
                 'value' => [
                     'whatsapp' => [
                         'enabled' => true,
@@ -19,47 +19,22 @@ class SettingSeeder extends Seeder
                         'default_message' => 'Hi, I’d like to enquire about your nail & waxing services and beauty cosmetic products.',
                     ],
                 ],
-            ]
-        );
+            ],
+            ['key' => 'new_products', 'value' => ['days' => 30]],
+            ['key' => 'best_sellers', 'value' => ['days' => 60]],
+            ['key' => 'page_reviews', 'value' => ['enabled' => true]],
+            ['key' => 'product_reviews', 'value' => ['enabled' => true, 'review_window_days' => 30]],
+            ['key' => 'ecommerce.return_window_days', 'value' => 7],
+            ['key' => 'ecommerce.return_tracking_submit_days', 'value' => 7],
+        ];
 
-        // Setting::updateOrCreate(
-        //     ['key' => 'homepage_products'],
-        //     [
-        //         'value' => [
-        //             'new_products_days' => 30,
-        //             'best_sellers_days' => 60,
-        //         ],
-        //     ]
-        // );
-
-        Setting::updateOrCreate(
-            ['key' => 'new_products'],
-            ['value' => ['days' => 30]]
-        );
-
-        Setting::updateOrCreate(
-            ['key' => 'best_sellers'],
-            ['value' => ['days' => 60]]
-        );
-
-        Setting::updateOrCreate(
-            ['key' => 'page_reviews'],
-            ['value' => ['enabled' => true]]
-        );
-
-        Setting::updateOrCreate(
-            ['key' => 'product_reviews'],
-            ['value' => ['enabled' => true, 'review_window_days' => 30]]
-        );
-
-        Setting::updateOrCreate(
-            ['key' => 'ecommerce.return_window_days'],
-            ['value' => 7]
-        );
-
-        Setting::updateOrCreate(
-            ['key' => 'ecommerce.return_tracking_submit_days'],
-            ['value' => 7]
-        );
+        foreach (['ecommerce', 'booking'] as $type) {
+            foreach ($rows as $row) {
+                Setting::updateOrCreate(
+                    ['type' => $type, 'key' => $row['key']],
+                    ['value' => $row['value']]
+                );
+            }
+        }
     }
 }

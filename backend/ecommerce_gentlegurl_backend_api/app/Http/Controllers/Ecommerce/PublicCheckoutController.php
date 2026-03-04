@@ -900,7 +900,7 @@ class PublicCheckoutController extends Controller
                 $shippingFee = 0;
                 $shippingInfo = null;
             } else {
-                $shippingSetting = Setting::where('key', 'shipping')->first();
+                $shippingSetting = Setting::where('type', 'ecommerce')->where('key', 'shipping')->first();
                 $shippingConfig = (array) data_get($shippingSetting?->value, []);
                 $shippingResult = $this->shippingService->calculateShippingFee(
                     $subtotal,

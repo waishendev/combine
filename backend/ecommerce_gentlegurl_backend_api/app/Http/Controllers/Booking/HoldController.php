@@ -38,7 +38,7 @@ class HoldController extends Controller
         $startAt = Carbon::parse($validated['start_at']);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 
-        $holdMinutes = (int) (Setting::where('key', 'BOOKING_HOLD_MINUTES')->value('value') ?? 15);
+        $holdMinutes = (int) (Setting::where('type', 'booking')->where('key', 'BOOKING_HOLD_MINUTES')->value('value') ?? 15);
 
         $booking = DB::transaction(function () use ($validated, $customer, $service, $startAt, $endAt, $holdMinutes) {
             if ($this->availabilityService->hasConflict((int) $validated['staff_id'], $startAt, $endAt, (int) $service->buffer_min)) {

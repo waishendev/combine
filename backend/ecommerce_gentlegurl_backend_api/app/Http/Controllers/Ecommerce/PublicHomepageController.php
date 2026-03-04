@@ -146,7 +146,7 @@ class PublicHomepageController extends Controller
                 ->limit(20)
                 ->get();
 
-            $seoGlobal = SeoGlobal::query()->first();
+            $seoGlobal = SeoGlobal::query()->where('type', 'ecommerce')->first();
 
             $seo = null;
             if ($seoGlobal) {

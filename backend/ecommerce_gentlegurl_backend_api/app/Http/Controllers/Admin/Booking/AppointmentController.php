@@ -221,7 +221,7 @@ class AppointmentController extends Controller
 
     private function getVoucherSettings(): array
     {
-        return Setting::where('key', 'BOOKING_NOTIFIED_CANCELLATION_VOUCHER')
+        return Setting::where('type', 'booking')->where('key', 'BOOKING_NOTIFIED_CANCELLATION_VOUCHER')
             ->value('value') ?? [
                 'enabled' => false,
                 'reward_type' => 'PERCENT',

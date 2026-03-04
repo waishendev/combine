@@ -1,6 +1,8 @@
 'use client'
 
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+
+import { getWorkspace, type Workspace } from '@/lib/workspace'
 
 type ShopSettingsResponse = {
   data?: {
@@ -258,6 +260,18 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
   const [productReviewsFeedback, setProductReviewsFeedback] = useState<FeedbackState | null>(null)
   const [returnFeedback, setReturnFeedback] = useState<FeedbackState | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [workspaceType, setWorkspaceType] = useState<Workspace>('ecommerce')
+  const isBookingWorkspace = workspaceType === 'booking'
+
+  const withType = useMemo(() => (path: string) => `${path}?type=${workspaceType}`, [workspaceType])
+
+  useEffect(() => {
+    const syncWorkspace = () => setWorkspaceType(getWorkspace())
+    syncWorkspace()
+    window.addEventListener('crm_workspace_changed', syncWorkspace)
+
+    return () => window.removeEventListener('crm_workspace_changed', syncWorkspace)
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -265,7 +279,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     const fetchSettings = async () => {
       try {
         setError(null)
-        const response = await fetch('/api/ecommerce/shop-settings', {
+        const response = await fetch(withType('/api/ecommerce/shop-settings'), {
           method: 'GET',
           cache: 'no-store',
           signal: controller.signal,
@@ -429,7 +443,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     fetchSettings()
 
     return () => controller.abort()
-  }, [])
+  }, [withType])
 
   const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -439,12 +453,13 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     setContactFeedback(null)
 
     try {
-      const response = await fetch('/api/ecommerce/shop-settings/shop_contact_widget', {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/shop_contact_widget'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           whatsapp: {
             enabled: contactSettings.enabled,
             phone: contactSettings.phone,
@@ -483,12 +498,13 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     setHomepageFeedback(null)
 
     try {
-      const response = await fetch('/api/ecommerce/shop-settings/homepage_products', {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/homepage_products'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           new_products_days: Number(homepageSettings.new_products_days) || 0,
           best_sellers_days: Number(homepageSettings.best_sellers_days) || 0,
         }),
@@ -524,12 +540,13 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     setShippingFeedback(null)
 
     try {
-      const response = await fetch('/api/ecommerce/shop-settings/shipping', {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/shipping'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           enabled: shippingSettings.enabled,
           currency: shippingSettings.currency,
           label: shippingSettings.label,
@@ -611,12 +628,13 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     setFooterFeedback(null)
 
     try {
-      const response = await fetch('/api/ecommerce/shop-settings/footer', {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/footer'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           enabled: footerSettings.enabled,
           about_text: footerSettings.about_text,
           contact: {
@@ -668,12 +686,13 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     setInvoiceProfileFeedback(null)
 
     try {
-      const response = await fetch('/api/ecommerce/shop-settings/invoice_profile', {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/invoice_profile'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           company_logo_url: invoiceProfileSettings.company_logo_url || null,
           company_name: invoiceProfileSettings.company_name,
           company_reg_no: invoiceProfileSettings.company_reg_no || null,
@@ -716,12 +735,13 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     setPageReviewsFeedback(null)
 
     try {
-      const response = await fetch('/api/ecommerce/shop-settings/page_reviews', {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/page_reviews'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           enabled: pageReviewsSettings.enabled,
         }),
       })
@@ -756,12 +776,13 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     setProductReviewsFeedback(null)
 
     try {
-      const response = await fetch('/api/ecommerce/shop-settings/product_reviews', {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/product_reviews'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           enabled: productReviewsSettings.enabled,
           review_window_days: Number(productReviewsSettings.review_window_days) || 0,
         }),
@@ -797,12 +818,13 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
     setReturnFeedback(null)
 
     try {
-      const windowResponse = await fetch('/api/ecommerce/shop-settings/ecommerce.return_window_days', {
+      const windowResponse = await fetch(withType('/api/ecommerce/shop-settings/ecommerce.return_window_days'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           value: Number(returnSettings.return_window_days) || defaultReturnSettings.return_window_days,
         }),
       })
@@ -819,6 +841,7 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
+          type: workspaceType,
             value:
               Number(returnSettings.return_tracking_submit_days) ||
               defaultReturnSettings.return_tracking_submit_days,
@@ -1426,6 +1449,8 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
         </form>
       </section>
 
+      {!isBookingWorkspace && (
+      <>
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
@@ -2101,6 +2126,8 @@ export default function ShopSettingsPageContent({ canEdit }: ShopSettingsPageCon
           </div>
         </form>
       </section>
+      </>
+      )}
     </div>
   )
 }
