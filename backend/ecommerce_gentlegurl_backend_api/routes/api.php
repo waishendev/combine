@@ -643,11 +643,9 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.vouchers.assign.logs.view');
 
         // SEO Global
-        Route::get('/seo-global', [SeoGlobalController::class, 'show'])
-            ->middleware('permission:ecommerce.seo.view|booking.seo.view');
+        Route::get('/seo-global', [SeoGlobalController::class, 'show']);
 
-        Route::put('/seo-global', [SeoGlobalController::class, 'update'])
-            ->middleware('permission:ecommerce.seo.update|booking.seo.view');
+        Route::put('/seo-global', [SeoGlobalController::class, 'update']);
 
         // Loyalty Settings
         Route::get('/loyalty-settings', [LoyaltySettingController::class, 'index'])
@@ -718,30 +716,22 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.loyalty.redemptions.update');
 
         // Shop Settings
-        Route::get('/shop-settings', [ShopSettingController::class, 'index'])
-            ->middleware('permission:ecommerce.settings.view|booking.settings.view');
+        Route::get('/shop-settings', [ShopSettingController::class, 'index']);
 
-        Route::get('/shop-settings/{key}', [ShopSettingController::class, 'show'])
-            ->middleware('permission:ecommerce.settings.view|booking.settings.view');
+        Route::get('/shop-settings/{key}', [ShopSettingController::class, 'show']);
 
-        Route::put('/shop-settings/{key}', [ShopSettingController::class, 'update'])
-            ->middleware('permission:ecommerce.settings.update|booking.settings.view');
+        Route::put('/shop-settings/{key}', [ShopSettingController::class, 'update']);
 
         // Branding (logos)
-        Route::get('/branding', [BrandingController::class, 'show'])
-            ->middleware('permission:ecommerce.settings.view|booking.settings.view');
+        Route::get('/branding', [BrandingController::class, 'show']);
 
-        Route::post('/branding/shop-logo', [BrandingController::class, 'uploadShopLogo'])
-            ->middleware('permission:ecommerce.settings.update|booking.settings.view');
+        Route::post('/branding/shop-logo', [BrandingController::class, 'uploadShopLogo']);
 
-        Route::post('/branding/crm-logo', [BrandingController::class, 'uploadCrmLogo'])
-            ->middleware('permission:ecommerce.settings.update|booking.settings.view');
+        Route::post('/branding/crm-logo', [BrandingController::class, 'uploadCrmLogo']);
 
-        Route::post('/branding/shop-favicon', [BrandingController::class, 'uploadShopFavicon'])
-            ->middleware('permission:ecommerce.settings.update|booking.settings.view');
+        Route::post('/branding/shop-favicon', [BrandingController::class, 'uploadShopFavicon']);
 
-        Route::post('/branding/crm-favicon', [BrandingController::class, 'uploadCrmFavicon'])
-            ->middleware('permission:ecommerce.settings.update|booking.settings.view');
+        Route::post('/branding/crm-favicon', [BrandingController::class, 'uploadCrmFavicon']);
 
         // Promotions Admin
         Route::get('/promotions', [PromotionController::class, 'index'])

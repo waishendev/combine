@@ -200,7 +200,7 @@ class RoleController extends Controller
     private function ensureNotSystemRole(Role $role, ?User $user = null, bool $allowSuperAdmin = false): void
     {
         if ($role->is_system) {
-            if ($allowSuperAdmin && $user && $user->isSuperAdmin()) {
+            if ($allowSuperAdmin && $user && ($user->isSuperAdmin() || $user->canManageSystemAdmins())) {
                 return;
             }
             abort(404);
