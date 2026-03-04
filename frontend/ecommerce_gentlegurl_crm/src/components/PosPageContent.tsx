@@ -324,10 +324,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return source.trim().toLowerCase()
   }, [debouncedSkuQuery, productQuery, productSearchMode])
   const normalizeSkuSearchValue = useCallback((value: string | null | undefined) => value?.trim().toLowerCase() ?? '', [])
-  const selectedCategory = useMemo(
-    () => categories.find((category) => category.id === selectedCategoryId) ?? null,
-    [categories, selectedCategoryId],
-  )
   const effectiveServerProductQuery = useMemo(
     () => (productSearchMode === 'sku' ? debouncedSkuQuery.trim() : ''),
     [debouncedSkuQuery, productSearchMode],
@@ -1922,26 +1918,26 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               )}
             </h3>
             
-            {/* Search Bar */}
+            {/* Search + Category Filters */}
             <div className="mb-5 space-y-3">
-              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
-                <button
-                  type="button"
-                  onClick={() => setProductSearchMode('name')}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'name' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                >
-                  Search Name
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setProductSearchMode('sku')}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'sku' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                >
-                  Search SKU
-                </button>
-              </div>
+              <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setProductSearchMode('name')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'name' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
+                    Search Name
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProductSearchMode('sku')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'sku' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
+                    Search SKU
+                  </button>
+                </div>
 
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
                 <div className="relative">
                   <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1953,42 +1949,37 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     placeholder={productSearchMode === 'name' ? 'Search by product name' : 'Search by product SKU'}
                   />
                 </div>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Category</span>
-                  <select
-                    value={selectedCategoryId ?? ''}
-                    onChange={(e) => setSelectedCategoryId(e.target.value ? Number(e.target.value) : null)}
-                    className="rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  >
-                    <option value="">All</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
               </div>
 
-              {selectedCategory && (
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                    Category: {selectedCategory.name}
-                  </span>
+              <div className="border-b border-gray-200 pb-2">
+                <div className="flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:thin]">
                   <button
                     type="button"
                     onClick={() => setSelectedCategoryId(null)}
-                    className="text-xs font-semibold text-gray-500 hover:text-gray-700"
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${selectedCategoryId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                   >
-                    Clear ×
+                    All
                   </button>
+                  {categories.map((category) => {
+                    const isActive = selectedCategoryId === category.id
+
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setSelectedCategoryId(category.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                      >
+                        {category.name}
+                      </button>
+                    )
+                  })}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Products Grid */}
-            <div ref={productsGridRef} className="grid min-h-[260px] flex-1 grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
+            <div ref={productsGridRef} className="grid min-h-[260px] flex-1 auto-rows-max content-start grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
               {visibleProductHits.map((hit, idx) => {
                 const item = hit.product
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
