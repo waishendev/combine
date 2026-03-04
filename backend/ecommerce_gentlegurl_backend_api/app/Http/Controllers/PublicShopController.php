@@ -148,6 +148,7 @@ class PublicShopController extends Controller
             'video',
         ])
             ->where('is_active', true)
+            ->where('is_hidden_in_shop', false)
             ->where('is_reward_only', false);
 
         $menuId = $request->query('menu_id');
@@ -407,6 +408,7 @@ class PublicShopController extends Controller
 
         $product = $productQuery
             ->where('is_active', true)
+            ->where('is_hidden_in_shop', false)
             ->when(!$allowRewardOnly, fn($query) => $query->where('is_reward_only', false))
             ->firstOrFail();
 
@@ -432,6 +434,7 @@ class PublicShopController extends Controller
         if (!$product->is_reward_only) {
             $relatedProducts = Product::with(['images', 'categories'])
                 ->where('is_active', true)
+                ->where('is_hidden_in_shop', false)
                 ->where('id', '!=', $product->id)
                 ->whereHas('categories', function ($query) use ($product) {
                     $query->whereIn('categories.id', $product->categories->pluck('id'));

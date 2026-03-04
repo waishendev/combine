@@ -36,10 +36,15 @@ class OrderItem extends Model
             'price_snapshot' => 'decimal:2',
             'variant_price_snapshot' => 'decimal:2',
             'variant_cost_snapshot' => 'decimal:2',
+            'unit_price_snapshot' => 'decimal:2',
+            'line_total_snapshot' => 'decimal:2',
+            'effective_unit_price' => 'decimal:2',
+            'effective_line_total' => 'decimal:2',
             'quantity' => 'integer',
             'line_total' => 'decimal:2',
             'is_package' => 'boolean',
             'is_reward' => 'boolean',
+            'is_staff_free_applied' => 'boolean',
             'locked' => 'boolean',
         ];
     }
