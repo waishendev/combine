@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 
@@ -21,8 +20,6 @@ type SummaryRow = {
   total_commission: number
   orders_count: number
   items_count: number
-  free_items_count: number
-  free_items_snapshot_total: number
   free_items_effective_total: number
 }
 
@@ -33,8 +30,6 @@ type DetailRow = {
   product_name: string | null
   qty: number
   item_net_amount: number
-  item_snapshot_amount: number
-  is_staff_free_applied: boolean
   share_percent: number
   staff_item_sales: number
   commission_rate: number
@@ -111,9 +106,6 @@ export default function StaffCommissionReportPage() {
   const [rows, setRows] = useState<SummaryRow[]>([])
   const [grandTotalSales, setGrandTotalSales] = useState(0)
   const [grandTotalCommission, setGrandTotalCommission] = useState(0)
-  const [freeItemsCount, setFreeItemsCount] = useState(0)
-  const [freeItemsSnapshotTotal, setFreeItemsSnapshotTotal] = useState(0)
-  const [freeItemsEffectiveTotal, setFreeItemsEffectiveTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
 
@@ -163,9 +155,6 @@ export default function StaffCommissionReportPage() {
         setRows([])
         setGrandTotalSales(0)
         setGrandTotalCommission(0)
-        setFreeItemsCount(0)
-        setFreeItemsSnapshotTotal(0)
-        setFreeItemsEffectiveTotal(0)
         return
       }
 
@@ -173,9 +162,6 @@ export default function StaffCommissionReportPage() {
       setRows(Array.isArray(json?.rows) ? json.rows : [])
       setGrandTotalSales(Number(json?.grand_total_sales ?? 0))
       setGrandTotalCommission(Number(json?.grand_total_commission ?? 0))
-      setFreeItemsCount(Number(json?.free_items_count ?? 0))
-      setFreeItemsSnapshotTotal(Number(json?.free_items_snapshot_total ?? 0))
-      setFreeItemsEffectiveTotal(Number(json?.free_items_effective_total ?? 0))
     } finally {
       setLoading(false)
     }
@@ -411,12 +397,9 @@ export default function StaffCommissionReportPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-2">
         <Card label="Grand Total Sales" value={`RM ${money(grandTotalSales)}`} color="indigo" />
         <Card label="Grand Total Commission" value={`RM ${money(grandTotalCommission)}`} color="teal" />
-        <Card label="Free Items Count" value={String(freeItemsCount)} color="orange" />
-        <Card label="Free Items Value (Snapshot)" value={`RM ${money(freeItemsSnapshotTotal)}`} color="purple" />
-        <Card label="Free Items Actual (Effective)" value={`RM ${money(freeItemsEffectiveTotal)}`} color="emerald" />
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-x-auto">
@@ -436,13 +419,7 @@ export default function StaffCommissionReportPage() {
                 Total Commission
               </th>
               <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
-                Free Count
-              </th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
-                Free Snapshot
-              </th>
-              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
-                Free Effective
+                Orders Count
               </th>
               <th className="px-4 py-2 font-semibold text-center text-gray-600 tracking-wider">
                 Actions
@@ -451,9 +428,9 @@ export default function StaffCommissionReportPage() {
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={10} />
+              <TableLoadingRow colSpan={6} />
             ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={10} />
+              <TableEmptyState colSpan={6} />
             ) : (
               rows.map((row) => (
                 <tr key={row.staff_id}>
@@ -470,13 +447,7 @@ export default function StaffCommissionReportPage() {
                     RM {money(Number(row.total_commission))}
                   </td>
                   <td className="px-4 py-2 border border-gray-200 text-right">
-                    {row.free_items_count}
-                  </td>
-                  <td className="px-4 py-2 border border-gray-200 text-right">
-                    RM {money(Number(row.free_items_snapshot_total))}
-                  </td>
-                  <td className="px-4 py-2 border border-gray-200 text-right">
-                    RM {money(Number(row.free_items_effective_total))}
+                    {row.orders_count}
                   </td>
                   <td className="px-4 py-2 border border-gray-200 text-center">
                     <button
@@ -504,13 +475,7 @@ export default function StaffCommissionReportPage() {
                 RM {money(grandTotalCommission)}
               </td>
               <td className="border border-gray-300 px-4 py-2 text-right">
-                {freeItemsCount}
-              </td>
-              <td className="border border-gray-300 px-4 py-2 text-right">
-                RM {money(freeItemsSnapshotTotal)}
-              </td>
-              <td className="border border-gray-300 px-4 py-2 text-right">
-                RM {money(freeItemsEffectiveTotal)}
+                {rows.reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0)}
               </td>
               <td className="border border-gray-300 px-4 py-2" />
             </tr>
@@ -608,13 +573,7 @@ export default function StaffCommissionReportPage() {
                             Qty
                           </th>
                           <th className="px-4 py-2 font-semibold text-right text-gray-700">
-                            Snapshot
-                          </th>
-                          <th className="px-4 py-2 font-semibold text-right text-gray-700">
-                            Effective
-                          </th>
-                          <th className="px-4 py-2 font-semibold text-left text-gray-700">
-                            Staff-Free
+                            Sales
                           </th>
                           <th className="px-4 py-2 font-semibold text-right text-gray-700">
                             Share %
@@ -629,9 +588,9 @@ export default function StaffCommissionReportPage() {
                       </thead>
                       <tbody>
                         {detailLoading ? (
-                          <TableLoadingRow colSpan={10} />
+                          <TableLoadingRow colSpan={8} />
                         ) : detailRows.length === 0 ? (
-                          <TableEmptyState colSpan={10} />
+                          <TableEmptyState colSpan={8} />
                         ) : (
                           detailRows.map((row, index) => (
                             <tr key={`${row.order_id}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
@@ -656,13 +615,7 @@ export default function StaffCommissionReportPage() {
                                 {row.qty}
                               </td>
                               <td className="px-4 py-2 text-right">
-                                RM {money(Number(row.item_snapshot_amount))}
-                              </td>
-                              <td className="px-4 py-2 text-right">
                                 RM {money(Number(row.item_net_amount))}
-                              </td>
-                              <td className="px-4 py-2">
-                                {row.is_staff_free_applied ? 'Yes' : 'No'}
                               </td>
                               <td className="px-4 py-2 text-right">
                                 {row.share_percent}%

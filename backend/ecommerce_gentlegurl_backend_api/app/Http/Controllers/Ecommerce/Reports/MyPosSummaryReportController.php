@@ -4,66 +4,82 @@ namespace App\Http\Controllers\Ecommerce\Reports;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MyPosSummaryReportController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
+    {
+        return $this->buildReport($request, true);
+    }
+
+    protected function buildReport(Request $request, bool $restrictToCurrentUser = true): JsonResponse
     {
         $validated = $request->validate([
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'user_id' => ['nullable', 'integer', 'min:1'],
+            'staff_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $user = $request->user();
         $perPage = (int) ($validated['per_page'] ?? 20);
+        $staffId = isset($validated['staff_id']) ? (int) $validated['staff_id'] : null;
+        $ownerUserId = $restrictToCurrentUser ? (int) $user->id : (isset($validated['user_id']) ? (int) $validated['user_id'] : null);
+
+        $baseQuery = fn () => $this->applyStaffFilter(
+            $this->baseOrderQuery($validated, $ownerUserId),
+            $staffId,
+        );
 
         $effectiveLineTotalExpr = $this->effectiveLineTotalExpr();
         $snapshotLineTotalExpr = $this->snapshotLineTotalExpr();
         $commissionRateExpr = $this->commissionRateExpr();
 
-        $ordersCount = (clone $this->baseOrderQuery($validated, (int) $user->id))
+        $ordersCount = (clone $baseQuery())
             ->distinct('orders.id')
             ->count('orders.id');
 
-        $itemsCount = (clone $this->baseOrderQuery($validated, (int) $user->id))
+        $itemsCount = (clone $baseQuery())
             ->count('order_items.id');
 
-        $itemsWithStaffCount = (clone $this->baseOrderQuery($validated, (int) $user->id))
+        $itemsWithStaffCount = (clone $baseQuery())
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->distinct('order_items.id')
             ->count('order_items.id');
 
         $itemsWithoutStaffCount = max(0, $itemsCount - $itemsWithStaffCount);
 
-        $totalItemAmount = (float) ((clone $this->baseOrderQuery($validated, (int) $user->id))
+        $totalItemAmount = (float) ((clone $baseQuery())
             ->selectRaw("COALESCE(SUM($effectiveLineTotalExpr), 0) AS total_item_amount")
             ->value('total_item_amount') ?? 0);
 
-        $totalStaffCommission = (float) ((clone $this->baseOrderQuery($validated, (int) $user->id))
+        $totalStaffCommission = (float) ((clone $baseQuery())
             ->leftJoin('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+            ->when($staffId, fn (Builder $query) => $query->where('order_item_staff_splits.staff_id', $staffId))
             ->selectRaw("COALESCE(SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS total_staff_commission")
             ->value('total_staff_commission') ?? 0);
 
-        $myCommission = 0.0;
-        if ($user->staff_id) {
-            $myCommission = (float) ((clone $this->baseOrderQuery($validated, (int) $user->id))
+        $myCommission = $totalStaffCommission;
+        if ($restrictToCurrentUser && $user->staff_id) {
+            $myCommission = (float) ((clone $baseQuery())
                 ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
                 ->where('order_item_staff_splits.staff_id', (int) $user->staff_id)
                 ->selectRaw("COALESCE(SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS my_commission")
                 ->value('my_commission') ?? 0);
         }
 
-        $freeMetrics = (clone $this->baseOrderQuery($validated, (int) $user->id))
+        $freeMetrics = (clone $baseQuery())
             ->selectRaw('COALESCE(SUM(CASE WHEN COALESCE(order_items.is_staff_free_applied, false) THEN 1 ELSE 0 END), 0) AS free_items_count')
             ->selectRaw("COALESCE(SUM(CASE WHEN COALESCE(order_items.is_staff_free_applied, false) THEN ($snapshotLineTotalExpr) ELSE 0 END), 0) AS free_items_snapshot_total")
             ->selectRaw("COALESCE(SUM(CASE WHEN COALESCE(order_items.is_staff_free_applied, false) THEN ($effectiveLineTotalExpr) ELSE 0 END), 0) AS free_items_effective_total")
             ->first();
 
-        $freeItemsByProduct = (clone $this->baseOrderQuery($validated, (int) $user->id))
+        $freeItemsByProduct = (clone $baseQuery())
             ->where('order_items.is_staff_free_applied', true)
             ->selectRaw('order_items.product_id')
             ->selectRaw('MAX(order_items.product_name_snapshot) AS product_name')
@@ -82,7 +98,7 @@ class MyPosSummaryReportController extends Controller
             ])
             ->values();
 
-        $paginator = (clone $this->baseOrderQuery($validated, (int) $user->id))
+        $paginator = (clone $baseQuery())
             ->selectRaw('orders.id AS order_id')
             ->selectRaw('orders.order_number AS order_no')
             ->selectRaw('orders.created_at AS order_date')
@@ -168,11 +184,10 @@ class MyPosSummaryReportController extends Controller
         ]);
     }
 
-    private function baseOrderQuery(array $filters, int $currentUserId): Builder
+    protected function baseOrderQuery(array $filters, ?int $ownerUserId = null): Builder
     {
-        return DB::table('orders')
+        $query = DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
-            ->where('orders.created_by_user_id', $currentUserId)
             ->whereDate('orders.created_at', '>=', $filters['start_date'])
             ->whereDate('orders.created_at', '<=', $filters['end_date'])
             ->where(function (Builder $query) {
@@ -185,19 +200,39 @@ class MyPosSummaryReportController extends Controller
                     ->orWhereNull('orders.payment_status');
             })
             ->whereNull('orders.refunded_at');
+
+        if ($ownerUserId) {
+            $query->where('orders.created_by_user_id', $ownerUserId);
+        }
+
+        return $query;
     }
 
-    private function effectiveLineTotalExpr(): string
+    protected function applyStaffFilter(Builder $query, ?int $staffId = null): Builder
+    {
+        if (! $staffId) {
+            return $query;
+        }
+
+        return $query->whereExists(function ($subquery) use ($staffId) {
+            $subquery->selectRaw('1')
+                ->from('order_item_staff_splits as oiss_filter')
+                ->whereColumn('oiss_filter.order_item_id', 'order_items.id')
+                ->where('oiss_filter.staff_id', $staffId);
+        });
+    }
+
+    protected function effectiveLineTotalExpr(): string
     {
         return 'COALESCE(order_items.effective_line_total, order_items.line_total)::numeric';
     }
 
-    private function snapshotLineTotalExpr(): string
+    protected function snapshotLineTotalExpr(): string
     {
         return 'COALESCE(order_items.line_total_snapshot, order_items.line_total)::numeric';
     }
 
-    private function commissionRateExpr(): string
+    protected function commissionRateExpr(): string
     {
         return '(CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END)';
     }

@@ -111,7 +111,13 @@ const emptySummary: Summary = {
   free_items_effective_total: 0,
 }
 
-export default function MyPosSummaryPage() {
+type MyPosSummaryPageProps = {
+  reportPath?: string
+}
+
+export default function MyPosSummaryPage({
+  reportPath = '/api/proxy/ecommerce/reports/my-pos-summary',
+}: MyPosSummaryPageProps) {
   const defaultRange = useMemo(() => getDefaultRange(), [])
   const [filterInputs, setFilterInputs] = useState({
     date_from: defaultRange.from,
@@ -144,7 +150,7 @@ export default function MyPosSummaryPage() {
         per_page: String(perPage),
       })
 
-      const res = await fetch(`/api/proxy/ecommerce/reports/my-pos-summary?${qs.toString()}`, {
+      const res = await fetch(`${reportPath}?${qs.toString()}`, {
         cache: 'no-store',
       })
 
@@ -167,7 +173,7 @@ export default function MyPosSummaryPage() {
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters.date_from, appliedFilters.date_to, perPage])
+  }, [appliedFilters.date_from, appliedFilters.date_to, perPage, reportPath])
 
   useEffect(() => {
     loadData(1).catch(() => {})
