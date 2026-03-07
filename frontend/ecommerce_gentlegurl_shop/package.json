@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "healthcheck": "node healthcheck.js"
   },
   "dependencies": {
     "next": "16.0.10",
