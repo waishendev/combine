@@ -50,6 +50,8 @@ export type ProductApiItem = {
   dummy_sold_count?: number | string | null
   is_active?: boolean | number | string | null
   is_featured?: boolean | number | string | null
+  is_hidden_in_shop?: boolean | number | string | null
+  is_staff_free?: boolean | number | string | null
   is_reward_only?: boolean | number | string | null
   meta_title?: string | null
   meta_description?: string | null
@@ -278,6 +280,8 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     dummySoldCount: Number.isFinite(dummySoldCountValue) ? dummySoldCountValue : undefined,
     isActive: toBoolean(item.is_active),
     isFeatured: toBoolean(item.is_featured),
+    isHiddenInShop: toBoolean(item.is_hidden_in_shop),
+    isStaffFree: toBoolean(item.is_staff_free),
     isRewardOnly: toBoolean(item.is_reward_only),
     metaTitle: item.meta_title ?? '',
     metaDescription: item.meta_description ?? '',

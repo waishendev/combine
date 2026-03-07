@@ -68,6 +68,8 @@ export interface ProductRowData {
   dummySoldCount?: number
   isActive: boolean
   isFeatured: boolean
+  isHiddenInShop: boolean
+  isStaffFree: boolean
   isRewardOnly: boolean
   metaTitle: string
   metaDescription: string

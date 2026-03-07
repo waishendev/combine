@@ -14,6 +14,9 @@ type Summary = {
   total_item_amount: number
   total_staff_commission: number
   my_commission: number
+  free_items_count: number
+  free_items_snapshot_total: number
+  free_items_effective_total: number
 }
 
 type StaffSplit = {
@@ -32,6 +35,8 @@ type DetailRow = {
   product_name: string | null
   qty: number
   item_total_price: number
+  item_snapshot_total: number
+  is_staff_free_applied: boolean
   has_staff_assignment: boolean
   staff_splits: StaffSplit[]
 }
@@ -101,9 +106,18 @@ const emptySummary: Summary = {
   total_item_amount: 0,
   total_staff_commission: 0,
   my_commission: 0,
+  free_items_count: 0,
+  free_items_snapshot_total: 0,
+  free_items_effective_total: 0,
 }
 
-export default function MyPosSummaryPage() {
+type MyPosSummaryPageProps = {
+  reportPath?: string
+}
+
+export default function MyPosSummaryPage({
+  reportPath = '/api/proxy/ecommerce/reports/my-pos-summary',
+}: MyPosSummaryPageProps) {
   const defaultRange = useMemo(() => getDefaultRange(), [])
   const [filterInputs, setFilterInputs] = useState({
     date_from: defaultRange.from,
@@ -136,7 +150,7 @@ export default function MyPosSummaryPage() {
         per_page: String(perPage),
       })
 
-      const res = await fetch(`/api/proxy/ecommerce/reports/my-pos-summary?${qs.toString()}`, {
+      const res = await fetch(`${reportPath}?${qs.toString()}`, {
         cache: 'no-store',
       })
 
@@ -159,7 +173,7 @@ export default function MyPosSummaryPage() {
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters.date_from, appliedFilters.date_to, perPage])
+  }, [appliedFilters.date_from, appliedFilters.date_to, perPage, reportPath])
 
   useEffect(() => {
     loadData(1).catch(() => {})
@@ -335,13 +349,16 @@ export default function MyPosSummaryPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-9">
         <Card label="Orders" value={String(summary.orders_count)} color="blue" />
         <Card label="Items" value={String(summary.items_count)} color="purple" />
         <Card label="With Staff (items)" value={String(summary.items_with_staff_count)} color="emerald" />
         <Card label="Without Staff (items)" value={String(summary.items_without_staff_count)} color="orange" />
         <Card label="Total Amount" value={money(Number(summary.total_item_amount))} color="indigo" />
         <Card label="Total Staff Commission" value={money(Number(summary.total_staff_commission))} color="teal" />
+        <Card label="Free Items Count" value={String(summary.free_items_count)} color="orange" />
+        <Card label="Free Items Value (Snapshot)" value={money(Number(summary.free_items_snapshot_total))} color="pink" />
+        <Card label="Free Items Actual (Effective)" value={money(Number(summary.free_items_effective_total))} color="emerald" />
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-x-auto">
@@ -361,7 +378,13 @@ export default function MyPosSummaryPage() {
                 Qty
               </th>
               <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
-                Total
+                Snapshot
+              </th>
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
+                Effective
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                Staff-Free
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Has Assign
@@ -373,9 +396,9 @@ export default function MyPosSummaryPage() {
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={7} />
+              <TableLoadingRow colSpan={9} />
             ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={7} />
+              <TableEmptyState colSpan={9} />
             ) : (
               rows.map((row) => (
                 <Fragment key={row.order_item_id}>
@@ -401,7 +424,13 @@ export default function MyPosSummaryPage() {
                       {row.qty}
                     </td>
                     <td className="px-4 py-2 border border-gray-200 text-right">
+                      RM {money(Number(row.item_snapshot_total))}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200 text-right">
                       RM {money(Number(row.item_total_price))}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      {row.is_staff_free_applied ? 'Yes' : 'No'}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
                       {row.has_staff_assignment ? 'Yes' : 'No'}
@@ -499,10 +528,26 @@ export default function MyPosSummaryPage() {
                       </div>
                       <div className="rounded-xl border border-purple-100 bg-purple-50 px-4 py-3">
                         <p className="text-xs font-semibold text-purple-600">
-                          Total Amount
+                          Snapshot Value
                         </p>
                         <p className="mt-1 text-base font-bold text-purple-900">
+                          RM {money(Number(selectedRow.item_snapshot_total))}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+                        <p className="text-xs font-semibold text-indigo-600">
+                          Effective Value
+                        </p>
+                        <p className="mt-1 text-base font-bold text-indigo-900">
                           RM {money(Number(selectedRow.item_total_price))}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-pink-100 bg-pink-50 px-4 py-3">
+                        <p className="text-xs font-semibold text-pink-600">
+                          Staff-Free
+                        </p>
+                        <p className="mt-1 text-base font-bold text-pink-900">
+                          {selectedRow.is_staff_free_applied ? 'Yes' : 'No'}
                         </p>
                       </div>
                       <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-3">

@@ -45,6 +45,7 @@ use App\Http\Controllers\Ecommerce\SalesReportController;
 use App\Http\Controllers\Ecommerce\Reports\SalesReportExportController;
 use App\Http\Controllers\Ecommerce\Reports\StaffCommissionReportController;
 use App\Http\Controllers\Ecommerce\Reports\MyPosSummaryReportController;
+use App\Http\Controllers\Ecommerce\Reports\PosSummaryReportController;
 use App\Http\Controllers\Ecommerce\LoyaltyAdminController;
 use App\Http\Controllers\Ecommerce\LoyaltyRewardController;
 use App\Http\Controllers\Ecommerce\LoyaltyRedemptionAdminController;
@@ -858,6 +859,9 @@ $protectedRoutes = function () {
 
             Route::get('/my-pos-summary', [MyPosSummaryReportController::class, 'index'])
                 ->middleware('permission:reports.my-pos-summary.view');
+
+            Route::get('/pos-summary', [PosSummaryReportController::class, 'index'])
+                ->middleware('permission:reports.pos-summary.view');
 
             Route::prefix('sales')->group(function () {
                 Route::get('/export/overview', [SalesReportExportController::class, 'overview'])

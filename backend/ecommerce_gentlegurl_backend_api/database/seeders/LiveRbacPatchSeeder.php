@@ -57,6 +57,7 @@ class LiveRbacPatchSeeder extends Seeder
             'pos' => 'POS',
             'pos.orders' => 'POS Orders',
             'reports.my-pos-summary' => 'Reports - My POS Summary',
+            'reports.pos-summary' => 'Reports - POS Summary',
         ];
 
         $groupModels = [];
@@ -144,6 +145,7 @@ class LiveRbacPatchSeeder extends Seeder
             'pos' => ['checkout'],
             'pos.orders' => ['view'],
             'reports.my-pos-summary' => ['view'],
+            'reports.pos-summary' => ['view'],
         ];
 
         foreach ($definitions as $module => $actions) {
@@ -321,6 +323,7 @@ class LiveRbacPatchSeeder extends Seeder
             'pos.checkout',
             'pos.orders.view',
             'reports.my-pos-summary.view',
+            'reports.pos-summary.view',
         ])->pluck('id')->all();
 
         if (! empty($staffPermissionIds)) {
@@ -368,4 +371,3 @@ class LiveRbacPatchSeeder extends Seeder
         return Role::firstOrCreate(['name' => $name], $defaults);
     }
 }
-

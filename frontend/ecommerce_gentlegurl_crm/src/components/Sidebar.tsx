@@ -314,6 +314,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/reports/my-pos-summary',
             requiredPermission: 'reports.my-pos-summary.view',
           },
+          {
+            key: 'pos-summary',
+            label: 'POS Summary Report',
+            href: '/reports/pos-summary',
+            requiredPermission: 'reports.pos-summary.view',
+          },
         ],
       },
       

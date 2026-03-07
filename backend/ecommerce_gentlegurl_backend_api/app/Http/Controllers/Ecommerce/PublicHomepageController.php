@@ -114,6 +114,7 @@ class PublicHomepageController extends Controller
             $newProducts = Product::query()
                 ->with(['categories', 'images', 'variants'])
                 ->where('is_active', true)
+                ->where('is_hidden_in_shop', false)
                 ->where('created_at', '>=', $now->copy()->subDays($newProductDays))
                 ->orderByDesc('created_at')
                 ->limit(20)
@@ -131,7 +132,8 @@ class PublicHomepageController extends Controller
             $bestSellersQuery = Product::query()
                 ->with(['categories', 'images', 'variants'])
                 ->whereIn('id', $bestSellerProductIds)
-                ->where('is_active', true);
+                ->where('is_active', true)
+                ->where('is_hidden_in_shop', false);
 
             if (! empty($bestSellerProductIds)) {
                 $idsString = implode(',', array_map('intval', $bestSellerProductIds));
@@ -143,6 +145,7 @@ class PublicHomepageController extends Controller
             $featuredProducts = Product::query()
                 ->with(['categories', 'images', 'variants'])
                 ->where('is_active', true)
+                ->where('is_hidden_in_shop', false)
                 ->where('is_featured', true)
                 ->orderByDesc('created_at')
                 ->limit(20)

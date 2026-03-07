@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 
@@ -21,6 +20,7 @@ type SummaryRow = {
   total_commission: number
   orders_count: number
   items_count: number
+  free_items_effective_total: number
 }
 
 type DetailRow = {
@@ -397,6 +397,11 @@ export default function StaffCommissionReportPage() {
         </div>
       )}
 
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-2">
+        <Card label="Grand Total Sales" value={`RM ${money(grandTotalSales)}`} color="indigo" />
+        <Card label="Grand Total Commission" value={`RM ${money(grandTotalCommission)}`} color="teal" />
+      </div>
+
       <div className="bg-white shadow rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
@@ -413,6 +418,9 @@ export default function StaffCommissionReportPage() {
               <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
                 Total Commission
               </th>
+              <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
+                Orders Count
+              </th>
               <th className="px-4 py-2 font-semibold text-center text-gray-600 tracking-wider">
                 Actions
               </th>
@@ -420,9 +428,9 @@ export default function StaffCommissionReportPage() {
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={5} />
+              <TableLoadingRow colSpan={6} />
             ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={5} />
+              <TableEmptyState colSpan={6} />
             ) : (
               rows.map((row) => (
                 <tr key={row.staff_id}>
@@ -437,6 +445,9 @@ export default function StaffCommissionReportPage() {
                   </td>
                   <td className="px-4 py-2 border border-gray-200 text-right">
                     RM {money(Number(row.total_commission))}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200 text-right">
+                    {row.orders_count}
                   </td>
                   <td className="px-4 py-2 border border-gray-200 text-center">
                     <button
@@ -462,6 +473,9 @@ export default function StaffCommissionReportPage() {
               </td>
               <td className="border border-gray-300 px-4 py-2 text-right">
                 RM {money(grandTotalCommission)}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-right">
+                {rows.reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0)}
               </td>
               <td className="border border-gray-300 px-4 py-2" />
             </tr>
@@ -559,7 +573,7 @@ export default function StaffCommissionReportPage() {
                             Qty
                           </th>
                           <th className="px-4 py-2 font-semibold text-right text-gray-700">
-                            Total
+                            Sales
                           </th>
                           <th className="px-4 py-2 font-semibold text-right text-gray-700">
                             Share %
@@ -624,6 +638,41 @@ export default function StaffCommissionReportPage() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+
+function Card({ label, value, color = 'gray' }: { label: string; value: string; color?: string }) {
+  const colorClasses = {
+    blue: 'border-blue-100 bg-blue-50 text-blue-600',
+    purple: 'border-purple-100 bg-purple-50 text-purple-600',
+    emerald: 'border-emerald-100 bg-emerald-50 text-emerald-600',
+    orange: 'border-orange-100 bg-orange-50 text-orange-600',
+    indigo: 'border-indigo-100 bg-indigo-50 text-indigo-600',
+    teal: 'border-teal-100 bg-teal-50 text-teal-600',
+    pink: 'border-pink-100 bg-pink-50 text-pink-600',
+    gray: 'border-gray-100 bg-gray-50 text-gray-600',
+  }
+
+  const valueColorClasses = {
+    blue: 'text-blue-900',
+    purple: 'text-purple-900',
+    emerald: 'text-emerald-700',
+    orange: 'text-orange-900',
+    indigo: 'text-indigo-900',
+    teal: 'text-teal-700',
+    pink: 'text-pink-900',
+    gray: 'text-gray-900',
+  }
+
+  const classes = colorClasses[color as keyof typeof colorClasses] || colorClasses.gray
+  const valueClasses = valueColorClasses[color as keyof typeof valueColorClasses] || valueColorClasses.gray
+
+  return (
+    <div className={`rounded-xl border ${classes} px-4 py-3 shadow-sm`}>
+      <p className="text-xs font-semibold">{label}</p>
+      <p className={`mt-1 text-lg font-bold ${valueClasses}`}>{value}</p>
     </div>
   )
 }
