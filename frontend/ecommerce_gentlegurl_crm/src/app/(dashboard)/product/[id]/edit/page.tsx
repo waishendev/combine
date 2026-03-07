@@ -103,6 +103,9 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
         <p className="text-sm text-gray-600">
           {t('product.editDescription')}
         </p>
+        <p className="text-xs text-gray-500 mt-1">
+          You can also update Hide in Shop and Staff Free flags here for validation.
+        </p>
       </div>
 
       {/* Product Form */}
