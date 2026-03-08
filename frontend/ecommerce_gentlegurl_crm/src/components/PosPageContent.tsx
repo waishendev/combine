@@ -7,6 +7,9 @@ type CartItem = {
   qty: number
   unit_price: number
   line_total: number
+  unit_price_snapshot?: number
+  line_total_snapshot?: number
+  is_staff_free_applied?: boolean
   product_id?: number | null
   variant_id?: number | null
   product_name?: string | null
@@ -38,6 +41,7 @@ type ProductOption = {
   sku: string
   barcode: string
   price: number
+  is_staff_free: boolean
   thumbnail_url?: string | null
   variants: ProductVariantOption[]
   variants_count?: number
@@ -185,6 +189,7 @@ type ProductApiItem = {
   name?: string
   sku?: string
   price?: number | string
+  is_staff_free?: boolean | number | string | null
   variants_count?: number | string | null
   cover_image_url?: string | null
   variants?: Array<{
@@ -793,6 +798,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       sku,
       barcode: sku,
       price: Number.isFinite(price) ? price : 0,
+      is_staff_free: item.is_staff_free === true || item.is_staff_free === 1 || item.is_staff_free === '1' || item.is_staff_free === 'true',
       thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? null,
       variants,
       variants_count: typeof item.variants_count === 'number'
@@ -2024,6 +2030,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       {variantsCount > 0 && (
                         <p className="text-[11px] text-blue-600 font-medium mt-0.5">({variantsCount} variants)</p>
                       )}
+                      {item.is_staff_free && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex items-center rounded bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
+                            Consumable
+                          </span>
+                          {currentUser.staff_id ? (
+                            <span className="text-[10px] text-emerald-700">Free for staff</span>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                     <div className="pt-2 border-t border-gray-100">
                       <span className="text-sm font-bold text-gray-900">RM {Number(item.price ?? 0).toFixed(2)}</span>
@@ -2102,6 +2118,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-gray-900 truncate sm:max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
                           <p className="mt-0.5 text-xs font-mono text-gray-600 truncate sm:max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
+                          {item.is_staff_free_applied ? (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                                Staff Free Applied
+                              </span>
+                              <span className="text-[10px] text-gray-500 line-through">
+                                RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex w-fit items-center gap-2 rounded-lg bg-gray-100 p-1">
                           <button
@@ -2539,6 +2565,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                               <p className="text-xs text-gray-400 italic mt-0.5">No variant selected</p>
                             )}
                             <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
+                            {item.is_staff_free_applied ? (
+                              <p className="mt-1 inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                                Staff Free Applied
+                              </p>
+                            ) : null}
                           </td>
                           <td className="px-4 py-3 min-w-[280px]">
                             <div className="space-y-2">

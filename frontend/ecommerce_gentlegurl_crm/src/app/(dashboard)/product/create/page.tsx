@@ -53,6 +53,9 @@ export default async function ProductCreatePage() {
         <p className="text-sm text-gray-600">
           {t('product.createDescription')}
         </p>
+        <p className="text-xs text-gray-500 mt-1">
+          You can also set Hide in Shop and Staff Free flags here for validation.
+        </p>
       </div>
 
       {/* Product Form */}

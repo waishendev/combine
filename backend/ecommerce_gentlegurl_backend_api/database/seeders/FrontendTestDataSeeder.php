@@ -353,6 +353,7 @@ class FrontendTestDataSeeder extends Seeder
                 'track_stock' => true,
                 'is_active' => true,
                 'is_featured' => false,
+                'is_staff_free' => true,
             ],
             [
                 'name' => 'MagSafe无线充电器',
@@ -367,6 +368,7 @@ class FrontendTestDataSeeder extends Seeder
                 'track_stock' => true,
                 'is_active' => true,
                 'is_featured' => false,
+                'is_staff_free' => true,
             ],
             [
                 'name' => 'MacBook Pro 16寸 M3 Pro',
@@ -509,6 +511,7 @@ class FrontendTestDataSeeder extends Seeder
                 'track_stock' => true,
                 'is_active' => true,
                 'is_featured' => false,
+                'is_hidden_in_shop' => true,
             ],
             [
                 'name' => '草本风味饮品',

@@ -35,6 +35,8 @@ class Product extends Model
         'dummy_sold_count',
         'is_active',
         'is_featured',
+        'is_hidden_in_shop',
+        'is_staff_free',
         'is_reward_only',
         'meta_title',
         'meta_description',
@@ -56,6 +58,8 @@ class Product extends Model
             'dummy_sold_count' => 'integer',
             'is_active' => 'boolean',
             'is_featured' => 'boolean',
+            'is_hidden_in_shop' => 'boolean',
+            'is_staff_free' => 'boolean',
             'is_reward_only' => 'boolean',
         ];
     }

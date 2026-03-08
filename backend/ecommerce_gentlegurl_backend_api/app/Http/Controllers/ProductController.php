@@ -89,6 +89,8 @@ class ProductController extends Controller
             'dummy_sold_count' => ['nullable', 'integer', 'min:0', 'max:999999'],
             'is_active' => ['sometimes', 'boolean'],
             'is_featured' => ['sometimes', 'boolean'],
+            'is_hidden_in_shop' => ['sometimes', 'boolean'],
+            'is_staff_free' => ['sometimes', 'boolean'],
             'is_reward_only' => ['sometimes', 'boolean'],
             'meta_title' => ['nullable', 'string', 'max:255'],
             'meta_description' => ['nullable', 'string'],
@@ -128,6 +130,8 @@ class ProductController extends Controller
             'type' => $validated['type'] ?? 'single',
             'is_active' => $validated['is_active'] ?? true,
             'is_featured' => $validated['is_featured'] ?? false,
+            'is_hidden_in_shop' => $validated['is_hidden_in_shop'] ?? false,
+            'is_staff_free' => $validated['is_staff_free'] ?? false,
             'is_reward_only' => $validated['is_reward_only'] ?? false,
             'stock' => $validated['stock'] ?? 0,
             'low_stock_threshold' => $validated['low_stock_threshold'] ?? 0,
@@ -181,6 +185,8 @@ class ProductController extends Controller
             'dummy_sold_count' => ['nullable', 'integer', 'min:0', 'max:999999'],
             'is_active' => ['sometimes', 'boolean'],
             'is_featured' => ['sometimes', 'boolean'],
+            'is_hidden_in_shop' => ['sometimes', 'boolean'],
+            'is_staff_free' => ['sometimes', 'boolean'],
             'is_reward_only' => ['sometimes', 'boolean'],
             'meta_title' => ['nullable', 'string', 'max:255'],
             'meta_description' => ['nullable', 'string'],
@@ -276,7 +282,7 @@ class ProductController extends Controller
             $headers = [
                 'id', 'name', 'slug', 'sku', 'type', 'description', 'price', 'sale_price',
                 'sale_price_start_at', 'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold',
-                'track_stock', 'dummy_sold_count', 'is_active', 'is_featured', 'is_reward_only',
+                'track_stock', 'dummy_sold_count', 'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only',
                 'meta_title', 'meta_description', 'meta_keywords', 'meta_og_image',
                 'created_at', 'updated_at', 'category_ids', 'categories', 'images', 'video', 'variants',
             ];
@@ -347,7 +353,7 @@ class ProductController extends Controller
         $allowedFields = [
             'name', 'slug', 'sku', 'type', 'description', 'price', 'sale_price', 'sale_price_start_at',
             'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold', 'track_stock', 'dummy_sold_count',
-            'is_active', 'is_featured', 'is_reward_only', 'meta_title', 'meta_description', 'meta_keywords',
+            'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only', 'meta_title', 'meta_description', 'meta_keywords',
             'meta_og_image', 'category_ids', 'variants',
         ];
 
@@ -450,7 +456,7 @@ class ProductController extends Controller
                 'dummy_sold_count',
             ];
 
-            $booleanFields = ['track_stock', 'is_active', 'is_featured', 'is_reward_only'];
+            $booleanFields = ['track_stock', 'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only'];
 
             $payload = [];
             foreach ($raw as $key => $value) {
@@ -641,6 +647,8 @@ class ProductController extends Controller
                         'type' => $clean['type'] ?? 'single',
                         'is_active' => $clean['is_active'] ?? true,
                         'is_featured' => $clean['is_featured'] ?? false,
+                        'is_hidden_in_shop' => $clean['is_hidden_in_shop'] ?? false,
+                        'is_staff_free' => $clean['is_staff_free'] ?? false,
                         'is_reward_only' => $clean['is_reward_only'] ?? false,
                         'stock' => $clean['stock'] ?? 0,
                         'low_stock_threshold' => $clean['low_stock_threshold'] ?? 0,

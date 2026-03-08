@@ -17,14 +17,21 @@ class StaffCommissionReportController extends Controller
             'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
         ]);
 
+        $effectiveLineTotalExpr = $this->effectiveLineTotalExpr();
+        $snapshotLineTotalExpr = $this->snapshotLineTotalExpr();
+        $commissionRateExpr = $this->commissionRateExpr();
+
         $rows = $this->baseCommissionQuery($validated)
             ->selectRaw('order_item_staff_splits.staff_id')
             ->selectRaw('MAX(staffs.name) AS staff_name')
             ->selectRaw('MAX(staffs.commission_rate) AS commission_rate')
-            ->selectRaw('SUM((order_items.line_total::numeric) * (order_item_staff_splits.share_percent::numeric / 100)) AS total_sales')
-            ->selectRaw('SUM((order_items.line_total::numeric) * (order_item_staff_splits.share_percent::numeric / 100) * (CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END)) AS total_commission')
+            ->selectRaw("SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100)) AS total_sales")
+            ->selectRaw("SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)) AS total_commission")
             ->selectRaw('COUNT(DISTINCT orders.id) AS orders_count')
             ->selectRaw('COUNT(DISTINCT order_items.id) AS items_count')
+            ->selectRaw('SUM(CASE WHEN COALESCE(order_items.is_staff_free_applied, false) THEN 1 ELSE 0 END) AS free_items_count')
+            ->selectRaw("SUM(CASE WHEN COALESCE(order_items.is_staff_free_applied, false) THEN ($snapshotLineTotalExpr) ELSE 0 END) AS free_items_snapshot_total")
+            ->selectRaw("SUM(CASE WHEN COALESCE(order_items.is_staff_free_applied, false) THEN ($effectiveLineTotalExpr) ELSE 0 END) AS free_items_effective_total")
             ->groupBy('order_item_staff_splits.staff_id')
             ->orderBy('staff_name')
             ->get()
@@ -36,6 +43,28 @@ class StaffCommissionReportController extends Controller
                 'total_commission' => round((float) $row->total_commission, 2),
                 'orders_count' => (int) $row->orders_count,
                 'items_count' => (int) $row->items_count,
+                'free_items_count' => (int) ($row->free_items_count ?? 0),
+                'free_items_snapshot_total' => round((float) ($row->free_items_snapshot_total ?? 0), 2),
+                'free_items_effective_total' => round((float) ($row->free_items_effective_total ?? 0), 2),
+            ])
+            ->values();
+
+        $freeItemsByProduct = $this->baseCommissionQuery($validated)
+            ->selectRaw('order_items.product_id')
+            ->selectRaw('MAX(order_items.product_name_snapshot) AS product_name')
+            ->selectRaw('COUNT(*) AS free_items_count')
+            ->selectRaw("SUM($snapshotLineTotalExpr) AS free_items_snapshot_total")
+            ->selectRaw("SUM($effectiveLineTotalExpr) AS free_items_effective_total")
+            ->where('order_items.is_staff_free_applied', true)
+            ->groupBy('order_items.product_id')
+            ->orderByDesc('free_items_snapshot_total')
+            ->get()
+            ->map(fn ($row) => [
+                'product_id' => $row->product_id ? (int) $row->product_id : null,
+                'product_name' => $row->product_name,
+                'free_items_count' => (int) ($row->free_items_count ?? 0),
+                'free_items_snapshot_total' => round((float) ($row->free_items_snapshot_total ?? 0), 2),
+                'free_items_effective_total' => round((float) ($row->free_items_effective_total ?? 0), 2),
             ])
             ->values();
 
@@ -47,6 +76,10 @@ class StaffCommissionReportController extends Controller
             'rows' => $rows,
             'grand_total_sales' => round($rows->sum('total_sales'), 2),
             'grand_total_commission' => round($rows->sum('total_commission'), 2),
+            'free_items_count' => (int) $rows->sum('free_items_count'),
+            'free_items_snapshot_total' => round((float) $rows->sum('free_items_snapshot_total'), 2),
+            'free_items_effective_total' => round((float) $rows->sum('free_items_effective_total'), 2),
+            'free_items_by_product' => $freeItemsByProduct,
         ]);
     }
 
@@ -61,6 +94,9 @@ class StaffCommissionReportController extends Controller
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 50);
+        $effectiveLineTotalExpr = $this->effectiveLineTotalExpr();
+        $snapshotLineTotalExpr = $this->snapshotLineTotalExpr();
+        $commissionRateExpr = $this->commissionRateExpr();
 
         $paginator = $this->baseCommissionQuery($validated)
             ->where('order_item_staff_splits.staff_id', $validated['staff_id'])
@@ -70,11 +106,13 @@ class StaffCommissionReportController extends Controller
             ->selectRaw('order_items.id AS order_item_id')
             ->selectRaw('order_items.product_name_snapshot AS product_name')
             ->selectRaw('order_items.quantity AS qty')
-            ->selectRaw('order_items.line_total::numeric AS item_net_amount')
+            ->selectRaw("($effectiveLineTotalExpr) AS item_net_amount")
+            ->selectRaw("($snapshotLineTotalExpr) AS item_snapshot_amount")
+            ->selectRaw('COALESCE(order_items.is_staff_free_applied, false) AS is_staff_free_applied')
             ->selectRaw('order_item_staff_splits.share_percent')
-            ->selectRaw('(order_items.line_total::numeric) * (order_item_staff_splits.share_percent::numeric / 100) AS staff_item_sales')
+            ->selectRaw("($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) AS staff_item_sales")
             ->selectRaw('order_item_staff_splits.commission_rate_snapshot AS commission_rate')
-            ->selectRaw('(order_items.line_total::numeric) * (order_item_staff_splits.share_percent::numeric / 100) * (CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END) AS staff_item_commission')
+            ->selectRaw("($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr) AS staff_item_commission")
             ->orderByDesc('orders.created_at')
             ->orderByDesc('order_items.id')
             ->paginate($perPage)
@@ -85,6 +123,8 @@ class StaffCommissionReportController extends Controller
                 'product_name' => $row->product_name,
                 'qty' => (int) $row->qty,
                 'item_net_amount' => round((float) $row->item_net_amount, 2),
+                'item_snapshot_amount' => round((float) ($row->item_snapshot_amount ?? 0), 2),
+                'is_staff_free_applied' => (bool) $row->is_staff_free_applied,
                 'share_percent' => (int) $row->share_percent,
                 'staff_item_sales' => round((float) $row->staff_item_sales, 2),
                 'commission_rate' => (float) ($row->commission_rate ?? 0),
@@ -128,5 +168,20 @@ class StaffCommissionReportController extends Controller
             ->when(isset($filters['staff_id']), function (Builder $query) use ($filters) {
                 $query->where('order_item_staff_splits.staff_id', $filters['staff_id']);
             });
+    }
+
+    private function effectiveLineTotalExpr(): string
+    {
+        return 'COALESCE(order_items.effective_line_total, order_items.line_total)::numeric';
+    }
+
+    private function snapshotLineTotalExpr(): string
+    {
+        return 'COALESCE(order_items.line_total_snapshot, order_items.line_total)::numeric';
+    }
+
+    private function commissionRateExpr(): string
+    {
+        return '(CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END)';
     }
 }

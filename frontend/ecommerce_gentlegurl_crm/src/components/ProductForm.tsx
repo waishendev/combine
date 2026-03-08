@@ -78,6 +78,8 @@ type ProductFormValues = {
   lowStockThreshold: string
   dummySoldCount: string
   isFeatured: boolean
+  isHiddenInShop: boolean
+  isStaffFree: boolean
   metaTitle: string
   metaDescription: string
   metaKeywords: string
@@ -102,6 +104,8 @@ const emptyForm: ProductFormValues = {
   lowStockThreshold: '',
   dummySoldCount: '',
   isFeatured: false,
+  isHiddenInShop: false,
+  isStaffFree: false,
   metaTitle: '',
   metaDescription: '',
   metaKeywords: '',
@@ -296,6 +300,8 @@ export default function ProductForm({
           ? String(product.dummySoldCount)
           : '',
         isFeatured: showFeatured ? product.isFeatured : false,
+        isHiddenInShop: product.isHiddenInShop ?? false,
+        isStaffFree: product.isStaffFree ?? false,
         metaTitle: product.metaTitle,
         metaDescription: product.metaDescription,
         metaKeywords: product.metaKeywords,
@@ -308,6 +314,8 @@ export default function ProductForm({
     return {
       ...emptyForm,
       isFeatured: showFeatured ? emptyForm.isFeatured : false,
+      isHiddenInShop: emptyForm.isHiddenInShop,
+      isStaffFree: emptyForm.isStaffFree,
       categoryIds: showCategories ? emptyForm.categoryIds : [],
     }
   })
@@ -1392,6 +1400,8 @@ export default function ProductForm({
     setForm({
       ...emptyForm,
       isFeatured: showFeatured ? emptyForm.isFeatured : false,
+      isHiddenInShop: emptyForm.isHiddenInShop,
+      isStaffFree: emptyForm.isStaffFree,
       categoryIds: showCategories ? emptyForm.categoryIds : [],
     })
     setDiscountPercentInput('')
@@ -2103,6 +2113,8 @@ export default function ProductForm({
     } else {
       formData.append('is_featured', '0')
     }
+    formData.append('is_hidden_in_shop', form.isHiddenInShop ? '1' : '0')
+    formData.append('is_staff_free', form.isStaffFree ? '1' : '0')
     if (rewardOnly) {
       formData.append('is_reward_only', '1')
     }
@@ -2252,6 +2264,8 @@ export default function ProductForm({
                 ? true
                 : form.status === 'active',
             isFeatured: form.isFeatured,
+            isHiddenInShop: form.isHiddenInShop,
+            isStaffFree: form.isStaffFree,
             isRewardOnly: mode === 'edit' ? product?.isRewardOnly || false : false,
             metaTitle: form.metaTitle,
             metaDescription: form.metaDescription,
@@ -3449,6 +3463,32 @@ export default function ProductForm({
               />
             </div>
           )}
+
+          <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Hide in Shop</p>
+              <p className="text-xs text-gray-500">Hidden products are not visible in storefront, but still available in CRM/POS.</p>
+            </div>
+            <Switch
+              checked={form.isHiddenInShop}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({ ...f, isHiddenInShop: checked }))
+              }
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Staff Free Product</p>
+              <p className="text-xs text-gray-500">When POS user has staff profile, this product uses RM0 effective price at checkout.</p>
+            </div>
+            <Switch
+              checked={form.isStaffFree}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({ ...f, isStaffFree: checked }))
+              }
+            />
+          </div>
         </div>
       </div>
 

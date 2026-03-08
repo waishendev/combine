@@ -11,8 +11,10 @@ interface StaffRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  canViewPosSummary?: boolean
   onEdit?: (staff: StaffRowData) => void
   onDelete?: (staff: StaffRowData) => void
+  onViewPosSummary?: (staff: StaffRowData) => void
 }
 
 export default function StaffRow({
@@ -20,8 +22,10 @@ export default function StaffRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  canViewPosSummary = false,
   onEdit,
   onDelete,
+  onViewPosSummary,
 }: StaffRowProps) {
   const { t } = useI18n()
   return (
@@ -61,6 +65,18 @@ export default function StaffRow({
                 title={t('common.delete')}
               >
                 <i className="fa-solid fa-trash" />
+              </button>
+            )}
+            {canViewPosSummary && (
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded bg-indigo-600 px-3 h-8 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => onViewPosSummary?.(staff)}
+                disabled={!staff.adminUserId}
+                aria-label="View POS Summary"
+                title={staff.adminUserId ? 'View POS Summary' : 'No linked login account'}
+              >
+                POS
               </button>
             )}
           </div>
