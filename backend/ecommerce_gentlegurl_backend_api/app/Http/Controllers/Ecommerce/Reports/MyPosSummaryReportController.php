@@ -107,6 +107,10 @@ class MyPosSummaryReportController extends Controller
             ->selectRaw('orders.id AS order_id')
             ->selectRaw('orders.order_number AS order_no')
             ->selectRaw('orders.created_at AS order_date')
+            ->selectRaw('orders.created_by_user_id AS created_by_user_id')
+            ->selectRaw('COALESCE(creator_staff.name, creator_user.name) AS created_by_name')
+            ->selectRaw('creator_staff.phone AS created_by_phone')
+            ->selectRaw('COALESCE(creator_staff.email, creator_user.email) AS created_by_email')
             ->selectRaw('order_items.id AS order_item_id')
             ->selectRaw('order_items.product_name_snapshot AS product_name')
             ->selectRaw('order_items.quantity AS qty')
@@ -150,6 +154,10 @@ class MyPosSummaryReportController extends Controller
                 'order_no' => $row->order_no,
                 'order_id' => (int) $row->order_id,
                 'order_date' => $row->order_date,
+                'created_by_user_id' => $row->created_by_user_id ? (int) $row->created_by_user_id : null,
+                'created_by_name' => $row->created_by_name,
+                'created_by_phone' => $row->created_by_phone,
+                'created_by_email' => $row->created_by_email,
                 'order_item_id' => (int) $row->order_item_id,
                 'product_name' => $row->product_name,
                 'qty' => (int) $row->qty,
@@ -193,6 +201,8 @@ class MyPosSummaryReportController extends Controller
     {
         $query = DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->leftJoin('users as creator_user', 'creator_user.id', '=', 'orders.created_by_user_id')
+            ->leftJoin('staffs as creator_staff', 'creator_staff.id', '=', 'creator_user.staff_id')
             ->whereDate('orders.created_at', '>=', $filters['start_date'])
             ->whereDate('orders.created_at', '<=', $filters['end_date'])
             ->where(function (Builder $query) {
