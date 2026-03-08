@@ -215,6 +215,7 @@ export default function StaffEditModal({
             phone: form.phone.trim() || '-',
             email: form.email.trim(),
             loginUsername: form.username.trim() || '-',
+            adminUserId: loadedStaff?.adminUserId ?? null,
             commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
             isActive: form.isActive === 'true',
             createdAt: loadedStaff?.createdAt ?? '',

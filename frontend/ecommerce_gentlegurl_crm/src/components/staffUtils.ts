@@ -8,6 +8,7 @@ export type StaffApiItem = {
   is_active?: boolean | number | string | null
   created_at?: string | null
   admin?: {
+    id?: number | string | null
     username?: string | null
   } | null
 }
@@ -19,6 +20,7 @@ export type StaffRowData = {
   phone: string
   email: string
   loginUsername: string
+  adminUserId: number | null
   commissionRate: number
   isActive: boolean
   createdAt: string
@@ -35,6 +37,7 @@ export const mapStaffApiItemToRow = (item: StaffApiItem): StaffRowData => {
     phone: item.phone ?? '-',
     email: item.email ?? '-',
     loginUsername: item.admin?.username ?? '-',
+    adminUserId: item.admin?.id != null ? Number(item.admin.id) : null,
     commissionRate: Number.isFinite(commissionRateRaw) ? commissionRateRaw : 0,
     isActive: item.is_active === true || item.is_active === 1 || item.is_active === '1' || item.is_active === 'true',
     createdAt: item.created_at ?? '',

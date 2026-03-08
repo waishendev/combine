@@ -113,10 +113,14 @@ const emptySummary: Summary = {
 
 type MyPosSummaryPageProps = {
   reportPath?: string
+  initialCreatedByUserId?: string
+  initialHandledByName?: string
 }
 
 export default function MyPosSummaryPage({
   reportPath = '/api/proxy/ecommerce/reports/my-pos-summary',
+  initialCreatedByUserId = '',
+  initialHandledByName = '',
 }: MyPosSummaryPageProps) {
   const defaultRange = useMemo(() => getDefaultRange(), [])
   const [filterInputs, setFilterInputs] = useState({
@@ -139,6 +143,8 @@ export default function MyPosSummaryPage({
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [perPage, setPerPage] = useState(DEFAULT_PAGE_SIZE)
+  const [createdByUserIdFilter, setCreatedByUserIdFilter] = useState(initialCreatedByUserId)
+  const [handledByName, setHandledByName] = useState(initialHandledByName)
 
   const loadData = useCallback(async (page = 1) => {
     setLoading(true)
@@ -149,6 +155,9 @@ export default function MyPosSummaryPage({
         page: String(page),
         per_page: String(perPage),
       })
+      if (createdByUserIdFilter) {
+        qs.set('created_by_user_id', createdByUserIdFilter)
+      }
 
       const res = await fetch(`${reportPath}?${qs.toString()}`, {
         cache: 'no-store',
@@ -173,7 +182,7 @@ export default function MyPosSummaryPage({
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters.date_from, appliedFilters.date_to, perPage, reportPath])
+  }, [appliedFilters.date_from, appliedFilters.date_to, perPage, reportPath, createdByUserIdFilter])
 
   useEffect(() => {
     loadData(1).catch(() => {})
@@ -212,8 +221,17 @@ export default function MyPosSummaryPage({
       label: 'Date Range',
       value: showingRange,
     })
+
+    if (createdByUserIdFilter) {
+      filters.push({
+        key: 'handled_by',
+        label: 'Handled by',
+        value: handledByName || `User #${createdByUserIdFilter}`,
+      })
+    }
+
     return filters
-  }, [showingRange])
+  }, [showingRange, createdByUserIdFilter, handledByName])
 
   return (
     <div className="space-y-6">
@@ -339,7 +357,18 @@ export default function MyPosSummaryPage({
               <button
                 type="button"
                 className="text-blue-600 hover:text-blue-800"
-                onClick={handleReset}
+                onClick={() => {
+                  if (filter.key === 'date_range') {
+                    handleReset()
+                    return
+                  }
+
+                  if (filter.key === 'handled_by') {
+                    setCreatedByUserIdFilter('')
+                    setHandledByName('')
+                    setCurrentPage(1)
+                  }
+                }}
                 aria-label={`Remove ${filter.label} filter`}
               >
                 <i className="fa-solid fa-xmark" />

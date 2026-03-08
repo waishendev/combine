@@ -22,6 +22,7 @@ class MyPosSummaryReportController extends Controller
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'created_by_user_id' => ['nullable', 'integer', 'min:1'],
             'user_id' => ['nullable', 'integer', 'min:1'],
             'staff_id' => ['nullable', 'integer', 'min:1'],
         ]);
@@ -29,7 +30,11 @@ class MyPosSummaryReportController extends Controller
         $user = $request->user();
         $perPage = (int) ($validated['per_page'] ?? 20);
         $staffId = isset($validated['staff_id']) ? (int) $validated['staff_id'] : null;
-        $ownerUserId = $restrictToCurrentUser ? (int) $user->id : (isset($validated['user_id']) ? (int) $validated['user_id'] : null);
+        $ownerUserId = $restrictToCurrentUser
+            ? (int) $user->id
+            : (isset($validated['created_by_user_id'])
+                ? (int) $validated['created_by_user_id']
+                : (isset($validated['user_id']) ? (int) $validated['user_id'] : null));
 
         $baseQuery = fn () => $this->applyStaffFilter(
             $this->baseOrderQuery($validated, $ownerUserId),

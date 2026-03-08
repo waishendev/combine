@@ -4,8 +4,21 @@ import { redirect } from 'next/navigation'
 import MyPosSummaryPage from '@/components/MyPosSummaryPage'
 import { getCurrentUser } from '@/lib/auth'
 
-export default async function PosSummaryReport() {
+type PosSummaryReportPageProps = {
+  searchParams?: {
+    created_by_user_id?: string
+    staff_name?: string
+  } | Promise<{
+    created_by_user_id?: string
+    staff_name?: string
+  }>
+}
+
+export default async function PosSummaryReport({ searchParams }: PosSummaryReportPageProps) {
   const user = await getCurrentUser()
+  const resolvedSearchParams = searchParams ? await Promise.resolve(searchParams) : {}
+  const createdByUserId = resolvedSearchParams.created_by_user_id ?? ''
+  const staffName = resolvedSearchParams.staff_name ?? ''
 
   if (!user) {
     redirect('/login')
@@ -29,7 +42,11 @@ export default async function PosSummaryReport() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">POS Summary Report</h2>
-      <MyPosSummaryPage reportPath="/api/proxy/ecommerce/reports/pos-summary" />
+      <MyPosSummaryPage
+        reportPath="/api/proxy/ecommerce/reports/pos-summary"
+        initialCreatedByUserId={createdByUserId}
+        initialHandledByName={staffName}
+      />
     </div>
   )
 }
