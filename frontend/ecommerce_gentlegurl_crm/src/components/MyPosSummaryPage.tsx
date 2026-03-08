@@ -19,6 +19,13 @@ type Summary = {
   free_items_effective_total: number
 }
 
+type StaffOption = {
+  id: number
+  name: string
+  phone?: string | null
+  email?: string | null
+}
+
 type StaffSplit = {
   staff_id: number | null
   staff_name: string | null
@@ -31,6 +38,10 @@ type DetailRow = {
   order_no: string | null
   order_id: number
   order_date: string
+  created_by_user_id: number | null
+  created_by_name: string | null
+  created_by_phone: string | null
+  created_by_email: string | null
   order_item_id: number
   product_name: string | null
   qty: number
@@ -72,6 +83,14 @@ const formatDisplayDate = (dateString: string) => {
     month: 'short',
     year: 'numeric',
   }).format(date)
+}
+
+const getStaffDropdownPrimary = (staff: StaffOption) => {
+  if (staff.phone) {
+    return `${staff.name} (${staff.phone})`
+  }
+
+  return staff.name
 }
 
 const formatDateTimeForTable = (dateString: string) => {
@@ -126,6 +145,7 @@ export default function MyPosSummaryPage({
   const [filterInputs, setFilterInputs] = useState({
     date_from: defaultRange.from,
     date_to: defaultRange.to,
+    created_by_user_id: initialCreatedByUserId,
   })
   const [appliedFilters, setAppliedFilters] = useState({
     date_from: defaultRange.from,
@@ -145,6 +165,41 @@ export default function MyPosSummaryPage({
   const [perPage, setPerPage] = useState(DEFAULT_PAGE_SIZE)
   const [createdByUserIdFilter, setCreatedByUserIdFilter] = useState(initialCreatedByUserId)
   const [handledByName, setHandledByName] = useState(initialHandledByName)
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
+  const [staffLookupLoading, setStaffLookupLoading] = useState(false)
+  const [staffDropdownOpen, setStaffDropdownOpen] = useState(false)
+  const [staffLookupQuery, setStaffLookupQuery] = useState(initialHandledByName)
+
+  const loadStaffOptions = useCallback(async () => {
+    setStaffLookupLoading(true)
+    try {
+      const res = await fetch('/api/proxy/staffs?page=1&per_page=50', { cache: 'no-store' })
+      if (!res.ok) return
+
+      const json = await res.json().catch(() => ({}))
+      const list = Array.isArray(json?.data?.data) ? json.data.data : []
+      const mapped: StaffOption[] = list
+        .map((item: { id?: number; name?: string; phone?: string | null; email?: string | null; admin?: { email?: string | null } }) => ({
+          id: Number(item.id),
+          name: item.name ?? `Staff #${item.id}`,
+          phone: item.phone ?? null,
+          email: item.email ?? item.admin?.email ?? null,
+        }))
+        .filter((item) => Number.isFinite(item.id))
+
+      setStaffOptions(mapped)
+
+      if (createdByUserIdFilter) {
+        const selected = mapped.find((item) => String(item.id) === createdByUserIdFilter)
+        if (selected) {
+          setHandledByName(selected.name)
+          setStaffLookupQuery(getStaffDropdownPrimary(selected))
+        }
+      }
+    } finally {
+      setStaffLookupLoading(false)
+    }
+  }, [createdByUserIdFilter])
 
   const loadData = useCallback(async (page = 1) => {
     setLoading(true)
@@ -188,31 +243,54 @@ export default function MyPosSummaryPage({
     loadData(1).catch(() => {})
   }, [loadData])
 
+  useEffect(() => {
+    loadStaffOptions().catch(() => {})
+  }, [loadStaffOptions])
+
   const handleApply = () => {
     setAppliedFilters({
       date_from: filterInputs.date_from || defaultRange.from,
       date_to: filterInputs.date_to || defaultRange.to,
     })
+    setCreatedByUserIdFilter(filterInputs.created_by_user_id)
     setCurrentPage(1)
     setIsFilterOpen(false)
+    setStaffDropdownOpen(false)
   }
 
   const handleReset = () => {
     setFilterInputs({
       date_from: defaultRange.from,
       date_to: defaultRange.to,
+      created_by_user_id: '',
     })
     setAppliedFilters({
       date_from: defaultRange.from,
       date_to: defaultRange.to,
     })
+    setCreatedByUserIdFilter('')
+    setHandledByName('')
+    setStaffLookupQuery('')
     setCurrentPage(1)
     setIsFilterOpen(false)
+    setStaffDropdownOpen(false)
   }
 
   const showingRange = `${formatDisplayDate(appliedFilters.date_from)} – ${formatDisplayDate(
     appliedFilters.date_to,
   )}`
+
+  const filteredStaffOptions = useMemo(() => {
+    const query = staffLookupQuery.trim().toLowerCase()
+    if (!query) return staffOptions
+
+    return staffOptions.filter((staff) =>
+      [staff.name, staff.phone ?? '', staff.email ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(query),
+    )
+  }, [staffLookupQuery, staffOptions])
 
   const activeFilters = useMemo(() => {
     const filters: Array<{ key: string; label: string; value: string }> = []
@@ -286,6 +364,47 @@ export default function MyPosSummaryPage({
                     className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
                   />
                 </div>
+                <div className="sm:col-span-2 relative flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-slate-500">Handled By (optional)</label>
+                  <input
+                    value={staffLookupQuery}
+                    onFocus={() => setStaffDropdownOpen(true)}
+                    onChange={(event) => {
+                      setStaffLookupQuery(event.target.value)
+                      setStaffDropdownOpen(true)
+                      setFilterInputs((prev) => ({ ...prev, created_by_user_id: '' }))
+                      setHandledByName('')
+                    }}
+                    placeholder="Search name / phone / email"
+                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                  />
+                  {staffDropdownOpen && (
+                    <div className="absolute z-20 mt-[68px] max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-xl">
+                      {staffLookupLoading ? (
+                        <p className="px-3 py-2 text-xs text-gray-500">Loading staff...</p>
+                      ) : filteredStaffOptions.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-gray-500">No staff found.</p>
+                      ) : (
+                        filteredStaffOptions.map((staff) => (
+                          <button
+                            key={staff.id}
+                            type="button"
+                            className="block w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50"
+                            onClick={() => {
+                              setFilterInputs((prev) => ({ ...prev, created_by_user_id: String(staff.id) }))
+                              setHandledByName(staff.name)
+                              setStaffLookupQuery(getStaffDropdownPrimary(staff))
+                              setStaffDropdownOpen(false)
+                            }}
+                          >
+                            <p className="text-sm font-semibold text-slate-900">{getStaffDropdownPrimary(staff)}</p>
+                            <p className="text-xs text-slate-600">{staff.email || '—'}</p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
@@ -313,7 +432,11 @@ export default function MyPosSummaryPage({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setIsFilterOpen(true)}
+            onClick={() => {
+              setFilterInputs((prev) => ({ ...prev, created_by_user_id: createdByUserIdFilter }))
+              setStaffLookupQuery(handledByName || '')
+              setIsFilterOpen(true)
+            }}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
             disabled={loading}
           >
@@ -366,6 +489,8 @@ export default function MyPosSummaryPage({
                   if (filter.key === 'handled_by') {
                     setCreatedByUserIdFilter('')
                     setHandledByName('')
+                    setStaffLookupQuery('')
+                    setFilterInputs((prev) => ({ ...prev, created_by_user_id: '' }))
                     setCurrentPage(1)
                   }
                 }}
@@ -403,6 +528,9 @@ export default function MyPosSummaryPage({
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 Product
               </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                Handled By
+              </th>
               <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
                 Qty
               </th>
@@ -425,9 +553,9 @@ export default function MyPosSummaryPage({
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={9} />
+              <TableLoadingRow colSpan={10} />
             ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={9} />
+              <TableEmptyState colSpan={10} />
             ) : (
               rows.map((row) => (
                 <Fragment key={row.order_item_id}>
@@ -448,6 +576,12 @@ export default function MyPosSummaryPage({
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
                       {row.product_name ?? '—'}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      <p className="font-medium text-slate-900">
+                        {row.created_by_name ?? (row.created_by_user_id ? `User #${row.created_by_user_id}` : '—')}{row.created_by_phone ? ` (${row.created_by_phone})` : ''}
+                      </p>
+                      <p className="text-xs text-slate-500">{row.created_by_email ?? '—'}</p>
                     </td>
                     <td className="px-4 py-2 border border-gray-200 text-right">
                       {row.qty}
