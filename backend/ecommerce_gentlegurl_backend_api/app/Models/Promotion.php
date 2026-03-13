@@ -7,7 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 class Promotion extends Model
 {
     protected $fillable = [
+        'type',
         'title',
+        'content_html',
+        'display_position',
         'name',
         'code',
         'description',

@@ -35,8 +35,13 @@ class PromotionController extends Controller
         $data = $this->validatePayload($request);
 
         $promotion = null;
-        \DB::transaction(function () use (&$promotion, $data) {
+        $resolvedType = (string) ($data['type'] ?? 'pos_group');
+
+        \DB::transaction(function () use (&$promotion, $data, $resolvedType) {
             $promotion = Promotion::create([
+                'type' => $resolvedType,
+                'content_html' => (string) ($data['content_html'] ?? ''),
+                'display_position' => (string) ($data['display_position'] ?? 'pos'),
                 'name' => $data['name'],
                 'title' => $data['name'],
                 'code' => $data['code'] ?? null,
@@ -64,8 +69,13 @@ class PromotionController extends Controller
     {
         $data = $this->validatePayload($request, $promotion->id);
 
-        \DB::transaction(function () use ($promotion, $data) {
+        $resolvedType = (string) ($data['type'] ?? ($promotion->type ?? 'pos_group'));
+
+        \DB::transaction(function () use ($promotion, $data, $resolvedType) {
             $promotion->update([
+                'type' => $resolvedType,
+                'content_html' => (string) ($data['content_html'] ?? ($promotion->content_html ?? '')),
+                'display_position' => (string) ($data['display_position'] ?? ($promotion->display_position ?? 'pos')),
                 'name' => $data['name'],
                 'title' => $data['name'],
                 'code' => $data['code'] ?? null,
@@ -130,6 +140,9 @@ class PromotionController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'code' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            'type' => ['nullable', 'string', 'max:30'],
+            'content_html' => ['nullable', 'string'],
+            'display_position' => ['nullable', 'string', 'max:50'],
             'is_active' => ['boolean'],
             'promotion_type' => ['required', Rule::in(['bundle_fixed_price', 'percentage_discount', 'fixed_discount'])],
             'trigger_type' => ['required', Rule::in(['quantity', 'amount'])],
