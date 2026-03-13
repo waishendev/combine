@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { CartDrawer } from "@/components/booking/CartDrawer";
 
@@ -13,6 +13,14 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const { user, logout } = useAuth();
   const [isCartOpen, setIsCartOpen] = useState(false);
 
+  useEffect(() => {
+    const onOpenCart = () => setIsCartOpen(true);
+    window.addEventListener("booking-cart:open", onOpenCart);
+
+    return () => {
+      window.removeEventListener("booking-cart:open", onOpenCart);
+    };
+  }, []);
 
   const isActive = (path: string) => {
     if (path === "/") {
