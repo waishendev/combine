@@ -68,7 +68,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className={`${heading.variable} ${body.variable} bg-[#fffdf9] text-neutral-900 antialiased`}>
         <Providers>
           <Header logoUrl={homepage?.shop_logo_url ?? null} />
-          {children}
+          <div className="pt-20">{children}</div>
           <Footer footer={homepage?.settings?.footer} />
           <WhatsappButton
             enabled={homepage?.contact?.whatsapp?.enabled}
