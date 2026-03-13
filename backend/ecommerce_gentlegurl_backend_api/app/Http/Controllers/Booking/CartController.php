@@ -182,7 +182,7 @@ class CartController extends Controller
     private function resolveActiveCart(Request $request, bool $createIfMissing = true): ?BookingCart
     {
         $customerId = $request->user('customer')?->id;
-        $guestToken = $request->header('X-Booking-Guest-Token') ?: $request->header('X-Session-Token');
+        $guestToken = $request->header('X-Booking-Guest-Token');
 
         if (!$customerId && !$guestToken) {
             abort(response()->json(['success' => false, 'message' => 'Missing booking guest token.', 'data' => null], 422));
@@ -196,7 +196,7 @@ class CartController extends Controller
                 ->where('customer_id', $customerId)
                 ->whereNull('guest_token');
 
-            $cart = $query->latest()->first();
+            $cart = $query->oldest('created_at')->first();
             if (!$cart && $createIfMissing) {
                 $cart = BookingCart::create([
                     'customer_id' => $customerId,
@@ -205,11 +205,11 @@ class CartController extends Controller
                 ]);
             }
 
-            return $cart;
+            return $this->ensureSingleActiveCartForOwner($cart, $customerId, null);
         }
 
         $query = BookingCart::query()->where('status', 'active')->where('guest_token', $guestToken);
-        $cart = $query->latest()->first();
+        $cart = $query->oldest('created_at')->first();
         if (!$cart && $createIfMissing) {
             $cart = BookingCart::create([
                 'customer_id' => null,
@@ -218,7 +218,7 @@ class CartController extends Controller
             ]);
         }
 
-        return $cart;
+        return $this->ensureSingleActiveCartForOwner($cart, null, $guestToken);
     }
 
     private function mergeGuestCartIntoCustomerCart(int $customerId, ?string $guestToken): void
@@ -231,7 +231,7 @@ class CartController extends Controller
             ->where('status', 'active')
             ->where('guest_token', $guestToken)
             ->whereNull('customer_id')
-            ->latest()
+            ->oldest('created_at')
             ->first();
 
         if (!$guestCart) {
@@ -242,7 +242,7 @@ class CartController extends Controller
             ->where('status', 'active')
             ->where('customer_id', $customerId)
             ->whereNull('guest_token')
-            ->latest()
+            ->oldest('created_at')
             ->first();
 
         if (!$customerCart) {
@@ -256,6 +256,34 @@ class CartController extends Controller
             ->update(['booking_cart_id' => $customerCart->id, 'updated_at' => now()]);
 
         $guestCart->update(['status' => 'converted']);
+    }
+
+
+    private function ensureSingleActiveCartForOwner(?BookingCart $activeCart, ?int $customerId, ?string $guestToken): ?BookingCart
+    {
+        if (!$activeCart) {
+            return null;
+        }
+
+        if ($customerId) {
+            BookingCart::query()
+                ->where('status', 'active')
+                ->where('customer_id', $customerId)
+                ->whereNull('guest_token')
+                ->whereKeyNot($activeCart->id)
+                ->update(['status' => 'converted', 'updated_at' => now()]);
+
+            return $activeCart;
+        }
+
+        BookingCart::query()
+            ->where('status', 'active')
+            ->whereNull('customer_id')
+            ->where('guest_token', $guestToken)
+            ->whereKeyNot($activeCart->id)
+            ->update(['status' => 'converted', 'updated_at' => now()]);
+
+        return $activeCart;
     }
 
     private function cleanupExpiredItems(BookingCart $cart): void

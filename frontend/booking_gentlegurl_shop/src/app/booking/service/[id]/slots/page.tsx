@@ -76,7 +76,10 @@ export default function SlotPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
       <BookingProgress step={3} />
-      <h1 className="text-3xl font-semibold">Pick a date & slot</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-3xl font-semibold">Pick a date & slot</h1>
+        <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-700">TEST</span>
+      </div>
       <div className="mt-4 flex flex-wrap gap-3">
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-xl border px-4 py-2" />
         <button onClick={loadSlots} className="rounded-full bg-black px-5 py-2 text-white">Find slots</button>
@@ -92,8 +95,9 @@ export default function SlotPage() {
             if (!startAt || !endAt) return null;
 
             return (
-              <button key={startAt + idx} onClick={() => reserveSlot(slot)} className="rounded-xl border border-neutral-200 px-4 py-3 text-left">
-                <p className="font-medium">{new Date(startAt).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
+              <button key={startAt + idx} onClick={() => reserveSlot(slot)} className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-black hover:shadow">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">TEST Slot</p>
+                <p className="mt-1 font-medium">{new Date(startAt).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
                 <p className="text-sm text-neutral-500">to {new Date(endAt).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
               </button>
             );

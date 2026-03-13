@@ -1,4 +1,3 @@
-import { getOrCreateSessionToken } from "./sessionToken";
 import { getOrCreateBookingGuestToken } from "./bookingGuestToken";
 import { AuthUser, BookingCart, BookingRecord, BookingSlot, Service, Staff } from "./types";
 
@@ -18,11 +17,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   headers.set("Accept", "application/json");
-  const sessionToken = getOrCreateSessionToken();
-  if (sessionToken) {
-    headers.set("X-Session-Token", sessionToken);
-  }
-
   if (path.startsWith("/booking/cart")) {
     const guestToken = getOrCreateBookingGuestToken();
     if (guestToken) {
