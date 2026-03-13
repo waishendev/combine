@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { addCartItem, getAvailability } from "@/lib/apiClient";
@@ -21,7 +21,6 @@ type AvailabilityPayload = {
 export default function SlotPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const serviceId = params.id;
   const staffId = searchParams.get("staff_id") || "";
 
@@ -70,7 +69,7 @@ export default function SlotPage() {
     });
 
     setCartMessage(`Slot added to cart. Current deposit RM ${cart.deposit_total}`);
-    router.push(`/booking/cart`);
+    window.dispatchEvent(new CustomEvent("booking-cart:open"));
   };
 
   return (
