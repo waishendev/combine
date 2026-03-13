@@ -30,6 +30,7 @@ class DatabaseSeeder extends Seeder
 
             SuperAdminRoleSeeder::class,
             SuperAdminSeeder::class,
+            EnsurePromotionPermissionsForSuperAdminSeeder::class,
             StaffRbacSeeder::class,
             PaymentGatewaySeeder::class,
 
