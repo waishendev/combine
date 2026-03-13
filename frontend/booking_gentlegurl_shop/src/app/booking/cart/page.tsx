@@ -32,7 +32,9 @@ export default function BookingCartPage() {
   };
 
   useEffect(() => {
-    loadCart();
+    getBookingCart()
+      .then((data) => setCart(data))
+      .catch(() => setMessage("Unable to load cart."));
 
     getMe()
       .then(() => setIsLoggedIn(true))
