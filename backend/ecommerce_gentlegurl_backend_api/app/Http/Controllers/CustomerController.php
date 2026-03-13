@@ -7,10 +7,15 @@ use App\Models\Ecommerce\LoyaltySetting;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\PointsEarnBatch;
+use App\Models\CustomerAddress;
+use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\PointsRedemptionItem;
+use App\Models\Ecommerce\PointsTransaction;
+use App\Models\Ecommerce\Voucher;
 use Illuminate\Auth\Events\Verified;
-use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
@@ -105,6 +110,421 @@ class CustomerController extends Controller
         return $this->respond(null, __('Customer deleted successfully.'));
     }
 
+    public function exportCsv(Request $request)
+    {
+        $customers = Customer::query()
+            ->with(['addresses', 'customerVouchers.voucher'])
+            ->orderBy('id')
+            ->get();
+
+        $rows = $customers->map(function (Customer $customer) {
+            $payload = $customer->toArray();
+            unset($payload['password'], $payload['remember_token']);
+
+            $payload['member_points'] = $this->getAvailablePoints($customer);
+            $payload['addresses'] = $customer->addresses
+                ->map(function (CustomerAddress $address) {
+                    return [
+                        'label' => $address->label,
+                        'type' => $address->type,
+                        'name' => $address->name,
+                        'phone' => $address->phone,
+                        'line1' => $address->line1,
+                        'line2' => $address->line2,
+                        'city' => $address->city,
+                        'state' => $address->state,
+                        'postcode' => $address->postcode,
+                        'country' => $address->country,
+                        'is_default' => (bool) $address->is_default,
+                    ];
+                })
+                ->all();
+
+            $payload['vouchers'] = $customer->customerVouchers
+                ->map(function (CustomerVoucher $customerVoucher) {
+                    return [
+                        'voucher_id' => $customerVoucher->voucher_id,
+                        'voucher_code' => $customerVoucher->voucher?->code,
+                        'quantity_total' => $customerVoucher->quantity_total,
+                        'quantity_used' => $customerVoucher->quantity_used,
+                        'status' => $customerVoucher->status,
+                        'claimed_at' => optional($customerVoucher->claimed_at)->format('Y-m-d H:i:s'),
+                        'used_at' => optional($customerVoucher->used_at)->format('Y-m-d H:i:s'),
+                        'start_at' => optional($customerVoucher->start_at)->format('Y-m-d H:i:s'),
+                        'end_at' => optional($customerVoucher->end_at)->format('Y-m-d H:i:s'),
+                        'expires_at' => optional($customerVoucher->expires_at)->format('Y-m-d H:i:s'),
+                        'note' => $customerVoucher->note,
+                    ];
+                })
+                ->values()
+                ->all();
+
+            return $payload;
+        })->values()->all();
+
+        $headers = [];
+        foreach ($rows as $row) {
+            foreach (array_keys($row) as $key) {
+                if (! in_array($key, $headers, true)) {
+                    $headers[] = $key;
+                }
+            }
+        }
+
+        if (empty($headers)) {
+            $headers = [
+                'id', 'name', 'email', 'phone', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
+                'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
+                'email_verified_at', 'member_points', 'addresses', 'vouchers', 'created_at', 'updated_at',
+            ];
+        }
+
+        $stream = fopen('php://temp', 'r+');
+        if (! $stream) {
+            return response()->json([
+                'message' => 'Unable to build customer CSV export.',
+            ], 500);
+        }
+
+        fputcsv($stream, $headers);
+
+        foreach ($rows as $row) {
+            $line = [];
+            foreach ($headers as $header) {
+                $value = $row[$header] ?? null;
+                if (is_array($value) || is_object($value)) {
+                    $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+                $line[] = $value;
+            }
+            fputcsv($stream, $line);
+        }
+
+        rewind($stream);
+        $csv = stream_get_contents($stream) ?: '';
+        fclose($stream);
+
+        $csv = mb_convert_encoding($csv, 'UTF-8', 'UTF-8');
+        $csv = "\xEF\xBB\xBF" . $csv;
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="customers_export_' . now()->format('Y-m-d_His') . '.csv"',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt'],
+        ]);
+
+        $file = $validated['file'];
+        $handle = fopen($file->getRealPath(), 'r');
+
+        if (! $handle) {
+            return response()->json([
+                'message' => 'Unable to open CSV file.',
+            ], 422);
+        }
+
+        $headers = fgetcsv($handle);
+        if (! is_array($headers)) {
+            fclose($handle);
+            return response()->json([
+                'message' => 'Invalid CSV header row.',
+            ], 422);
+        }
+
+        $headers = array_map(function ($header) {
+            return trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header));
+        }, $headers);
+
+        $allowedFields = [
+            'name', 'email', 'phone', 'password', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
+            'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
+            'email_verified_at', 'member_points', 'addresses', 'vouchers',
+        ];
+
+        $summary = [
+            'totalRows' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'failedRows' => [],
+        ];
+
+        $rowNumber = 1;
+        while (($cells = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if (! is_array($cells)) {
+                continue;
+            }
+
+            $isAllEmpty = count(array_filter($cells, fn($value) => trim((string) $value) !== '')) === 0;
+            if ($isAllEmpty) {
+                continue;
+            }
+
+            $summary['totalRows']++;
+
+            $raw = [];
+            foreach ($headers as $index => $header) {
+                if ($header === '') {
+                    continue;
+                }
+
+                $raw[$header] = isset($cells[$index]) ? trim((string) $cells[$index]) : '';
+            }
+
+            $payload = [];
+            foreach ($allowedFields as $field) {
+                if (! array_key_exists($field, $raw)) {
+                    continue;
+                }
+
+                $value = $raw[$field];
+                if ($value === '') {
+                    $payload[$field] = null;
+                    continue;
+                }
+
+                if (in_array($field, ['is_active'], true)) {
+                    $normalized = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    $payload[$field] = $normalized ?? false;
+                    continue;
+                }
+
+                $payload[$field] = $value;
+            }
+
+            $memberPoints = null;
+            if (array_key_exists('member_points', $payload) && $payload['member_points'] !== null) {
+                if (! is_numeric($payload['member_points'])) {
+                    $summary['failed']++;
+                    $summary['failedRows'][] = [
+                        'row' => $rowNumber,
+                        'reason' => 'member_points must be a number.',
+                    ];
+                    continue;
+                }
+
+                $memberPoints = max((int) $payload['member_points'], 0);
+                unset($payload['member_points']);
+            }
+
+            $addressPayload = [];
+            $addressesProvided = false;
+            if (array_key_exists('addresses', $payload)) {
+                $addressesProvided = true;
+                $rawAddresses = $payload['addresses'];
+                unset($payload['addresses']);
+
+                if ($rawAddresses !== null) {
+                    $decodedAddresses = json_decode((string) $rawAddresses, true);
+                    if (! is_array($decodedAddresses)) {
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $rowNumber,
+                            'reason' => 'addresses must be a valid JSON array.',
+                        ];
+                        continue;
+                    }
+
+                    $addressPayload = array_values(array_filter(array_map(function ($address) {
+                        if (! is_array($address)) {
+                            return null;
+                        }
+
+                        $normalizeBool = function ($value) {
+                            if (is_bool($value)) {
+                                return $value;
+                            }
+
+                            $normalized = filter_var((string) $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                            return $normalized ?? false;
+                        };
+
+                        return [
+                            'label' => isset($address['label']) ? trim((string) $address['label']) : null,
+                            'type' => isset($address['type']) ? trim((string) $address['type']) : 'shipping',
+                            'name' => isset($address['name']) ? trim((string) $address['name']) : null,
+                            'phone' => isset($address['phone']) ? trim((string) $address['phone']) : null,
+                            'line1' => isset($address['line1']) ? trim((string) $address['line1']) : null,
+                            'line2' => isset($address['line2']) ? trim((string) $address['line2']) : null,
+                            'city' => isset($address['city']) ? trim((string) $address['city']) : null,
+                            'state' => isset($address['state']) ? trim((string) $address['state']) : null,
+                            'postcode' => isset($address['postcode']) ? trim((string) $address['postcode']) : null,
+                            'country' => isset($address['country']) ? trim((string) $address['country']) : null,
+                            'is_default' => $normalizeBool($address['is_default'] ?? false),
+                        ];
+                    }, $decodedAddresses), fn($address) => is_array($address)));
+                }
+            }
+
+            $voucherPayload = [];
+            $vouchersProvided = false;
+            if (array_key_exists('vouchers', $payload)) {
+                $vouchersProvided = true;
+                $rawVouchers = $payload['vouchers'];
+                unset($payload['vouchers']);
+
+                if ($rawVouchers !== null) {
+                    $decodedVouchers = json_decode((string) $rawVouchers, true);
+                    if (! is_array($decodedVouchers)) {
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $rowNumber,
+                            'reason' => 'vouchers must be a valid JSON array.',
+                        ];
+                        continue;
+                    }
+
+                    $voucherPayload = array_values(array_filter(array_map(function ($voucherItem) {
+                        if (! is_array($voucherItem)) {
+                            return null;
+                        }
+
+                        return [
+                            'voucher_id' => $voucherItem['voucher_id'] ?? null,
+                            'voucher_code' => isset($voucherItem['voucher_code']) ? trim((string) $voucherItem['voucher_code']) : null,
+                            'quantity_total' => isset($voucherItem['quantity_total']) ? max((int) $voucherItem['quantity_total'], 1) : 1,
+                            'quantity_used' => isset($voucherItem['quantity_used']) ? max((int) $voucherItem['quantity_used'], 0) : 0,
+                            'status' => isset($voucherItem['status']) ? trim((string) $voucherItem['status']) : 'active',
+                            'claimed_at' => $voucherItem['claimed_at'] ?? null,
+                            'used_at' => $voucherItem['used_at'] ?? null,
+                            'start_at' => $voucherItem['start_at'] ?? null,
+                            'end_at' => $voucherItem['end_at'] ?? null,
+                            'expires_at' => $voucherItem['expires_at'] ?? null,
+                            'note' => isset($voucherItem['note']) ? trim((string) $voucherItem['note']) : null,
+                        ];
+                    }, $decodedVouchers), fn($voucherItem) => is_array($voucherItem)));
+                }
+            }
+
+            $email = trim((string) ($payload['email'] ?? ''));
+            if ($email === '') {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => 'Missing required email field.',
+                ];
+                continue;
+            }
+
+            $name = trim((string) ($payload['name'] ?? ''));
+            if ($name === '') {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => 'Missing required name field.',
+                ];
+                continue;
+            }
+
+            try {
+                $customer = Customer::query()->where('email', $email)->first();
+                $isCreating = ! $customer;
+
+                if ($isCreating) {
+                    $customer = new Customer();
+                    if (empty($payload['password'])) {
+                        $payload['password'] = Str::random(12);
+                    }
+                } else {
+                    if (empty($payload['password'])) {
+                        unset($payload['password']);
+                    }
+                }
+
+                if (array_key_exists('phone', $payload) && $payload['phone'] !== null) {
+                    $phoneConflict = Customer::query()
+                        ->where('phone', $payload['phone'])
+                        ->when($customer->exists, fn($query) => $query->where('id', '!=', $customer->id))
+                        ->exists();
+
+                    if ($phoneConflict) {
+                        throw new \RuntimeException('Phone already exists.');
+                    }
+                }
+
+                if (! array_key_exists('is_active', $payload) || $payload['is_active'] === null) {
+                    $payload['is_active'] = $customer->exists ? $customer->is_active : true;
+                }
+
+                if (! array_key_exists('tier', $payload) || empty((string) $payload['tier'])) {
+                    $payload['tier'] = $this->resolveTierByPoints($memberPoints ?? $this->getAvailablePoints($customer));
+                }
+
+                $customer->fill($payload);
+                $customer->email = $email;
+                $customer->name = $name;
+                $customer->save();
+
+                if ($addressesProvided) {
+                    $customer->addresses()->delete();
+                    foreach ($addressPayload as $addressData) {
+                        $customer->addresses()->create($addressData);
+                    }
+                }
+
+                if ($vouchersProvided) {
+                    $customer->customerVouchers()->delete();
+
+                    foreach ($voucherPayload as $voucherData) {
+                        $voucher = null;
+                        if (! empty($voucherData['voucher_code'])) {
+                            $voucher = Voucher::query()->where('code', $voucherData['voucher_code'])->first();
+                        }
+
+                        if (! $voucher && ! empty($voucherData['voucher_id'])) {
+                            $voucher = Voucher::query()->find($voucherData['voucher_id']);
+                        }
+
+                        if (! $voucher) {
+                            throw new \RuntimeException('Voucher not found for one of voucher rows.');
+                        }
+
+                        $customer->customerVouchers()->create([
+                            'voucher_id' => $voucher->id,
+                            'quantity_total' => max((int) $voucherData['quantity_total'], 1),
+                            'quantity_used' => max((int) $voucherData['quantity_used'], 0),
+                            'status' => $voucherData['status'] ?: 'active',
+                            'claimed_at' => $voucherData['claimed_at'] ?? Carbon::now(),
+                            'used_at' => $voucherData['used_at'] ?? null,
+                            'start_at' => $voucherData['start_at'] ?? null,
+                            'end_at' => $voucherData['end_at'] ?? null,
+                            'expires_at' => $voucherData['expires_at'] ?? null,
+                            'note' => $voucherData['note'] ?? null,
+                        ]);
+                    }
+                }
+
+                if ($memberPoints !== null) {
+                    $this->replaceMemberPoints($customer, $memberPoints);
+                }
+
+                if ($isCreating) {
+                    $summary['created']++;
+                } else {
+                    $summary['updated']++;
+                }
+            } catch (\Throwable $exception) {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        fclose($handle);
+
+        return $this->respond($summary, 'Customer CSV import finished.');
+    }
+
     public function verifyEmail(Customer $customer)
     {
         if ($customer->hasVerifiedEmail()) {
@@ -115,6 +535,61 @@ class CustomerController extends Controller
         event(new Verified($customer));
 
         return $this->respond($customer, __('Customer email verified successfully.'));
+    }
+
+
+    protected function replaceMemberPoints(Customer $customer, int $points): void
+    {
+        PointsEarnBatch::query()->where('customer_id', $customer->id)->delete();
+        PointsTransaction::query()->where('customer_id', $customer->id)->delete();
+
+        if ($points <= 0) {
+            return;
+        }
+
+        $now = Carbon::now();
+
+        PointsEarnBatch::query()->create([
+            'customer_id' => $customer->id,
+            'points_total' => $points,
+            'points_remaining' => $points,
+            'source_type' => 'csv_import',
+            'source_id' => null,
+            'earned_at' => $now,
+            'expires_at' => $now->copy()->addYears(10),
+        ]);
+
+        PointsTransaction::query()->create([
+            'customer_id' => $customer->id,
+            'type' => 'earn',
+            'points_change' => $points,
+            'source_type' => 'csv_import',
+            'source_id' => null,
+            'meta' => [
+                'reason' => 'member points initialized by customer csv import',
+            ],
+        ]);
+    }
+
+    protected function resolveTierByPoints(int $points): string
+    {
+        $tierRules = MembershipTierRule::query()
+            ->where('is_active', true)
+            ->orderBy('min_spent_last_x_months')
+            ->get();
+
+        if ($tierRules->isEmpty()) {
+            return 'basic';
+        }
+
+        $selectedTier = $tierRules->first()->tier;
+        foreach ($tierRules as $rule) {
+            if ($points >= (int) round((float) $rule->min_spent_last_x_months)) {
+                $selectedTier = $rule->tier;
+            }
+        }
+
+        return $selectedTier;
     }
 
     protected function formatCustomerWithSummary(Customer $customer, ?LoyaltySetting $loyaltySetting, $tierRules, array $window)
