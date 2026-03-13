@@ -10,7 +10,13 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const router = useRouter();
   const { user, logout } = useAuth();
 
-  const isActive = (path: string) => (pathname === path ? "text-black" : "text-neutral-500");
+  const isActive = (path: string) => {
+    if (path === "/") {
+      return pathname === "/" ? "text-black" : "text-neutral-500";
+    }
+
+    return pathname === path || pathname?.startsWith(`${path}/`) ? "text-black" : "text-neutral-500";
+  };
   const fallbackLogo = "/images/logo.png";
   const resolvedLogoUrl = logoUrl || fallbackLogo;
   
@@ -34,11 +40,11 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
             </Link>
         <div className="flex items-center gap-4 text-sm font-medium">
           <Link href="/" className={isActive("/")}>Home</Link>
-          <Link href="/booking" className={isActive("/booking")}>Book</Link>
-          <Link href="/services" className={isActive("/services")}>Services</Link>
+          <Link href="/booking" className={isActive("/booking")}>Book Appointment</Link>
+          <Link href="/account/bookings" className={isActive("/account/bookings")}>My Bookings</Link>
+          <Link href="/booking/cart" className={isActive("/booking/cart")}>Cart</Link>
           {user ? (
             <>
-              <Link href="/account/bookings" className={isActive("/account/bookings")}>My Bookings</Link>
               <button onClick={onLogout} className="rounded-full border border-neutral-200 px-4 py-2">Logout</button>
             </>
           ) : (
