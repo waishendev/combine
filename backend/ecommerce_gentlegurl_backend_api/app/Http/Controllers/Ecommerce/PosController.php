@@ -13,6 +13,7 @@ use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
+use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
 use App\Services\Ecommerce\InvoiceService;
@@ -501,6 +502,48 @@ class PosController extends Controller
         ]);
     }
 
+
+
+    public function updateCartItemDiscount(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'discount_type' => ['nullable', 'in:percentage,fixed'],
+            'discount_value' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->items()->with(['variant.product', 'product'])->findOrFail($itemId);
+
+        $discountType = $validated['discount_type'] ?? null;
+        $discountValue = (float) ($validated['discount_value'] ?? 0);
+
+        if (!$discountType || $discountValue <= 0) {
+            $item->discount_type = null;
+            $item->discount_value = 0;
+            $item->save();
+
+            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product']))]);
+        }
+
+        $isStaffUser = !empty($request->user()?->staff_id);
+        $basePricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
+        $baseLineTotal = (float) ($basePricing['line_total_after_promotion'] ?? $basePricing['effective_line_total']);
+
+        if ($discountType === 'percentage' && ($discountValue < 0 || $discountValue > 100)) {
+            return $this->respondError(__('Percentage discount must be between 0 and 100.'), 422);
+        }
+
+        if ($discountType === 'fixed' && $discountValue > $baseLineTotal) {
+            return $this->respondError(__('Fixed discount must not exceed line total.'), 422);
+        }
+
+        $item->discount_type = $discountType;
+        $item->discount_value = $discountValue;
+        $item->save();
+
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product']))]);
+    }
+
     public function checkout(Request $request, OrderPaymentService $orderPaymentService)
     {
         $validated = $request->validate([
@@ -522,10 +565,8 @@ class PosController extends Controller
             $customerId = $validated['member_id'] ?? null;
             $isStaffUser = !empty($request->user()?->staff_id);
 
-            $subtotal = $cart->items->sum(function (PosCartItem $item) use ($isStaffUser) {
-                $pricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
-                return (float) $pricing['effective_line_total'];
-            });
+            $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
+            $subtotal = (float) $cartPricing['subtotal'];
             $discountTotal = 0.0;
             $voucherData = null;
 
@@ -618,7 +659,7 @@ class PosController extends Controller
                     abort(422, __('Insufficient stock for :sku', ['sku' => $product->sku ?? $product->id]));
                 }
 
-                $pricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
+                $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);
                 $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
                 $orderItem = OrderItem::create([
                     'order_id' => $order->id,
@@ -638,6 +679,15 @@ class PosController extends Controller
                     'effective_unit_price' => $pricing['effective_unit_price'],
                     'effective_line_total' => $pricing['effective_line_total'],
                     'is_staff_free_applied' => $pricing['is_staff_free_applied'],
+                    'discount_type' => $item->discount_type,
+                    'discount_value' => (float) ($item->discount_value ?? 0),
+                    'discount_amount' => (float) ($pricing['manual_discount_amount'] ?? 0),
+                    'line_total_after_discount' => (float) ($pricing['line_total_after_discount'] ?? $pricing['effective_line_total']),
+                    'promotion_id' => $pricing['promotion_id'] ?? null,
+                    'promotion_name_snapshot' => $pricing['promotion_name'] ?? null,
+                    'promotion_type_snapshot' => $pricing['promotion_type'] ?? null,
+                    'promotion_discount_amount' => (float) ($pricing['promotion_discount_amount'] ?? 0),
+                    'promotion_applied' => (bool) ($pricing['promotion_applied'] ?? false),
                     'staff_id' => $itemSplits->first()['staff_id'] ?? null,
                     'locked' => true,
                 ]);
@@ -751,10 +801,12 @@ class PosController extends Controller
     {
         $isStaffUser = !empty($cart->staffUser?->staff_id);
 
-        $items = $cart->items->map(function (PosCartItem $item) use ($isStaffUser) {
+        $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
+
+        $items = $cart->items->map(function (PosCartItem $item) use ($isStaffUser, $cartPricing) {
             $variant = $item->variant;
             $product = $variant?->product ?? $item->product;
-            $pricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
+            $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);
 
             return [
                 'id' => $item->id,
@@ -769,11 +821,20 @@ class PosController extends Controller
                 'variant_name' => $variant?->title,
                 'variant_sku' => $variant?->sku,
                 'product_name' => $product?->name,
+                'discount_type' => $item->discount_type,
+                'discount_value' => (float) ($item->discount_value ?? 0),
+                'discount_amount' => (float) ($pricing['manual_discount_amount'] ?? 0),
+                'line_total_after_discount' => (float) ($pricing['line_total_after_discount'] ?? $pricing['effective_line_total']),
+                'promotion_applied' => (bool) ($pricing['promotion_applied'] ?? false),
+                'promotion_name' => $pricing['promotion_name'] ?? null,
+                'promotion_summary' => $pricing['promotion_summary'] ?? null,
+                'promotion_discount_amount' => (float) ($pricing['promotion_discount_amount'] ?? 0),
+                'manual_discount_allowed' => !($pricing['promotion_applied'] ?? false),
             ];
         })->values();
 
         $voucherDiscount = (float) ($cart->voucher_discount_amount ?? 0);
-        $subtotal = (float) $items->sum('line_total');
+        $subtotal = (float) ($cartPricing['subtotal'] ?? $items->sum('line_total'));
         $grandTotal = max(0, $subtotal - $voucherDiscount);
 
         return [
@@ -794,11 +855,12 @@ class PosController extends Controller
     protected function serializeCartItemsForVoucher(PosCart $cart): array
     {
         $isStaffUser = !empty($cart->staffUser?->staff_id);
+        $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
 
-        return $cart->items->map(function (PosCartItem $item) use ($isStaffUser) {
+        return $cart->items->map(function (PosCartItem $item) use ($isStaffUser, $cartPricing) {
             $variant = $item->variant;
             $product = $variant?->product ?? $item->product;
-            $pricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
+            $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);
 
             return [
                 'product_id' => $product?->id,
@@ -826,6 +888,99 @@ class PosController extends Controller
             'effective_line_total' => $effectiveLineTotal,
             'is_staff_free_applied' => $isStaffFreeApplied,
         ];
+    }
+
+
+    protected function buildCartPricing(PosCart $cart, bool $isStaffUser): array
+    {
+        $base = [];
+        foreach ($cart->items as $item) {
+            $base[(int) $item->id] = $this->resolvePosCartItemPricing($item, $isStaffUser);
+        }
+
+        $promotions = Promotion::query()
+            ->where('is_active', true)
+            ->whereNotNull('promotion_type')
+            ->whereIn('id', \DB::table('promotion_products')->select('promotion_id')->distinct())
+            ->with(['promotionProducts', 'promotionTiers'])
+            ->get();
+
+        foreach ($promotions as $promotion) {
+            $productIds = $promotion->promotionProducts->pluck('product_id')->map(fn($x)=>(int)$x)->all();
+            $eligible = [];
+            foreach ($cart->items as $item) {
+                $product = $item->variant?->product ?? $item->product;
+                if ($product && in_array((int) $product->id, $productIds, true)) {
+                    $eligible[] = $item;
+                }
+            }
+            if (empty($eligible)) { continue; }
+
+            $totalQty = array_sum(array_map(fn($it)=>(int)$it->qty, $eligible));
+            $totalAmount = array_sum(array_map(fn($it)=>(float)$base[(int)$it->id]['effective_line_total'], $eligible));
+
+            $applicable = null;
+            foreach ($promotion->promotionTiers as $tier) {
+                $ok = $promotion->trigger_type === 'amount'
+                    ? $totalAmount >= (float) ($tier->min_amount ?? 0)
+                    : $totalQty >= (int) ($tier->min_qty ?? 0);
+                if ($ok && (!$applicable || (($promotion->trigger_type === 'amount' ? (float)$tier->min_amount : (int)$tier->min_qty) > ($promotion->trigger_type === 'amount' ? (float)($applicable->min_amount ?? 0) : (int)($applicable->min_qty ?? 0))))) {
+                    $applicable = $tier;
+                }
+            }
+            if (!$applicable) { continue; }
+
+            $thresholdQty = max(1, (int) ($applicable->min_qty ?? 0));
+            $remaining = $thresholdQty;
+            usort($eligible, fn($a,$b) => ((float)$base[(int)$b->id]['unit_price_snapshot'] <=> (float)$base[(int)$a->id]['unit_price_snapshot']));
+            $selected=[];
+            foreach ($eligible as $it) {
+                if ($remaining<=0) break;
+                $use=min($remaining,(int)$it->qty);
+                $selected[]=['item'=>$it,'qty'=>$use];
+                $remaining-=$use;
+            }
+            if ($remaining>0 && $promotion->trigger_type==='quantity') { continue; }
+
+            $selectedSubtotal=array_sum(array_map(fn($x)=>(float)$base[(int)$x['item']->id]['unit_price_snapshot']*$x['qty'],$selected));
+            $discount=0.0;
+            if ($applicable->discount_type==='bundle_fixed_price') { $discount=max(0,$selectedSubtotal-(float)$applicable->discount_value); }
+            elseif ($applicable->discount_type==='percentage_discount') { $discount=max(0,$selectedSubtotal*((float)$applicable->discount_value/100)); }
+            else { $discount=min($selectedSubtotal,(float)$applicable->discount_value); }
+            if ($discount<=0) continue;
+
+            foreach ($selected as $entry) {
+                $id=(int)$entry['item']->id;
+                $line=(float)$base[$id]['effective_line_total'];
+                $portionBase=max(0.01,(float)$base[$id]['unit_price_snapshot']*$entry['qty']);
+                $portion=min($line, $discount*($portionBase/max(0.01,$selectedSubtotal)));
+                $base[$id]['promotion_applied']=true;
+                $base[$id]['promotion_id']=$promotion->id;
+                $base[$id]['promotion_name']=$promotion->name ?: $promotion->title;
+                $base[$id]['promotion_type']=$promotion->promotion_type;
+                $base[$id]['promotion_summary']=($promotion->trigger_type==='quantity' ? ((int)($applicable->min_qty??0).' items') : ('RM '.number_format((float)($applicable->min_amount??0),2))) . ' ' . $applicable->discount_type;
+                $base[$id]['promotion_discount_amount']=($base[$id]['promotion_discount_amount'] ?? 0)+$portion;
+                $base[$id]['line_total_after_promotion']=max(0,$line-($base[$id]['promotion_discount_amount'] ?? 0));
+            }
+        }
+
+        $subtotal=0.0;
+        foreach ($cart->items as $item) {
+            $id=(int)$item->id;
+            $line=(float)($base[$id]['line_total_after_promotion'] ?? $base[$id]['effective_line_total']);
+            $manual=0.0;
+            if (empty($base[$id]['promotion_applied']) && !empty($item->discount_type) && (float)$item->discount_value>0) {
+                if ($item->discount_type==='percentage') { $manual=$line*((float)$item->discount_value/100); }
+                else { $manual=min($line,(float)$item->discount_value); }
+            }
+            $base[$id]['manual_discount_amount']=$manual;
+            $base[$id]['line_total_after_discount']=max(0,$line-$manual);
+            $base[$id]['effective_line_total']=$base[$id]['line_total_after_discount'];
+            $base[$id]['effective_unit_price']=(int)$item->qty>0 ? ($base[$id]['line_total_after_discount']/(int)$item->qty) : 0;
+            $subtotal += (float)$base[$id]['line_total_after_discount'];
+        }
+
+        return ['items'=>$base,'subtotal'=>$subtotal];
     }
 
     protected function clearVoucherFromCart(PosCart $cart): void
