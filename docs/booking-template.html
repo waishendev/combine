@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maison Belle — Salon & Spa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+/* === RESET & VARIABLES === */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --cream: #F7F3EE;
+  --warm-white: #FDFBF8;
+  --beige: #E8DFD4;
+  --beige-mid: #D4C8B8;
+  --rose: #C4956A;
+  --rose-light: #D4A97A;
+  --rose-glow: rgba(196, 149, 106, 0.15);
+  --charcoal: #2C2825;
+  --charcoal-light: #4A4541;
+  --text-muted: #8A8279;
+  --green: #7A9E7E;
+  --green-bg: rgba(122, 158, 126, 0.1);
+  --green-border: rgba(122, 158, 126, 0.3);
+  --amber: #C4976A;
+  --amber-bg: rgba(196, 151, 106, 0.1);
+  --amber-border: rgba(196, 151, 106, 0.35);
+  --red-muted: #B8877A;
+  --red-bg: rgba(184, 135, 122, 0.08);
+  --red-border: rgba(184, 135, 122, 0.2);
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body: 'DM Sans', sans-serif;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --shadow-soft: 0 2px 20px rgba(44, 40, 37, 0.06);
+  --shadow-elevated: 0 8px 40px rgba(44, 40, 37, 0.1);
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--cream);
+  color: var(--charcoal);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* === NAV === */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: 1.25rem 2.5rem;
+  display: flex; justify-content: space-between; align-items: center;
+  transition: var(--transition);
+}
+.nav.scrolled {
+  background: rgba(247, 243, 238, 0.92);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 1px 0 rgba(44, 40, 37, 0.06);
+}
+.nav-logo {
+  font-family: var(--font-display);
+  font-size: 1.5rem; font-weight: 400;
+  letter-spacing: 0.08em; color: var(--charcoal);
+  text-decoration: none;
+}
+.nav-logo span { font-style: italic; color: var(--rose); }
+.nav-cta {
+  font-family: var(--font-body); font-size: 0.75rem;
+  letter-spacing: 0.15em; text-transform: uppercase;
+  padding: 0.7rem 1.8rem; border: 1px solid var(--charcoal);
+  background: transparent; color: var(--charcoal);
+  cursor: pointer; transition: var(--transition);
+  text-decoration: none;
+}
+.nav-cta:hover { background: var(--charcoal); color: var(--warm-white); }
+
+/* === HERO === */
+.hero {
+  min-height: 100vh; display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  text-align: center; padding: 6rem 2rem 4rem;
+  position: relative; overflow: hidden;
+}
+.hero::before {
+  content: ''; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(212, 169, 122, 0.08), transparent),
+    radial-gradient(ellipse 60% 50% at 80% 20%, rgba(196, 149, 106, 0.06), transparent);
+  pointer-events: none;
+}
+.hero-eyebrow {
+  font-family: var(--font-body); font-size: 0.7rem;
+  letter-spacing: 0.3em; text-transform: uppercase;
+  color: var(--rose); margin-bottom: 1.5rem;
+  opacity: 0; animation: fadeUp 0.8s 0.2s forwards;
+}
+.hero-title {
+  font-family: var(--font-display); font-weight: 300;
+  font-size: clamp(3rem, 8vw, 6.5rem); line-height: 1.05;
+  color: var(--charcoal); margin-bottom: 1.5rem;
+  opacity: 0; animation: fadeUp 0.8s 0.4s forwards;
+}
+.hero-title em { font-style: italic; color: var(--rose); font-weight: 400; }
+.hero-subtitle {
+  font-family: var(--font-body); font-size: 1rem;
+  color: var(--text-muted); max-width: 440px;
+  line-height: 1.7; margin-bottom: 2.5rem;
+  opacity: 0; animation: fadeUp 0.8s 0.6s forwards;
+}
+.hero-scroll {
+  opacity: 0; animation: fadeUp 0.8s 0.8s forwards;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 0.5rem; color: var(--text-muted); font-size: 0.7rem;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  cursor: pointer; text-decoration: none;
+}
+.hero-scroll-line {
+  width: 1px; height: 40px; background: var(--beige-mid);
+  animation: scrollPulse 2s infinite;
+}
+
+/* === SERVICES === */
+.services {
+  padding: 6rem 2rem; max-width: 1100px; margin: 0 auto;
+}
+.section-label {
+  font-family: var(--font-body); font-size: 0.65rem;
+  letter-spacing: 0.35em; text-transform: uppercase;
+  color: var(--rose); margin-bottom: 1rem;
+  text-align: center;
+}
+.section-title {
+  font-family: var(--font-display); font-weight: 300;
+  font-size: clamp(2rem, 4vw, 3rem); text-align: center;
+  margin-bottom: 3.5rem; line-height: 1.2;
+}
+.services-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+.service-card {
+  background: var(--warm-white);
+  border: 1px solid var(--beige);
+  padding: 2.5rem 2rem 2rem;
+  position: relative; transition: var(--transition);
+  display: flex; flex-direction: column;
+}
+.service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-elevated);
+  border-color: var(--beige-mid);
+}
+.service-number {
+  font-family: var(--font-display); font-size: 3rem;
+  font-weight: 300; color: var(--beige);
+  line-height: 1; margin-bottom: 1.5rem;
+}
+.service-name {
+  font-family: var(--font-display); font-size: 1.6rem;
+  font-weight: 500; margin-bottom: 0.5rem;
+}
+.service-duration {
+  font-size: 0.75rem; color: var(--text-muted);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+.service-desc {
+  font-size: 0.9rem; color: var(--charcoal-light);
+  line-height: 1.7; margin-bottom: 1.5rem; flex: 1;
+}
+.service-footer {
+  display: flex; justify-content: space-between;
+  align-items: center; padding-top: 1.5rem;
+  border-top: 1px solid var(--beige);
+}
+.service-price {
+  font-family: var(--font-display); font-size: 1.5rem;
+  font-weight: 500; color: var(--rose);
+}
+.service-price small { font-size: 0.85rem; font-weight: 400; }
+.btn-book {
+  font-family: var(--font-body); font-size: 0.7rem;
+  letter-spacing: 0.15em; text-transform: uppercase;
+  padding: 0.65rem 1.4rem; background: var(--charcoal);
+  color: var(--warm-white); border: none; cursor: pointer;
+  transition: var(--transition);
+}
+.btn-book:hover { background: var(--rose); }
+
+/* === BOOKING === */
+.booking {
+  padding: 5rem 2rem 6rem;
+  background: var(--warm-white);
+  border-top: 1px solid var(--beige);
+}
+.booking-inner { max-width: 900px; margin: 0 auto; }
+
+/* Date Picker */
+.date-picker {
+  display: flex; gap: 0.6rem; margin-bottom: 2rem;
+  overflow-x: auto; padding-bottom: 0.5rem;
+  justify-content: center;
+  scrollbar-width: none;
+}
+.date-picker::-webkit-scrollbar { display: none; }
+.date-btn {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0.8rem 1.2rem; border: 1px solid var(--beige);
+  background: transparent; cursor: pointer;
+  transition: var(--transition); min-width: 76px;
+  flex-shrink: 0;
+}
+.date-btn:hover { border-color: var(--beige-mid); }
+.date-btn.active {
+  background: var(--charcoal); border-color: var(--charcoal);
+}
+.date-btn .day-name {
+  font-size: 0.6rem; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+.date-btn.active .day-name { color: rgba(255,255,255,0.6); }
+.date-btn .day-num {
+  font-family: var(--font-display); font-size: 1.4rem; font-weight: 500;
+  color: var(--charcoal);
+}
+.date-btn.active .day-num { color: var(--warm-white); }
+.date-btn .month {
+  font-size: 0.6rem; color: var(--text-muted);
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.date-btn.active .month { color: rgba(255,255,255,0.5); }
+
+/* Service Tabs */
+.service-tabs {
+  display: flex; gap: 0; margin-bottom: 2rem;
+  border-bottom: 1px solid var(--beige);
+}
+.service-tab {
+  flex: 1; padding: 1rem; text-align: center;
+  font-size: 0.75rem; letter-spacing: 0.12em;
+  text-transform: uppercase; background: transparent;
+  border: none; border-bottom: 2px solid transparent;
+  cursor: pointer; color: var(--text-muted);
+  transition: var(--transition); font-family: var(--font-body);
+}
+.service-tab:hover { color: var(--charcoal); }
+.service-tab.active {
+  color: var(--charcoal); border-bottom-color: var(--rose);
+}
+
+/* Time Slots */
+.slots-container { display: flex; flex-direction: column; gap: 0.5rem; }
+.time-slot {
+  display: flex; align-items: center;
+  padding: 1rem 1.5rem;
+  border: 1px solid var(--beige);
+  background: var(--warm-white);
+  transition: var(--transition);
+  cursor: pointer; position: relative;
+}
+.time-slot:hover:not(.fully-booked) {
+  border-color: var(--beige-mid); transform: translateX(4px);
+}
+.time-slot.fully-booked {
+  opacity: 0.5; cursor: not-allowed;
+  background: var(--red-bg);
+}
+.slot-time {
+  font-family: var(--font-display); font-size: 1.15rem;
+  font-weight: 500; min-width: 100px; color: var(--charcoal);
+}
+.slot-status {
+  flex: 1; display: flex; align-items: center; gap: 0.75rem;
+}
+.slot-indicator {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.slot-indicator.available { background: var(--green); }
+.slot-indicator.limited {
+  background: var(--amber);
+  animation: pulse 2s infinite;
+}
+.slot-indicator.booked { background: var(--red-muted); opacity: 0.5; }
+.slot-text {
+  font-size: 0.8rem; color: var(--charcoal-light);
+}
+.slot-text .highlight {
+  color: var(--amber); font-weight: 500;
+}
+.slot-staff {
+  display: flex; gap: 0.4rem; align-items: center;
+}
+.staff-dot {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.55rem; font-weight: 500;
+  letter-spacing: 0.02em;
+  border: 1.5px solid;
+  position: relative;
+}
+.staff-dot.free {
+  background: var(--green-bg); border-color: var(--green-border);
+  color: var(--green);
+}
+.staff-dot.busy {
+  background: var(--red-bg); border-color: var(--red-border);
+  color: var(--red-muted);
+  text-decoration: line-through;
+}
+.staff-tooltip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%); padding: 0.4rem 0.7rem;
+  background: var(--charcoal); color: var(--warm-white);
+  font-size: 0.65rem; white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: var(--transition);
+  letter-spacing: 0.05em;
+}
+.staff-dot:hover .staff-tooltip { opacity: 1; }
+
+/* === MODAL (legacy - removed, replaced by cart drawer) === */
+
+/* === FORM ELEMENTS === */
+.form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.form-group label {
+  font-size: 0.65rem; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.form-group input {
+  font-family: var(--font-body); font-size: 0.9rem;
+  padding: 0.75rem 1rem; border: 1px solid var(--beige);
+  background: var(--cream); color: var(--charcoal);
+  transition: var(--transition); outline: none;
+  -webkit-appearance: none; appearance: none;
+}
+.form-group input:focus { border-color: var(--rose); }
+.form-group input::placeholder { color: var(--beige-mid); }
+
+/* === CART BADGE (NAV) === */
+.nav-right { display: flex; align-items: center; gap: 1rem; }
+.cart-toggle {
+  position: relative; width: 40px; height: 40px;
+  background: transparent; border: 1px solid var(--beige);
+  cursor: pointer; display: flex; align-items: center;
+  justify-content: center; transition: var(--transition);
+}
+.cart-toggle:hover { border-color: var(--charcoal); }
+.cart-toggle svg { width: 18px; height: 18px; stroke: var(--charcoal); fill: none; stroke-width: 1.5; }
+.cart-badge {
+  position: absolute; top: -5px; right: -5px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--rose); color: #fff;
+  font-size: 0.55rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transform: scale(0); transition: var(--transition);
+}
+.cart-badge.show { opacity: 1; transform: scale(1); }
+
+/* === CART DRAWER === */
+.cart-overlay {
+  position: fixed; inset: 0; background: rgba(44, 40, 37, 0.35);
+  backdrop-filter: blur(6px); z-index: 300;
+  opacity: 0; visibility: hidden; transition: var(--transition);
+}
+.cart-overlay.open { opacity: 1; visibility: visible; }
+.cart-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 420px; max-width: 92vw; background: var(--warm-white);
+  z-index: 301; transform: translateX(100%);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex; flex-direction: column;
+  box-shadow: -10px 0 40px rgba(44,40,37,0.1);
+}
+.cart-drawer.open { transform: translateX(0); }
+
+.cart-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1.5rem 2rem; border-bottom: 1px solid var(--beige);
+  flex-shrink: 0;
+}
+.cart-header-title {
+  font-family: var(--font-display); font-size: 1.4rem; font-weight: 400;
+}
+.cart-header-count {
+  font-size: 0.7rem; color: var(--text-muted);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  margin-left: 0.5rem;
+}
+.cart-close-btn {
+  width: 32px; height: 32px; background: transparent;
+  border: 1px solid var(--beige); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 1rem;
+  transition: var(--transition);
+}
+.cart-close-btn:hover { border-color: var(--charcoal); color: var(--charcoal); }
+
+.cart-body {
+  flex: 1; overflow-y: auto; padding: 1rem 2rem;
+  scrollbar-width: thin; scrollbar-color: var(--beige-mid) transparent;
+}
+.cart-empty {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 100%; gap: 1rem;
+  color: var(--text-muted); text-align: center; padding: 2rem;
+}
+.cart-empty svg { width: 48px; height: 48px; stroke: var(--beige-mid); fill: none; stroke-width: 1; }
+.cart-empty p { font-size: 0.85rem; line-height: 1.6; }
+.cart-empty .cart-empty-hint {
+  font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+}
+
+/* Cart Item */
+.cart-item {
+  padding: 1.25rem 0; border-bottom: 1px solid var(--beige);
+  position: relative; animation: fadeUp 0.3s ease;
+}
+.cart-item:last-child { border-bottom: none; }
+.cart-item-top {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;
+}
+.cart-item-service {
+  font-family: var(--font-display); font-size: 1.1rem;
+  font-weight: 500; line-height: 1.3;
+}
+.cart-item-remove {
+  width: 24px; height: 24px; border: none; background: transparent;
+  cursor: pointer; color: var(--beige-mid); font-size: 1rem;
+  transition: var(--transition); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.cart-item-remove:hover { color: var(--rose); }
+.cart-item-details {
+  display: flex; flex-wrap: wrap; gap: 0.4rem 1rem;
+  margin-top: 0.5rem;
+}
+.cart-item-tag {
+  font-size: 0.65rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted);
+  background: var(--cream); padding: 0.25rem 0.6rem;
+  border: 1px solid var(--beige);
+}
+.cart-item-price {
+  font-family: var(--font-display); font-size: 1rem;
+  font-weight: 500; color: var(--rose); margin-top: 0.6rem;
+}
+
+/* Cart Footer / Checkout */
+.cart-footer {
+  flex-shrink: 0; padding: 1.5rem 2rem;
+  border-top: 1px solid var(--beige); background: var(--cream);
+}
+.cart-total-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 1rem;
+}
+.cart-total-label {
+  font-size: 0.7rem; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.cart-total-value {
+  font-family: var(--font-display); font-size: 1.5rem;
+  font-weight: 500; color: var(--charcoal);
+}
+.cart-checkout-fields {
+  display: none; flex-direction: column; gap: 0.75rem;
+  margin-bottom: 1rem; animation: fadeUp 0.3s ease;
+}
+.cart-checkout-fields.show { display: flex; }
+.cart-checkout-fields .form-group { gap: 0.3rem; }
+.cart-checkout-fields .form-group label { font-size: 0.6rem; }
+.cart-checkout-fields .form-group input {
+  padding: 0.6rem 0.85rem; font-size: 0.85rem;
+}
+.btn-checkout {
+  width: 100%; font-family: var(--font-body); font-size: 0.75rem;
+  letter-spacing: 0.15em; text-transform: uppercase;
+  padding: 1rem; background: var(--charcoal);
+  color: var(--warm-white); border: none;
+  cursor: pointer; transition: var(--transition);
+}
+.btn-checkout:hover { background: var(--rose); }
+.btn-checkout:disabled {
+  opacity: 0.4; cursor: not-allowed;
+  background: var(--charcoal);
+}
+
+/* Cart Success */
+.cart-success {
+  display: none; flex-direction: column; align-items: center;
+  justify-content: center; text-align: center;
+  padding: 3rem 2rem; height: 100%;
+}
+.cart-success.show { display: flex; }
+.cart-success .checkmark {
+  width: 56px; height: 56px; margin-bottom: 1.5rem;
+  border: 2px solid var(--green); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--green); font-size: 1.4rem;
+}
+.cart-success h3 {
+  font-family: var(--font-display); font-size: 1.8rem;
+  font-weight: 400; margin-bottom: 0.5rem;
+}
+.cart-success p {
+  font-size: 0.85rem; color: var(--text-muted);
+  line-height: 1.7; max-width: 280px; margin-bottom: 2rem;
+}
+.btn-continue {
+  font-family: var(--font-body); font-size: 0.7rem;
+  letter-spacing: 0.15em; text-transform: uppercase;
+  padding: 0.7rem 2rem; background: transparent;
+  color: var(--charcoal); border: 1px solid var(--charcoal);
+  cursor: pointer; transition: var(--transition);
+}
+.btn-continue:hover { background: var(--charcoal); color: var(--warm-white); }
+
+/* Slot row — carted state */
+.time-slot.has-carted {
+  border-color: var(--green-border); background: var(--green-bg);
+}
+.slot-carted-badge {
+  font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--green); font-weight: 500; white-space: nowrap;
+  flex-shrink: 0; margin-left: auto;
+  display: flex; align-items: center; gap: 0.35rem;
+}
+.slot-carted-badge svg {
+  width: 12px; height: 12px; stroke: var(--green);
+  fill: none; stroke-width: 2.5;
+}
+
+/* === BOOKING MODAL === */
+.picker-overlay {
+  position: fixed; inset: 0; background: rgba(44, 40, 37, 0.4);
+  backdrop-filter: blur(8px); z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; visibility: hidden; transition: var(--transition);
+  padding: 1.5rem;
+}
+.picker-overlay.open { opacity: 1; visibility: visible; }
+.picker-modal {
+  background: var(--warm-white); width: 100%; max-width: 440px;
+  padding: 2.5rem 2.5rem 2rem; position: relative;
+  transform: translateY(16px) scale(0.98);
+  transition: var(--transition);
+}
+.picker-overlay.open .picker-modal {
+  transform: translateY(0) scale(1);
+}
+.picker-close {
+  position: absolute; top: 1.2rem; right: 1.2rem;
+  width: 28px; height: 28px; border: none; background: transparent;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 1.1rem; transition: var(--transition);
+}
+.picker-close:hover { color: var(--charcoal); }
+
+.picker-title {
+  font-family: var(--font-display); font-size: 1.8rem;
+  font-weight: 400; margin-bottom: 0.3rem;
+}
+.picker-subtitle {
+  font-size: 0.7rem; color: var(--text-muted);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  margin-bottom: 1.8rem;
+}
+.picker-detail {
+  display: flex; justify-content: space-between;
+  padding: 0.75rem 0; border-bottom: 1px solid var(--beige);
+  font-size: 0.85rem;
+}
+.picker-detail:first-of-type { border-top: 1px solid var(--beige); }
+.picker-detail .label { color: var(--text-muted); }
+.picker-detail .value { font-weight: 500; text-align: right; }
+.picker-form {
+  margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem;
+}
+.picker-form .form-group select {
+  font-family: var(--font-body); font-size: 0.9rem;
+  padding: 0.75rem 1rem; border: 1px solid var(--beige);
+  background: var(--cream); color: var(--charcoal);
+  transition: var(--transition); outline: none;
+  -webkit-appearance: none; appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8279' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+.picker-form .form-group select:focus { border-color: var(--rose); }
+.btn-add-cart {
+  font-family: var(--font-body); font-size: 0.75rem;
+  letter-spacing: 0.15em; text-transform: uppercase;
+  padding: 1rem; background: var(--charcoal);
+  color: var(--warm-white); border: none;
+  cursor: pointer; transition: var(--transition);
+  margin-top: 0.5rem; width: 100%;
+}
+.btn-add-cart:hover { background: var(--rose); }
+
+/* Toast notification */
+.toast {
+  position: fixed; bottom: 2rem; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--charcoal); color: var(--warm-white);
+  padding: 0.8rem 1.5rem; font-size: 0.8rem;
+  z-index: 400; opacity: 0;
+  transition: all 0.3s ease; pointer-events: none;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.toast.show {
+  opacity: 1; transform: translateX(-50%) translateY(0);
+}
+.toast .toast-icon { color: var(--green); }
+
+/* === FOOTER === */
+.footer {
+  padding: 3rem 2rem; text-align: center;
+  border-top: 1px solid var(--beige);
+}
+.footer p {
+  font-size: 0.7rem; color: var(--text-muted);
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+
+/* === ANIMATIONS === */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scrollPulse {
+  0%, 100% { opacity: 0.3; transform: scaleY(1); }
+  50% { opacity: 1; transform: scaleY(1.2); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 768px) {
+  .nav { padding: 1rem 1.5rem; }
+  .services-grid { grid-template-columns: 1fr; gap: 1rem; }
+  .service-card { padding: 2rem 1.5rem; }
+  .date-picker { justify-content: flex-start; }
+  .time-slot { flex-wrap: wrap; padding: 1rem; gap: 0.5rem; }
+  .slot-time { min-width: auto; font-size: 1rem; }
+  .slot-staff { width: auto; padding-top: 0; }
+  .service-tabs { overflow-x: auto; }
+  .service-tab { padding: 0.75rem 0.5rem; font-size: 0.65rem; white-space: nowrap; }
+  .hero { padding: 5rem 1.5rem 3rem; }
+  .picker-modal { padding: 2rem 1.5rem 1.5rem; max-width: 100%; }
+  .cart-drawer { width: 100%; max-width: 100vw; }
+  .cart-body { padding: 1rem 1.5rem; }
+  .cart-header { padding: 1.25rem 1.5rem; }
+  .cart-footer { padding: 1.25rem 1.5rem; }
+}
+@media (max-width: 480px) {
+  .date-btn { min-width: 60px; padding: 0.6rem 0.8rem; }
+  .date-btn .day-num { font-size: 1.1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <a href="#" class="nav-logo">Maison <span>Belle</span></a>
+  <div class="nav-right">
+    <a href="#booking" class="nav-cta">Book Now</a>
+    <button class="cart-toggle" id="cartToggle" onclick="toggleCart()">
+      <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+      <span class="cart-badge" id="cartBadge">0</span>
+    </button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <p class="hero-eyebrow">Salon &amp; Spa — Est. 2024</p>
+  <h1 class="hero-title">Where Beauty<br>Meets <em>Craft</em></h1>
+  <p class="hero-subtitle">Experience personalized beauty treatments in a space designed for your comfort. Every visit is a ritual, every detail intentional.</p>
+  <a href="#services" class="hero-scroll">
+    <span>Explore</span>
+    <div class="hero-scroll-line"></div>
+  </a>
+</section>
+
+<!-- SERVICES -->
+<section class="services" id="services">
+  <p class="section-label">Our Services</p>
+  <h2 class="section-title">Crafted for You</h2>
+  <div class="services-grid">
+    <!-- Card 1 -->
+    <div class="service-card">
+      <div class="service-number">01</div>
+      <h3 class="service-name">Precision Cut</h3>
+      <p class="service-duration">45 — 60 minutes</p>
+      <p class="service-desc">A tailored haircut experience beginning with consultation, followed by expert cutting, wash, and styling to bring out your best look.</p>
+      <div class="service-footer">
+        <div class="service-price">RM 85 <small>onwards</small></div>
+        <button class="btn-book" onclick="scrollToBooking(0)">Book</button>
+      </div>
+    </div>
+    <!-- Card 2 -->
+    <div class="service-card">
+      <div class="service-number">02</div>
+      <h3 class="service-name">Colour Studio</h3>
+      <p class="service-duration">90 — 120 minutes</p>
+      <p class="service-desc">From subtle balayage to bold transformations, our colourists use premium products to achieve vibrant, lasting results with minimal damage.</p>
+      <div class="service-footer">
+        <div class="service-price">RM 180 <small>onwards</small></div>
+        <button class="btn-book" onclick="scrollToBooking(1)">Book</button>
+      </div>
+    </div>
+    <!-- Card 3 -->
+    <div class="service-card">
+      <div class="service-number">03</div>
+      <h3 class="service-name">Repair Treatment</h3>
+      <p class="service-duration">60 — 75 minutes</p>
+      <p class="service-desc">Deep conditioning ritual using keratin-infused formulas to restore moisture, strengthen strands, and leave your hair luminously healthy.</p>
+      <div class="service-footer">
+        <div class="service-price">RM 150 <small>onwards</small></div>
+        <button class="btn-book" onclick="scrollToBooking(2)">Book</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BOOKING -->
+<section class="booking" id="booking">
+  <div class="booking-inner">
+    <p class="section-label">Schedule</p>
+    <h2 class="section-title">Choose Your Slot</h2>
+
+    <div class="date-picker" id="datePicker"></div>
+
+    <div class="service-tabs" id="serviceTabs">
+      <button class="service-tab active" data-service="0">Precision Cut</button>
+      <button class="service-tab" data-service="1">Colour Studio</button>
+      <button class="service-tab" data-service="2">Repair Treatment</button>
+    </div>
+
+    <div class="slots-container" id="slotsContainer"></div>
+  </div>
+</section>
+
+<!-- CART DRAWER -->
+<div class="cart-overlay" id="cartOverlay" onclick="toggleCart()"></div>
+<aside class="cart-drawer" id="cartDrawer">
+  <div class="cart-header">
+    <div>
+      <span class="cart-header-title">Your Booking</span>
+      <span class="cart-header-count" id="cartHeaderCount">0 services</span>
+    </div>
+    <button class="cart-close-btn" onclick="toggleCart()">&times;</button>
+  </div>
+
+  <div class="cart-body" id="cartBody">
+    <!-- Empty state -->
+    <div class="cart-empty" id="cartEmpty">
+      <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke-linecap="round" stroke-linejoin="round"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+      <p>Your booking cart is empty.</p>
+      <p class="cart-empty-hint">Select time slots to add services</p>
+    </div>
+    <!-- Cart items rendered here by JS -->
+    <div id="cartItems"></div>
+  </div>
+
+  <!-- Cart Success State -->
+  <div class="cart-success" id="cartSuccess">
+    <div class="checkmark">&#10003;</div>
+    <h3>Booking Confirmed</h3>
+    <p>All your appointments have been reserved. You'll receive a confirmation via SMS shortly.</p>
+    <button class="btn-continue" onclick="resetCart()">Continue Browsing</button>
+  </div>
+
+  <div class="cart-footer" id="cartFooter" style="display:none;">
+    <div class="cart-total-row">
+      <span class="cart-total-label">Estimated Total</span>
+      <span class="cart-total-value" id="cartTotal">RM 0</span>
+    </div>
+    <div class="cart-checkout-fields" id="checkoutFields">
+      <div class="form-group">
+        <label>Your Name</label>
+        <input type="text" id="checkoutName" placeholder="Full name">
+      </div>
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="tel" id="checkoutPhone" placeholder="+60 12 345 6789">
+      </div>
+    </div>
+    <button class="btn-checkout" id="btnCheckout">Proceed to Checkout</button>
+  </div>
+</aside>
+
+<!-- BOOKING MODAL (Add to Cart) -->
+<div class="picker-overlay" id="pickerOverlay">
+  <div class="picker-modal">
+    <button class="picker-close" id="pickerClose">&times;</button>
+    <div class="picker-title">Add to Booking</div>
+    <div class="picker-subtitle">Review your selection</div>
+
+    <div class="picker-detail" style="border-top:1px solid var(--beige)">
+      <span class="label">Service</span>
+      <span class="value" id="pickerService">&mdash;</span>
+    </div>
+    <div class="picker-detail">
+      <span class="label">Date</span>
+      <span class="value" id="pickerDate">&mdash;</span>
+    </div>
+    <div class="picker-detail">
+      <span class="label">Time</span>
+      <span class="value" id="pickerTime">&mdash;</span>
+    </div>
+    <div class="picker-detail">
+      <span class="label">Price</span>
+      <span class="value" id="pickerPrice">&mdash;</span>
+    </div>
+
+    <div class="picker-form">
+      <div class="form-group">
+        <label>Stylist</label>
+        <select id="pickerStaff"></select>
+      </div>
+      <button class="btn-add-cart" id="btnAddCart">Add to Cart</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <span class="toast-icon">&#10003;</span>
+  <span id="toastText">Added to cart</span>
+</div>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <p>Maison Belle &copy; 2024 &mdash; All rights reserved</p>
+</footer>
+
+<script>
+/* ============================================
+   DATA & STATE
+   ============================================ */
+const SERVICES = [
+  { name: 'Precision Cut', price: 85, staff: ['Aina', 'Kai', 'Suri'] },
+  { name: 'Colour Studio', price: 180, staff: ['Rina', 'Dani', 'Mei'] },
+  { name: 'Repair Treatment', price: 150, staff: ['Suri', 'Lina', 'Aina'] }
+];
+
+const HOURS = [
+  '9:00 AM','10:00 AM','11:00 AM','12:00 PM',
+  '1:00 PM','2:00 PM','3:00 PM','4:00 PM',
+  '5:00 PM','6:00 PM','7:00 PM'
+];
+
+let state = {
+  selectedDate: 0,
+  selectedService: 0,
+  scheduleData: {},
+  cart: [],         // { id, serviceIndex, dateIndex, hourIndex, staffName, dateStr, timeStr, serviceName, price }
+  cartOpen: false,
+  checkoutStep: false
+};
+
+/* Seed-based pseudo-random for deterministic mock data */
+function seededRandom(seed) {
+  let x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+function generateSchedule() {
+  const data = {};
+  for (let d = 0; d < 7; d++) {
+    data[d] = {};
+    for (let s = 0; s < 3; s++) {
+      data[d][s] = {};
+      for (let h = 0; h < HOURS.length; h++) {
+        const staff = SERVICES[s].staff.map((name, i) => {
+          const seed = d * 1000 + s * 100 + h * 10 + i + 42;
+          const booked = seededRandom(seed) < 0.45;
+          return { name, booked };
+        });
+        data[d][s][h] = staff;
+      }
+    }
+  }
+  state.scheduleData = data;
+}
+
+/* Helper: format date from index */
+function getDateStr(dateIndex) {
+  const today = new Date();
+  const d = new Date(today);
+  d.setDate(today.getDate() + dateIndex);
+  return d.toLocaleDateString('en-MY', {
+    weekday: 'short', day: 'numeric', month: 'short'
+  });
+}
+
+function getDateStrLong(dateIndex) {
+  const today = new Date();
+  const d = new Date(today);
+  d.setDate(today.getDate() + dateIndex);
+  return d.toLocaleDateString('en-MY', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+}
+
+/* ============================================
+   DATE PICKER
+   ============================================ */
+function renderDates() {
+  const picker = document.getElementById('datePicker');
+  picker.innerHTML = '';
+  const today = new Date();
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const btn = document.createElement('button');
+    btn.className = 'date-btn' + (i === state.selectedDate ? ' active' : '');
+    btn.innerHTML = `
+      <span class="day-name">${dayNames[d.getDay()]}</span>
+      <span class="day-num">${d.getDate()}</span>
+      <span class="month">${monthNames[d.getMonth()]}</span>
+    `;
+    btn.onclick = () => {
+      state.selectedDate = i;
+      renderDates();
+      renderSlots();
+    };
+    picker.appendChild(btn);
+  }
+}
+
+/* ============================================
+   SERVICE TABS
+   ============================================ */
+document.querySelectorAll('.service-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.service-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.selectedService = parseInt(tab.dataset.service);
+    renderSlots();
+  });
+});
+
+/* ============================================
+   CHECK IF SLOT IS IN CART
+   ============================================ */
+function isInCart(serviceIndex, dateIndex, hourIndex, staffName) {
+  return state.cart.some(item =>
+    item.serviceIndex === serviceIndex &&
+    item.dateIndex === dateIndex &&
+    item.hourIndex === hourIndex &&
+    item.staffName === staffName
+  );
+}
+
+function isSlotFullyCarted(serviceIndex, dateIndex, hourIndex, freeStaff) {
+  return freeStaff.every(st => isInCart(serviceIndex, dateIndex, hourIndex, st.name));
+}
+
+/* ============================================
+   TIME SLOTS
+   ============================================ */
+function renderSlots() {
+  const container = document.getElementById('slotsContainer');
+  container.innerHTML = '';
+  const d = state.selectedDate;
+  const s = state.selectedService;
+  const schedule = state.scheduleData[d][s];
+
+  HOURS.forEach((hour, h) => {
+    const staff = schedule[h];
+    const freeStaff = staff.filter(st => !st.booked);
+    const freeCount = freeStaff.length;
+    const total = staff.length;
+    const cartedCount = freeStaff.filter(st => isInCart(s, d, h, st.name)).length;
+    const allCarted = freeCount > 0 && cartedCount === freeCount;
+
+    const slot = document.createElement('div');
+    let slotClass = 'time-slot';
+    if (freeCount === 0) slotClass += ' fully-booked';
+    else if (allCarted) slotClass += ' has-carted';
+    slot.className = slotClass;
+
+    let statusClass, statusText;
+    if (freeCount === 0) {
+      statusClass = 'booked';
+      statusText = 'Fully Booked';
+    } else if (freeCount === 1) {
+      statusClass = 'limited';
+      statusText = '<span class="highlight">' + freeCount + '/' + total + ' available \u2014 Last slot!</span>';
+    } else {
+      statusClass = 'available';
+      statusText = freeCount + '/' + total + ' available';
+    }
+
+    const staffDots = staff.map(st => {
+      const inCart = !st.booked && isInCart(s, d, h, st.name);
+      const cls = st.booked ? 'busy' : (inCart ? 'busy' : 'free');
+      const initials = st.name.slice(0, 2).toUpperCase();
+      const tooltipStatus = st.booked ? 'Booked' : (inCart ? 'In Cart' : 'Available');
+      return '<div class="staff-dot ' + cls + '">' +
+        initials +
+        '<span class="staff-tooltip">' + st.name + ' \u2014 ' + tooltipStatus + '</span>' +
+      '</div>';
+    }).join('');
+
+    let rightHtml = '';
+    if (allCarted) {
+      rightHtml = '<span class="slot-carted-badge"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Added</span>';
+    }
+
+    slot.innerHTML =
+      '<div class="slot-time">' + hour + '</div>' +
+      '<div class="slot-status">' +
+        '<div class="slot-indicator ' + statusClass + '"></div>' +
+        '<span class="slot-text">' + statusText + '</span>' +
+      '</div>' +
+      '<div class="slot-staff">' + staffDots + '</div>' +
+      rightHtml;
+
+    if (freeCount > 0 && !allCarted) {
+      (function(si, di, hi) {
+        slot.onclick = function() { openStaffPicker(si, di, hi); };
+      })(s, d, h);
+    }
+
+    container.appendChild(slot);
+  });
+}
+
+/* ============================================
+   BOOKING MODAL (Add to Cart)
+   ============================================ */
+let pickerContext = { serviceIndex: 0, dateIndex: 0, hourIndex: 0 };
+
+function openStaffPicker(serviceIndex, dateIndex, hourIndex) {
+  const staff = state.scheduleData[dateIndex][serviceIndex][hourIndex];
+  const freeStaff = staff.filter(function(st) {
+    return !st.booked && !isInCart(serviceIndex, dateIndex, hourIndex, st.name);
+  });
+  if (freeStaff.length === 0) return;
+
+  pickerContext = { serviceIndex: serviceIndex, dateIndex: dateIndex, hourIndex: hourIndex };
+
+  document.getElementById('pickerService').textContent = SERVICES[serviceIndex].name;
+  document.getElementById('pickerDate').textContent = getDateStrLong(dateIndex);
+  document.getElementById('pickerTime').textContent = HOURS[hourIndex];
+  document.getElementById('pickerPrice').textContent = 'RM ' + SERVICES[serviceIndex].price;
+
+  var sel = document.getElementById('pickerStaff');
+  sel.innerHTML = freeStaff.map(function(st) {
+    return '<option value="' + st.name + '">' + st.name + '</option>';
+  }).join('');
+
+  document.getElementById('pickerOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeStaffPicker() {
+  document.getElementById('pickerOverlay').classList.remove('open');
+  if (!state.cartOpen) document.body.style.overflow = '';
+}
+
+document.getElementById('pickerClose').onclick = closeStaffPicker;
+document.getElementById('pickerOverlay').onclick = function(e) {
+  if (e.target === e.currentTarget) closeStaffPicker();
+};
+
+document.getElementById('btnAddCart').onclick = function() {
+  var staffName = document.getElementById('pickerStaff').value;
+  if (!staffName) return;
+  closeStaffPicker();
+  addToCart(pickerContext.serviceIndex, pickerContext.dateIndex, pickerContext.hourIndex, staffName);
+};
+
+/* ============================================
+   CART OPERATIONS
+   ============================================ */
+function addToCart(serviceIndex, dateIndex, hourIndex, staffName) {
+  const id = `${serviceIndex}-${dateIndex}-${hourIndex}-${staffName}`;
+  if (state.cart.find(item => item.id === id)) return;
+
+  state.cart.push({
+    id,
+    serviceIndex,
+    dateIndex,
+    hourIndex,
+    staffName,
+    serviceName: SERVICES[serviceIndex].name,
+    price: SERVICES[serviceIndex].price,
+    timeStr: HOURS[hourIndex],
+    dateStr: getDateStr(dateIndex),
+    dateLong: getDateStrLong(dateIndex)
+  });
+
+  renderSlots();
+  updateCartBadge();
+  renderCartDrawer();
+  showToast(`${SERVICES[serviceIndex].name} added to cart`);
+}
+
+function removeFromCart(id) {
+  state.cart = state.cart.filter(item => item.id !== id);
+  renderSlots();
+  updateCartBadge();
+  renderCartDrawer();
+}
+
+function updateCartBadge() {
+  const badge = document.getElementById('cartBadge');
+  const count = state.cart.length;
+  badge.textContent = count;
+  badge.classList.toggle('show', count > 0);
+}
+
+/* ============================================
+   CART DRAWER
+   ============================================ */
+function toggleCart() {
+  state.cartOpen = !state.cartOpen;
+  document.getElementById('cartOverlay').classList.toggle('open', state.cartOpen);
+  document.getElementById('cartDrawer').classList.toggle('open', state.cartOpen);
+  document.body.style.overflow = state.cartOpen ? 'hidden' : '';
+  if (state.cartOpen) renderCartDrawer();
+}
+
+function renderCartDrawer() {
+  const count = state.cart.length;
+  const itemsEl = document.getElementById('cartItems');
+  const emptyEl = document.getElementById('cartEmpty');
+  const footerEl = document.getElementById('cartFooter');
+  const countEl = document.getElementById('cartHeaderCount');
+  const successEl = document.getElementById('cartSuccess');
+  const bodyEl = document.getElementById('cartBody');
+
+  countEl.textContent = `${count} service${count !== 1 ? 's' : ''}`;
+
+  if (count === 0) {
+    emptyEl.style.display = 'flex';
+    itemsEl.innerHTML = '';
+    footerEl.style.display = 'none';
+    bodyEl.style.display = '';
+    successEl.classList.remove('show');
+    state.checkoutStep = false;
+    document.getElementById('checkoutFields').classList.remove('show');
+    document.getElementById('btnCheckout').textContent = 'Proceed to Checkout';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  footerEl.style.display = 'block';
+  bodyEl.style.display = '';
+  successEl.classList.remove('show');
+
+  // Render items
+  itemsEl.innerHTML = state.cart.map(item => `
+    <div class="cart-item">
+      <div class="cart-item-top">
+        <div class="cart-item-service">${item.serviceName}</div>
+        <button class="cart-item-remove" onclick="removeFromCart('${item.id}')">&times;</button>
+      </div>
+      <div class="cart-item-details">
+        <span class="cart-item-tag">${item.dateStr}</span>
+        <span class="cart-item-tag">${item.timeStr}</span>
+        <span class="cart-item-tag">${item.staffName}</span>
+      </div>
+      <div class="cart-item-price">RM ${item.price}</div>
+    </div>
+  `).join('');
+
+  // Total
+  const total = state.cart.reduce((sum, item) => sum + item.price, 0);
+  document.getElementById('cartTotal').textContent = `RM ${total}`;
+}
+
+/* ============================================
+   CHECKOUT FLOW
+   ============================================ */
+document.getElementById('btnCheckout').addEventListener('click', function() {
+  if (!state.checkoutStep) {
+    // Show form fields
+    state.checkoutStep = true;
+    document.getElementById('checkoutFields').classList.add('show');
+    this.textContent = 'Confirm & Pay';
+    document.getElementById('checkoutName').focus();
+    return;
+  }
+
+  // Validate
+  const name = document.getElementById('checkoutName').value.trim();
+  const phone = document.getElementById('checkoutPhone').value.trim();
+  if (!name || !phone) {
+    document.getElementById('checkoutName').style.borderColor = name ? '' : 'var(--rose)';
+    document.getElementById('checkoutPhone').style.borderColor = phone ? '' : 'var(--rose)';
+    return;
+  }
+
+  // Show success
+  document.getElementById('cartBody').style.display = 'none';
+  document.getElementById('cartFooter').style.display = 'none';
+  document.getElementById('cartSuccess').classList.add('show');
+});
+
+function resetCart() {
+  state.cart = [];
+  state.checkoutStep = false;
+  document.getElementById('checkoutFields').classList.remove('show');
+  document.getElementById('btnCheckout').textContent = 'Proceed to Checkout';
+  document.getElementById('checkoutName').value = '';
+  document.getElementById('checkoutPhone').value = '';
+  updateCartBadge();
+  renderCartDrawer();
+  toggleCart();
+  renderSlots();
+}
+
+/* ============================================
+   TOAST
+   ============================================ */
+let toastTimer;
+function showToast(text) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toastText').textContent = text;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+/* ============================================
+   NAV SCROLL EFFECT
+   ============================================ */
+window.addEventListener('scroll', () => {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 50);
+});
+
+/* ============================================
+   SCROLL TO BOOKING
+   ============================================ */
+function scrollToBooking(serviceIndex) {
+  state.selectedService = serviceIndex;
+  document.querySelectorAll('.service-tab').forEach((t, i) => {
+    t.classList.toggle('active', i === serviceIndex);
+  });
+  renderSlots();
+  document.getElementById('booking').scrollIntoView({ behavior: 'smooth' });
+}
+
+/* ============================================
+   INIT
+   ============================================ */
+generateSchedule();
+renderDates();
+renderSlots();
+</script>
+</body>
+</html>
