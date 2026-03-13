@@ -898,6 +898,7 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::get('/services', [\App\Http\Controllers\Booking\ServiceController::class, 'index']);
     Route::get('/services/{id}', [\App\Http\Controllers\Booking\ServiceController::class, 'show']);
     Route::get('/availability', [\App\Http\Controllers\Booking\AvailabilityController::class, 'index']);
+    Route::get('/availability/bulk', [\App\Http\Controllers\Booking\AvailabilityController::class, 'bulk']);
     Route::post('/hold', [\App\Http\Controllers\Booking\HoldController::class, 'store']);
     Route::get('/cart', [\App\Http\Controllers\Booking\CartController::class, 'show']);
     Route::post('/cart/add', [\App\Http\Controllers\Booking\CartController::class, 'add']);

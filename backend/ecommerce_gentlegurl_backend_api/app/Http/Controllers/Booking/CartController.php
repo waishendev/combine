@@ -293,7 +293,7 @@ class CartController extends Controller
 
     private function buildCartPayload(BookingCart $cart): array
     {
-        $cart->load(['items' => fn ($q) => $q->where('status', 'active')->orderBy('expires_at'), 'items.service:id,name', 'items.staff:id,name']);
+        $cart->load(['items' => fn ($q) => $q->where('status', 'active')->orderBy('expires_at'), 'items.service:id,name,deposit_amount', 'items.staff:id,name']);
         $activeItems = $cart->items;
 
         $nextExpiry = $activeItems->min('expires_at');
@@ -313,6 +313,7 @@ class CartController extends Controller
                 'end_at' => $item->end_at?->toIso8601String(),
                 'expires_at' => $item->expires_at?->toIso8601String(),
                 'status' => $item->status,
+                'deposit_amount' => $item->service ? (float) $item->service->deposit_amount : null,
             ])->values(),
             'deposit_total' => $depositTotal,
             'next_expiry_at' => $nextExpiry?->toIso8601String(),
