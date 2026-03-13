@@ -8,8 +8,10 @@ use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\CustomerAddress;
+use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\PointsRedemptionItem;
 use App\Models\Ecommerce\PointsTransaction;
+use App\Models\Ecommerce\Voucher;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -111,7 +113,7 @@ class CustomerController extends Controller
     public function exportCsv(Request $request)
     {
         $customers = Customer::query()
-            ->with(['addresses'])
+            ->with(['addresses', 'customerVouchers.voucher'])
             ->orderBy('id')
             ->get();
 
@@ -136,6 +138,24 @@ class CustomerController extends Controller
                         'is_default' => (bool) $address->is_default,
                     ];
                 })
+                ->all();
+
+            $payload['vouchers'] = $customer->customerVouchers
+                ->map(function (CustomerVoucher $customerVoucher) {
+                    return [
+                        'voucher_id' => $customerVoucher->voucher_id,
+                        'voucher_code' => $customerVoucher->voucher?->code,
+                        'quantity_total' => $customerVoucher->quantity_total,
+                        'quantity_used' => $customerVoucher->quantity_used,
+                        'status' => $customerVoucher->status,
+                        'claimed_at' => optional($customerVoucher->claimed_at)->format('Y-m-d H:i:s'),
+                        'used_at' => optional($customerVoucher->used_at)->format('Y-m-d H:i:s'),
+                        'start_at' => optional($customerVoucher->start_at)->format('Y-m-d H:i:s'),
+                        'end_at' => optional($customerVoucher->end_at)->format('Y-m-d H:i:s'),
+                        'expires_at' => optional($customerVoucher->expires_at)->format('Y-m-d H:i:s'),
+                        'note' => $customerVoucher->note,
+                    ];
+                })
                 ->values()
                 ->all();
 
@@ -155,7 +175,7 @@ class CustomerController extends Controller
             $headers = [
                 'id', 'name', 'email', 'phone', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
                 'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
-                'email_verified_at', 'member_points', 'addresses', 'created_at', 'updated_at',
+                'email_verified_at', 'member_points', 'addresses', 'vouchers', 'created_at', 'updated_at',
             ];
         }
 
@@ -224,7 +244,7 @@ class CustomerController extends Controller
         $allowedFields = [
             'name', 'email', 'phone', 'password', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
             'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
-            'email_verified_at', 'member_points', 'addresses',
+            'email_verified_at', 'member_points', 'addresses', 'vouchers',
         ];
 
         $summary = [
@@ -344,6 +364,46 @@ class CustomerController extends Controller
                 }
             }
 
+            $voucherPayload = [];
+            $vouchersProvided = false;
+            if (array_key_exists('vouchers', $payload)) {
+                $vouchersProvided = true;
+                $rawVouchers = $payload['vouchers'];
+                unset($payload['vouchers']);
+
+                if ($rawVouchers !== null) {
+                    $decodedVouchers = json_decode((string) $rawVouchers, true);
+                    if (! is_array($decodedVouchers)) {
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $rowNumber,
+                            'reason' => 'vouchers must be a valid JSON array.',
+                        ];
+                        continue;
+                    }
+
+                    $voucherPayload = array_values(array_filter(array_map(function ($voucherItem) {
+                        if (! is_array($voucherItem)) {
+                            return null;
+                        }
+
+                        return [
+                            'voucher_id' => $voucherItem['voucher_id'] ?? null,
+                            'voucher_code' => isset($voucherItem['voucher_code']) ? trim((string) $voucherItem['voucher_code']) : null,
+                            'quantity_total' => isset($voucherItem['quantity_total']) ? max((int) $voucherItem['quantity_total'], 1) : 1,
+                            'quantity_used' => isset($voucherItem['quantity_used']) ? max((int) $voucherItem['quantity_used'], 0) : 0,
+                            'status' => isset($voucherItem['status']) ? trim((string) $voucherItem['status']) : 'active',
+                            'claimed_at' => $voucherItem['claimed_at'] ?? null,
+                            'used_at' => $voucherItem['used_at'] ?? null,
+                            'start_at' => $voucherItem['start_at'] ?? null,
+                            'end_at' => $voucherItem['end_at'] ?? null,
+                            'expires_at' => $voucherItem['expires_at'] ?? null,
+                            'note' => isset($voucherItem['note']) ? trim((string) $voucherItem['note']) : null,
+                        ];
+                    }, $decodedVouchers), fn($voucherItem) => is_array($voucherItem)));
+                }
+            }
+
             $email = trim((string) ($payload['email'] ?? ''));
             if ($email === '') {
                 $summary['failed']++;
@@ -407,6 +467,38 @@ class CustomerController extends Controller
                     $customer->addresses()->delete();
                     foreach ($addressPayload as $addressData) {
                         $customer->addresses()->create($addressData);
+                    }
+                }
+
+                if ($vouchersProvided) {
+                    $customer->customerVouchers()->delete();
+
+                    foreach ($voucherPayload as $voucherData) {
+                        $voucher = null;
+                        if (! empty($voucherData['voucher_code'])) {
+                            $voucher = Voucher::query()->where('code', $voucherData['voucher_code'])->first();
+                        }
+
+                        if (! $voucher && ! empty($voucherData['voucher_id'])) {
+                            $voucher = Voucher::query()->find($voucherData['voucher_id']);
+                        }
+
+                        if (! $voucher) {
+                            throw new \RuntimeException('Voucher not found for one of voucher rows.');
+                        }
+
+                        $customer->customerVouchers()->create([
+                            'voucher_id' => $voucher->id,
+                            'quantity_total' => max((int) $voucherData['quantity_total'], 1),
+                            'quantity_used' => max((int) $voucherData['quantity_used'], 0),
+                            'status' => $voucherData['status'] ?: 'active',
+                            'claimed_at' => $voucherData['claimed_at'] ?? Carbon::now(),
+                            'used_at' => $voucherData['used_at'] ?? null,
+                            'start_at' => $voucherData['start_at'] ?? null,
+                            'end_at' => $voucherData['end_at'] ?? null,
+                            'expires_at' => $voucherData['expires_at'] ?? null,
+                            'note' => $voucherData['note'] ?? null,
+                        ]);
                     }
                 }
 
