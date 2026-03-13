@@ -313,6 +313,12 @@ $protectedRoutes = function () {
     Route::get('/customers', [CustomerController::class, 'index'])
         ->middleware('permission:customers.view');
 
+    Route::get('/customers/export', [CustomerController::class, 'exportCsv'])
+        ->middleware('permission:customers.view');
+
+    Route::post('/customers/import', [CustomerController::class, 'importCsv'])
+        ->middleware('permission:customers.create');
+
     Route::post('/customers', [CustomerController::class, 'store'])
         ->middleware('permission:customers.create');
 

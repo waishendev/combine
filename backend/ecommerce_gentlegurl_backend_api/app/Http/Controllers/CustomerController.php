@@ -9,8 +9,9 @@ use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\Ecommerce\PointsRedemptionItem;
 use Illuminate\Auth\Events\Verified;
-use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
@@ -103,6 +104,229 @@ class CustomerController extends Controller
         $customer->delete();
 
         return $this->respond(null, __('Customer deleted successfully.'));
+    }
+
+    public function exportCsv(Request $request)
+    {
+        $customers = Customer::query()->orderBy('id')->get();
+
+        $rows = $customers->map(function (Customer $customer) {
+            $payload = $customer->toArray();
+            unset($payload['password'], $payload['remember_token']);
+
+            return $payload;
+        })->values()->all();
+
+        $headers = [];
+        foreach ($rows as $row) {
+            foreach (array_keys($row) as $key) {
+                if (! in_array($key, $headers, true)) {
+                    $headers[] = $key;
+                }
+            }
+        }
+
+        if (empty($headers)) {
+            $headers = [
+                'id', 'name', 'email', 'phone', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
+                'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
+                'email_verified_at', 'created_at', 'updated_at',
+            ];
+        }
+
+        $stream = fopen('php://temp', 'r+');
+        if (! $stream) {
+            return response()->json([
+                'message' => 'Unable to build customer CSV export.',
+            ], 500);
+        }
+
+        fputcsv($stream, $headers);
+
+        foreach ($rows as $row) {
+            $line = [];
+            foreach ($headers as $header) {
+                $value = $row[$header] ?? null;
+                if (is_array($value) || is_object($value)) {
+                    $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+                $line[] = $value;
+            }
+            fputcsv($stream, $line);
+        }
+
+        rewind($stream);
+        $csv = stream_get_contents($stream) ?: '';
+        fclose($stream);
+
+        $csv = mb_convert_encoding($csv, 'UTF-8', 'UTF-8');
+        $csv = "\xEF\xBB\xBF" . $csv;
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="customers_export_' . now()->format('Y-m-d_His') . '.csv"',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt'],
+        ]);
+
+        $file = $validated['file'];
+        $handle = fopen($file->getRealPath(), 'r');
+
+        if (! $handle) {
+            return response()->json([
+                'message' => 'Unable to open CSV file.',
+            ], 422);
+        }
+
+        $headers = fgetcsv($handle);
+        if (! is_array($headers)) {
+            fclose($handle);
+            return response()->json([
+                'message' => 'Invalid CSV header row.',
+            ], 422);
+        }
+
+        $headers = array_map(function ($header) {
+            return trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header));
+        }, $headers);
+
+        $allowedFields = [
+            'name', 'email', 'phone', 'password', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
+            'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
+            'email_verified_at',
+        ];
+
+        $summary = [
+            'totalRows' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'failedRows' => [],
+        ];
+
+        $rowNumber = 1;
+        while (($cells = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if (! is_array($cells)) {
+                continue;
+            }
+
+            $isAllEmpty = count(array_filter($cells, fn($value) => trim((string) $value) !== '')) === 0;
+            if ($isAllEmpty) {
+                continue;
+            }
+
+            $summary['totalRows']++;
+
+            $raw = [];
+            foreach ($headers as $index => $header) {
+                if ($header === '') {
+                    continue;
+                }
+
+                $raw[$header] = isset($cells[$index]) ? trim((string) $cells[$index]) : '';
+            }
+
+            $payload = [];
+            foreach ($allowedFields as $field) {
+                if (! array_key_exists($field, $raw)) {
+                    continue;
+                }
+
+                $value = $raw[$field];
+                if ($value === '') {
+                    $payload[$field] = null;
+                    continue;
+                }
+
+                if (in_array($field, ['is_active'], true)) {
+                    $normalized = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    $payload[$field] = $normalized ?? false;
+                    continue;
+                }
+
+                $payload[$field] = $value;
+            }
+
+            $email = trim((string) ($payload['email'] ?? ''));
+            if ($email === '') {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => 'Missing required email field.',
+                ];
+                continue;
+            }
+
+            $name = trim((string) ($payload['name'] ?? ''));
+            if ($name === '') {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => 'Missing required name field.',
+                ];
+                continue;
+            }
+
+            try {
+                $customer = Customer::query()->where('email', $email)->first();
+                $isCreating = ! $customer;
+
+                if ($isCreating) {
+                    $customer = new Customer();
+                    if (empty($payload['password'])) {
+                        $payload['password'] = Str::random(12);
+                    }
+                } else {
+                    if (empty($payload['password'])) {
+                        unset($payload['password']);
+                    }
+                }
+
+                if (array_key_exists('phone', $payload) && $payload['phone'] !== null) {
+                    $phoneConflict = Customer::query()
+                        ->where('phone', $payload['phone'])
+                        ->when($customer->exists, fn($query) => $query->where('id', '!=', $customer->id))
+                        ->exists();
+
+                    if ($phoneConflict) {
+                        throw new \RuntimeException('Phone already exists.');
+                    }
+                }
+
+                if (! array_key_exists('is_active', $payload) || $payload['is_active'] === null) {
+                    $payload['is_active'] = $customer->exists ? $customer->is_active : true;
+                }
+
+                $customer->fill($payload);
+                $customer->email = $email;
+                $customer->name = $name;
+                $customer->save();
+
+                if ($isCreating) {
+                    $summary['created']++;
+                } else {
+                    $summary['updated']++;
+                }
+            } catch (\Throwable $exception) {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        fclose($handle);
+
+        return $this->respond($summary, 'Customer CSV import finished.');
     }
 
     public function verifyEmail(Customer $customer)
