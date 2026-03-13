@@ -7,7 +7,9 @@ use App\Models\Ecommerce\LoyaltySetting;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\PointsEarnBatch;
+use App\Models\CustomerAddress;
 use App\Models\Ecommerce\PointsRedemptionItem;
+use App\Models\Ecommerce\PointsTransaction;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -108,11 +110,34 @@ class CustomerController extends Controller
 
     public function exportCsv(Request $request)
     {
-        $customers = Customer::query()->orderBy('id')->get();
+        $customers = Customer::query()
+            ->with(['addresses'])
+            ->orderBy('id')
+            ->get();
 
         $rows = $customers->map(function (Customer $customer) {
             $payload = $customer->toArray();
             unset($payload['password'], $payload['remember_token']);
+
+            $payload['member_points'] = $this->getAvailablePoints($customer);
+            $payload['addresses'] = $customer->addresses
+                ->map(function (CustomerAddress $address) {
+                    return [
+                        'label' => $address->label,
+                        'type' => $address->type,
+                        'name' => $address->name,
+                        'phone' => $address->phone,
+                        'line1' => $address->line1,
+                        'line2' => $address->line2,
+                        'city' => $address->city,
+                        'state' => $address->state,
+                        'postcode' => $address->postcode,
+                        'country' => $address->country,
+                        'is_default' => (bool) $address->is_default,
+                    ];
+                })
+                ->values()
+                ->all();
 
             return $payload;
         })->values()->all();
@@ -130,7 +155,7 @@ class CustomerController extends Controller
             $headers = [
                 'id', 'name', 'email', 'phone', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
                 'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
-                'email_verified_at', 'created_at', 'updated_at',
+                'email_verified_at', 'member_points', 'addresses', 'created_at', 'updated_at',
             ];
         }
 
@@ -199,7 +224,7 @@ class CustomerController extends Controller
         $allowedFields = [
             'name', 'email', 'phone', 'password', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
             'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
-            'email_verified_at',
+            'email_verified_at', 'member_points', 'addresses',
         ];
 
         $summary = [
@@ -255,6 +280,70 @@ class CustomerController extends Controller
                 $payload[$field] = $value;
             }
 
+            $memberPoints = null;
+            if (array_key_exists('member_points', $payload) && $payload['member_points'] !== null) {
+                if (! is_numeric($payload['member_points'])) {
+                    $summary['failed']++;
+                    $summary['failedRows'][] = [
+                        'row' => $rowNumber,
+                        'reason' => 'member_points must be a number.',
+                    ];
+                    continue;
+                }
+
+                $memberPoints = max((int) $payload['member_points'], 0);
+                unset($payload['member_points']);
+            }
+
+            $addressPayload = [];
+            $addressesProvided = false;
+            if (array_key_exists('addresses', $payload)) {
+                $addressesProvided = true;
+                $rawAddresses = $payload['addresses'];
+                unset($payload['addresses']);
+
+                if ($rawAddresses !== null) {
+                    $decodedAddresses = json_decode((string) $rawAddresses, true);
+                    if (! is_array($decodedAddresses)) {
+                        $summary['failed']++;
+                        $summary['failedRows'][] = [
+                            'row' => $rowNumber,
+                            'reason' => 'addresses must be a valid JSON array.',
+                        ];
+                        continue;
+                    }
+
+                    $addressPayload = array_values(array_filter(array_map(function ($address) {
+                        if (! is_array($address)) {
+                            return null;
+                        }
+
+                        $normalizeBool = function ($value) {
+                            if (is_bool($value)) {
+                                return $value;
+                            }
+
+                            $normalized = filter_var((string) $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                            return $normalized ?? false;
+                        };
+
+                        return [
+                            'label' => isset($address['label']) ? trim((string) $address['label']) : null,
+                            'type' => isset($address['type']) ? trim((string) $address['type']) : 'shipping',
+                            'name' => isset($address['name']) ? trim((string) $address['name']) : null,
+                            'phone' => isset($address['phone']) ? trim((string) $address['phone']) : null,
+                            'line1' => isset($address['line1']) ? trim((string) $address['line1']) : null,
+                            'line2' => isset($address['line2']) ? trim((string) $address['line2']) : null,
+                            'city' => isset($address['city']) ? trim((string) $address['city']) : null,
+                            'state' => isset($address['state']) ? trim((string) $address['state']) : null,
+                            'postcode' => isset($address['postcode']) ? trim((string) $address['postcode']) : null,
+                            'country' => isset($address['country']) ? trim((string) $address['country']) : null,
+                            'is_default' => $normalizeBool($address['is_default'] ?? false),
+                        ];
+                    }, $decodedAddresses), fn($address) => is_array($address)));
+                }
+            }
+
             $email = trim((string) ($payload['email'] ?? ''));
             if ($email === '') {
                 $summary['failed']++;
@@ -305,10 +394,25 @@ class CustomerController extends Controller
                     $payload['is_active'] = $customer->exists ? $customer->is_active : true;
                 }
 
+                if (! array_key_exists('tier', $payload) || empty((string) $payload['tier'])) {
+                    $payload['tier'] = $this->resolveTierByPoints($memberPoints ?? $this->getAvailablePoints($customer));
+                }
+
                 $customer->fill($payload);
                 $customer->email = $email;
                 $customer->name = $name;
                 $customer->save();
+
+                if ($addressesProvided) {
+                    $customer->addresses()->delete();
+                    foreach ($addressPayload as $addressData) {
+                        $customer->addresses()->create($addressData);
+                    }
+                }
+
+                if ($memberPoints !== null) {
+                    $this->replaceMemberPoints($customer, $memberPoints);
+                }
 
                 if ($isCreating) {
                     $summary['created']++;
@@ -339,6 +443,61 @@ class CustomerController extends Controller
         event(new Verified($customer));
 
         return $this->respond($customer, __('Customer email verified successfully.'));
+    }
+
+
+    protected function replaceMemberPoints(Customer $customer, int $points): void
+    {
+        PointsEarnBatch::query()->where('customer_id', $customer->id)->delete();
+        PointsTransaction::query()->where('customer_id', $customer->id)->delete();
+
+        if ($points <= 0) {
+            return;
+        }
+
+        $now = Carbon::now();
+
+        PointsEarnBatch::query()->create([
+            'customer_id' => $customer->id,
+            'points_total' => $points,
+            'points_remaining' => $points,
+            'source_type' => 'csv_import',
+            'source_id' => null,
+            'earned_at' => $now,
+            'expires_at' => $now->copy()->addYears(10),
+        ]);
+
+        PointsTransaction::query()->create([
+            'customer_id' => $customer->id,
+            'type' => 'earn',
+            'points_change' => $points,
+            'source_type' => 'csv_import',
+            'source_id' => null,
+            'meta' => [
+                'reason' => 'member points initialized by customer csv import',
+            ],
+        ]);
+    }
+
+    protected function resolveTierByPoints(int $points): string
+    {
+        $tierRules = MembershipTierRule::query()
+            ->where('is_active', true)
+            ->orderBy('min_spent_last_x_months')
+            ->get();
+
+        if ($tierRules->isEmpty()) {
+            return 'basic';
+        }
+
+        $selectedTier = $tierRules->first()->tier;
+        foreach ($tierRules as $rule) {
+            if ($points >= (int) round((float) $rule->min_spent_last_x_months)) {
+                $selectedTier = $rule->tier;
+            }
+        }
+
+        return $selectedTier;
     }
 
     protected function formatCustomerWithSummary(Customer $customer, ?LoyaltySetting $loyaltySetting, $tierRules, array $window)
