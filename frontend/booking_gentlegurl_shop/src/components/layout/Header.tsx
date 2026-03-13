@@ -3,12 +3,16 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { CartDrawer } from "@/components/booking/CartDrawer";
 
 export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
 
   const isActive = (path: string) => {
     if (path === "/") {
@@ -42,16 +46,17 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
           <Link href="/" className={isActive("/")}>Home</Link>
           <Link href="/booking" className={isActive("/booking")}>Book Appointment</Link>
           <Link href="/account/bookings" className={isActive("/account/bookings")}>My Bookings</Link>
-          <Link href="/booking/cart" className={isActive("/booking/cart")}>Cart</Link>
+          <button type="button" onClick={() => setIsCartOpen(true)} className={isCartOpen ? "text-black" : isActive("/booking/cart")}>Cart</button>
           {user ? (
             <>
-              <button onClick={onLogout} className="rounded-full border border-neutral-200 px-4 py-2">Logout</button>
+              <button type="button" onClick={onLogout} className="rounded-full border border-neutral-200 px-4 py-2">Logout</button>
             </>
           ) : (
             <Link href={`/login?redirect=${encodeURIComponent(pathname || "/booking")}`} className="rounded-full bg-black px-4 py-2 text-white">Login</Link>
           )}
         </div>
       </nav>
+      <CartDrawer open={isCartOpen} onClose={() => setIsCartOpen(false)} />
     </header>
   );
 }
