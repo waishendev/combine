@@ -652,6 +652,8 @@ $protectedRoutes = function () {
         // SEO Global
         Route::get('/seo-global', [SeoGlobalController::class, 'show']);
 
+        Route::post('/seo-global/upload-image', [SeoGlobalController::class, 'uploadImage']);
+
         Route::put('/seo-global', [SeoGlobalController::class, 'update']);
 
         // Loyalty Settings

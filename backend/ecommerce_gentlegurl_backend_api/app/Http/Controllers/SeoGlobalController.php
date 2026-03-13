@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Ecommerce\SeoGlobal;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class SeoGlobalController extends Controller
 {
@@ -39,6 +40,24 @@ class SeoGlobalController extends Controller
         }
 
         return $this->respond($seo, __('SEO settings updated successfully.'));
+    }
+
+    public function uploadImage(Request $request)
+    {
+        $type = $this->resolveType($request);
+
+        $validated = $request->validate([
+            'image_file' => ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+        ]);
+
+        $file = $validated['image_file'];
+        $filename = sprintf('seo-global/%s/%s.%s', $type, uniqid('', true), $file->getClientOriginalExtension());
+        $path = $file->storeAs('', $filename, 'public');
+
+        return $this->respond([
+            'image_path' => $path,
+            'image_url' => Storage::disk('public')->url($path),
+        ], __('SEO image uploaded successfully.'));
     }
 
     private function resolveType(Request $request): string
