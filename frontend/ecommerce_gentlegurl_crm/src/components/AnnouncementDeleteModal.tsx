@@ -4,17 +4,20 @@ import { useMemo, useState } from 'react'
 
 import type { AnnouncementRowData } from './AnnouncementRow'
 import { useI18n } from '@/lib/i18n'
+import type { Workspace } from '@/lib/workspace'
 
 interface AnnouncementDeleteModalProps {
   announcement: AnnouncementRowData
   onClose: () => void
   onDeleted: (announcementId: number) => void
+  workspaceType?: Workspace
 }
 
 export default function AnnouncementDeleteModal({
   announcement,
   onClose,
   onDeleted,
+  workspaceType = 'ecommerce',
 }: AnnouncementDeleteModalProps) {
   const { t } = useI18n()
   const [submitting, setSubmitting] = useState(false)
@@ -29,7 +32,7 @@ export default function AnnouncementDeleteModal({
     setError(null)
 
     try {
-      const res = await fetch(`/api/proxy/ecommerce/announcements/${announcement.id}`, {
+      const res = await fetch(`/api/proxy/ecommerce/announcements/${announcement.id}?type=${workspaceType}`, {
         method: 'DELETE',
         headers: {
           Accept: 'application/json',

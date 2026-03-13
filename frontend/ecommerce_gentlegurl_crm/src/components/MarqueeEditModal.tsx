@@ -5,11 +5,13 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import type { MarqueeRowData } from './MarqueeRow'
 import { mapMarqueeApiItemToRow, type MarqueeApiItem } from './marqueeUtils'
 import { useI18n } from '@/lib/i18n'
+import type { Workspace } from '@/lib/workspace'
 
 interface MarqueeEditModalProps {
   marqueeId: number
   onClose: () => void
   onSuccess: (marquee: MarqueeRowData) => void
+  workspaceType?: Workspace
 }
 
 interface FormState {
@@ -30,6 +32,7 @@ export default function MarqueeEditModal({
   marqueeId,
   onClose,
   onSuccess,
+  workspaceType = 'ecommerce',
 }: MarqueeEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -45,7 +48,7 @@ export default function MarqueeEditModal({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/ecommerce/marquees/${marqueeId}`, {
+        const res = await fetch(`/api/proxy/ecommerce/marquees/${marqueeId}?type=${workspaceType}`, {
           cache: 'no-store',
           signal: controller.signal,
           headers: {
@@ -118,7 +121,7 @@ export default function MarqueeEditModal({
     })
 
     return () => controller.abort()
-  }, [marqueeId])
+  }, [marqueeId, workspaceType])
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
@@ -146,7 +149,7 @@ export default function MarqueeEditModal({
         is_active: form.isActive === 'active' ? 1 : 0,
       }
 
-      const res = await fetch(`/api/proxy/ecommerce/marquees/${marqueeId}`, {
+      const res = await fetch(`/api/proxy/ecommerce/marquees/${marqueeId}?type=${workspaceType}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

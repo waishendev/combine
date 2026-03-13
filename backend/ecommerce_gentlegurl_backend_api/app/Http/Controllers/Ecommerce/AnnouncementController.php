@@ -12,7 +12,8 @@ class AnnouncementController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Announcement::query();
+        $type = $this->resolveType($request);
+        $query = Announcement::query()->ofType($type);
 
         if ($request->filled('key')) {
             $query->where('key', $request->get('key'));
@@ -38,11 +39,12 @@ class AnnouncementController extends Controller
     {
         $data = $request->validate([
             'key' => 'nullable|string|max:50',
+            'type' => 'nullable|string|in:ecommerce,booking',
             'title' => 'nullable|string|max:255',
             'subtitle' => 'nullable|string|max:255',
             'body_text' => 'nullable|string',
             'image_path' => 'nullable|string|max:255',
-            'image_file' => 'nullable|image|mimes:jpeg,jpg,png,gif,webp|max:5120', // 最大 5MB
+            'image_file' => 'nullable|image|mimes:jpeg,jpg,png,gif,webp|max:5120',
             'button_label' => 'nullable|string|max:100',
             'button_link' => 'nullable|string|max:255',
             'is_active' => 'boolean',
@@ -51,19 +53,17 @@ class AnnouncementController extends Controller
             'show_once_per_session' => 'boolean',
         ]);
 
-        // Automatically set sort_order to the next available value
-        $sortOrder = (Announcement::max('sort_order') ?? 0) + 1;
-        $data['sort_order'] = $sortOrder;
+        $type = $data['type'] ?? $this->resolveType($request);
+        $data['type'] = $type;
 
-        // Handle image file upload
+        $data['sort_order'] = (Announcement::query()->ofType($type)->max('sort_order') ?? 0) + 1;
+
         if ($request->hasFile('image_file')) {
             $file = $request->file('image_file');
             $filename = 'announcements/' . uniqid() . '.' . $file->getClientOriginalExtension();
-            $path = $file->storeAs('', $filename, 'public');
-            $data['image_path'] = $path;
+            $data['image_path'] = $file->storeAs('', $filename, 'public');
         }
 
-        // Remove image_file from data array as it's not a database field
         unset($data['image_file']);
 
         $announcement = Announcement::create($data);
@@ -71,13 +71,17 @@ class AnnouncementController extends Controller
         return $this->respond($announcement, __('Announcement created successfully.'), true, 201);
     }
 
-    public function show(Announcement $announcement)
+    public function show(Request $request, Announcement $announcement)
     {
+        $this->assertTypeMatch($request, $announcement);
+
         return $this->respond($announcement);
     }
 
     public function update(Request $request, Announcement $announcement)
     {
+        $this->assertTypeMatch($request, $announcement);
+
         $data = $request->validate([
             'key' => 'sometimes|nullable|string|max:50',
             'title' => 'sometimes|nullable|string|max:255',
@@ -94,9 +98,7 @@ class AnnouncementController extends Controller
             'sort_order' => 'sometimes|integer',
         ]);
 
-        // Handle image file upload (nullable for update)
         if ($request->hasFile('image_file')) {
-            // Delete old image if it was stored locally
             if ($announcement->image_path && str_starts_with($announcement->image_path, 'announcements/') && Storage::disk('public')->exists($announcement->image_path)) {
                 Storage::disk('public')->delete($announcement->image_path);
             }
@@ -105,7 +107,6 @@ class AnnouncementController extends Controller
             $filename = 'announcements/' . uniqid() . '.' . $file->getClientOriginalExtension();
             $data['image_path'] = $file->storeAs('', $filename, 'public');
         } elseif ($request->has('image_path')) {
-            // Explicitly updating/removing image_path
             $imagePath = $request->input('image_path');
             if (empty($imagePath) && $announcement->image_path && str_starts_with($announcement->image_path, 'announcements/') && Storage::disk('public')->exists($announcement->image_path)) {
                 Storage::disk('public')->delete($announcement->image_path);
@@ -120,9 +121,10 @@ class AnnouncementController extends Controller
         return $this->respond($announcement->fresh(), __('Announcement updated successfully.'));
     }
 
-    public function destroy(Announcement $announcement)
+    public function destroy(Request $request, Announcement $announcement)
     {
-        // Delete image file if it exists and was uploaded
+        $this->assertTypeMatch($request, $announcement);
+
         if ($announcement->image_path && str_starts_with($announcement->image_path, 'announcements/')) {
             if (Storage::disk('public')->exists($announcement->image_path)) {
                 Storage::disk('public')->delete($announcement->image_path);
@@ -134,22 +136,23 @@ class AnnouncementController extends Controller
         return $this->respond(null, __('Announcement deleted successfully.'));
     }
 
-    public function moveUp(Announcement $announcement)
+    public function moveUp(Request $request, Announcement $announcement)
     {
+        $this->assertTypeMatch($request, $announcement);
+
         return DB::transaction(function () use ($announcement) {
             $oldPosition = $announcement->sort_order;
 
-            // Find the previous announcement (lower sort_order)
-            $previousAnnouncement = Announcement::where('sort_order', '<', $announcement->sort_order)
+            $previousAnnouncement = Announcement::query()
+                ->ofType($announcement->type)
+                ->where('sort_order', '<', $announcement->sort_order)
                 ->orderBy('sort_order', 'desc')
                 ->first();
 
             if (!$previousAnnouncement) {
-                // Already at the top
                 return $this->respond(null, __('Announcement is already at the top.'), false, 400);
             }
 
-            // Swap sort_order values
             $newPosition = $previousAnnouncement->sort_order;
 
             $announcement->sort_order = $newPosition;
@@ -158,7 +161,6 @@ class AnnouncementController extends Controller
             $previousAnnouncement->sort_order = $oldPosition;
             $previousAnnouncement->save();
 
-            // Return metadata only
             return $this->respond([
                 'id' => $announcement->id,
                 'old_position' => $oldPosition,
@@ -167,22 +169,23 @@ class AnnouncementController extends Controller
         });
     }
 
-    public function moveDown(Announcement $announcement)
+    public function moveDown(Request $request, Announcement $announcement)
     {
+        $this->assertTypeMatch($request, $announcement);
+
         return DB::transaction(function () use ($announcement) {
             $oldPosition = $announcement->sort_order;
 
-            // Find the next announcement (higher sort_order)
-            $nextAnnouncement = Announcement::where('sort_order', '>', $announcement->sort_order)
+            $nextAnnouncement = Announcement::query()
+                ->ofType($announcement->type)
+                ->where('sort_order', '>', $announcement->sort_order)
                 ->orderBy('sort_order', 'asc')
                 ->first();
 
             if (!$nextAnnouncement) {
-                // Already at the bottom
                 return $this->respond(null, __('Announcement is already at the bottom.'), false, 400);
             }
 
-            // Swap sort_order values
             $newPosition = $nextAnnouncement->sort_order;
 
             $announcement->sort_order = $newPosition;
@@ -191,12 +194,27 @@ class AnnouncementController extends Controller
             $nextAnnouncement->sort_order = $oldPosition;
             $nextAnnouncement->save();
 
-            // Return metadata only
             return $this->respond([
                 'id' => $announcement->id,
                 'old_position' => $oldPosition,
                 'new_position' => $newPosition,
             ], __('Announcement moved down successfully.'));
         });
+    }
+
+    private function resolveType(Request $request): string
+    {
+        $type = $request->get('type');
+
+        return in_array($type, [Announcement::TYPE_ECOMMERCE, Announcement::TYPE_BOOKING], true)
+            ? $type
+            : Announcement::TYPE_ECOMMERCE;
+    }
+
+    private function assertTypeMatch(Request $request, Announcement $announcement): void
+    {
+        if ($announcement->type !== $this->resolveType($request)) {
+            abort(404);
+        }
     }
 }

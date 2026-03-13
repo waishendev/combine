@@ -5,11 +5,13 @@ import { ChangeEvent, FormEvent, useRef, useState } from 'react'
 import type { AnnouncementRowData } from './AnnouncementRow'
 import { mapAnnouncementApiItemToRow, type AnnouncementApiItem } from './announcementUtils'
 import { useI18n } from '@/lib/i18n'
+import type { Workspace } from '@/lib/workspace'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface AnnouncementCreateModalProps {
   onClose: () => void
   onSuccess: (announcement: AnnouncementRowData) => void
+  workspaceType?: Workspace
 }
 
 interface FormState {
@@ -37,6 +39,7 @@ const initialFormState: FormState = {
 export default function AnnouncementCreateModal({
   onClose,
   onSuccess,
+  workspaceType = 'ecommerce',
 }: AnnouncementCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -95,6 +98,7 @@ export default function AnnouncementCreateModal({
 
     try {
       const formData = new FormData()
+      formData.append('type', workspaceType)
       formData.append('title', form.title.trim())
       formData.append('subtitle', form.subtitle.trim())
       formData.append('body_text', form.bodyText.trim())
@@ -108,7 +112,7 @@ export default function AnnouncementCreateModal({
         formData.append('image_file', form.imageFile)
       }
 
-      const res = await fetch('/api/proxy/ecommerce/announcements', {
+      const res = await fetch(`/api/proxy/ecommerce/announcements?type=${workspaceType}`, {
         method: 'POST',
         body: formData,
       })

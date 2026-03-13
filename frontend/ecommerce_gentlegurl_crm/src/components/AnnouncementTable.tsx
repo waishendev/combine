@@ -14,9 +14,11 @@ import {
   mapAnnouncementApiItemToRow,
 } from './announcementUtils'
 import { useI18n } from '@/lib/i18n'
+import type { Workspace } from '@/lib/workspace'
 
 interface AnnouncementTableProps {
   permissions: string[]
+  workspaceType?: Workspace
 }
 
 type Meta = {
@@ -44,6 +46,7 @@ type AnnouncementApiResponse = {
 
 export default function AnnouncementTable({
   permissions,
+  workspaceType = 'ecommerce',
 }: AnnouncementTableProps) {
   const { t } = useI18n()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -56,10 +59,17 @@ export default function AnnouncementTable({
   const [deleteTarget, setDeleteTarget] = useState<AnnouncementRowData | null>(null)
   const [movingAnnouncementId, setMovingAnnouncementId] = useState<number | null>(null)
 
-  const canCreate = permissions.includes('ecommerce.announcements.create')
-  const canUpdate = permissions.includes('ecommerce.announcements.update')
-  const canDelete = permissions.includes('ecommerce.announcements.delete')
-  const canMove = permissions.includes('ecommerce.announcements.update')
+  const isBooking = workspaceType === 'booking'
+  const canCreate = isBooking
+    ? permissions.includes('booking.settings.update') || permissions.includes('booking.settings.view')
+    : permissions.includes('ecommerce.announcements.create')
+  const canUpdate = isBooking
+    ? permissions.includes('booking.settings.update') || permissions.includes('booking.settings.view')
+    : permissions.includes('ecommerce.announcements.update')
+  const canDelete = isBooking
+    ? permissions.includes('booking.settings.update') || permissions.includes('booking.settings.view')
+    : permissions.includes('ecommerce.announcements.delete')
+  const canMove = canUpdate
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -107,6 +117,7 @@ export default function AnnouncementTable({
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
+        qs.set('type', workspaceType)
 
         const res = await fetch(`/api/proxy/ecommerce/announcements?${qs.toString()}`, {
           cache: 'no-store',
@@ -182,7 +193,7 @@ export default function AnnouncementTable({
 
     fetchAnnouncements()
     return () => controller.abort()
-  }, [currentPage, pageSize])
+  }, [currentPage, pageSize, workspaceType])
 
   const handleSort = (column: keyof AnnouncementRowData) => {
     if (sortColumn === column) {
@@ -306,7 +317,7 @@ export default function AnnouncementTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/ecommerce/announcements/${announcement.id}/move-up`,
+        `/api/proxy/ecommerce/announcements/${announcement.id}/move-up?type=${workspaceType}`,
         {
           method: 'POST',
           headers: {
@@ -403,7 +414,7 @@ export default function AnnouncementTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/ecommerce/announcements/${announcement.id}/move-down`,
+        `/api/proxy/ecommerce/announcements/${announcement.id}/move-down?type=${workspaceType}`,
         {
           method: 'POST',
           headers: {
@@ -498,6 +509,7 @@ export default function AnnouncementTable({
     <div>
       {isCreateModalOpen && (
         <AnnouncementCreateModal
+        workspaceType={workspaceType}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={(announcement) => {
             setIsCreateModalOpen(false)
@@ -637,6 +649,7 @@ export default function AnnouncementTable({
       {editingAnnouncementId !== null && (
         <AnnouncementEditModal
           announcementId={editingAnnouncementId}
+        workspaceType={workspaceType}
           onClose={() => setEditingAnnouncementId(null)}
           onSuccess={(announcement) => {
             setEditingAnnouncementId(null)
@@ -648,6 +661,7 @@ export default function AnnouncementTable({
       {deleteTarget && (
         <AnnouncementDeleteModal
           announcement={deleteTarget}
+        workspaceType={workspaceType}
           onClose={() => setDeleteTarget(null)}
           onDeleted={(announcementId) => {
             setDeleteTarget(null)

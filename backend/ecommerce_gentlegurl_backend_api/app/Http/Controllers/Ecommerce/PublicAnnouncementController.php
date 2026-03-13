@@ -10,7 +10,10 @@ class PublicAnnouncementController extends Controller
 {
     public function index(Request $request)
     {
+        $type = $this->resolveType($request);
+
         $query = Announcement::query()
+            ->ofType($type)
             ->active()
             ->current()
             ->orderBy('sort_order')
@@ -25,9 +28,12 @@ class PublicAnnouncementController extends Controller
         return $this->respond($announcements);
     }
 
-    public function showByKey(string $key)
+    public function showByKey(Request $request, string $key)
     {
+        $type = $this->resolveType($request);
+
         $announcement = Announcement::query()
+            ->ofType($type)
             ->where('key', $key)
             ->active()
             ->current()
@@ -36,5 +42,14 @@ class PublicAnnouncementController extends Controller
             ->first();
 
         return $this->respond($announcement);
+    }
+
+    private function resolveType(Request $request): string
+    {
+        $type = $request->get('type');
+
+        return in_array($type, [Announcement::TYPE_ECOMMERCE, Announcement::TYPE_BOOKING], true)
+            ? $type
+            : Announcement::TYPE_ECOMMERCE;
     }
 }

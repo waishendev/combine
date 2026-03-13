@@ -19,6 +19,22 @@ export type HomepageFooter = {
   } | null;
 };
 
+
+export type HomepageMarquee = {
+  id: number | string;
+  text?: string | null;
+};
+
+export type HomepageAnnouncement = {
+  id: number | string;
+  title?: string | null;
+  content?: string | null;
+  image_path?: string | null;
+  image_url?: string | null;
+  button_link?: string | null;
+  button_label?: string | null;
+};
+
 export type HomepageData = {
   shop_logo_url?: string | null;
   shop_favicon_url?: string | null;
@@ -35,6 +51,8 @@ export type HomepageData = {
       default_message?: string | null;
     };
   } | null;
+  marquees?: HomepageMarquee[];
+  announcements?: HomepageAnnouncement[];
   settings?: {
     footer?: HomepageFooter | null;
   } | null;

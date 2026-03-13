@@ -3,6 +3,8 @@ import { Playfair_Display, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Header } from "@/components/layout/Header";
+import Marquee from "@/components/home/Marquee";
+import AnnouncementModal from "@/components/home/AnnouncementModal";
 import { Footer } from "@/components/layout/Footer";
 import { WhatsappButton } from "@/components/layout/WhatsappButton";
 import { getBookingHomepage } from "@/lib/serverHomepage";
@@ -68,6 +70,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className={`${heading.variable} ${body.variable} bg-[#fffdf9] text-neutral-900 antialiased`}>
         <Providers>
           <Header logoUrl={homepage?.shop_logo_url ?? null} />
+          {homepage?.marquees && homepage.marquees.length > 0 && <Marquee items={homepage.marquees} />}
+          {homepage?.announcements && homepage.announcements.length > 0 && (
+            <AnnouncementModal items={homepage.announcements} />
+          )}
           {children}
           <Footer footer={homepage?.settings?.footer} />
           <WhatsappButton

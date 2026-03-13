@@ -11,7 +11,8 @@ class MarqueeController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Marquee::query();
+        $type = $this->resolveType($request);
+        $query = Marquee::query()->ofType($type);
 
         if ($request->filled('is_active')) {
             $query->where('is_active', $request->boolean('is_active'));
@@ -32,28 +33,33 @@ class MarqueeController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            'type' => ['nullable', 'string', 'in:ecommerce,booking'],
             'text' => ['required', 'string'],
             'start_at' => ['nullable', 'date'],
             'end_at' => ['nullable', 'date', 'after_or_equal:start_at'],
             'is_active' => ['boolean'],
         ]);
 
-        // Automatically set sort_order to the next available value
-        $sortOrder = (Marquee::max('sort_order') ?? 0) + 1;
-        $data['sort_order'] = $sortOrder;
+        $type = $data['type'] ?? $this->resolveType($request);
+        $data['type'] = $type;
+        $data['sort_order'] = (Marquee::query()->ofType($type)->max('sort_order') ?? 0) + 1;
 
         $marquee = Marquee::create($data);
 
         return $this->respond($marquee, __('Marquee created successfully.'), true, 201);
     }
 
-    public function show(Marquee $marquee)
+    public function show(Request $request, Marquee $marquee)
     {
+        $this->assertTypeMatch($request, $marquee);
+
         return $this->respond($marquee);
     }
 
     public function update(Request $request, Marquee $marquee)
     {
+        $this->assertTypeMatch($request, $marquee);
+
         $data = $request->validate([
             'text' => ['sometimes', 'required', 'string'],
             'start_at' => ['nullable', 'date'],
@@ -67,29 +73,32 @@ class MarqueeController extends Controller
         return $this->respond($marquee, __('Marquee updated successfully.'));
     }
 
-    public function destroy(Marquee $marquee)
+    public function destroy(Request $request, Marquee $marquee)
     {
+        $this->assertTypeMatch($request, $marquee);
+
         $marquee->delete();
 
         return $this->respond(null, __('Marquee deleted successfully.'));
     }
 
-    public function moveUp(Marquee $marquee)
+    public function moveUp(Request $request, Marquee $marquee)
     {
+        $this->assertTypeMatch($request, $marquee);
+
         return DB::transaction(function () use ($marquee) {
             $oldPosition = $marquee->sort_order;
 
-            // Find the previous marquee (lower sort_order)
-            $previousMarquee = Marquee::where('sort_order', '<', $marquee->sort_order)
+            $previousMarquee = Marquee::query()
+                ->ofType($marquee->type)
+                ->where('sort_order', '<', $marquee->sort_order)
                 ->orderBy('sort_order', 'desc')
                 ->first();
 
             if (!$previousMarquee) {
-                // Already at the top
                 return $this->respond(null, __('Marquee is already at the top.'), false, 400);
             }
 
-            // Swap sort_order values
             $newPosition = $previousMarquee->sort_order;
 
             $marquee->sort_order = $newPosition;
@@ -98,7 +107,6 @@ class MarqueeController extends Controller
             $previousMarquee->sort_order = $oldPosition;
             $previousMarquee->save();
 
-            // Return metadata only
             return $this->respond([
                 'id' => $marquee->id,
                 'old_position' => $oldPosition,
@@ -107,22 +115,23 @@ class MarqueeController extends Controller
         });
     }
 
-    public function moveDown(Marquee $marquee)
+    public function moveDown(Request $request, Marquee $marquee)
     {
+        $this->assertTypeMatch($request, $marquee);
+
         return DB::transaction(function () use ($marquee) {
             $oldPosition = $marquee->sort_order;
 
-            // Find the next marquee (higher sort_order)
-            $nextMarquee = Marquee::where('sort_order', '>', $marquee->sort_order)
+            $nextMarquee = Marquee::query()
+                ->ofType($marquee->type)
+                ->where('sort_order', '>', $marquee->sort_order)
                 ->orderBy('sort_order', 'asc')
                 ->first();
 
             if (!$nextMarquee) {
-                // Already at the bottom
                 return $this->respond(null, __('Marquee is already at the bottom.'), false, 400);
             }
 
-            // Swap sort_order values
             $newPosition = $nextMarquee->sort_order;
 
             $marquee->sort_order = $newPosition;
@@ -131,12 +140,27 @@ class MarqueeController extends Controller
             $nextMarquee->sort_order = $oldPosition;
             $nextMarquee->save();
 
-            // Return metadata only
             return $this->respond([
                 'id' => $marquee->id,
                 'old_position' => $oldPosition,
                 'new_position' => $newPosition,
             ], __('Marquee moved down successfully.'));
         });
+    }
+
+    private function resolveType(Request $request): string
+    {
+        $type = $request->get('type');
+
+        return in_array($type, [Marquee::TYPE_ECOMMERCE, Marquee::TYPE_BOOKING], true)
+            ? $type
+            : Marquee::TYPE_ECOMMERCE;
+    }
+
+    private function assertTypeMatch(Request $request, Marquee $marquee): void
+    {
+        if ($marquee->type !== $this->resolveType($request)) {
+            abort(404);
+        }
     }
 }

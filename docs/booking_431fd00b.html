@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gentlegurl Shop - Premium Salon Booking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== RESET ===== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  color: #1a1a1a;
+  background: #fdfcfa;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+a { text-decoration: none; color: inherit; }
+ul { list-style: none; }
+img { max-width: 100%; display: block; }
+button { border: none; background: none; cursor: pointer; font-family: inherit; }
+
+/* ===== TYPOGRAPHY ===== */
+.font-display { font-family: 'Cormorant Garamond', Georgia, serif; }
+.font-body { font-family: 'DM Sans', sans-serif; }
+
+/* ===== CSS VARIABLES ===== */
+:root {
+  --black: #0f0f0f;
+  --white: #ffffff;
+  --cream: #faf8f5;
+  --warm-gray: #f5f0eb;
+  --sand: #e8ddd3;
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b6560;
+  --text-muted: #9c958e;
+  --border: #e8e2db;
+  --accent: #c4a882;
+  --accent-dark: #a68b6b;
+  --wa-green: #25D366;
+  --shadow-soft: 0 2px 20px rgba(15,15,15,0.04);
+  --shadow-card: 0 4px 32px rgba(15,15,15,0.06);
+  --shadow-hover: 0 8px 40px rgba(15,15,15,0.1);
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-full: 9999px;
+  --transition: 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* ===== REVEAL ANIMATION ===== */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+
+/* ===== LAYOUT ===== */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+@media (min-width: 768px) {
+  .container { padding: 0 40px; }
+}
+
+/* ===== SECTION TAG ===== */
+.section-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.section-tag::before,
+.section-tag::after {
+  content: '';
+  width: 24px;
+  height: 1px;
+  background: var(--sand);
+}
+.section-heading {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.section-sub {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* ===== HEADER ===== */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(253, 252, 250, 0.92);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(232, 226, 219, 0.6);
+  transition: box-shadow 0.3s ease;
+}
+.site-header.scrolled {
+  box-shadow: 0 1px 16px rgba(15,15,15,0.05);
+}
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 72px;
+}
+.logo {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+.nav-links a {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  transition: color var(--transition);
+  position: relative;
+}
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--text-primary);
+  transition: width var(--transition);
+}
+.nav-links a:hover { color: var(--text-primary); }
+.nav-links a:hover::after { width: 100%; }
+.nav-links a.active { color: var(--text-primary); }
+.nav-links a.active::after { width: 100%; }
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.btn-cart {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  transition: all var(--transition);
+}
+.btn-cart:hover {
+  border-color: var(--text-primary);
+  transform: scale(1.04);
+}
+.btn-cart svg { width: 18px; height: 18px; stroke: var(--text-primary); fill: none; stroke-width: 1.5; }
+.btn-login {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 10px 22px;
+  background: var(--black);
+  color: var(--white);
+  border-radius: var(--radius-full);
+  transition: all var(--transition);
+}
+.btn-login:hover {
+  background: #2a2a2a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(15,15,15,0.15);
+}
+
+/* ===== HERO ===== */
+.hero {
+  position: relative;
+  padding: 80px 0 100px;
+  text-align: center;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -200px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(196, 168, 130, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: var(--warm-gray);
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+}
+.hero-tag .dot {
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+.hero h1 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(2.8rem, 6vw, 4.5rem);
+  font-weight: 300;
+  line-height: 1.1;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  max-width: 700px;
+  margin: 0 auto;
+}
+.hero h1 em {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--accent-dark);
+}
+.hero-desc {
+  margin-top: 28px;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 44px;
+  padding: 16px 40px;
+  background: var(--black);
+  color: var(--white);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-full);
+  transition: all var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+.hero-cta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(196,168,130,0.3) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.hero-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(15,15,15,0.2);
+}
+.hero-cta:hover::before { opacity: 1; }
+.hero-cta svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+.hero-stats {
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  margin-top: 64px;
+  padding-top: 48px;
+  border-top: 1px solid var(--border);
+}
+.hero-stat-num {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 32px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.hero-stat-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ===== SERVICE CARDS ===== */
+.services-section { padding: 100px 0; }
+.services-header { text-align: center; margin-bottom: 56px; }
+.services-header .section-heading { margin-top: 14px; }
+.services-header .section-sub { margin-top: 16px; }
+.services-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media (min-width: 768px) {
+  .services-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.service-card {
+  position: relative;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 36px 28px 28px;
+  transition: all var(--transition);
+  overflow: hidden;
+}
+.service-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--sand));
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--sand);
+}
+.service-card:hover::before { opacity: 1; }
+.service-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--warm-gray);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.service-icon svg { width: 22px; height: 22px; stroke: var(--accent-dark); fill: none; stroke-width: 1.5; }
+.service-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.service-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.service-meta span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.service-meta svg { width: 14px; height: 14px; stroke: var(--text-muted); fill: none; stroke-width: 1.5; }
+.service-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 20px 0;
+}
+.service-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.service-price {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.service-price .currency { font-size: 16px; font-weight: 400; color: var(--text-muted); margin-right: 2px; }
+.service-deposit {
+  font-size: 12px;
+  color: var(--accent-dark);
+  background: rgba(196,168,130,0.12);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+}
+.service-book-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--black);
+  transition: all var(--transition);
+}
+.service-book-btn svg { width: 16px; height: 16px; stroke: var(--white); fill: none; stroke-width: 2; }
+.service-book-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px rgba(15,15,15,0.2);
+}
+
+/* ===== PRICING ===== */
+.pricing-section {
+  padding: 100px 0;
+  background: var(--cream);
+  position: relative;
+}
+.pricing-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c4a882' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
+}
+.pricing-header { text-align: center; margin-bottom: 56px; position: relative; }
+.pricing-header .section-heading { margin-top: 14px; }
+.pricing-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  position: relative;
+}
+@media (min-width: 768px) {
+  .pricing-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.pricing-card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 36px 28px;
+  box-shadow: var(--shadow-soft);
+  transition: all var(--transition);
+  text-align: center;
+}
+.pricing-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-hover);
+}
+.pricing-card-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.pricing-card-price {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 36px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 16px;
+}
+.pricing-card-price .from {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 4px;
+}
+.pricing-card-divider {
+  width: 32px;
+  height: 1px;
+  background: var(--sand);
+  margin: 20px auto;
+}
+
+/* ===== GALLERY ===== */
+.gallery-section { padding: 100px 0; }
+.gallery-header { text-align: center; margin-bottom: 56px; }
+.gallery-header .section-heading { margin-top: 14px; }
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+@media (min-width: 768px) {
+  .gallery-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+}
+.gallery-item {
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--warm-gray) 0%, var(--sand) 100%);
+  transition: all var(--transition);
+}
+.gallery-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(15,15,15,0.15) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.gallery-item:hover {
+  transform: scale(1.02);
+  box-shadow: var(--shadow-card);
+}
+.gallery-item:hover::after { opacity: 1; }
+.gallery-item .gallery-label {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--white);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all var(--transition);
+  z-index: 2;
+}
+.gallery-item:hover .gallery-label {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* decorative inner shapes */
+.gallery-item .deco {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gallery-item .deco svg {
+  width: 40px;
+  height: 40px;
+  stroke: rgba(166,139,107,0.25);
+  fill: none;
+  stroke-width: 1;
+}
+
+/* ===== TESTIMONIALS ===== */
+.testimonials-section {
+  padding: 100px 0;
+  background: var(--cream);
+}
+.testimonials-header { text-align: center; margin-bottom: 56px; }
+.testimonials-header .section-heading { margin-top: 14px; }
+.testimonials-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media (min-width: 768px) {
+  .testimonials-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.testimonial-card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 36px 28px;
+  box-shadow: var(--shadow-soft);
+  transition: all var(--transition);
+  position: relative;
+}
+.testimonial-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card);
+}
+.testimonial-quote-mark {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 56px;
+  line-height: 1;
+  color: var(--sand);
+  position: absolute;
+  top: 20px;
+  left: 24px;
+}
+.testimonial-text {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 20px;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin-top: 16px;
+}
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+.testimonial-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--warm-gray), var(--sand));
+}
+.testimonial-author-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.testimonial-author-tag {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.testimonial-stars {
+  display: flex;
+  gap: 2px;
+  margin-top: 16px;
+}
+.testimonial-stars svg {
+  width: 14px;
+  height: 14px;
+  fill: var(--accent);
+}
+
+/* ===== FAQ ===== */
+.faq-section { padding: 100px 0; }
+.faq-header { text-align: center; margin-bottom: 56px; }
+.faq-header .section-heading { margin-top: 14px; }
+.faq-list {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.faq-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: all var(--transition);
+}
+.faq-item:hover { border-color: var(--sand); }
+.faq-item[open] {
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(196,168,130,0.1);
+}
+.faq-item summary {
+  padding: 20px 24px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  transition: background var(--transition);
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after {
+  content: '+';
+  font-size: 20px;
+  font-weight: 300;
+  color: var(--text-muted);
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+.faq-item[open] summary::after {
+  transform: rotate(45deg);
+}
+.faq-item summary:hover { background: rgba(250,248,245,0.6); }
+.faq-answer {
+  padding: 0 24px 20px;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-secondary);
+}
+
+/* ===== FOOTER ===== */
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 64px 0 40px;
+  background: var(--white);
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+}
+@media (min-width: 768px) {
+  .footer-grid { grid-template-columns: 5fr 4fr 3fr; }
+}
+.footer-about h3,
+.footer-links h3,
+.footer-social h3 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+.footer-about p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  max-width: 360px;
+}
+.footer-links ul { display: flex; flex-direction: column; gap: 14px; }
+.footer-links a {
+  font-size: 14px;
+  color: var(--text-secondary);
+  transition: color var(--transition);
+}
+.footer-links a:hover { color: var(--text-primary); }
+.footer-social-icons {
+  display: flex;
+  gap: 12px;
+}
+.footer-social-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+.footer-social-icon:hover {
+  border-color: var(--text-primary);
+  background: var(--black);
+}
+.footer-social-icon:hover svg { stroke: var(--white); }
+.footer-social-icon svg { width: 16px; height: 16px; stroke: var(--text-secondary); fill: none; stroke-width: 1.5; }
+.footer-bottom {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.footer-logo {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+
+/* ===== WHATSAPP ===== */
+.whatsapp-float {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 90;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--wa-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(37, 211, 102, 0.35);
+  transition: all var(--transition);
+  animation: wa-pulse 2s infinite;
+}
+.whatsapp-float:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 28px rgba(37, 211, 102, 0.5);
+}
+.whatsapp-float svg { width: 26px; height: 26px; fill: white; }
+@keyframes wa-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(37, 211, 102, 0.35); }
+  50% { box-shadow: 0 4px 28px rgba(37, 211, 102, 0.5); }
+}
+
+/* ===== MOBILE NAV ===== */
+.mobile-menu-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 28px;
+  padding: 4px 0;
+}
+.mobile-menu-btn span {
+  width: 100%;
+  height: 1.5px;
+  background: var(--text-primary);
+  transition: all 0.3s ease;
+}
+@media (min-width: 768px) {
+  .mobile-menu-btn { display: none; }
+}
+.nav-links { display: none; }
+@media (min-width: 768px) {
+  .nav-links { display: flex; }
+}
+
+/* ===== MOBILE OVERRIDES ===== */
+@media (max-width: 767px) {
+  .hero h1 { font-size: 2.4rem; }
+  .hero-stats { gap: 24px; flex-wrap: wrap; }
+  .header-inner { height: 60px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER / NAV -->
+<header class="site-header" id="siteHeader">
+  <div class="container">
+    <div class="header-inner">
+      <a href="/" class="logo">Gentlegurl</a>
+      <nav class="nav-links">
+        <a href="/" class="active">Home</a>
+        <a href="/booking">Book</a>
+        <a href="/services">Services</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="btn-cart" aria-label="Cart">
+          <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+        </button>
+        <a href="/login" class="btn-login">Login</a>
+        <button class="mobile-menu-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- HERO SECTION -->
+<section class="hero">
+  <div class="container">
+    <div class="reveal">
+      <div class="hero-tag"><span class="dot"></span> Premium Salon Booking</div>
+    </div>
+    <h1 class="reveal reveal-delay-1">Beauty appointments,<br>made <em>effortless</em>.</h1>
+    <p class="hero-desc reveal reveal-delay-2">Discover signature services, reserve your slot instantly, and arrive confident with our trusted professional team.</p>
+    <a href="/booking" class="hero-cta reveal reveal-delay-3">
+      Book Appointment
+      <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+
+  </div>
+</section>
+
+<!-- POPULAR SERVICES -->
+<section class="services-section">
+  <div class="container">
+    <div class="services-header">
+      <div class="section-tag reveal">Gentlegurls</div>
+      <h2 class="section-heading reveal reveal-delay-1">Popular Services</h2>
+      <p class="section-sub reveal reveal-delay-2">Transparent pricing, clear durations, and deposit requirements before you confirm.</p>
+    </div>
+    <div class="services-grid">
+      <!-- Coloring -->
+      <div class="service-card reveal">
+        <div class="service-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <h3 class="service-name">Coloring</h3>
+        <div class="service-meta">
+          <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 90 min</span>
+          <span class="service-deposit">Deposit RM 30</span>
+        </div>
+        <div class="service-divider"></div>
+        <div class="service-bottom">
+          <div class="service-price"><span class="currency">RM</span>150</div>
+          <a href="/booking" class="service-book-btn" aria-label="Book Coloring">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </div>
+      <!-- Haircut -->
+      <div class="service-card reveal reveal-delay-1">
+        <div class="service-icon">
+          <svg viewBox="0 0 24 24"><path d="M6 21l6-6 6 6"/><path d="M12 15V3"/></svg>
+        </div>
+        <h3 class="service-name">Haircut</h3>
+        <div class="service-meta">
+          <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 30 min</span>
+          <span class="service-deposit">Deposit RM 10</span>
+        </div>
+        <div class="service-divider"></div>
+        <div class="service-bottom">
+          <div class="service-price"><span class="currency">RM</span>45</div>
+          <a href="/booking" class="service-book-btn" aria-label="Book Haircut">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </div>
+      <!-- Treatment -->
+      <div class="service-card reveal reveal-delay-2">
+        <div class="service-icon">
+          <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+        </div>
+        <h3 class="service-name">Treatment</h3>
+        <div class="service-meta">
+          <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 60 min</span>
+          <span class="service-deposit">Deposit RM 20</span>
+        </div>
+        <div class="service-divider"></div>
+        <div class="service-bottom">
+          <div class="service-price"><span class="currency">RM</span>120</div>
+          <a href="/booking" class="service-book-btn" aria-label="Book Treatment">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- GALLERY -->
+<section class="gallery-section">
+  <div class="container">
+    <div class="gallery-header">
+      <div class="section-tag reveal">Gentlegurls</div>
+      <h2 class="section-heading reveal reveal-delay-1">Price Hilights</h2>
+    </div>
+    <div class="gallery-grid">
+      <div class="gallery-item reveal">
+        <div class="deco"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></div>
+        <span class="gallery-label">Color Work</span>
+      </div>
+      <div class="gallery-item reveal reveal-delay-1">
+        <div class="deco"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+        <span class="gallery-label">Styling</span>
+      </div>
+      <div class="gallery-item reveal reveal-delay-2">
+        <div class="deco"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></div>
+        <span class="gallery-label">Treatment</span>
+      </div>
+      <div class="gallery-item reveal reveal-delay-3">
+        <div class="deco"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+        <span class="gallery-label">Results</span>
+      </div>
+      <div class="gallery-item reveal">
+        <div class="deco"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></div>
+        <span class="gallery-label">Salon</span>
+      </div>
+      <div class="gallery-item reveal reveal-delay-1">
+        <div class="deco"><svg viewBox="0 0 24 24"><path d="M6 21l6-6 6 6M12 15V3"/></svg></div>
+        <span class="gallery-label">Cuts</span>
+      </div>
+      <div class="gallery-item reveal reveal-delay-2">
+        <div class="deco"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+        <span class="gallery-label">Ambience</span>
+      </div>
+      <div class="gallery-item reveal reveal-delay-3">
+        <div class="deco"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg></div>
+        <span class="gallery-label">Details</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq-section">
+  <div class="container">
+    <div class="faq-header">
+      <div class="section-tag reveal">Gentlegurls</div>
+      <h2 class="section-heading reveal reveal-delay-1">Frequently Asked</h2>
+    </div>
+    <div class="faq-list">
+      <details class="faq-item reveal">
+        <summary>How long is the slot held?</summary>
+        <div class="faq-answer">15 minutes after hold confirmation before payment.</div>
+      </details>
+      <details class="faq-item reveal reveal-delay-1">
+        <summary>Can I reschedule?</summary>
+        <div class="faq-answer">Yes, subject to availability and policy.</div>
+      </details>
+      <details class="faq-item reveal reveal-delay-2">
+        <summary>Do you accept walk-ins?</summary>
+        <div class="faq-answer">Limited walk-ins available; booking is recommended.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-about">
+        <h3>About</h3>
+        <p>Premium salon experiences with trusted stylists. We blend artistry with care to bring out the best version of you.</p>
+      </div>
+      <div class="footer-links">
+        <h3>Helpful Links</h3>
+        <ul>
+          <li><a href="/shipping-policy">Shipping Policy</a></li>
+          <li><a href="/return-refund">Return &amp; Refund</a></li>
+          <li><a href="/privacy-policy">Privacy Policy</a></li>
+        </ul>
+      </div>
+      <div class="footer-social">
+        <h3>Follow Us</h3>
+        <div class="footer-social-icons">
+          <a href="https://www.instagram.com/gentlegurl" class="footer-social-icon" target="_blank" rel="noopener" aria-label="Instagram">
+            <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="footer-logo">Gentlegurl</span>
+      <span>&copy; 2025 Gentlegurl Shop. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
+
+<!-- WHATSAPP FLOAT -->
+<a href="https://wa.me/" class="whatsapp-float" target="_blank" rel="noopener" aria-label="Chat on WhatsApp">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+</a>
+
+<!-- JS ANIMATIONS -->
+<script>
+// Scroll reveal
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Header scroll shadow
+const header = document.getElementById('siteHeader');
+let lastScroll = 0;
+window.addEventListener('scroll', () => {
+  const y = window.scrollY;
+  if (y > 20) {
+    header.classList.add('scrolled');
+  } else {
+    header.classList.remove('scrolled');
+  }
+  lastScroll = y;
+}, { passive: true });
+
+// Smooth anchor scrolling already via CSS scroll-behavior
+</script>
+
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"75124c326cb447fe934cde04713ae013","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>

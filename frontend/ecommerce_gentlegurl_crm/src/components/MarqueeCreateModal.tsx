@@ -5,10 +5,12 @@ import { ChangeEvent, FormEvent, useState } from 'react'
 import type { MarqueeRowData } from './MarqueeRow'
 import { mapMarqueeApiItemToRow, type MarqueeApiItem } from './marqueeUtils'
 import { useI18n } from '@/lib/i18n'
+import type { Workspace } from '@/lib/workspace'
 
 interface MarqueeCreateModalProps {
   onClose: () => void
   onSuccess: (marquee: MarqueeRowData) => void
+  workspaceType?: Workspace
 }
 
 interface FormState {
@@ -26,6 +28,7 @@ const initialFormState: FormState = {
 export default function MarqueeCreateModal({
   onClose,
   onSuccess,
+  workspaceType = 'ecommerce',
 }: MarqueeCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -51,13 +54,14 @@ export default function MarqueeCreateModal({
     setError(null)
 
     try {
-      const res = await fetch('/api/proxy/ecommerce/marquees', {
+      const res = await fetch(`/api/proxy/ecommerce/marquees?type=${workspaceType}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
         body: JSON.stringify({
+          type: workspaceType,
           text: form.text.trim(),
           start_at: form.startAt,
           end_at: form.endAt,

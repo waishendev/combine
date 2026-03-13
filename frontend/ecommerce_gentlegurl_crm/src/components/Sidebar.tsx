@@ -479,6 +479,19 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/booking/shop-logo',
             requiredPermission: 'booking.settings.view',
           },
+
+          {
+            key: 'booking-announcements',
+            label: 'Announcements',
+            href: '/booking/announcements',
+            requiredPermission: 'booking.settings.view',
+          },
+          {
+            key: 'booking-marquee',
+            label: 'Marquee',
+            href: '/booking/marquee',
+            requiredPermission: 'booking.settings.view',
+          },
         ],
       },
     ],

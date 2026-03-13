@@ -34,24 +34,6 @@ export function ServicesPreview({ services }: { services: Service[] }) {
 export function StaticSections() {
   return (
     <>
-      <section className="bg-[#faf8f5] py-16">
-        <div className="mx-auto max-w-6xl px-4">
-          <SectionTitle title="Pricing highlights" />
-          <div className="grid gap-4 md:grid-cols-3">
-            {[
-              ["Classic Cut", "from RM 90"],
-              ["Color + Blow", "from RM 220"],
-              ["Keratin Smoothing", "from RM 320"],
-            ].map(([name, price]) => (
-              <div key={name} className="rounded-3xl bg-white p-6 shadow-sm">
-                <p className="text-lg font-semibold">{name}</p>
-                <p className="mt-3 text-neutral-600">{price}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section className="mx-auto max-w-6xl px-4 py-16">
         <SectionTitle title="Gallery" />
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
