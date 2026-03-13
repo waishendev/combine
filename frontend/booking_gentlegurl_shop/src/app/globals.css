@@ -17,3 +17,12 @@ h5,
 h6 {
   font-family: var(--font-heading);
 }
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
