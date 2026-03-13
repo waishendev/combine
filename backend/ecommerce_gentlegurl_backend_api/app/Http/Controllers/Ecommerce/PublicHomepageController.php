@@ -52,6 +52,7 @@ class PublicHomepageController extends Controller
                 ]);
 
             $marquees = Marquee::query()
+                ->ofType($type)
                 ->where('is_active', true)
                 ->where(function ($q) use ($now) {
                     $q->whereNull('start_at')->orWhere('start_at', '<=', $now);
@@ -67,6 +68,7 @@ class PublicHomepageController extends Controller
                 ]);
 
             $announcements = Announcement::query()
+                ->ofType($type)
                 ->where('is_active', true)
                 ->where(function ($q) use ($now) {
                     $q->whereNull('start_at')->orWhere('start_at', '<=', $now);

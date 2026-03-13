@@ -4,17 +4,20 @@ import { useMemo, useState } from 'react'
 
 import type { MarqueeRowData } from './MarqueeRow'
 import { useI18n } from '@/lib/i18n'
+import type { Workspace } from '@/lib/workspace'
 
 interface MarqueeDeleteModalProps {
   marquee: MarqueeRowData
   onClose: () => void
   onDeleted: (marqueeId: number) => void
+  workspaceType?: Workspace
 }
 
 export default function MarqueeDeleteModal({
   marquee,
   onClose,
   onDeleted,
+  workspaceType = 'ecommerce',
 }: MarqueeDeleteModalProps) {
   const { t } = useI18n()
   const [submitting, setSubmitting] = useState(false)
@@ -29,7 +32,7 @@ export default function MarqueeDeleteModal({
     setError(null)
 
     try {
-      const res = await fetch(`/api/proxy/ecommerce/marquees/${marquee.id}`, {
+      const res = await fetch(`/api/proxy/ecommerce/marquees/${marquee.id}?type=${workspaceType}`, {
         method: 'DELETE',
         headers: {
           Accept: 'application/json',

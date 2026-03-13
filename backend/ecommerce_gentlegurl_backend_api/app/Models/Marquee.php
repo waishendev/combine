@@ -7,7 +7,11 @@ use DateTimeInterface;
 
 class Marquee extends Model
 {
+    public const TYPE_ECOMMERCE = 'ecommerce';
+    public const TYPE_BOOKING = 'booking';
+
     protected $fillable = [
+        'type',
         'text',
         'start_at',
         'end_at',
@@ -35,6 +39,16 @@ class Marquee extends Model
         })->where(function ($q) use ($now) {
             $q->whereNull('end_at')->orWhere('end_at', '>=', $now);
         });
+    }
+
+
+    public function scopeOfType($query, ?string $type)
+    {
+        $resolvedType = in_array($type, [self::TYPE_ECOMMERCE, self::TYPE_BOOKING], true)
+            ? $type
+            : self::TYPE_ECOMMERCE;
+
+        return $query->where('type', $resolvedType);
     }
     
      /**

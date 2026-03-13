@@ -215,6 +215,7 @@ export async function getHomepage(): Promise<HomepageData | null> {
       process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
     const searchParams = new URLSearchParams();
+    searchParams.set('type', 'ecommerce');
     if (sessionToken) {
       searchParams.set("session_token", sessionToken);
     }

@@ -6,14 +6,16 @@ import { redirect } from 'next/navigation'
 import AnnouncementTable from '@/components/AnnouncementTable'
 import { getCurrentUser } from '@/lib/auth'
 
-export default async function AnnouncementsPage() {
+export default async function BookingAnnouncementsPage() {
   const user = await getCurrentUser()
 
   if (!user) {
     redirect('/login')
   }
 
-  const hasPermission = user.permissions.includes('ecommerce.announcements.view')
+  const hasPermission =
+    user.permissions.includes('booking.settings.view') ||
+    user.permissions.includes('booking.settings.update')
 
   if (!hasPermission) {
     redirect('/dashboard')
@@ -24,12 +26,12 @@ export default async function AnnouncementsPage() {
       <div className="text-xs mb-4">
         <span className="text-gray-500">Marketing</span>
         <span className="mx-1">/</span>
-        <Link href="/announcements" className="text-blue-600 hover:underline">
+        <Link href="/booking/announcements" className="text-blue-600 hover:underline">
           Announcements
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Announcements</h2>
-      <AnnouncementTable permissions={user.permissions} workspaceType="ecommerce" />
+      <AnnouncementTable permissions={user.permissions} workspaceType="booking" />
     </div>
   )
 }

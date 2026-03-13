@@ -19,9 +19,11 @@ import {
   mapMarqueeApiItemToRow,
 } from './marqueeUtils'
 import { useI18n } from '@/lib/i18n'
+import type { Workspace } from '@/lib/workspace'
 
 interface MarqueeTableProps {
   permissions: string[]
+  workspaceType?: Workspace
 }
 
 type Meta = {
@@ -49,6 +51,7 @@ type MarqueeApiResponse = {
 
 export default function MarqueeTable({
   permissions,
+  workspaceType = 'ecommerce',
 }: MarqueeTableProps) {
   const { t } = useI18n()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
@@ -64,9 +67,16 @@ export default function MarqueeTable({
   const [deleteTarget, setDeleteTarget] = useState<MarqueeRowData | null>(null)
   const [movingMarqueeId, setMovingMarqueeId] = useState<number | null>(null)
 
-  const canCreate = permissions.includes('ecommerce.marquees.create')
-  const canUpdate = permissions.includes('ecommerce.marquees.update')
-  const canDelete = permissions.includes('ecommerce.marquees.delete')
+  const isBooking = workspaceType === 'booking'
+  const canCreate = isBooking
+    ? permissions.includes('booking.settings.update') || permissions.includes('booking.settings.view')
+    : permissions.includes('ecommerce.marquees.create')
+  const canUpdate = isBooking
+    ? permissions.includes('booking.settings.update') || permissions.includes('booking.settings.view')
+    : permissions.includes('ecommerce.marquees.update')
+  const canDelete = isBooking
+    ? permissions.includes('booking.settings.update') || permissions.includes('booking.settings.view')
+    : permissions.includes('ecommerce.marquees.delete')
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -114,6 +124,7 @@ export default function MarqueeTable({
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
+        qs.set('type', workspaceType)
         if (filters.text) qs.set('text', filters.text)
         if (filters.isActive) {
           qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
@@ -193,7 +204,7 @@ export default function MarqueeTable({
 
     fetchMarquees()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, workspaceType])
 
   const handleSort = (column: keyof MarqueeRowData) => {
     if (sortColumn === column) {
@@ -357,7 +368,7 @@ export default function MarqueeTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/ecommerce/marquees/${marquee.id}/move-up`,
+        `/api/proxy/ecommerce/marquees/${marquee.id}/move-up?type=${workspaceType}`,
         {
           method: 'POST',
           headers: {
@@ -458,7 +469,7 @@ export default function MarqueeTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/ecommerce/marquees/${marquee.id}/move-down`,
+        `/api/proxy/ecommerce/marquees/${marquee.id}/move-down?type=${workspaceType}`,
         {
           method: 'POST',
           headers: {
@@ -568,6 +579,7 @@ export default function MarqueeTable({
 
       {isCreateModalOpen && (
         <MarqueeCreateModal
+        workspaceType={workspaceType}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={(marquee) => {
             setIsCreateModalOpen(false)
@@ -743,6 +755,7 @@ export default function MarqueeTable({
       {editingMarqueeId !== null && (
         <MarqueeEditModal
           marqueeId={editingMarqueeId}
+        workspaceType={workspaceType}
           onClose={() => setEditingMarqueeId(null)}
           onSuccess={(marquee) => {
             setEditingMarqueeId(null)
@@ -754,6 +767,7 @@ export default function MarqueeTable({
       {deleteTarget && (
         <MarqueeDeleteModal
           marquee={deleteTarget}
+        workspaceType={workspaceType}
           onClose={() => setDeleteTarget(null)}
           onDeleted={(marqueeId) => {
             setDeleteTarget(null)

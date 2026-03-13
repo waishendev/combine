@@ -961,6 +961,7 @@ class PublicShopController extends Controller
             ]);
 
         $marquees = Marquee::query()
+            ->ofType(Marquee::TYPE_ECOMMERCE)
             ->where('is_active', true)
             ->where(function ($q) use ($now) {
                 $q->whereNull('start_at')->orWhere('start_at', '<=', $now);
@@ -976,6 +977,7 @@ class PublicShopController extends Controller
             ]);
 
         $announcements = Announcement::query()
+            ->ofType(Announcement::TYPE_ECOMMERCE)
             ->where('is_active', true)
             ->where(function ($q) use ($now) {
                 $q->whereNull('start_at')->orWhere('start_at', '<=', $now);

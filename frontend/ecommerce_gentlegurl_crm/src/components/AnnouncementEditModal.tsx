@@ -5,12 +5,14 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import type { AnnouncementRowData } from './AnnouncementRow'
 import { mapAnnouncementApiItemToRow, type AnnouncementApiItem } from './announcementUtils'
 import { useI18n } from '@/lib/i18n'
+import type { Workspace } from '@/lib/workspace'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface AnnouncementEditModalProps {
   announcementId: number
   onClose: () => void
   onSuccess: (announcement: AnnouncementRowData) => void
+  workspaceType?: Workspace
 }
 
 interface FormState {
@@ -41,6 +43,7 @@ export default function AnnouncementEditModal({
   announcementId,
   onClose,
   onSuccess,
+  workspaceType = 'ecommerce',
 }: AnnouncementEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -60,7 +63,7 @@ export default function AnnouncementEditModal({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/ecommerce/announcements/${announcementId}`, {
+        const res = await fetch(`/api/proxy/ecommerce/announcements/${announcementId}?type=${workspaceType}`, {
           cache: 'no-store',
           signal: controller.signal,
           headers: {
@@ -143,7 +146,7 @@ export default function AnnouncementEditModal({
     })
 
     return () => controller.abort()
-  }, [announcementId])
+  }, [announcementId, workspaceType])
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
@@ -199,6 +202,7 @@ export default function AnnouncementEditModal({
 
     try {
       const formData = new FormData()
+      formData.append('type', workspaceType)
       formData.append('_method', 'PUT')
       formData.append('title', form.title.trim())
       formData.append('subtitle', form.subtitle.trim())
@@ -215,7 +219,7 @@ export default function AnnouncementEditModal({
         formData.append('image_path', '')
       }
 
-      const res = await fetch(`/api/proxy/ecommerce/announcements/${announcementId}`, {
+      const res = await fetch(`/api/proxy/ecommerce/announcements/${announcementId}?type=${workspaceType}`, {
         method: 'POST',
         body: formData,
       })

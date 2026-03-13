@@ -13,7 +13,8 @@ class PublicMarqueeController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Marquee::query();
+            $type = $this->resolveType($request);
+            $query = Marquee::query()->ofType($type);
 
             $activeOnly = $request->boolean('active_only', true);
             $currentOnly = $request->boolean('current_only', true);
@@ -26,7 +27,6 @@ class PublicMarqueeController extends Controller
                 $query->current();
             }
 
-            // Check if sort_order column exists before ordering
             $marqueesTable = (new Marquee())->getTable();
             if (Schema::hasColumn($marqueesTable, 'sort_order')) {
                 $query->orderBy('sort_order');
@@ -42,12 +42,21 @@ class PublicMarqueeController extends Controller
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch marquees: ' . $e->getMessage(),
                 'data' => null,
             ], 500);
         }
+    }
+
+    private function resolveType(Request $request): string
+    {
+        $type = $request->get('type');
+
+        return in_array($type, [Marquee::TYPE_ECOMMERCE, Marquee::TYPE_BOOKING], true)
+            ? $type
+            : Marquee::TYPE_ECOMMERCE;
     }
 }

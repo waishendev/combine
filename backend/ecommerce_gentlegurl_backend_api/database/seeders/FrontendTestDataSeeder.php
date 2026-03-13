@@ -1007,6 +1007,7 @@ class FrontendTestDataSeeder extends Seeder
     {
         $marquees = [
             [
+                'type' => 'ecommerce',
                 'text' => '🎉 新用户注册即送RM10优惠券！立即注册享受优惠',
                 'start_at' => now()->subDays(7),
                 'end_at' => now()->addDays(30),
@@ -1014,6 +1015,7 @@ class FrontendTestDataSeeder extends Seeder
                 'sort_order' => 1,
             ],
             [
+                'type' => 'ecommerce',
                 'text' => '🚚 全马免费配送，满RM100免运费',
                 'start_at' => now()->subDays(1),
                 'end_at' => now()->addDays(60),
@@ -1021,6 +1023,7 @@ class FrontendTestDataSeeder extends Seeder
                 'sort_order' => 2,
             ],
             [
+                'type' => 'ecommerce',
                 'text' => '💳 支持多种支付方式：信用卡、FPX、电子钱包',
                 'start_at' => null,
                 'end_at' => null,
@@ -1028,16 +1031,39 @@ class FrontendTestDataSeeder extends Seeder
                 'sort_order' => 3,
             ],
             [
+                'type' => 'ecommerce',
                 'text' => '⭐ 会员积分系统上线！购物即享积分回馈',
                 'start_at' => now(),
                 'end_at' => now()->addDays(90),
                 'is_active' => true,
                 'sort_order' => 4,
             ],
+            [
+                'type' => 'booking',
+                'text' => '💅 Booking 专属：新客预约可享首次疗程折扣',
+                'start_at' => now()->subDays(2),
+                'end_at' => now()->addDays(45),
+                'is_active' => true,
+                'sort_order' => 1,
+            ],
+            [
+                'type' => 'booking',
+                'text' => '📅 温馨提醒：可提前 14 天预约时段',
+                'start_at' => now()->subDays(1),
+                'end_at' => now()->addDays(60),
+                'is_active' => true,
+                'sort_order' => 2,
+            ],
         ];
 
         foreach ($marquees as $marquee) {
-            Marquee::create($marquee);
+            Marquee::updateOrCreate(
+                [
+                    'type' => $marquee['type'],
+                    'text' => $marquee['text'],
+                ],
+                $marquee
+            );
         }
     }
 
@@ -1219,6 +1245,7 @@ class FrontendTestDataSeeder extends Seeder
         $announcements = [
             [
                 'key' => 'new-year-sale',
+                'type' => 'ecommerce',
                 'title' => '新年大促销',
                 'subtitle' => '全场最高20%折扣',
                 'body_text' => '新年特惠活动正在进行中！全场商品最高享受20%折扣，更有超值优惠等你来抢！',
@@ -1233,6 +1260,7 @@ class FrontendTestDataSeeder extends Seeder
             ],
             [
                 'key' => 'free-shipping',
+                'type' => 'ecommerce',
                 'title' => '免费配送',
                 'subtitle' => '满RM100免运费',
                 'body_text' => '即日起，单笔订单满RM100即可享受全马免费配送服务！',
@@ -1247,6 +1275,7 @@ class FrontendTestDataSeeder extends Seeder
             ],
             [
                 'key' => 'membership-launch',
+                'type' => 'ecommerce',
                 'title' => '会员系统上线',
                 'subtitle' => '积分回馈计划',
                 'body_text' => '全新会员积分系统正式上线！购物即可获得积分，积分可兑换优惠券和商品。',
@@ -1259,11 +1288,44 @@ class FrontendTestDataSeeder extends Seeder
                 'show_once_per_session' => false,
                 'sort_order' => 3,
             ],
+            [
+                'key' => 'booking-first-visit',
+                'type' => 'booking',
+                'title' => 'Booking 新客礼遇',
+                'subtitle' => '首次预约享专属优惠',
+                'body_text' => '现在预约护理服务，首次到店即可享受新客限定礼遇。',
+                'image_path' => '/images/announcements/booking-first-visit.jpg',
+                'button_label' => '立即预约',
+                'button_link' => '/booking',
+                'is_active' => true,
+                'start_at' => now()->subDays(2),
+                'end_at' => now()->addDays(45),
+                'show_once_per_session' => true,
+                'sort_order' => 1,
+            ],
+            [
+                'key' => 'booking-offpeak-deal',
+                'type' => 'booking',
+                'title' => '平日预约优惠',
+                'subtitle' => '非高峰时段更划算',
+                'body_text' => '周一至周四非高峰时段预约，可享受指定服务折扣。',
+                'image_path' => '/images/announcements/booking-offpeak.jpg',
+                'button_label' => '查看时段',
+                'button_link' => '/services',
+                'is_active' => true,
+                'start_at' => now()->subDays(1),
+                'end_at' => now()->addDays(60),
+                'show_once_per_session' => false,
+                'sort_order' => 2,
+            ],
         ];
 
         foreach ($announcements as $announcement) {
             Announcement::updateOrCreate(
-                ['key' => $announcement['key']],
+                [
+                    'key' => $announcement['key'],
+                    'type' => $announcement['type'],
+                ],
                 $announcement
             );
         }
