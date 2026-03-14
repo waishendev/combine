@@ -624,6 +624,7 @@ class PosController extends Controller
                 'paid_at' => now(),
                 'completed_at' => now(),
                 'notes' => 'POS checkout by staff #' . $request->user()->id,
+                'promotion_snapshot' => $cartPricing['promotions'] ?? [],
             ]);
 
             $staffSplitsByCartItemId = collect($validated['items'] ?? [])->mapWithKeys(function (array $item) {
@@ -688,6 +689,7 @@ class PosController extends Controller
                     'promotion_type_snapshot' => $pricing['promotion_type'] ?? null,
                     'promotion_discount_amount' => (float) ($pricing['promotion_discount_amount'] ?? 0),
                     'promotion_applied' => (bool) ($pricing['promotion_applied'] ?? false),
+                    'promotion_snapshot' => $pricing['promotion_snapshot'] ?? null,
                     'staff_id' => $itemSplits->first()['staff_id'] ?? null,
                     'locked' => true,
                 ]);
@@ -828,6 +830,7 @@ class PosController extends Controller
                 'promotion_applied' => (bool) ($pricing['promotion_applied'] ?? false),
                 'promotion_name' => $pricing['promotion_name'] ?? null,
                 'promotion_summary' => $pricing['promotion_summary'] ?? null,
+                'promotion_snapshot' => $pricing['promotion_snapshot'] ?? null,
                 'promotion_discount_amount' => (float) ($pricing['promotion_discount_amount'] ?? 0),
                 'manual_discount_allowed' => !($pricing['promotion_applied'] ?? false),
             ];
@@ -849,6 +852,7 @@ class PosController extends Controller
                 'discount_amount' => $voucherDiscount,
                 'scope_snapshot' => $cart->voucher_snapshot,
             ] : null,
+            'promotions' => $cartPricing['promotions'] ?? [],
         ];
     }
 
@@ -898,6 +902,8 @@ class PosController extends Controller
             $base[(int) $item->id] = $this->resolvePosCartItemPricing($item, $isStaffUser);
         }
 
+        $appliedPromotions = [];
+
         $promotions = Promotion::query()
             ->where('is_active', true)
             ->whereNotNull('promotion_type')
@@ -906,7 +912,7 @@ class PosController extends Controller
             ->get();
 
         foreach ($promotions as $promotion) {
-            $productIds = $promotion->promotionProducts->pluck('product_id')->map(fn($x)=>(int)$x)->all();
+            $productIds = $promotion->promotionProducts->pluck('product_id')->map(fn ($x) => (int) $x)->all();
             $eligible = [];
             foreach ($cart->items as $item) {
                 $product = $item->variant?->product ?? $item->product;
@@ -914,73 +920,139 @@ class PosController extends Controller
                     $eligible[] = $item;
                 }
             }
-            if (empty($eligible)) { continue; }
+            if (empty($eligible)) {
+                continue;
+            }
 
-            $totalQty = array_sum(array_map(fn($it)=>(int)$it->qty, $eligible));
-            $totalAmount = array_sum(array_map(fn($it)=>(float)$base[(int)$it->id]['effective_line_total'], $eligible));
+            $totalQty = array_sum(array_map(fn ($it) => (int) $it->qty, $eligible));
+            $totalAmount = array_sum(array_map(fn ($it) => (float) $base[(int) $it->id]['effective_line_total'], $eligible));
 
             $applicable = null;
             foreach ($promotion->promotionTiers as $tier) {
                 $ok = $promotion->trigger_type === 'amount'
                     ? $totalAmount >= (float) ($tier->min_amount ?? 0)
                     : $totalQty >= (int) ($tier->min_qty ?? 0);
-                if ($ok && (!$applicable || (($promotion->trigger_type === 'amount' ? (float)$tier->min_amount : (int)$tier->min_qty) > ($promotion->trigger_type === 'amount' ? (float)($applicable->min_amount ?? 0) : (int)($applicable->min_qty ?? 0))))) {
+                if (! $ok) {
+                    continue;
+                }
+
+                $tierThreshold = $promotion->trigger_type === 'amount'
+                    ? (float) ($tier->min_amount ?? 0)
+                    : (int) ($tier->min_qty ?? 0);
+                $currentThreshold = $applicable
+                    ? ($promotion->trigger_type === 'amount'
+                        ? (float) ($applicable->min_amount ?? 0)
+                        : (int) ($applicable->min_qty ?? 0))
+                    : null;
+
+                if (! $applicable || $tierThreshold > $currentThreshold) {
                     $applicable = $tier;
                 }
             }
-            if (!$applicable) { continue; }
+            if (! $applicable) {
+                continue;
+            }
 
             $thresholdQty = max(1, (int) ($applicable->min_qty ?? 0));
             $remaining = $thresholdQty;
-            usort($eligible, fn($a,$b) => ((float)$base[(int)$b->id]['unit_price_snapshot'] <=> (float)$base[(int)$a->id]['unit_price_snapshot']));
-            $selected=[];
-            foreach ($eligible as $it) {
-                if ($remaining<=0) break;
-                $use=min($remaining,(int)$it->qty);
-                $selected[]=['item'=>$it,'qty'=>$use];
-                $remaining-=$use;
-            }
-            if ($remaining>0 && $promotion->trigger_type==='quantity') { continue; }
+            usort($eligible, fn ($a, $b) => ((float) $base[(int) $b->id]['unit_price_snapshot'] <=> (float) $base[(int) $a->id]['unit_price_snapshot']));
 
-            $selectedSubtotal=array_sum(array_map(fn($x)=>(float)$base[(int)$x['item']->id]['unit_price_snapshot']*$x['qty'],$selected));
-            $discount=0.0;
-            if ($applicable->discount_type==='bundle_fixed_price') { $discount=max(0,$selectedSubtotal-(float)$applicable->discount_value); }
-            elseif ($applicable->discount_type==='percentage_discount') { $discount=max(0,$selectedSubtotal*((float)$applicable->discount_value/100)); }
-            else { $discount=min($selectedSubtotal,(float)$applicable->discount_value); }
-            if ($discount<=0) continue;
+            $selected = [];
+            foreach ($eligible as $it) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $use = min($remaining, (int) $it->qty);
+                $selected[] = ['item' => $it, 'qty' => $use];
+                $remaining -= $use;
+            }
+            if ($remaining > 0 && $promotion->trigger_type === 'quantity') {
+                continue;
+            }
+
+            $selectedSubtotal = array_sum(array_map(fn ($x) => (float) $base[(int) $x['item']->id]['unit_price_snapshot'] * $x['qty'], $selected));
+
+            $discount = 0.0;
+            if ($applicable->discount_type === 'bundle_fixed_price') {
+                $discount = max(0, $selectedSubtotal - (float) $applicable->discount_value);
+            } elseif ($applicable->discount_type === 'percentage_discount') {
+                $discount = max(0, $selectedSubtotal * ((float) $applicable->discount_value / 100));
+            } else {
+                $discount = min($selectedSubtotal, (float) $applicable->discount_value);
+            }
+            if ($discount <= 0) {
+                continue;
+            }
+
+            $promotionSnapshot = [
+                'promotion_id' => (int) $promotion->id,
+                'promotion_name' => $promotion->name ?: $promotion->title,
+                'promotion_type' => $promotion->promotion_type,
+                'trigger_type' => $promotion->trigger_type,
+                'selected_tier' => [
+                    'tier_id' => (int) $applicable->id,
+                    'min_qty' => (int) ($applicable->min_qty ?? 0),
+                    'min_amount' => (float) ($applicable->min_amount ?? 0),
+                    'discount_type' => $applicable->discount_type,
+                    'discount_value' => (float) ($applicable->discount_value ?? 0),
+                ],
+                'selected_qty' => (int) array_sum(array_map(fn ($x) => (int) $x['qty'], $selected)),
+                'selected_subtotal' => (float) $selectedSubtotal,
+                'tier_total' => (float) max(0, $selectedSubtotal - $discount),
+                'discount_amount' => (float) $discount,
+                'remaining_qty_charged_normal' => max(0, $totalQty - (int) array_sum(array_map(fn ($x) => (int) $x['qty'], $selected))),
+                'summary' => $this->formatPromotionSummary($promotion, $applicable),
+            ];
+
+            $appliedPromotions[] = $promotionSnapshot;
 
             foreach ($selected as $entry) {
-                $id=(int)$entry['item']->id;
-                $line=(float)$base[$id]['effective_line_total'];
-                $portionBase=max(0.01,(float)$base[$id]['unit_price_snapshot']*$entry['qty']);
-                $portion=min($line, $discount*($portionBase/max(0.01,$selectedSubtotal)));
-                $base[$id]['promotion_applied']=true;
-                $base[$id]['promotion_id']=$promotion->id;
-                $base[$id]['promotion_name']=$promotion->name ?: $promotion->title;
-                $base[$id]['promotion_type']=$promotion->promotion_type;
-                $base[$id]['promotion_summary']=($promotion->trigger_type==='quantity' ? ((int)($applicable->min_qty??0).' items') : ('RM '.number_format((float)($applicable->min_amount??0),2))) . ' ' . $applicable->discount_type;
-                $base[$id]['promotion_discount_amount']=($base[$id]['promotion_discount_amount'] ?? 0)+$portion;
-                $base[$id]['line_total_after_promotion']=max(0,$line-($base[$id]['promotion_discount_amount'] ?? 0));
+                $id = (int) $entry['item']->id;
+                $line = (float) $base[$id]['effective_line_total'];
+                $portionBase = max(0.01, (float) $base[$id]['unit_price_snapshot'] * $entry['qty']);
+                $portion = min($line, $discount * ($portionBase / max(0.01, $selectedSubtotal)));
+                $base[$id]['promotion_applied'] = true;
+                $base[$id]['promotion_id'] = $promotion->id;
+                $base[$id]['promotion_name'] = $promotion->name ?: $promotion->title;
+                $base[$id]['promotion_type'] = $promotion->promotion_type;
+                $base[$id]['promotion_summary'] = $promotionSnapshot['summary'];
+                $base[$id]['promotion_snapshot'] = $promotionSnapshot;
+                $base[$id]['promotion_discount_amount'] = ($base[$id]['promotion_discount_amount'] ?? 0) + $portion;
+                $base[$id]['line_total_after_promotion'] = max(0, $line - ($base[$id]['promotion_discount_amount'] ?? 0));
             }
         }
 
-        $subtotal=0.0;
+        $subtotal = 0.0;
         foreach ($cart->items as $item) {
-            $id=(int)$item->id;
-            $line=(float)($base[$id]['line_total_after_promotion'] ?? $base[$id]['effective_line_total']);
-            $manual=0.0;
-            if (empty($base[$id]['promotion_applied']) && !empty($item->discount_type) && (float)$item->discount_value>0) {
-                if ($item->discount_type==='percentage') { $manual=$line*((float)$item->discount_value/100); }
-                else { $manual=min($line,(float)$item->discount_value); }
+            $id = (int) $item->id;
+            $line = (float) ($base[$id]['line_total_after_promotion'] ?? $base[$id]['effective_line_total']);
+            $manual = 0.0;
+            if (empty($base[$id]['promotion_applied']) && ! empty($item->discount_type) && (float) $item->discount_value > 0) {
+                if ($item->discount_type === 'percentage') {
+                    $manual = $line * ((float) $item->discount_value / 100);
+                } else {
+                    $manual = min($line, (float) $item->discount_value);
+                }
             }
-            $base[$id]['manual_discount_amount']=$manual;
-            $base[$id]['line_total_after_discount']=max(0,$line-$manual);
-            $base[$id]['effective_line_total']=$base[$id]['line_total_after_discount'];
-            $base[$id]['effective_unit_price']=(int)$item->qty>0 ? ($base[$id]['line_total_after_discount']/(int)$item->qty) : 0;
-            $subtotal += (float)$base[$id]['line_total_after_discount'];
+            $base[$id]['manual_discount_amount'] = $manual;
+            $base[$id]['line_total_after_discount'] = max(0, $line - $manual);
+            $base[$id]['effective_line_total'] = $base[$id]['line_total_after_discount'];
+            $base[$id]['effective_unit_price'] = (int) $item->qty > 0 ? ($base[$id]['line_total_after_discount'] / (int) $item->qty) : 0;
+            $subtotal += (float) $base[$id]['line_total_after_discount'];
         }
 
-        return ['items'=>$base,'subtotal'=>$subtotal];
+        return ['items' => $base, 'subtotal' => $subtotal, 'promotions' => $appliedPromotions];
+    }
+
+    protected function formatPromotionSummary($promotion, $tier): string
+    {
+        if ($promotion->trigger_type === 'quantity') {
+            return (int) ($tier->min_qty ?? 0) . ' items => RM ' . number_format((float) ($tier->discount_value ?? 0), 2);
+        }
+
+        return 'Min spend RM ' . number_format((float) ($tier->min_amount ?? 0), 2)
+            . ' => ' . $tier->discount_type
+            . ' ' . number_format((float) ($tier->discount_value ?? 0), 2);
     }
 
     protected function clearVoucherFromCart(PosCart $cart): void

@@ -36,6 +36,7 @@ class OrderItem extends Model
         'promotion_type_snapshot',
         'promotion_discount_amount',
         'promotion_applied',
+        'promotion_snapshot',
         'staff_id',
         'is_package',
         'parent_package_item_id',
@@ -64,6 +65,7 @@ class OrderItem extends Model
             'line_total_after_discount' => 'decimal:2',
             'promotion_discount_amount' => 'decimal:2',
             'promotion_applied' => 'boolean',
+            'promotion_snapshot' => 'array',
             'locked' => 'boolean',
         ];
     }

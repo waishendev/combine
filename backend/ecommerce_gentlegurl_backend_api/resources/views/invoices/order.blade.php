@@ -505,6 +505,9 @@
                     @endif
                   </div>
                 @endif
+                @if(!empty($item['promotion_summary']))
+                  <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>
+                @endif
 
                 <!-- Optional: show price x qty in a friendly way -->
                 <!-- <div class="price-line">
