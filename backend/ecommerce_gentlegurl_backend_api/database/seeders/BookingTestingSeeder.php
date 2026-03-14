@@ -421,7 +421,10 @@ class BookingTestingSeeder extends Seeder
             $voucherData['amount'] = $voucherAmount;
         }
 
-        $voucher = Voucher::query()->create($voucherData);
+        $voucher = Voucher::query()->updateOrCreate(
+            ['code' => $voucherData['code']],
+            $voucherData
+        );
 
         $customerVoucherData = [
             'status' => 'active',
