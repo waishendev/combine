@@ -11,6 +11,7 @@ use App\Services\Ecommerce\CartService;
 use App\Services\Ecommerce\PromotionPricingService;
 use App\Support\Pricing\ProductPricing;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class PublicCartController extends Controller
@@ -68,6 +69,14 @@ class PublicCartController extends Controller
         }
 
         $pricing = $this->promotionPricingService->calculate($itemsForPricing);
+
+        Log::info('shop.cart.calculate.promotion_pricing', [
+            'items_count' => count($itemsForPricing),
+            'items' => $itemsForPricing,
+            'promotion_summary' => $pricing['promotion_summary'] ?? null,
+            'promotion_discount' => $pricing['promotion_discount'] ?? 0,
+            'final_total' => $pricing['final_total'] ?? 0,
+        ]);
 
         return $this->respond([
             'items' => collect($pricing['items'])->map(fn (array $priced) => [

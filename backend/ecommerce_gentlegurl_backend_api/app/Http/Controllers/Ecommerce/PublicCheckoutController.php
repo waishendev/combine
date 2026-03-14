@@ -911,6 +911,16 @@ class PublicCheckoutController extends Controller
         }
 
         $promotionPricing = $this->promotionPricingService->calculate($promotionInput);
+
+        Log::info('shop.checkout.promotion_pricing', [
+            'items_count' => count($promotionInput),
+            'promotion_input' => $promotionInput,
+            'promotion_summary' => $promotionPricing['promotion_summary'] ?? null,
+            'promotion_discount' => $promotionPricing['promotion_discount'] ?? 0,
+            'original_subtotal' => $promotionPricing['subtotal'] ?? 0,
+            'promotion_adjusted_subtotal' => $promotionPricing['final_total'] ?? $subtotal,
+        ]);
+
         $promotionLookup = collect($promotionPricing['items'])->keyBy(fn (array $row) => (string) ($row['item_key'] ?? ''));
 
         foreach ($items as $index => &$item) {

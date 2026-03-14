@@ -270,11 +270,22 @@ export type CheckoutPreviewResponse = {
     quantity: number;
     unit_price: number | string;
     line_total: number | string;
+    promotion_applied?: boolean;
+    promotion_name?: string | null;
+    promotion_discount_amount?: number | string;
+    line_total_before_promotion?: number | string;
     is_reward?: boolean;
     reward_redemption_id?: number | null;
     locked?: boolean;
     cover_image_url?: string | null;
   }[];
+  original_subtotal?: number | string;
+  promotion_discount?: number | string;
+  promotion_summary?: {
+    promotion_id?: number;
+    promotion_name?: string | null;
+    summary?: string | null;
+  } | null;
   subtotal: number | string;
   discount_total: number | string;
   shipping_fee: number | string;
