@@ -18,6 +18,7 @@ import {
   PublicBankAccount,
   PublicPaymentGateway,
   PublicStoreLocation,
+  PublicPromotion,
   createCustomerAddress,
   createOrder,
   deleteCustomerAddress,
@@ -26,10 +27,12 @@ import {
   getPaymentGateways,
   getStoreLocations,
   getCustomerVouchers,
+  getPublicPromotions,
   makeDefaultCustomerAddress,
   previewCheckout,
   updateCustomerAddress,
 } from "@/lib/apiClient";
+import { calculateBestBundlePromotionEstimate } from "@/lib/promotionPricing";
 
 const COUNTRY_OPTIONS = [
   { value: "MY", label: "Malaysia" },
@@ -107,6 +110,7 @@ export default function CheckoutForm() {
   const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [promotions, setPromotions] = useState<PublicPromotion[]>([]);
   const [detailsVoucherId, setDetailsVoucherId] = useState<number | null>(null);
   const [paymentGateways, setPaymentGateways] = useState<PublicPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
@@ -200,6 +204,20 @@ export default function CheckoutForm() {
     totals.shipping_fee,
     totals.subtotal,
   ]);
+
+  const bundlePromotionEstimate = useMemo(() =>
+    calculateBestBundlePromotionEstimate(
+      promotions,
+      selectedItems.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+      })),
+    ),
+  [promotions, selectedItems]);
+
+  const estimatedPromoDiscount = Number(bundlePromotionEstimate?.discountAmount ?? 0);
+  const estimatedGrandAfterPromo = Math.max(0, safeTotals.grand - estimatedPromoDiscount);
 
   const shippingSummaryLabel = shippingPreview?.shipping?.label
     ? `Delivery (${shippingPreview.shipping.label})`
@@ -301,6 +319,12 @@ export default function CheckoutForm() {
   useEffect(() => {
     fetchAddresses();
   }, [fetchAddresses]);
+
+  useEffect(() => {
+    getPublicPromotions()
+      .then((data) => setPromotions(data ?? []))
+      .catch(() => setPromotions([]));
+  }, []);
 
   const selectedAddress = useMemo(
     () => addresses.find((addr) => addr.id === selectedAddressId) ?? addresses.find((addr) => addr.is_default),
@@ -1482,6 +1506,15 @@ export default function CheckoutForm() {
               <span>Discount</span>
               <span>- RM {safeTotals.discount.toFixed(2)}</span>
             </div>
+            {bundlePromotionEstimate && (
+              <div className="rounded-md border border-[var(--status-success)]/20 bg-[var(--status-success-bg)] px-2 py-1.5 text-xs text-[color:var(--status-success)]">
+                <div className="font-semibold">{bundlePromotionEstimate.promotionName} applied (est.)</div>
+                <div>Buy {bundlePromotionEstimate.matchedTierQty} for RM {bundlePromotionEstimate.matchedTierPrice.toFixed(2)} · Save RM {estimatedPromoDiscount.toFixed(2)}</div>
+                {bundlePromotionEstimate.remainingQtyChargedNormal > 0 && (
+                  <div>{bundlePromotionEstimate.remainingQtyChargedNormal} item(s) charged at normal price.</div>
+                )}
+              </div>
+            )}
             <div className="flex justify-between">
               <span>{shippingSummaryText}</span>
               <span>{shippingFeeDisplay}</span>
@@ -1490,6 +1523,12 @@ export default function CheckoutForm() {
               <span>Grand Total</span>
               <span>RM {safeTotals.grand.toFixed(2)}</span>
             </div>
+            {bundlePromotionEstimate && (
+              <div className="flex items-center justify-between text-xs text-[color:var(--status-success)]">
+                <span>Estimated after promo</span>
+                <span className="font-semibold">RM {estimatedGrandAfterPromo.toFixed(2)}</span>
+              </div>
+            )}
           </div>
 
           <button

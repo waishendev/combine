@@ -220,6 +220,26 @@ export type CheckoutPreviewVoucher = {
   message?: string | null;
 };
 
+export type PublicPromotion = {
+  id: number;
+  name?: string | null;
+  title?: string | null;
+  trigger_type?: "quantity" | "amount" | string | null;
+  discount_type?: string | null;
+  is_active?: boolean;
+  promotion_products?: Array<{
+    id: number;
+    product_id: number;
+  }>;
+  promotion_tiers?: Array<{
+    id: number;
+    min_qty?: number | null;
+    min_amount?: number | string | null;
+    discount_type?: string | null;
+    discount_value?: number | string | null;
+  }>;
+};
+
 export type CheckoutPreviewResponse = {
   items: {
     product_id: number;
@@ -582,6 +602,14 @@ export async function getCart(): Promise<CartResponse> {
     headers: { Accept: "application/json" },
   });
   return response.data;
+}
+
+export async function getPublicPromotions(): Promise<PublicPromotion[]> {
+  const response = await get<{ data: PublicPromotion[] }>("/public/shop/promotions", {
+    headers: { Accept: "application/json" },
+  });
+
+  return response.data ?? [];
 }
 
 export async function addOrUpdateCartItem(payload: {

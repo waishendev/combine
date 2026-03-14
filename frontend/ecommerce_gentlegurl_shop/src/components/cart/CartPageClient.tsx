@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
-import { CustomerVoucher, getCustomerVouchers } from "@/lib/apiClient";
+import { CustomerVoucher, PublicPromotion, getCustomerVouchers, getPublicPromotions } from "@/lib/apiClient";
+import { calculateBestBundlePromotionEstimate } from "@/lib/promotionPricing";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 import VoucherList from "@/components/vouchers/VoucherList";
@@ -41,6 +42,7 @@ export default function CartPageClient() {
   const [detailsVoucherId, setDetailsVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [promotions, setPromotions] = useState<PublicPromotion[]>([]);
   const [quantityNotices, setQuantityNotices] = useState<Record<number, string>>({});
   const [updatingVariants, setUpdatingVariants] = useState<Set<number>>(new Set());
 
@@ -124,6 +126,12 @@ export default function CartPageClient() {
       .finally(() => setLoadingVouchers(false));
   }, [showVoucherModal]);
 
+  useEffect(() => {
+    getPublicPromotions()
+      .then((data) => setPromotions(data ?? []))
+      .catch(() => setPromotions([]));
+  }, []);
+
   // ✅ 如果你的 totals 里面有 discount/shipping/grand_total 就用；没有就 fallback
   const safeTotals = useMemo(() => {
       const subtotal = Number(totals?.subtotal ?? 0);
@@ -135,6 +143,20 @@ export default function CartPageClient() {
   }, [totals]);
 
   const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
+
+  const bundlePromotionEstimate = useMemo(() =>
+    calculateBestBundlePromotionEstimate(
+      promotions,
+      selectedItems.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+      })),
+    ),
+  [promotions, selectedItems]);
+
+  const estimatedPromoDiscount = Number(bundlePromotionEstimate?.discountAmount ?? 0);
+  const estimatedGrandAfterPromo = Math.max(0, safeTotals.grand - estimatedPromoDiscount);
 
   const scopeLabels: Record<string, string> = {
     all: "Storewide",
@@ -706,6 +728,16 @@ export default function CartPageClient() {
                 <span className="font-medium">- RM {safeTotals.discount.toFixed(2)}</span>
               </div>
 
+              {bundlePromotionEstimate && (
+                <div className="rounded-md border border-[var(--status-success)]/20 bg-[var(--status-success-bg)] px-2 py-1.5 text-xs text-[color:var(--status-success)]">
+                  <div className="font-semibold">{bundlePromotionEstimate.promotionName} applied (est.)</div>
+                  <div>Buy {bundlePromotionEstimate.matchedTierQty} for RM {bundlePromotionEstimate.matchedTierPrice.toFixed(2)} · Save RM {estimatedPromoDiscount.toFixed(2)}</div>
+                  {bundlePromotionEstimate.remainingQtyChargedNormal > 0 && (
+                    <div>{bundlePromotionEstimate.remainingQtyChargedNormal} item(s) charged at normal price.</div>
+                  )}
+                </div>
+              )}
+
             </div>
 
             {/* Total */}
@@ -714,6 +746,12 @@ export default function CartPageClient() {
                 <span className="text-sm font-semibold">To Pay</span>
                 <span className="text-lg font-bold">RM {safeTotals.grand.toFixed(2)}</span>
               </div>
+              {bundlePromotionEstimate && (
+                <div className="mt-1 flex items-center justify-between text-xs text-[color:var(--status-success)]">
+                  <span>Estimated after promo</span>
+                  <span className="font-semibold">RM {estimatedGrandAfterPromo.toFixed(2)}</span>
+                </div>
+              )}
             </div>
 
             {/* Checkout */}
@@ -752,6 +790,11 @@ export default function CartPageClient() {
             <div className="truncate text-base font-semibold">
               Total: RM {safeTotals.grand.toFixed(2)}
             </div>
+            {bundlePromotionEstimate && (
+              <div className="text-xs text-[color:var(--status-success)]">
+                Est. after promo: RM {estimatedGrandAfterPromo.toFixed(2)}
+              </div>
+            )}
 
             <button
               type="button"
