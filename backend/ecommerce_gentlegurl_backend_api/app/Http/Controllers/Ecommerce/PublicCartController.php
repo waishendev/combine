@@ -8,15 +8,20 @@ use App\Models\Ecommerce\CartItem;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Services\Ecommerce\CartService;
+use App\Services\Ecommerce\PromotionPricingService;
 use App\Support\Pricing\ProductPricing;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class PublicCartController extends Controller
 {
     use ResolvesCurrentCustomer;
 
-    public function __construct(protected CartService $cartService)
+    public function __construct(
+        protected CartService $cartService,
+        protected PromotionPricingService $promotionPricingService,
+    )
     {
     }
 
@@ -28,6 +33,72 @@ class PublicCartController extends Controller
         $result = $this->cartService->findOrCreateCart($customer, $sessionToken);
 
         return $this->respond($this->cartService->formatCart($result['cart']));
+    }
+
+
+    public function calculate(Request $request)
+    {
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.cart_item_id' => ['nullable', 'integer'],
+            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'items.*.product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $itemsForPricing = [];
+
+        foreach ($validated['items'] as $index => $item) {
+            $product = Product::find((int) $item['product_id']);
+            if (! $product || ! $product->is_active || $product->is_reward_only) {
+                continue;
+            }
+
+            $variant = $this->resolveVariant($product, $item['product_variant_id'] ?? null);
+            $pricing = ProductPricing::build($product, $variant);
+
+            $itemsForPricing[] = [
+                'item_key' => (string) $index,
+                'cart_item_id' => $item['cart_item_id'] ?? null,
+                'product_id' => $product->id,
+                'product_variant_id' => $variant?->id,
+                'name' => $product->name,
+                'unit_price' => (float) ($pricing['effective_price'] ?? 0),
+                'quantity' => (int) ($item['quantity'] ?? 1),
+            ];
+        }
+
+        $pricing = $this->promotionPricingService->calculate($itemsForPricing);
+
+        Log::info('shop.cart.calculate.promotion_pricing', [
+            'items_count' => count($itemsForPricing),
+            'items' => $itemsForPricing,
+            'promotion_summary' => $pricing['promotion_summary'] ?? null,
+            'promotion_discount' => $pricing['promotion_discount'] ?? 0,
+            'final_total' => $pricing['final_total'] ?? 0,
+        ]);
+
+        return $this->respond([
+            'items' => collect($pricing['items'])->map(fn (array $priced) => [
+                'item_key' => $priced['item_key'] ?? null,
+                'cart_item_id' => $priced['cart_item_id'] ?? null,
+                'product_id' => (int) $priced['product_id'],
+                'product_variant_id' => $priced['product_variant_id'] ?? null,
+                'name' => $priced['name'] ?? null,
+                'unit_price' => (float) $priced['unit_price'],
+                'quantity' => (int) $priced['quantity'],
+                'line_total' => (float) $priced['line_total'],
+                'promotion_applied' => (bool) $priced['promotion_applied'],
+                'promotion_name' => $priced['promotion_name'] ?? null,
+                'promotion_discount_amount' => (float) ($priced['promotion_discount_amount'] ?? 0),
+                'line_total_after_promotion' => (float) ($priced['line_total_after_promotion'] ?? $priced['line_total']),
+            ])->values(),
+            'promotion_summary' => $pricing['promotion_summary'],
+            'promotions' => $pricing['promotions'],
+            'subtotal' => (float) $pricing['subtotal'],
+            'promotion_discount' => (float) $pricing['promotion_discount'],
+            'final_total' => (float) $pricing['final_total'],
+        ]);
     }
 
     public function addOrUpdateItem(Request $request)

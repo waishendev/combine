@@ -5,7 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
-import { CustomerVoucher, getCustomerVouchers } from "@/lib/apiClient";
+import {
+  calculateCartPromotion,
+  CartPromotionCalculateResponse,
+  CustomerVoucher,
+  getCustomerVouchers,
+} from "@/lib/apiClient";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 import VoucherList from "@/components/vouchers/VoucherList";
@@ -43,6 +48,37 @@ export default function CartPageClient() {
   const [loadingVouchers, setLoadingVouchers] = useState(false);
   const [quantityNotices, setQuantityNotices] = useState<Record<number, string>>({});
   const [updatingVariants, setUpdatingVariants] = useState<Set<number>>(new Set());
+  const [promotionPricing, setPromotionPricing] = useState<CartPromotionCalculateResponse | null>(null);
+
+  const promotionByCartItemId = useMemo(() => {
+    const map = new Map<number, CartPromotionCalculateResponse["items"][number]>();
+    (promotionPricing?.items ?? []).forEach((item) => {
+      if (typeof item.cart_item_id === "number") {
+        map.set(item.cart_item_id, item);
+      }
+    });
+    return map;
+  }, [promotionPricing]);
+
+  useEffect(() => {
+    const payloadItems = items
+      .filter((item) => !item.is_reward)
+      .map((item) => ({
+        cart_item_id: item.id,
+        product_id: item.product_id,
+        product_variant_id: item.product_variant_id ?? undefined,
+        quantity: item.quantity,
+      }));
+
+    if (payloadItems.length === 0) {
+      setPromotionPricing(null);
+      return;
+    }
+
+    calculateCartPromotion({ items: payloadItems })
+      .then((data) => setPromotionPricing(data))
+      .catch(() => setPromotionPricing(null));
+  }, [items]);
 
     useEffect(() => {
       // Sync selectedVoucherId with applied voucher, but don't show code in input field
@@ -126,13 +162,13 @@ export default function CartPageClient() {
 
   // ✅ 如果你的 totals 里面有 discount/shipping/grand_total 就用；没有就 fallback
   const safeTotals = useMemo(() => {
-      const subtotal = Number(totals?.subtotal ?? 0);
-      const discount = Number(totals?.discount_total ?? 0);
+      const subtotal = Number(promotionPricing?.subtotal ?? totals?.subtotal ?? 0);
+      const discount = Number(promotionPricing?.promotion_discount ?? 0) + Number(totals?.discount_total ?? 0);
       const shipping = Number(totals?.shipping_fee ?? 0);
-      const grand = Number(totals?.grand_total ?? subtotal - discount + shipping);
+      const grand = Number(promotionPricing?.final_total ?? (subtotal - Number(promotionPricing?.promotion_discount ?? 0))) - Number(totals?.discount_total ?? 0) + shipping;
 
       return { subtotal, discount, shipping, grand };
-  }, [totals]);
+  }, [promotionPricing, totals]);
 
   const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
 
@@ -265,7 +301,8 @@ export default function CartPageClient() {
                 const unitPrice = Number(
                   item.unit_price ?? (item as { price?: number | string }).price ?? 0,
                 );
-                const lineTotal = unitPrice * item.quantity;
+                const promoted = promotionByCartItemId.get(item.id);
+                const lineTotal = Number(promoted?.line_total_after_promotion ?? unitPrice * item.quantity);
                 const isReward = item.is_reward || item.locked;
                 const imageUrl =
                   item.product_image ??
@@ -331,6 +368,9 @@ export default function CartPageClient() {
                           )}
                           {quantityNotices[item.id] && (
                             <p className="text-xs text-[color:var(--status-warning)]">{quantityNotices[item.id]}</p>
+                          )}
+                          {promoted?.promotion_applied && promoted.promotion_name && (
+                            <p className="text-xs text-[var(--accent-strong)]">Promo: {promoted.promotion_name}</p>
                           )}
                           {isReward && (
                             <span className="inline-flex items-center rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
@@ -701,9 +741,18 @@ export default function CartPageClient() {
                 <span className="font-medium">RM {safeTotals.subtotal.toFixed(2)}</span>
               </div>
 
+              {Number(promotionPricing?.promotion_discount ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[var(--foreground)]/70">
+                    Promotion: {promotionPricing?.promotion_summary?.promotion_name ?? "Promotion"}
+                  </span>
+                  <span className="font-medium">- RM {Number(promotionPricing?.promotion_discount ?? 0).toFixed(2)}</span>
+                </div>
+              )}
+
               <div className="flex justify-between">
-                <span className="text-[var(--foreground)]/70">Discount</span>
-                <span className="font-medium">- RM {safeTotals.discount.toFixed(2)}</span>
+                <span className="text-[var(--foreground)]/70">Voucher Discount</span>
+                <span className="font-medium">- RM {Number(totals?.discount_total ?? 0).toFixed(2)}</span>
               </div>
 
             </div>

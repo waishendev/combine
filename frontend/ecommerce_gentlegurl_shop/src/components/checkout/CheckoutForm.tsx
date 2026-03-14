@@ -176,27 +176,37 @@ export default function CheckoutForm() {
   );
   
   const safeTotals = useMemo(() => {
-    const previewSubtotal = Number(shippingPreview?.subtotal ?? totals.subtotal ?? 0);
-    const previewDiscount = Number(shippingPreview?.discount_total ?? totals.discount_total ?? 0);
+    const originalSubtotal = Number(shippingPreview?.original_subtotal ?? shippingPreview?.subtotal ?? totals.subtotal ?? 0);
+    const promotionDiscount = Number(shippingPreview?.promotion_discount ?? 0);
+    const voucherDiscount = Number(shippingPreview?.discount_total ?? totals.discount_total ?? 0);
     const previewShipping = Number(shippingPreview?.shipping_fee ?? totals.shipping_fee ?? shippingFlatFee ?? 0);
-    const previewGrand = Number(shippingPreview?.grand_total ?? previewSubtotal - previewDiscount + previewShipping);
 
-    const subtotal = previewSubtotal;
-    const discount = previewDiscount;
+    const subtotalAfterPromotion = Math.max(originalSubtotal - promotionDiscount, 0);
     const shipping = isSelfPickup ? 0 : previewShipping;
-    const computedGrand = subtotal - discount + shipping;
-    const grand = isSelfPickup ? computedGrand : previewGrand;
+    const grand = Math.max(subtotalAfterPromotion - voucherDiscount + shipping, 0);
 
-    return { subtotal, discount, shipping, grand };
+    return {
+      originalSubtotal,
+      promotionDiscount,
+      subtotalAfterPromotion,
+      subtotal: subtotalAfterPromotion,
+      voucherDiscount,
+      shipping,
+      grand,
+      promotionName: shippingPreview?.promotion_summary?.promotion_name ?? null,
+      promotionTier: shippingPreview?.promotion_summary?.summary ?? null,
+    };
   }, [
     isSelfPickup,
     shippingFlatFee,
     shippingPreview?.discount_total,
-    shippingPreview?.grand_total,
+    shippingPreview?.original_subtotal,
+    shippingPreview?.promotion_discount,
+    shippingPreview?.promotion_summary?.promotion_name,
+    shippingPreview?.promotion_summary?.summary,
     shippingPreview?.shipping_fee,
     shippingPreview?.subtotal,
     totals.discount_total,
-    totals.grand_total,
     totals.shipping_fee,
     totals.subtotal,
   ]);
@@ -359,16 +369,7 @@ export default function CheckoutForm() {
   }, [customer, isLoggedIn]);
 
   useEffect(() => {
-    if (shippingMethod !== "shipping") {
-      setShippingPreview(null);
-      return;
-    }
-
-    if (selectedItems.length === 0) {
-      setShippingPreview(null);
-      return;
-    }
-    if (hasMissingVariant) {
+    if (selectedItems.length === 0 || hasMissingVariant) {
       setShippingPreview(null);
       return;
     }
@@ -377,14 +378,16 @@ export default function CheckoutForm() {
     const country = normalizeCountryValue(addressSource?.country ?? form.shipping_country);
     const state = addressSource?.state ?? form.shipping_state;
 
-    if (!country) {
-      setShippingPreview(null);
-      return;
-    }
+    if (shippingMethod === "shipping") {
+      if (!country) {
+        setShippingPreview(null);
+        return;
+      }
 
-    if (country === "MY" && !state) {
-      setShippingPreview(null);
-      return;
+      if (country === "MY" && !state) {
+        setShippingPreview(null);
+        return;
+      }
     }
 
     const payloadItems = selectedItems.map((item) => ({
@@ -398,9 +401,13 @@ export default function CheckoutForm() {
     setIsPreviewLoading(true);
     previewCheckout({
       items: payloadItems,
-      shipping_method: "shipping",
-      shipping_country: country,
-      shipping_state: country === "MY" ? state ?? null : null,
+      shipping_method: shippingMethod,
+      ...(shippingMethod === "shipping"
+        ? {
+            shipping_country: country,
+            shipping_state: country === "MY" ? state ?? null : null,
+          }
+        : {}),
       voucher_code: appliedVoucher?.code ?? undefined,
       customer_voucher_id: appliedVoucher?.customer_voucher_id ?? undefined,
       session_token: sessionToken ?? undefined,
@@ -428,10 +435,10 @@ export default function CheckoutForm() {
     billingSameAsShipping,
     form.shipping_country,
     form.shipping_state,
+    hasMissingVariant,
     isLoggedIn,
     selectedAddress,
     selectedItems,
-    hasMissingVariant,
     sessionToken,
     shippingMethod,
   ]);
@@ -1476,11 +1483,23 @@ export default function CheckoutForm() {
           <div className="space-y-2 rounded-lg border border-[var(--muted)]/70 bg-[var(--muted)]/10 p-3 text-sm">
             <div className="flex justify-between">
               <span>Subtotal</span>
-              <span>RM {safeTotals.subtotal.toFixed(2)}</span>
+              <span>RM {safeTotals.originalSubtotal.toFixed(2)}</span>
             </div>
+            {safeTotals.promotionDiscount > 0 && (
+              <>
+                <div className="flex justify-between">
+                  <span>Promotion Discount</span>
+                  <span>- RM {safeTotals.promotionDiscount.toFixed(2)}</span>
+                </div>
+                <div className="text-xs text-[var(--foreground)]/70">
+                  Promotion: {safeTotals.promotionName ?? "Promo Applied"}
+                  {safeTotals.promotionTier ? ` (${safeTotals.promotionTier})` : ""}
+                </div>
+              </>
+            )}
             <div className="flex justify-between">
-              <span>Discount</span>
-              <span>- RM {safeTotals.discount.toFixed(2)}</span>
+              <span>Voucher Discount</span>
+              <span>- RM {safeTotals.voucherDiscount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span>{shippingSummaryText}</span>
