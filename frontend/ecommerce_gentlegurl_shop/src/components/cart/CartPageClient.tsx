@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
-import { CustomerVoucher, getCustomerVouchers } from "@/lib/apiClient";
+import { CustomerVoucher, getCustomerVouchers, getPromotions, Promotion } from "@/lib/apiClient";
 import { getPrimaryProductImage } from "@/lib/productMedia";
+import { calculatePromotionDiscounts } from "@/lib/promotionCalculator";
 import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 import VoucherList from "@/components/vouchers/VoucherList";
 
@@ -43,6 +44,8 @@ export default function CartPageClient() {
   const [loadingVouchers, setLoadingVouchers] = useState(false);
   const [quantityNotices, setQuantityNotices] = useState<Record<number, string>>({});
   const [updatingVariants, setUpdatingVariants] = useState<Set<number>>(new Set());
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [loadingPromotions, setLoadingPromotions] = useState(false);
 
     useEffect(() => {
       // Sync selectedVoucherId with applied voucher, but don't show code in input field
@@ -124,15 +127,51 @@ export default function CartPageClient() {
       .finally(() => setLoadingVouchers(false));
   }, [showVoucherModal]);
 
+  useEffect(() => {
+    setLoadingPromotions(true);
+    getPromotions()
+      .then((data) => setPromotions(data))
+      .catch(() => setPromotions([]))
+      .finally(() => setLoadingPromotions(false));
+  }, []);
+
+  // Calculate promotion discounts for selected items
+  const promotionDiscount = useMemo(() => {
+    if (selectedItems.length === 0 || promotions.length === 0) {
+      return { totalDiscount: 0, promotionResults: [] };
+    }
+
+    const cartItemsForPromotion = selectedItems.map((item) => ({
+      id: item.id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_price: Number(item.unit_price ?? 0),
+      line_total: Number(item.unit_price ?? 0) * item.quantity,
+    }));
+
+    const result = calculatePromotionDiscounts(cartItemsForPromotion, promotions);
+    
+    // Debug logging (remove in production)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Promotions:', promotions);
+      console.log('Cart items:', cartItemsForPromotion);
+      console.log('Promotion discount result:', result);
+    }
+
+    return result;
+  }, [selectedItems, promotions]);
+
   // ✅ 如果你的 totals 里面有 discount/shipping/grand_total 就用；没有就 fallback
   const safeTotals = useMemo(() => {
       const subtotal = Number(totals?.subtotal ?? 0);
-      const discount = Number(totals?.discount_total ?? 0);
+      const voucherDiscount = Number(totals?.discount_total ?? 0);
+      const promotionDiscountAmount = promotionDiscount.totalDiscount;
+      const discount = voucherDiscount + promotionDiscountAmount;
       const shipping = Number(totals?.shipping_fee ?? 0);
       const grand = Number(totals?.grand_total ?? subtotal - discount + shipping);
 
-      return { subtotal, discount, shipping, grand };
-  }, [totals]);
+      return { subtotal, discount, promotionDiscount: promotionDiscountAmount, voucherDiscount, shipping, grand };
+  }, [totals, promotionDiscount]);
 
   const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
 
@@ -265,8 +304,12 @@ export default function CartPageClient() {
                 const unitPrice = Number(
                   item.unit_price ?? (item as { price?: number | string }).price ?? 0,
                 );
+                const itemDiscount = promotionDiscount.itemDiscounts[item.id] || 0;
+                const discountedUnitPrice = itemDiscount > 0 ? unitPrice - (itemDiscount / item.quantity) : unitPrice;
                 const lineTotal = unitPrice * item.quantity;
+                const discountedLineTotal = lineTotal - itemDiscount;
                 const isReward = item.is_reward || item.locked;
+                const hasPromotionDiscount = itemDiscount > 0 && selectedItemIds.includes(item.id);
                 const imageUrl =
                   item.product_image ??
                   getPrimaryProductImage({
@@ -385,8 +428,24 @@ export default function CartPageClient() {
                       </div>
 
                       <div className="text-right text-sm font-medium">
-                        RM {unitPrice.toFixed(2)}
-                        {isReward && <div className="text-[11px] text-[var(--foreground)]/60">Locked</div>}
+                        {hasPromotionDiscount ? (
+                          <div className="space-y-0.5">
+                            <div className="text-xs text-[var(--foreground)]/50 line-through">
+                              RM {unitPrice.toFixed(2)}
+                            </div>
+                            <div className="text-[color:var(--status-success)] font-semibold">
+                              RM {discountedUnitPrice.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-[color:var(--status-success)]">
+                              Promo Applied
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            RM {unitPrice.toFixed(2)}
+                            {isReward && <div className="text-[11px] text-[var(--foreground)]/60">Locked</div>}
+                          </>
+                        )}
                       </div>
 
                       <div className="flex justify-end md:justify-center">
@@ -434,7 +493,20 @@ export default function CartPageClient() {
                       </div>
 
 
-                      <div className="text-right text-sm font-semibold">RM {lineTotal.toFixed(2)}</div>
+                      <div className="text-right text-sm font-semibold">
+                        {hasPromotionDiscount ? (
+                          <div className="space-y-0.5">
+                            <div className="text-xs text-[var(--foreground)]/50 line-through">
+                              RM {lineTotal.toFixed(2)}
+                            </div>
+                            <div className="text-[color:var(--status-success)]">
+                              RM {discountedLineTotal.toFixed(2)}
+                            </div>
+                          </div>
+                        ) : (
+                          <>RM {lineTotal.toFixed(2)}</>
+                        )}
+                      </div>
 
                       <div className="flex justify-end">
                         {isReward ? (
@@ -466,7 +538,12 @@ export default function CartPageClient() {
               const unitPrice = Number(
                 item.unit_price ?? (item as { price?: number | string }).price ?? 0,
               );
+              const itemDiscount = promotionDiscount.itemDiscounts[item.id] || 0;
+              const discountedUnitPrice = itemDiscount > 0 ? unitPrice - (itemDiscount / item.quantity) : unitPrice;
+              const lineTotal = unitPrice * item.quantity;
+              const discountedLineTotal = lineTotal - itemDiscount;
               const isReward = item.is_reward || item.locked;
+              const hasPromotionDiscount = itemDiscount > 0 && selectedItemIds.includes(item.id);
               const imageUrl = getPrimaryProductImage({
                 product_image: item.product_image ?? null,
                 cover_image_url: (item as { cover_image_url?: string | null }).cover_image_url ?? item.product?.cover_image_url ?? null,
@@ -566,8 +643,24 @@ export default function CartPageClient() {
                         )}
 
                         <div className="text-sm font-medium text-[var(--foreground)]">
-                          RM {unitPrice.toFixed(2)}
-                          {isReward && <span className="ml-2 text-[11px] text-[var(--foreground)]/60">Locked</span>}
+                          {hasPromotionDiscount ? (
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-[var(--foreground)]/50 line-through">
+                                RM {unitPrice.toFixed(2)}
+                              </div>
+                              <div className="text-[color:var(--status-success)] font-semibold">
+                                RM {discountedUnitPrice.toFixed(2)}
+                              </div>
+                              <div className="text-[10px] text-[color:var(--status-success)]">
+                                Promo Applied
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              RM {unitPrice.toFixed(2)}
+                              {isReward && <span className="ml-2 text-[11px] text-[var(--foreground)]/60">Locked</span>}
+                            </>
+                          )}
                         </div>
                         {quantityNotices[item.id] && (
                           <p className="text-xs text-[color:var(--status-warning)]">{quantityNotices[item.id]}</p>
@@ -615,7 +708,21 @@ export default function CartPageClient() {
                               </button>
                             </div>
                           )}
-                          <div className="ml-auto text-right text-sm font-semibold">                          
+                          <div className="ml-auto flex flex-col items-end gap-2">
+                            <div className="text-right text-sm font-semibold">
+                              {hasPromotionDiscount ? (
+                                <div className="space-y-0.5">
+                                  <div className="text-xs text-[var(--foreground)]/50 line-through">
+                                    RM {lineTotal.toFixed(2)}
+                                  </div>
+                                  <div className="text-[color:var(--status-success)]">
+                                    RM {discountedLineTotal.toFixed(2)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <>RM {lineTotal.toFixed(2)}</>
+                              )}
+                            </div>
                             {isReward ? (
                               <span className="rounded-md bg-[var(--muted)]/40 px-3 py-2 text-[11px] font-semibold text-[var(--foreground)]/70">
                                 Locked
@@ -701,10 +808,33 @@ export default function CartPageClient() {
                 <span className="font-medium">RM {safeTotals.subtotal.toFixed(2)}</span>
               </div>
 
-              <div className="flex justify-between">
-                <span className="text-[var(--foreground)]/70">Discount</span>
-                <span className="font-medium">- RM {safeTotals.discount.toFixed(2)}</span>
-              </div>
+              {safeTotals.promotionDiscount > 0 && (
+                <div className="flex justify-between text-xs text-[color:var(--status-success)]">
+                  <span>
+                    Promotion Applied
+                    {promotionDiscount.promotionResults.length > 0 && (
+                      <span className="ml-1 text-[var(--foreground)]/60">
+                        ({promotionDiscount.promotionResults[0].promotion_name})
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-medium">- RM {safeTotals.promotionDiscount.toFixed(2)}</span>
+                </div>
+              )}
+
+              {safeTotals.voucherDiscount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[var(--foreground)]/70">Voucher Discount</span>
+                  <span className="font-medium">- RM {safeTotals.voucherDiscount.toFixed(2)}</span>
+                </div>
+              )}
+
+              {safeTotals.discount > 0 && (
+                <div className="flex justify-between border-t border-[var(--muted)]/50 pt-2">
+                  <span className="text-[var(--foreground)]/70 font-medium">Total Discount</span>
+                  <span className="font-semibold">- RM {safeTotals.discount.toFixed(2)}</span>
+                </div>
+              )}
 
             </div>
 
@@ -752,6 +882,11 @@ export default function CartPageClient() {
             <div className="truncate text-base font-semibold">
               Total: RM {safeTotals.grand.toFixed(2)}
             </div>
+            {safeTotals.promotionDiscount > 0 && (
+              <div className="text-xs text-[color:var(--status-success)]">
+                Promotion applied: -RM {safeTotals.promotionDiscount.toFixed(2)}
+              </div>
+            )}
 
             <button
               type="button"

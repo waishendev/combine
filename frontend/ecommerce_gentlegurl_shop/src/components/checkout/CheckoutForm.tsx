@@ -26,10 +26,13 @@ import {
   getPaymentGateways,
   getStoreLocations,
   getCustomerVouchers,
+  getPromotions,
+  Promotion,
   makeDefaultCustomerAddress,
   previewCheckout,
   updateCustomerAddress,
 } from "@/lib/apiClient";
+import { calculatePromotionDiscounts } from "@/lib/promotionCalculator";
 
 const COUNTRY_OPTIONS = [
   { value: "MY", label: "Malaysia" },
@@ -115,6 +118,7 @@ export default function CheckoutForm() {
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [shippingPreview, setShippingPreview] = useState<CheckoutPreviewResponse | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
 
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
@@ -175,19 +179,39 @@ export default function CheckoutForm() {
     (item) => item.product_type === "variant" && !item.product_variant_id,
   );
   
+  // Calculate promotion discounts for selected items
+  const promotionDiscount = useMemo(() => {
+    if (selectedItems.length === 0 || promotions.length === 0) {
+      return { totalDiscount: 0, promotionResults: [] };
+    }
+
+    const cartItemsForPromotion = selectedItems.map((item) => ({
+      id: item.id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_price: Number(item.unit_price ?? 0),
+      line_total: Number(item.unit_price ?? 0) * item.quantity,
+    }));
+
+    return calculatePromotionDiscounts(cartItemsForPromotion, promotions);
+  }, [selectedItems, promotions]);
+
   const safeTotals = useMemo(() => {
     const previewSubtotal = Number(shippingPreview?.subtotal ?? totals.subtotal ?? 0);
-    const previewDiscount = Number(shippingPreview?.discount_total ?? totals.discount_total ?? 0);
+    const previewVoucherDiscount = Number(shippingPreview?.discount_total ?? totals.discount_total ?? 0);
+    const promotionDiscountAmount = promotionDiscount.totalDiscount;
+    const previewDiscount = previewVoucherDiscount + promotionDiscountAmount;
     const previewShipping = Number(shippingPreview?.shipping_fee ?? totals.shipping_fee ?? shippingFlatFee ?? 0);
     const previewGrand = Number(shippingPreview?.grand_total ?? previewSubtotal - previewDiscount + previewShipping);
 
     const subtotal = previewSubtotal;
     const discount = previewDiscount;
+    const voucherDiscount = previewVoucherDiscount;
     const shipping = isSelfPickup ? 0 : previewShipping;
     const computedGrand = subtotal - discount + shipping;
     const grand = isSelfPickup ? computedGrand : previewGrand;
 
-    return { subtotal, discount, shipping, grand };
+    return { subtotal, discount, promotionDiscount: promotionDiscountAmount, voucherDiscount, shipping, grand };
   }, [
     isSelfPickup,
     shippingFlatFee,
@@ -199,6 +223,7 @@ export default function CheckoutForm() {
     totals.grand_total,
     totals.shipping_fee,
     totals.subtotal,
+    promotionDiscount,
   ]);
 
   const shippingSummaryLabel = shippingPreview?.shipping?.label
@@ -470,6 +495,12 @@ export default function CheckoutForm() {
         setPaymentMethod((prev) => prev || "manual_transfer");
       })
       .finally(() => setIsLoadingPaymentGateways(false));
+  }, []);
+
+  useEffect(() => {
+    getPromotions()
+      .then((data) => setPromotions(data))
+      .catch(() => setPromotions([]));
   }, []);
 
   useEffect(() => {
@@ -1225,6 +1256,11 @@ export default function CheckoutForm() {
             <div className="space-y-3">
               {selectedItems.map((item) => {
                 const unitPrice = Number(item.unit_price ?? 0);
+                const itemDiscount = promotionDiscount.itemDiscounts[item.id] || 0;
+                const discountedUnitPrice = itemDiscount > 0 ? unitPrice - (itemDiscount / item.quantity) : unitPrice;
+                const lineTotal = unitPrice * item.quantity;
+                const discountedLineTotal = lineTotal - itemDiscount;
+                const hasPromotionDiscount = itemDiscount > 0;
                 const imageUrl =
                   item.product_image ??
                   getPrimaryProductImage({
@@ -1260,14 +1296,39 @@ export default function CheckoutForm() {
                         </p>
                       )}
                       <p className="text-xs text-[var(--foreground)]/60">Qty: {item.quantity}</p>
-
+                      {hasPromotionDiscount && (
+                        <span className="inline-flex items-center rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
+                          Promo Applied
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1 text-sm text-right sm:min-w-[140px]">
-                      <p className="text-[var(--foreground)]/70">Unit: RM {unitPrice.toFixed(2)}</p>
-                      <p className="font-semibold text-[var(--accent-strong)]">
-                        Total: RM {(unitPrice * item.quantity).toFixed(2)}
-                      </p>
+                      {hasPromotionDiscount ? (
+                        <>
+                          <div className="text-[var(--foreground)]/70">
+                            <div className="text-xs line-through">Unit: RM {unitPrice.toFixed(2)}</div>
+                            <div className="text-[color:var(--status-success)] font-semibold">
+                              Unit: RM {discountedUnitPrice.toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="font-semibold">
+                            <div className="text-xs text-[var(--foreground)]/50 line-through">
+                              Total: RM {lineTotal.toFixed(2)}
+                            </div>
+                            <div className="text-[color:var(--status-success)]">
+                              Total: RM {discountedLineTotal.toFixed(2)}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[var(--foreground)]/70">Unit: RM {unitPrice.toFixed(2)}</p>
+                          <p className="font-semibold text-[var(--accent-strong)]">
+                            Total: RM {lineTotal.toFixed(2)}
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -1478,10 +1539,31 @@ export default function CheckoutForm() {
               <span>Subtotal</span>
               <span>RM {safeTotals.subtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Discount</span>
-              <span>- RM {safeTotals.discount.toFixed(2)}</span>
-            </div>
+            {safeTotals.promotionDiscount > 0 && (
+              <div className="flex justify-between text-xs text-[color:var(--status-success)]">
+                <span>
+                  Promotion Applied
+                  {promotionDiscount.promotionResults.length > 0 && (
+                    <span className="ml-1 text-[var(--foreground)]/60">
+                      ({promotionDiscount.promotionResults[0].promotion_name})
+                    </span>
+                  )}
+                </span>
+                <span className="font-medium">- RM {safeTotals.promotionDiscount.toFixed(2)}</span>
+              </div>
+            )}
+            {safeTotals.voucherDiscount > 0 && (
+              <div className="flex justify-between">
+                <span>Voucher Discount</span>
+                <span>- RM {safeTotals.voucherDiscount.toFixed(2)}</span>
+              </div>
+            )}
+            {safeTotals.discount > 0 && (
+              <div className="flex justify-between border-t border-[var(--muted)]/50 pt-2">
+                <span className="font-medium">Total Discount</span>
+                <span className="font-semibold">- RM {safeTotals.discount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span>{shippingSummaryText}</span>
               <span>{shippingFeeDisplay}</span>

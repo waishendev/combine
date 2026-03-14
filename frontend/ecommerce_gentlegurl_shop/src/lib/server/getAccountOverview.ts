@@ -24,11 +24,15 @@ export async function getAccountOverview(): Promise<AccountOverview | null> {
     });
 
     if (!res.ok) {
+      // Silently handle auth errors (user not logged in)
       if (res.status === 401 || res.status === 403) {
         return null;
       }
 
-      console.error("[getAccountOverview] Failed:", res.status);
+      // Only log server errors (500+) in development
+      if (res.status >= 500 && process.env.NODE_ENV === 'development') {
+        console.error("[getAccountOverview] Server error:", res.status);
+      }
       return null;
     }
 

@@ -33,6 +33,7 @@ class PublicPromotionController extends Controller
             }
             
             $promotions = $query
+                ->with(['promotionProducts', 'promotionTiers'])
                 ->orderByDesc('id')
                 ->get();
 

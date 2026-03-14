@@ -1110,6 +1110,42 @@ export async function redeemLoyaltyReward(rewardId: number) {
   );
 }
 
+export type Promotion = {
+  id: number;
+  name?: string | null;
+  title?: string | null;
+  is_active: boolean;
+  promotion_type: string;
+  trigger_type: 'quantity' | 'amount';
+  promotion_products?: Array<{ product_id: number; product?: { id: number; name: string } }>;
+  promotion_tiers?: Array<{
+    min_qty?: number | null;
+    min_amount?: number | null;
+    discount_type: 'bundle_fixed_price' | 'percentage_discount' | 'fixed_discount';
+    discount_value: number;
+  }>;
+};
+
+export async function getPromotions(): Promise<Promotion[]> {
+  try {
+    const response = await get<{ data: Promotion[] } | Promotion[]>("/public/shop/promotions?active_only=true&current_only=true", {
+      headers: { Accept: "application/json" },
+    });
+
+    // Handle different response formats
+    if (Array.isArray(response)) {
+      return response;
+    }
+    if (response && typeof response === 'object' && 'data' in response) {
+      return Array.isArray(response.data) ? response.data : [];
+    }
+    return [];
+  } catch (error) {
+    console.error('Failed to fetch promotions:', error);
+    return [];
+  }
+}
+
 export async function getLoyaltyHistory(options?: { page?: number; perPage?: number }) {
   const params = new URLSearchParams();
   if (options?.page) {

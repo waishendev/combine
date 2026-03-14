@@ -410,6 +410,23 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
+  
+  // Calculate promotion discount from items
+  const promotionDiscount = useMemo(() => {
+    if (!cart?.items) return 0
+    return cart.items.reduce((sum, item) => {
+      if (item.promotion_applied && item.line_total_snapshot) {
+        return sum + (Number(item.line_total_snapshot) - Number(item.line_total))
+      }
+      return sum
+    }, 0)
+  }, [cart?.items])
+  
+  // Calculate voucher discount
+  const voucherDiscount = useMemo(() => {
+    return Number(cart?.voucher?.discount_amount ?? 0)
+  }, [cart?.voucher?.discount_amount])
+  
   const discount = Math.max(0, cartSubtotal - cartTotal)
   const appliedVoucher = cart?.voucher ?? null
 
@@ -2198,14 +2215,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-gray-900 truncate sm:max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
                           <p className="mt-0.5 text-xs font-mono text-gray-600 truncate sm:max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
-                          {item.promotion_applied ? (
+                          {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
                               <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
                                 Promo Applied: {item.promotion_name ?? 'Promotion'}
                               </span>
                               {item.promotion_summary || item.promotion_snapshot?.summary ? <p className="text-[10px] text-blue-700 mt-1">{item.promotion_summary ?? item.promotion_snapshot?.summary}</p> : null}
                             </div>
-                          ) : null}
+                          ) : null} */}
                           {item.is_staff_free_applied ? (
                             <div className="mt-1.5 flex flex-wrap items-center gap-2">
                               <span className="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
@@ -2241,15 +2258,22 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         </div>
                         <div className="flex items-center justify-between gap-3 sm:justify-end">
                           <div className="min-w-[140px] text-left sm:text-right">
-                            {(item.discount_amount ?? 0) > 0 ? (
-                              <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
-                            ) : null}
-                            {(item.discount_amount ?? 0) > 0 ? (
-                              <p className="text-[11px] text-amber-700">Discount: {item.discount_type === 'percentage' ? `${Number(item.discount_value ?? 0)}%` : `RM ${Number(item.discount_value ?? 0).toFixed(2)}`}</p>
-                            ) : null}
-                            <p className="text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
+                            {item.promotion_applied && item.line_total_snapshot ? (
+                              <div className="space-y-0.5">
+                                <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-green-600">RM {Number(item.line_total).toFixed(2)}</p>
+                              </div>
+                            ) : (item.discount_amount ?? 0) > 0 ? (
+                              <>
+                                <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
+                                <p className="text-[11px] text-amber-700">Discount: {item.discount_type === 'percentage' ? `${Number(item.discount_value ?? 0)}%` : `RM ${Number(item.discount_value ?? 0).toFixed(2)}`}</p>
+                                <p className="text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
+                              </>
+                            ) : (
+                              <p className="text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
+                            )}
                           </div>
-                          <button type="button" onClick={() => void applyItemDiscount(item)} disabled={item.promotion_applied || item.manual_discount_allowed === false} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50">Discount</button>
+                          {/* <button type="button" onClick={() => void applyItemDiscount(item)} disabled={item.promotion_applied || item.manual_discount_allowed === false} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50">Discount</button> */}
                           <button 
                             onClick={() => void removeItem(item.id)} 
                             className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
@@ -2319,10 +2343,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <span className="text-gray-600">Subtotal</span>
                   <span className="font-semibold text-gray-900">RM {cartSubtotal.toFixed(2)}</span>
                 </div> */}
-                {discount > 0 && (
+                {promotionDiscount > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Discount</span>
-                    <span className="font-semibold text-green-600">-RM {discount.toFixed(2)}</span>
+                    <span className="text-gray-600">Promotion Discount</span>
+                    <span className="font-semibold text-green-600">-RM {promotionDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+                {voucherDiscount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Voucher Discount</span>
+                    <span className="font-semibold text-green-600">-RM {voucherDiscount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-gray-200 pt-2 text-base font-bold">
@@ -2664,10 +2694,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
                             {item.promotion_applied ? (
                             <div className="mt-1.5">
-                              <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+                              <span className="inline-flex items-center rounded bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
                                 Promo Applied: {item.promotion_name ?? 'Promotion'}
                               </span>
-                              {item.promotion_summary ? <p className="text-[10px] text-blue-700 mt-1">{item.promotion_summary}</p> : null}
+                              {item.promotion_summary ? <p className="text-[10px] text-green-700 mt-1">{item.promotion_summary}</p> : null}
                             </div>
                           ) : null}
                           {item.is_staff_free_applied ? (
@@ -2720,8 +2750,26 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-gray-700">RM {Number(item.unit_price).toFixed(2)}</td>
-                          <td className="px-4 py-3 font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</td>
+                          <td className="px-4 py-3">
+                            {item.promotion_applied && item.unit_price_snapshot ? (
+                              <div className="space-y-0.5">
+                                <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot).toFixed(2)}</p>
+                                <p className="text-gray-700 font-semibold text-green-600">RM {Number(item.unit_price).toFixed(2)}</p>
+                              </div>
+                            ) : (
+                              <p className="text-gray-700">RM {Number(item.unit_price).toFixed(2)}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {item.promotion_applied && item.line_total_snapshot ? (
+                              <div className="space-y-0.5">
+                                <p className="text-xs text-gray-400 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
+                                <p className="font-bold text-green-600">RM {Number(item.line_total).toFixed(2)}</p>
+                              </div>
+                            ) : (
+                              <p className="font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
+                            )}
+                          </td>
                         </tr>
                       )
                     })}
@@ -2735,10 +2783,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     <p className="text-sm font-medium text-gray-600">Subtotal</p>
                     <p className="text-sm font-semibold text-gray-900">RM {cartSubtotal.toFixed(2)}</p>
                   </div>
-                  {discount > 0 && (
+                  {promotionDiscount > 0 && (
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-600">Discount</p>
-                      <p className="text-sm font-semibold text-green-600">-RM {discount.toFixed(2)}</p>
+                      <p className="text-sm font-medium text-gray-600">Promotion Discount</p>
+                      <p className="text-sm font-semibold text-green-600">-RM {promotionDiscount.toFixed(2)}</p>
+                    </div>
+                  )}
+                  {voucherDiscount > 0 && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-gray-600">Voucher Discount</p>
+                      <p className="text-sm font-semibold text-green-600">-RM {voucherDiscount.toFixed(2)}</p>
                     </div>
                   )}
                   <div className="flex items-center justify-between border-t border-gray-300 pt-2 mt-2">
