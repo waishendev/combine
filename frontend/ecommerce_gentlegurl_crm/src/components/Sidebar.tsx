@@ -446,6 +446,16 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/booking/blocks',
             requiredPermission: 'booking.blocks.view',
           },
+          {
+            key: 'booking-commission-tiers',
+            label: 'Commission Tiers',
+            href: '/booking/commission-tiers',
+          },
+          {
+            key: 'booking-commissions',
+            label: 'Commissions',
+            href: '/booking/commissions',
+          },
         ],
       },
       {

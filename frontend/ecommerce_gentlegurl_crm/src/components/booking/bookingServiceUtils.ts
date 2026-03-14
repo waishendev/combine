@@ -5,6 +5,7 @@ export type BookingServiceApiItem = {
   name?: string | null
   description?: string | null
   duration_min?: number | string | null
+  service_price?: string | number | null
   deposit_amount?: string | number | null
   buffer_min?: number | string | null
   is_active?: boolean | number | string | null
@@ -34,6 +35,7 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     ? item.buffer_min
     : (item.buffer_min ? Number(item.buffer_min) : 0)
 
+  const servicePrice = item.service_price ?? 0
   const depositAmount = item.deposit_amount ?? 0
 
   return {
@@ -41,6 +43,7 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     name: item.name ?? '-',
     description: item.description ?? '',
     duration_min: durationMin,
+    service_price: servicePrice,
     deposit_amount: depositAmount,
     buffer_min: bufferMin,
     isActive,

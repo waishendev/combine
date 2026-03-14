@@ -8,6 +8,7 @@ export interface BookingServiceRowData {
   name: string
   description: string
   duration_min: number
+  service_price: string | number
   deposit_amount: string | number
   buffer_min: number
   isActive: boolean
@@ -37,6 +38,7 @@ export default function BookingServiceRow({
       <td className="px-4 py-2 border border-gray-200">{service.name}</td>
       <td className="px-4 py-2 border border-gray-200">{service.description || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{service.duration_min}</td>
+      <td className="px-4 py-2 border border-gray-200">{service.service_price}</td>
       <td className="px-4 py-2 border border-gray-200">{service.deposit_amount}</td>
       <td className="px-4 py-2 border border-gray-200">{service.buffer_min}</td>
       <td className="px-4 py-2 border border-gray-200">

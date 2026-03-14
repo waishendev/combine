@@ -15,6 +15,8 @@ class Kernel extends ConsoleKernel
         Commands\ExpireBookingHolds::class,
         Commands\ExpireBookingCartItems::class,
         Commands\BookingSeedTestingCommand::class,
+        Commands\CommissionSeedTestingCommand::class,
+        Commands\RecalculateBookingCommissionCommand::class,
     ];
 
     protected function schedule(Schedule $schedule): void

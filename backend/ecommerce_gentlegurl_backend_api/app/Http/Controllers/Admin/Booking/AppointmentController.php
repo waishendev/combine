@@ -8,6 +8,7 @@ use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPhoto;
 use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\Voucher;
+use App\Services\Booking\StaffCommissionService;
 use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -15,6 +16,10 @@ use Illuminate\Support\Facades\DB;
 
 class AppointmentController extends Controller
 {
+    public function __construct(private readonly StaffCommissionService $staffCommissionService)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = Booking::query()->with(['service', 'staff', 'customer']);
@@ -69,6 +74,14 @@ class AppointmentController extends Controller
         $responseMeta = [];
 
         DB::transaction(function () use ($request, $validated, $booking, $status, $previousStatus, &$responseMeta) {
+            if ($status === 'COMPLETED' && !$booking->completed_at) {
+                $booking->completed_at = now();
+            }
+
+            if ($previousStatus === 'COMPLETED' && $status !== 'COMPLETED') {
+                $this->staffCommissionService->reverseCompletedBooking($booking->loadMissing('service'));
+            }
+
             $booking->status = $status;
             if (in_array($status, ['CANCELLED', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION'], true)) {
                 $booking->cancelled_at = now();
@@ -80,6 +93,10 @@ class AppointmentController extends Controller
                 $booking->notes = $validated['notes'];
             }
             $booking->save();
+
+            if ($status === 'COMPLETED') {
+                $this->staffCommissionService->applyCompletedBooking($booking->loadMissing('service'));
+            }
 
             $logAction = 'UPDATE_STATUS';
             $logMeta = [

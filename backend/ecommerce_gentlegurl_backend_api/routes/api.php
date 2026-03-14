@@ -938,4 +938,9 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
     Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);
+    Route::apiResource('/commission-tiers', \App\Http\Controllers\Admin\Booking\CommissionTierController::class)
+        ->only(['index', 'store', 'update', 'destroy']);
+    Route::get('/commissions', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'index']);
+    Route::patch('/commissions/{id}/override', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'override']);
+    Route::post('/commissions/recalculate', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'recalculate']);
 });
