@@ -14,6 +14,7 @@ use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\Cart;
 use App\Services\BillplzService;
 use App\Services\Ecommerce\CartService;
+use App\Services\Ecommerce\PromotionPricingService;
 use App\Services\Ecommerce\ShippingService;
 use App\Models\BankAccount;
 use App\Models\Setting;
@@ -43,6 +44,7 @@ class PublicCheckoutController extends Controller
         protected CartService $cartService,
         protected OrderReserveService $orderReserveService,
         protected ShippingService $shippingService,
+        protected PromotionPricingService $promotionPricingService,
     )
     {
     }
@@ -893,6 +895,44 @@ class PublicCheckoutController extends Controller
             }
         }
 
+        $promotionInput = [];
+        foreach ($items as $index => $item) {
+            if (!empty($item['is_reward'])) {
+                continue;
+            }
+
+            $promotionInput[] = [
+                'item_key' => (string) $index,
+                'product_id' => (int) ($item['product_id'] ?? 0),
+                'name' => $item['name'] ?? null,
+                'unit_price' => (float) ($item['unit_price'] ?? 0),
+                'quantity' => (int) ($item['quantity'] ?? 0),
+            ];
+        }
+
+        $promotionPricing = $this->promotionPricingService->calculate($promotionInput);
+        $promotionLookup = collect($promotionPricing['items'])->keyBy(fn (array $row) => (string) ($row['item_key'] ?? ''));
+
+        foreach ($items as $index => &$item) {
+            if (!empty($item['is_reward'])) {
+                continue;
+            }
+
+            $promotion = $promotionLookup->get((string) $index);
+            if (!is_array($promotion)) {
+                continue;
+            }
+
+            $item['promotion_applied'] = (bool) ($promotion['promotion_applied'] ?? false);
+            $item['promotion_name'] = $promotion['promotion_name'] ?? null;
+            $item['promotion_discount_amount'] = (float) ($promotion['promotion_discount_amount'] ?? 0);
+            $item['line_total_before_promotion'] = (float) ($promotion['line_total'] ?? $item['line_total']);
+            $item['line_total'] = (float) ($promotion['line_total_after_promotion'] ?? $item['line_total']);
+        }
+        unset($item);
+
+        $subtotal = (float) ($promotionPricing['final_total'] ?? $subtotal);
+
         $shippingFee = 0;
         $shippingInfo = null;
         if ($shippingMethod === 'shipping') {
@@ -1001,6 +1041,10 @@ class PublicCheckoutController extends Controller
             'voucher_result' => $voucherResult,
             'voucher_valid' => $voucherResult['is_valid'] ?? false,
             'voucher_message' => $voucherMessage,
+            'promotion_summary' => $promotionPricing['promotion_summary'] ?? null,
+            'promotions' => $promotionPricing['promotions'] ?? [],
+            'promotion_discount' => (float) ($promotionPricing['promotion_discount'] ?? 0),
+            'original_subtotal' => (float) ($promotionPricing['subtotal'] ?? $subtotal),
         ];
     }
 

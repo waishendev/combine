@@ -162,6 +162,7 @@ Route::prefix('/public/shop')->group(function () {
     // Cart routes - support both authenticated and guest users via session_token
     Route::middleware('api.session')->group(function () {
         Route::get('/cart', [PublicCartController::class, 'show']);
+        Route::post('/cart/calculate', [PublicCartController::class, 'calculate']);
         Route::post('/cart/items', [PublicCartController::class, 'addOrUpdateItem']);
         Route::post('/cart/items/add', [PublicCartController::class, 'addItemIncrement']);
         Route::patch('/cart/items/{item}', [PublicCartController::class, 'updateItem']);

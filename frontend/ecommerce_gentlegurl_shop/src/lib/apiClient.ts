@@ -183,6 +183,48 @@ export type CartResponse = {
   session_token?: string | null;
 };
 
+
+export type CartPromotionCalculatePayload = {
+  items: Array<{
+    cart_item_id?: number;
+    product_id: number;
+    product_variant_id?: number | null;
+    quantity: number;
+  }>;
+};
+
+export type CartPromotionCalculateResponse = {
+  items: Array<{
+    item_key?: string | null;
+    cart_item_id?: number | null;
+    product_id: number;
+    product_variant_id?: number | null;
+    name?: string | null;
+    unit_price: number;
+    quantity: number;
+    line_total: number;
+    promotion_applied: boolean;
+    promotion_name?: string | null;
+    promotion_discount_amount?: number;
+    line_total_after_promotion?: number;
+  }>;
+  promotion_summary?: {
+    promotion_id?: number;
+    promotion_name?: string | null;
+    summary?: string | null;
+    selected_tier?: {
+      min_qty?: number;
+      min_amount?: number;
+      discount_type?: string;
+      discount_value?: number;
+    };
+  } | null;
+  promotions?: Array<Record<string, unknown>>;
+  subtotal: number;
+  promotion_discount: number;
+  final_total: number;
+};
+
 export type WishlistItem = {
   id?: number;
   product_id?: number;
@@ -641,6 +683,17 @@ export async function resetCartSession(): Promise<CartResponse> {
   const response = await post<{ data: CartResponse }>(
     "/public/shop/cart/reset",
     undefined,
+    { includeSessionToken: true, headers: { Accept: "application/json" } },
+  );
+
+  return response.data;
+}
+
+
+export async function calculateCartPromotion(payload: CartPromotionCalculatePayload): Promise<CartPromotionCalculateResponse> {
+  const response = await post<{ data: CartPromotionCalculateResponse }>(
+    "/public/shop/cart/calculate",
+    payload,
     { includeSessionToken: true, headers: { Accept: "application/json" } },
   );
 
