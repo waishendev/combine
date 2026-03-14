@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\StaffCommissionTier;
 use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\Voucher;
 use Carbon\Carbon;
@@ -34,6 +35,7 @@ class BookingTestingSeeder extends Seeder
         $services = $this->seedServices();
         $haircutService = $services['Haircut'];
 
+        $this->seedCommissionTiers();
         $this->seedServiceStaffMappings($services, [$staffOneId, $staffTwoId, $staffThreeId]);
         $this->seedSchedules([$staffOneId, $staffTwoId, $staffThreeId]);
         $this->seedBlocksAndTimeoffs($staffOneId, $staffTwoId);
@@ -49,6 +51,8 @@ class BookingTestingSeeder extends Seeder
     private function truncateBookingTables(): void
     {
         $tables = [
+            'staff_monthly_sales',
+            'staff_commission_tiers',
             'booking_logs',
             'booking_payments',
             'booking_photos',
@@ -148,14 +152,14 @@ class BookingTestingSeeder extends Seeder
     private function seedServices(): array
     {
         $serviceSpecs = [
-            ['name' => 'Haircut', 'service_type' => 'standard', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
-            ['name' => 'Coloring', 'service_type' => 'premium', 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
-            ['name' => 'Treatment', 'service_type' => 'premium', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
+            ['name' => 'Haircut', 'service_type' => 'standard', 'service_price' => 5200, 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
+            ['name' => 'Coloring', 'service_type' => 'premium', 'service_price' => 680, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
+            ['name' => 'Treatment', 'service_type' => 'premium', 'service_price' => 450, 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
         ];
 
         $services = [];
         foreach ($serviceSpecs as $spec) {
-            $services[$spec['name']] = BookingService::query()->create([
+            $payload = [
                 'name' => $spec['name'],
                 'description' => $spec['name'] . ' service for booking QA demo data.',
                 'service_type' => $spec['service_type'],
@@ -163,10 +167,40 @@ class BookingTestingSeeder extends Seeder
                 'deposit_amount' => $spec['deposit_amount'],
                 'buffer_min' => $spec['buffer_min'],
                 'is_active' => true,
-            ]);
+            ];
+
+            if (Schema::hasColumn('booking_services', 'service_price')) {
+                $payload['service_price'] = $spec['service_price'];
+            }
+
+            $services[$spec['name']] = BookingService::query()->create($payload);
         }
 
         return $services;
+    }
+
+    private function seedCommissionTiers(): void
+    {
+        if (!Schema::hasTable('staff_commission_tiers')) {
+            return;
+        }
+
+        $now = now();
+        $rows = [
+            ['min_sales' => 0, 'commission_percent' => 0],
+            ['min_sales' => 5000, 'commission_percent' => 5],
+            ['min_sales' => 8000, 'commission_percent' => 10],
+        ];
+
+        foreach ($rows as $row) {
+            StaffCommissionTier::query()->updateOrCreate(
+                ['min_sales' => $row['min_sales']],
+                [
+                    'commission_percent' => $row['commission_percent'],
+                    'updated_at' => $now,
+                ]
+            );
+        }
     }
 
     private function seedServiceStaffMappings(array $services, array $staffIds): void
@@ -283,7 +317,9 @@ class BookingTestingSeeder extends Seeder
                 'created_by_staff_id' => $staffOneId,
                 'cancelled_at' => in_array($status, ['CANCELLED', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION'], true) ? $now : null,
                 'cancellation_type' => $status === 'LATE_CANCELLATION' ? 'LATE_CANCELLATION' : ($status === 'CANCELLED' ? 'CANCELLED' : null),
-                'notes' => 'Booking testing seeder status: ' . $status,
+                'notes' => $status === 'CONFIRMED'
+                    ? 'Booking testing seeder status: CONFIRMED (change this booking to COMPLETED to test commission) '
+                    : 'Booking testing seeder status: ' . $status,
                 'reschedule_count' => $status === 'CONFIRMED' ? 1 : 0,
                 'rescheduled_at' => $status === 'CONFIRMED' ? $now->copy()->subDay() : null,
                 'reschedule_reason' => $status === 'CONFIRMED' ? 'Customer requested a later slot' : null,
