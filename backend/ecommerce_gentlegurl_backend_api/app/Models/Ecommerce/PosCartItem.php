@@ -12,6 +12,8 @@ class PosCartItem extends Model
         'variant_id',
         'qty',
         'price_snapshot',
+        'discount_type',
+        'discount_value',
     ];
 
     protected function casts(): array
@@ -19,6 +21,7 @@ class PosCartItem extends Model
         return [
             'qty' => 'integer',
             'price_snapshot' => 'decimal:2',
+            'discount_value' => 'decimal:2',
         ];
     }
 

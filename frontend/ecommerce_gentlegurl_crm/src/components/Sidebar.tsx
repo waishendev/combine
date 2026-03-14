@@ -225,6 +225,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/voucher',
             requiredPermission: 'ecommerce.vouchers.view',
           },
+          {
+            key: 'promotions',
+            label: 'Promotions',
+            href: '/promotions',
+            requiredPermission: 'ecommerce.promotions.view',
+          },
           // {
           //   key: 'voucher-assign-logs',
           //   label: 'Voucher Assign Logs',

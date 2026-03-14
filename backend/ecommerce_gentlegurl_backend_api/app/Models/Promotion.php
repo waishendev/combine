@@ -7,7 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 class Promotion extends Model
 {
     protected $fillable = [
+        'type',
         'title',
+        'content_html',
+        'display_position',
+        'name',
+        'code',
+        'description',
+        'promotion_type',
+        'trigger_type',
+        'priority',
+        'starts_at',
+        'ends_at',
         'image_path',
         'button_label',
         'button_link',
@@ -21,7 +32,19 @@ class Promotion extends Model
         'is_active' => 'boolean',
         'start_at' => 'datetime',
         'end_at' => 'datetime',
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
     ];
+
+    public function promotionProducts()
+    {
+        return $this->hasMany(\App\Models\Ecommerce\PromotionProduct::class);
+    }
+
+    public function promotionTiers()
+    {
+        return $this->hasMany(\App\Models\Ecommerce\PromotionTier::class);
+    }
 
     public function scopeActive($query)
     {

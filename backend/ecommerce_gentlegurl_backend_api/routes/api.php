@@ -360,6 +360,7 @@ $protectedRoutes = function () {
         Route::post('/cart/voucher/apply', [PosController::class, 'applyVoucher']);
         Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
+        Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
         Route::post('/checkout', [PosController::class, 'checkout']);
     });
@@ -757,6 +758,9 @@ $protectedRoutes = function () {
 
         Route::delete('/promotions/{promotion}', [PromotionController::class, 'destroy'])
             ->middleware('permission:ecommerce.promotions.delete');
+
+        Route::get('/promotions-product-options', [PromotionController::class, 'productOptions'])
+            ->middleware('permission:ecommerce.promotions.view');
 
         // Announcements Admin
         Route::get('/announcements', [AnnouncementController::class, 'index'])

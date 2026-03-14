@@ -15,6 +15,14 @@ type CartItem = {
   product_name?: string | null
   variant_name?: string | null
   variant_sku?: string | null
+  discount_type?: 'percentage' | 'fixed' | null
+  discount_value?: number
+  discount_amount?: number
+  line_total_after_discount?: number
+  promotion_applied?: boolean
+  promotion_name?: string | null
+  promotion_summary?: string | null
+  manual_discount_allowed?: boolean
 }
 
 type Cart = {
@@ -1016,6 +1024,58 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     if (res.ok) {
       setCart(json.data.cart)
     }
+  }
+
+
+  const applyItemDiscount = async (item: CartItem) => {
+    if (item.promotion_applied || item.manual_discount_allowed === false) {
+      showMsg('Manual discount is disabled when promotion is applied.', 'error')
+      return
+    }
+
+    const typeInput = window.prompt('Discount type: percentage or fixed', item.discount_type ?? 'percentage')
+    if (typeInput === null) return
+    const discountType = typeInput.trim().toLowerCase()
+    if (!['percentage', 'fixed', ''].includes(discountType)) {
+      showMsg('Invalid discount type.', 'error')
+      return
+    }
+
+    const valueInput = window.prompt('Discount value (number, use 0 to clear)', String(item.discount_value ?? 0))
+    if (valueInput === null) return
+    const value = Number(valueInput)
+    if (!Number.isFinite(value) || value < 0) {
+      showMsg('Invalid discount value.', 'error')
+      return
+    }
+
+    if (discountType === 'percentage' && value > 100) {
+      showMsg('Percentage discount must be between 0 and 100.', 'error')
+      return
+    }
+
+    const lineBase = Number(item.line_total_snapshot ?? item.line_total ?? 0)
+    if (discountType === 'fixed' && value > lineBase) {
+      showMsg('Fixed discount must not exceed line total.', 'error')
+      return
+    }
+
+    const payload = !discountType || value <= 0
+      ? { discount_type: null, discount_value: 0 }
+      : { discount_type: discountType, discount_value: value }
+
+    const res = await fetch(`/api/proxy/pos/cart/items/${item.id}/discount`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to apply item discount.', 'error')
+      return
+    }
+    setCart(json?.data?.cart ?? null)
+    showMsg('Item discount updated.', 'success')
   }
 
   const removeItem = async (itemId: number) => {
@@ -2118,6 +2178,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-gray-900 truncate sm:max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
                           <p className="mt-0.5 text-xs font-mono text-gray-600 truncate sm:max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
+                          {item.promotion_applied ? (
+                            <div className="mt-1.5">
+                              <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+                                Promo Applied: {item.promotion_name ?? 'Promotion'}
+                              </span>
+                              {item.promotion_summary ? <p className="text-[10px] text-blue-700 mt-1">{item.promotion_summary}</p> : null}
+                            </div>
+                          ) : null}
                           {item.is_staff_free_applied ? (
                             <div className="mt-1.5 flex flex-wrap items-center gap-2">
                               <span className="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
@@ -2152,7 +2220,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           >+</button>
                         </div>
                         <div className="flex items-center justify-between gap-3 sm:justify-end">
-                          <span className="min-w-[90px] text-left text-sm font-bold text-gray-900 sm:text-right">RM {Number(item.line_total).toFixed(2)}</span>
+                          <div className="min-w-[140px] text-left sm:text-right">
+                            {(item.discount_amount ?? 0) > 0 ? (
+                              <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
+                            ) : null}
+                            {(item.discount_amount ?? 0) > 0 ? (
+                              <p className="text-[11px] text-amber-700">Discount: {item.discount_type === 'percentage' ? `${Number(item.discount_value ?? 0)}%` : `RM ${Number(item.discount_value ?? 0).toFixed(2)}`}</p>
+                            ) : null}
+                            <p className="text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
+                          </div>
+                          <button type="button" onClick={() => void applyItemDiscount(item)} disabled={item.promotion_applied || item.manual_discount_allowed === false} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50">Discount</button>
                           <button 
                             onClick={() => void removeItem(item.id)} 
                             className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
@@ -2565,7 +2642,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                               <p className="text-xs text-gray-400 italic mt-0.5">No variant selected</p>
                             )}
                             <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
-                            {item.is_staff_free_applied ? (
+                            {item.promotion_applied ? (
+                            <div className="mt-1.5">
+                              <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+                                Promo Applied: {item.promotion_name ?? 'Promotion'}
+                              </span>
+                              {item.promotion_summary ? <p className="text-[10px] text-blue-700 mt-1">{item.promotion_summary}</p> : null}
+                            </div>
+                          ) : null}
+                          {item.is_staff_free_applied ? (
                               <p className="mt-1 inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
                                 Staff Free Applied
                               </p>
