@@ -19,6 +19,7 @@ class ServiceController extends Controller
             'description' => ['nullable', 'string'],
             'service_type' => ['required', 'in:premium,standard'],
             'service_price' => ['nullable', 'numeric', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
             'duration_min' => ['required', 'integer', 'min:1'],
             'deposit_amount' => ['required', 'numeric', 'min:0'],
             'buffer_min' => ['nullable', 'integer', 'min:0'],
@@ -26,6 +27,8 @@ class ServiceController extends Controller
             'rules_json' => ['nullable', 'array'],
         ]);
         $data['service_price'] = $data['service_price'] ?? 0;
+        $data['price'] = $data['price'] ?? $data['service_price'];
+        $data['is_package_eligible'] = (bool) ($data['is_package_eligible'] ?? true);
         $service = BookingService::create($data);
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
         return $this->respond($service, 'Created', true, 201);
@@ -39,6 +42,8 @@ class ServiceController extends Controller
             'description' => ['nullable', 'string'],
             'service_type' => ['required', 'in:premium,standard'],
             'service_price' => ['sometimes', 'numeric', 'min:0'],
+            'price' => ['sometimes', 'numeric', 'min:0'],
+            'is_package_eligible' => ['sometimes', 'boolean'],
             'duration_min' => ['sometimes', 'integer', 'min:1'],
             'deposit_amount' => ['sometimes', 'numeric', 'min:0'],
             'buffer_min' => ['sometimes', 'integer', 'min:0'],

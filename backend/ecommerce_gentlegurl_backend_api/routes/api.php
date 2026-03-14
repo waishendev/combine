@@ -65,6 +65,9 @@ use App\Http\Controllers\ServicesMenuItemController;
 use App\Http\Controllers\ServicesPageController;
 use App\Http\Controllers\StoreLocationController;
 use App\Http\Controllers\StaffController;
+use App\Http\Controllers\ServicePackageRedeemController;
+use App\Http\Controllers\CustomerServicePackageController;
+use App\Http\Controllers\ServicePackageController;
 use App\Http\Controllers\Payments\BillplzCallbackController;
 use App\Http\Controllers\PublicServicesController;
 use Illuminate\Support\Facades\Route;
@@ -334,6 +337,29 @@ $protectedRoutes = function () {
     Route::post('/customers/{customer}/verify-email', [CustomerController::class, 'verifyEmail'])
         ->middleware('permission:customers.verify');
 
+
+    Route::get('/service-packages', [ServicePackageController::class, 'index'])
+        ->middleware('permission:service-packages.view');
+    Route::post('/service-packages', [ServicePackageController::class, 'store'])
+        ->middleware('permission:service-packages.create');
+    Route::get('/service-packages/{id}', [ServicePackageController::class, 'show'])
+        ->middleware('permission:service-packages.view');
+    Route::put('/service-packages/{id}', [ServicePackageController::class, 'update'])
+        ->middleware('permission:service-packages.update');
+    Route::delete('/service-packages/{id}', [ServicePackageController::class, 'destroy'])
+        ->middleware('permission:service-packages.delete');
+
+    Route::get('/customers/{id}/service-packages', [CustomerServicePackageController::class, 'index'])
+        ->middleware('permission:customer-service-packages.view');
+    Route::get('/customers/{id}/service-package-balances', [CustomerServicePackageController::class, 'balances'])
+        ->middleware('permission:customer-service-packages.view');
+    Route::get('/customers/{id}/service-package-usages', [CustomerServicePackageController::class, 'usages'])
+        ->middleware('permission:customer-service-packages.view');
+    Route::get('/customers/{id}/service-package-available-for/{serviceId}', [CustomerServicePackageController::class, 'availableFor'])
+        ->middleware('permission:customer-service-packages.view');
+    Route::post('/service-packages/redeem', [ServicePackageRedeemController::class, 'redeem'])
+        ->middleware('permission:customer-service-packages.update');
+
     // Staffs
     Route::get('/staffs', [StaffController::class, 'index'])
         ->middleware('permission:staff.view');
@@ -357,6 +383,8 @@ $protectedRoutes = function () {
         Route::get('/cart', [PosController::class, 'cart']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
         Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
+        Route::post('/cart/add-service', [PosController::class, 'addService']);
+        Route::post('/packages/purchase', [PosController::class, 'purchasePackage']);
         Route::post('/cart/voucher/apply', [PosController::class, 'applyVoucher']);
         Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
@@ -901,6 +929,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->group($protectedRoutes);
 Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::get('/services', [\App\Http\Controllers\Booking\ServiceController::class, 'index']);
     Route::get('/services/{id}', [\App\Http\Controllers\Booking\ServiceController::class, 'show']);
+    Route::get('/customers/{id}/service-package-available-for/{serviceId}', [CustomerServicePackageController::class, 'availableFor']);
     Route::get('/availability', [\App\Http\Controllers\Booking\AvailabilityController::class, 'index']);
     Route::get('/availability/bulk', [\App\Http\Controllers\Booking\AvailabilityController::class, 'bulk']);
     Route::post('/hold', [\App\Http\Controllers\Booking\HoldController::class, 'store']);
