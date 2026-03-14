@@ -51,4 +51,38 @@ class CommissionController extends Controller
 
         return $this->respond($monthly->fresh('staff:id,name'));
     }
+
+    public function recalculate(Request $request)
+    {
+        $data = $request->validate([
+            'year' => ['required', 'integer', 'min:2000', 'max:3000'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+            'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+        ]);
+
+        $year = (int) $data['year'];
+        $month = (int) $data['month'];
+
+        if (!empty($data['staff_id'])) {
+            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $data['staff_id'], $year, $month);
+
+            return $this->respond([
+                'mode' => 'staff',
+                'year' => $year,
+                'month' => $month,
+                'rows' => [$row->fresh('staff:id,name')],
+                'count' => 1,
+            ]);
+        }
+
+        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month);
+
+        return $this->respond([
+            'mode' => 'month_all_staff',
+            'year' => $year,
+            'month' => $month,
+            'rows' => collect($rows)->map(fn (StaffMonthlySale $row) => $row->fresh('staff:id,name'))->values(),
+            'count' => count($rows),
+        ]);
+    }
 }

@@ -942,4 +942,5 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->only(['index', 'store', 'update', 'destroy']);
     Route::get('/commissions', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'index']);
     Route::patch('/commissions/{id}/override', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'override']);
+    Route::post('/commissions/recalculate', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'recalculate']);
 });
