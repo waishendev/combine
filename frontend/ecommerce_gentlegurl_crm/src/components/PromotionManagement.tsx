@@ -8,6 +8,11 @@ type Promotion = { id: number; name?: string; title?: string; is_active: boolean
 
 const emptyTier = (): Tier => ({ min_qty: 1, min_amount: null, discount_type: 'bundle_fixed_price', discount_value: 0 })
 
+const normalizeTierNumber = (value: number | null | undefined): number => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0
+  return value
+}
+
 export default function PromotionManagement() {
   const [rows, setRows] = useState<Promotion[]>([])
   const [products, setProducts] = useState<ProductOption[]>([])
@@ -33,6 +38,28 @@ export default function PromotionManagement() {
   useEffect(() => { void load() }, [])
 
   const submit = async () => {
+    if (!name.trim()) {
+      alert('Promotion name is required')
+      return
+    }
+
+    if (!selectedProductIds.length) {
+      alert('Please select at least 1 product')
+      return
+    }
+
+    const hasInvalidTier = tiers.some((tier) => {
+      const triggerValue = triggerType === 'quantity'
+        ? normalizeTierNumber(tier.min_qty)
+        : normalizeTierNumber(tier.min_amount)
+      return triggerValue <= 0 || normalizeTierNumber(tier.discount_value) <= 0
+    })
+
+    if (hasInvalidTier) {
+      alert('Every tier must have valid trigger value and discount value (> 0)')
+      return
+    }
+
     const res = await fetch('/api/proxy/ecommerce/promotions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,6 +89,10 @@ export default function PromotionManagement() {
     <div className="space-y-6">
       <div className="rounded border p-4 space-y-3">
         <h3 className="font-semibold">Create Promotion</h3>
+        <p className="text-xs text-gray-600">
+          For bundle pricing test: put products in one promotion, then add multiple quantity tiers (example 3/5/8).
+          Cart will apply only the highest eligible tier once.
+        </p>
         <input className="w-full rounded border px-3 py-2" placeholder="Promotion Name" value={name} onChange={(e) => setName(e.target.value)} />
         <div className="grid grid-cols-3 gap-2">
           <select className="rounded border px-2 py-2" value={triggerType} onChange={(e) => setTriggerType(e.target.value as 'quantity' | 'amount')}>
@@ -93,7 +124,7 @@ export default function PromotionManagement() {
               <input type="number" className="rounded border px-2 py-2" placeholder="Min amount" value={tier.min_amount ?? ''} onChange={(e) => setTiers((prev) => prev.map((t, i) => i === idx ? { ...t, min_amount: Number(e.target.value), min_qty: null } : t))} />
             )}
             <input type="number" className="rounded border px-2 py-2" placeholder="Discount value" value={tier.discount_value} onChange={(e) => setTiers((prev) => prev.map((t, i) => i === idx ? { ...t, discount_value: Number(e.target.value) } : t))} />
-            <button className="rounded border px-2 py-2" onClick={() => setTiers((prev) => prev.filter((_, i) => i !== idx))}>Remove</button>
+            <button className="rounded border px-2 py-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={tiers.length <= 1} onClick={() => setTiers((prev) => prev.filter((_, i) => i !== idx))}>Remove</button>
           </div>
         ))}
         <div className="flex gap-2">
@@ -109,6 +140,22 @@ export default function PromotionManagement() {
             <div key={row.id} className="rounded border p-2 text-sm">
               <p className="font-semibold">{row.name ?? row.title}</p>
               <p>Type: {row.promotion_type} | Trigger: {row.trigger_type}</p>
+              {row.promotion_products?.length ? (
+                <p className="text-xs text-gray-600 mt-1">
+                  Products: {row.promotion_products.map((productRow) => productRow.product?.name ?? `#${productRow.product_id}`).join(', ')}
+                </p>
+              ) : null}
+              {row.promotion_tiers?.length ? (
+                <ul className="mt-1.5 space-y-1 text-xs text-gray-700">
+                  {[...row.promotion_tiers]
+                    .sort((a, b) => (normalizeTierNumber(b.min_qty) || normalizeTierNumber(b.min_amount)) - (normalizeTierNumber(a.min_qty) || normalizeTierNumber(a.min_amount)))
+                    .map((tier, index) => (
+                      <li key={`${row.id}-tier-${index}`}>
+                        • {row.trigger_type === 'quantity' ? `${normalizeTierNumber(tier.min_qty)} items` : `RM ${normalizeTierNumber(tier.min_amount).toFixed(2)}`} =&gt; {tier.discount_type === 'bundle_fixed_price' ? `RM ${normalizeTierNumber(tier.discount_value).toFixed(2)}` : `${tier.discount_type} ${normalizeTierNumber(tier.discount_value)}`}
+                      </li>
+                    ))}
+                </ul>
+              ) : null}
             </div>
           ))}
         </div>

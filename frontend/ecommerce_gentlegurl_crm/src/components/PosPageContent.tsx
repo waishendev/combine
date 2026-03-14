@@ -22,7 +22,26 @@ type CartItem = {
   promotion_applied?: boolean
   promotion_name?: string | null
   promotion_summary?: string | null
+  promotion_snapshot?: {
+    summary?: string | null
+    selected_tier?: {
+      min_qty?: number
+      discount_value?: number
+    } | null
+  } | null
   manual_discount_allowed?: boolean
+}
+
+type AppliedPromotion = {
+  promotion_id?: number
+  promotion_name?: string
+  selected_tier?: {
+    min_qty?: number
+    discount_value?: number
+  } | null
+  summary?: string | null
+  discount_amount?: number
+  remaining_qty_charged_normal?: number
 }
 
 type Cart = {
@@ -40,6 +59,7 @@ type Cart = {
       eligible_subtotal?: number
     } | null
   } | null
+  promotions?: AppliedPromotion[]
 }
 
 type ProductOption = {
@@ -2183,7 +2203,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                               <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
                                 Promo Applied: {item.promotion_name ?? 'Promotion'}
                               </span>
-                              {item.promotion_summary ? <p className="text-[10px] text-blue-700 mt-1">{item.promotion_summary}</p> : null}
+                              {item.promotion_summary || item.promotion_snapshot?.summary ? <p className="text-[10px] text-blue-700 mt-1">{item.promotion_summary ?? item.promotion_snapshot?.summary}</p> : null}
                             </div>
                           ) : null}
                           {item.is_staff_free_applied ? (
@@ -3106,6 +3126,22 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </button>
               </div>
             )}
+
+            {cart?.promotions?.length ? (
+              <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Applied Promotion Tiers</p>
+                <div className="mt-1.5 space-y-1.5">
+                  {cart.promotions.map((promotion, index) => (
+                    <p key={`promotion-${promotion.promotion_id ?? index}`} className="text-xs text-blue-800">
+                      {promotion.promotion_name ?? 'Promotion'}: {promotion.summary ?? '-'}
+                      {typeof promotion.remaining_qty_charged_normal === 'number' && promotion.remaining_qty_charged_normal > 0
+                        ? ` (remaining ${promotion.remaining_qty_charged_normal} at normal price)`
+                        : ''}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
