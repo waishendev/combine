@@ -15,6 +15,7 @@ interface FormState {
   name: string
   description: string
   duration_min: string
+  service_price: string
   deposit_amount: string
   buffer_min: string
   is_active: boolean
@@ -24,6 +25,7 @@ const initialFormState: FormState = {
   name: '',
   description: '',
   duration_min: '30',
+  service_price: '0',
   deposit_amount: '0',
   buffer_min: '15',
   is_active: true,
@@ -61,11 +63,16 @@ export default function BookingServiceCreateModal({
     }
 
     const duration = Number(form.duration_min)
+    const servicePrice = Number(form.service_price)
     const deposit = Number(form.deposit_amount)
     const buffer = Number(form.buffer_min)
 
     if (!Number.isFinite(duration) || duration <= 0) {
       setError('Duration must be greater than 0')
+      return
+    }
+    if (!Number.isFinite(servicePrice) || servicePrice < 0) {
+      setError('Service price must be 0 or greater')
       return
     }
     if (!Number.isFinite(deposit) || deposit < 0) {
@@ -91,6 +98,7 @@ export default function BookingServiceCreateModal({
           name: trimmedName,
           description: form.description.trim() || null,
           duration_min: duration,
+          service_price: servicePrice,
           deposit_amount: deposit,
           buffer_min: buffer,
           is_active: form.is_active,
@@ -133,6 +141,7 @@ export default function BookingServiceCreateModal({
             name: trimmedName,
             description: form.description.trim(),
             duration_min: duration,
+            service_price: servicePrice,
             deposit_amount: deposit,
             buffer_min: buffer,
             isActive: form.is_active,
