@@ -41,6 +41,7 @@ class PublicReceiptController extends Controller
             'discount_total' => $order->discount_total,
             'shipping_fee' => $order->shipping_fee,
             'grand_total' => $order->grand_total,
+            'promotion_snapshot' => $order->promotion_snapshot,
             'items' => $order->items->map(fn ($item) => [
                 'name' => $item->product_name_snapshot,
                 'variant_name' => $item->variant_name_snapshot,
@@ -48,6 +49,10 @@ class PublicReceiptController extends Controller
                 'qty' => $item->quantity,
                 'unit_price' => $item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot,
                 'line_total' => $item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total,
+                'promotion_applied' => (bool) ($item->promotion_applied ?? false),
+                'promotion_name' => $item->promotion_name_snapshot,
+                'promotion_tier_summary' => data_get($item->promotion_snapshot, 'summary'),
+                'promotion_snapshot' => $item->promotion_snapshot,
             ])->values(),
         ]);
     }
