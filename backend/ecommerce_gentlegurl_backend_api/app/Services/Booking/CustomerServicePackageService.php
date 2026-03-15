@@ -57,6 +57,20 @@ class CustomerServicePackageService
         return DB::transaction(function () use ($customerId, $bookingServiceId, $source, $sourceRefId, $usedQty, $notes) {
             $usedQty = max(1, $usedQty);
 
+            if ($sourceRefId) {
+                $existingClaim = CustomerServicePackageUsage::query()
+                    ->where('customer_id', $customerId)
+                    ->where('booking_service_id', $bookingServiceId)
+                    ->where('used_from', strtoupper($source))
+                    ->where('used_ref_id', $sourceRefId)
+                    ->whereIn('status', ['reserved', 'consumed'])
+                    ->first();
+
+                if ($existingClaim) {
+                    throw new \RuntimeException('This item has already been claimed from a package.');
+                }
+            }
+
             $balance = $this->findBalanceWithAvailability($customerId, $bookingServiceId, $usedQty);
 
             return CustomerServicePackageUsage::create([
