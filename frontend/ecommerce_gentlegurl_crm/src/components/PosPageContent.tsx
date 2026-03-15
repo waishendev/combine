@@ -1690,6 +1690,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           service_name: item.service_name ?? null,
           price: item.unit_price,
           staff_id: item.type === 'service' ? (item.staff_id ?? null) : null,
+          redeem_package: item.type === 'service',
           staff_splits: (selectedStaffSplitsByCartItemId.get(item.id) ?? []).map((split) => ({
             staff_id: split.staff_id,
             share_percent: split.share_percent,

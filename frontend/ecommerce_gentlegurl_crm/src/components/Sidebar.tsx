@@ -202,6 +202,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             requiredPermission: 'ecommerce.loyalty.tiers.view',
           },
           {
+            key: 'service-packages',
+            label: 'Service Packages',
+            href: '/service-packages',
+            requiredPermission: 'customers.view',
+          },
+          {
             key: 'loyalty-settings',
             label: 'Loyalty Settings',
             href: '/loyalty-settings',

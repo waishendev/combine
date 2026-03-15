@@ -365,6 +365,16 @@ $protectedRoutes = function () {
         Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
         Route::post('/checkout', [PosController::class, 'checkout']);
+
+        Route::get('/service-packages', [\App\Http\Controllers\Ecommerce\ServicePackageController::class, 'index']);
+        Route::post('/service-packages', [\App\Http\Controllers\Ecommerce\ServicePackageController::class, 'store']);
+        Route::get('/service-packages/{servicePackage}', [\App\Http\Controllers\Ecommerce\ServicePackageController::class, 'show']);
+        Route::put('/service-packages/{servicePackage}', [\App\Http\Controllers\Ecommerce\ServicePackageController::class, 'update']);
+        Route::delete('/service-packages/{servicePackage}', [\App\Http\Controllers\Ecommerce\ServicePackageController::class, 'destroy']);
+
+        Route::get('/customer-service-packages', [\App\Http\Controllers\Ecommerce\CustomerServicePackageController::class, 'index']);
+        Route::post('/customer-service-packages', [\App\Http\Controllers\Ecommerce\CustomerServicePackageController::class, 'store']);
+        Route::post('/customer-service-packages/redeem', [\App\Http\Controllers\Ecommerce\CustomerServicePackageController::class, 'redeem']);
     });
 
     Route::post('/orders/{orderId}/send-receipt-email', [PosController::class, 'sendReceiptEmail'])

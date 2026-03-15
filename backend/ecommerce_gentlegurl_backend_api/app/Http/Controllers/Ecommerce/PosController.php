@@ -650,6 +650,7 @@ class PosController extends Controller
             'items.*.staff_splits' => ['nullable', 'array'],
             'items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'items.*.redeem_package' => ['nullable', 'boolean'],
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'items.bookingService', 'items.staff']);
@@ -814,6 +815,13 @@ class PosController extends Controller
                     'staff_id' => $lineItemType === 'service' ? ($item->staff_id ?? ($itemSplits->first()['staff_id'] ?? null)) : ($itemSplits->first()['staff_id'] ?? null),
                     'locked' => true,
                 ]);
+
+
+                $requestedItemPayload = collect($validated['items'] ?? [])->first(fn (array $payload) => (int) ($payload['cart_item_id'] ?? 0) === (int) $item->id);
+                $shouldRedeemPackage = (bool) ($requestedItemPayload['redeem_package'] ?? false);
+                if ($lineItemType === 'service' && $customerId && $shouldRedeemPackage && $item->booking_service_id) {
+                    $this->redeemCustomerServicePackageBalance((int) $customerId, (int) $item->booking_service_id, (int) $item->qty);
+                }
 
                 if ($itemSplits->isNotEmpty()) {
                     $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
@@ -1031,6 +1039,50 @@ class PosController extends Controller
         ];
     }
 
+
+
+    protected function redeemCustomerServicePackageBalance(int $customerId, int $bookingServiceId, int $quantity): int
+    {
+        if ($quantity <= 0) {
+            return 0;
+        }
+
+        $balances = DB::table('customer_service_package_balances as b')
+            ->join('customer_service_packages as csp', 'csp.id', '=', 'b.customer_service_package_id')
+            ->where('csp.customer_id', $customerId)
+            ->where('b.booking_service_id', $bookingServiceId)
+            ->orderBy('b.id')
+            ->lockForUpdate()
+            ->select(['b.id', 'b.total_quantity', 'b.used_quantity'])
+            ->get();
+
+        $remaining = $quantity;
+        $redeemed = 0;
+
+        foreach ($balances as $balance) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $available = max(0, (int) $balance->total_quantity - (int) $balance->used_quantity);
+            if ($available <= 0) {
+                continue;
+            }
+
+            $consume = min($available, $remaining);
+            DB::table('customer_service_package_balances')
+                ->where('id', (int) $balance->id)
+                ->update([
+                    'used_quantity' => (int) $balance->used_quantity + $consume,
+                    'updated_at' => now(),
+                ]);
+
+            $remaining -= $consume;
+            $redeemed += $consume;
+        }
+
+        return $redeemed;
+    }
 
     protected function buildCartPricing(PosCart $cart, bool $isStaffUser): array
     {
