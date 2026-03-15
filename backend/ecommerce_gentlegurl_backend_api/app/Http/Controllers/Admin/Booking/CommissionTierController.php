@@ -14,9 +14,13 @@ class CommissionTierController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        return $this->respond(StaffCommissionTier::query()->orderBy('min_sales')->get());
+        return $this->respond(
+            StaffCommissionTier::query()
+                ->orderBy('min_sales')
+                ->paginate($request->integer('per_page', 50))
+        );
     }
 
     public function store(Request $request)

@@ -1,6 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import PaginationControls from '../PaginationControls'
+import TableLoadingRow from '../TableLoadingRow'
+import TableEmptyState from '../TableEmptyState'
+import { useI18n } from '@/lib/i18n'
 
 type ServicePackageItem = {
   id: number
@@ -23,262 +27,288 @@ type ServicePackage = {
   items?: ServicePackageItem[]
 }
 
-type BookingServiceOption = {
-  id: number
-  name: string
+type Meta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
 }
 
-type FormState = {
-  id?: number
-  name: string
-  description: string
-  selling_price: string
-  total_sessions: string
-  valid_days: string
-  is_active: boolean
-  items: Array<{ booking_service_id: string; quantity: string }>
-}
-
-const emptyForm: FormState = {
-  name: '',
-  description: '',
-  selling_price: '',
-  total_sessions: '',
-  valid_days: '',
-  is_active: true,
-  items: [{ booking_service_id: '', quantity: '1' }],
-}
-
-function parseServicePackageRows(payload: unknown): ServicePackage[] {
-  if (Array.isArray(payload)) return payload as ServicePackage[]
-
-  if (payload && typeof payload === 'object') {
-    const maybe = payload as Record<string, unknown>
-    if (Array.isArray(maybe.data)) {
-      return maybe.data as ServicePackage[]
-    }
+type ServicePackageApiResponse = {
+  data?: ServicePackage[] | {
+    current_page?: number
+    data?: ServicePackage[]
+    last_page?: number
+    per_page?: number
+    total?: number
+    from?: number
+    to?: number
+    [key: string]: unknown
   }
-
-  return []
+  meta?: Partial<Meta>
+  success?: boolean
+  message?: string
 }
 
-export default function ServicePackagesPage() {
-  const [rows, setRows] = useState<ServicePackage[]>([])
-  const [services, setServices] = useState<BookingServiceOption[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const [form, setForm] = useState<FormState>(emptyForm)
+interface ServicePackagesPageProps {
+  permissions?: string[]
+}
 
-  const loadData = useCallback(async () => {
+export default function ServicePackagesPage({ permissions = [] }: ServicePackagesPageProps) {
+  const { t } = useI18n()
+  const [rows, setRows] = useState<ServicePackage[]>([])
+  const [pageSize, setPageSize] = useState(50)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [meta, setMeta] = useState<Meta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 50,
+    total: 0,
+  })
+
+  const canCreate = permissions.includes('service-packages.create')
+  const canUpdate = permissions.includes('service-packages.update')
+  const canDelete = permissions.includes('service-packages.delete')
+  const showActions = canUpdate || canDelete
+
+  const fetchPackages = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     try {
-      const [pkgRes, svcRes] = await Promise.all([
-        fetch('/api/proxy/service-packages?per_page=100', { cache: 'no-store' }),
-        fetch('/api/proxy/booking/services', { cache: 'no-store' }),
-      ])
+      const qs = new URLSearchParams()
+      qs.set('page', String(currentPage))
+      qs.set('per_page', String(pageSize))
 
-      const pkgJson = await pkgRes.json().catch(() => ({}))
-      const svcJson = await svcRes.json().catch(() => ({}))
+      const res = await fetch(`/api/proxy/service-packages?${qs.toString()}`, {
+        cache: 'no-store',
+        signal,
+      })
 
-      const packageData = parseServicePackageRows(pkgJson?.data)
-      const serviceData = Array.isArray(svcJson?.data) ? svcJson.data : []
+      if (!res.ok) {
+        setRows([])
+        setMeta((prev) => ({ ...prev, total: 0 }))
+        return
+      }
 
-      setRows(packageData)
-      setServices(
-        serviceData
-          .map((item: unknown): BookingServiceOption | null => {
-            if (!item || typeof item !== 'object') return null
-            const maybe = item as Record<string, unknown>
-            const id = Number(maybe.id)
-            const name = String(maybe.name ?? '').trim()
-            if (!Number.isFinite(id) || id <= 0 || !name) return null
-            return { id, name }
-          })
-          .filter((item): item is BookingServiceOption => Boolean(item))
-      )
+      const response: ServicePackageApiResponse = await res
+        .json()
+        .catch(() => ({} as ServicePackageApiResponse))
+      
+      if (response?.success === false && response?.message === 'Unauthorized') {
+        window.location.replace('/dashboard')
+        return
+      }
+
+      let packageItems: ServicePackage[] = []
+      let paginationData: Partial<Meta> = {}
+
+      if (response?.data) {
+        if (Array.isArray(response.data)) {
+          packageItems = response.data
+        } else if (typeof response.data === 'object' && 'data' in response.data) {
+          const nestedData = response.data as {
+            data?: ServicePackage[]
+            current_page?: number
+            last_page?: number
+            per_page?: number
+            total?: number
+          }
+          packageItems = Array.isArray(nestedData.data) ? nestedData.data : []
+          paginationData = {
+            current_page: nestedData.current_page,
+            last_page: nestedData.last_page,
+            per_page: nestedData.per_page,
+            total: nestedData.total,
+          }
+        }
+      }
+
+      if (response?.meta) {
+        paginationData = { ...paginationData, ...response.meta }
+      }
+
+      setRows(packageItems)
+      setMeta({
+        current_page: Number(paginationData.current_page ?? currentPage) || 1,
+        last_page: Number(paginationData.last_page ?? 1) || 1,
+        per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
+        total: Number(paginationData.total ?? packageItems.length) || packageItems.length,
+      })
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        setRows([])
+        setMeta((prev) => ({ ...prev, total: 0 }))
+      }
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentPage, pageSize])
 
   useEffect(() => {
-    void loadData()
-  }, [loadData])
+    const controller = new AbortController()
+    fetchPackages(controller.signal)
+    return () => controller.abort()
+  }, [fetchPackages])
 
-  const submit = async () => {
-    setSaving(true)
-    setMessage(null)
-
-    const payload = {
-      name: form.name,
-      description: form.description || null,
-      selling_price: Number(form.selling_price || 0),
-      total_sessions: Number(form.total_sessions || 0),
-      valid_days: form.valid_days ? Number(form.valid_days) : null,
-      is_active: form.is_active,
-      items: form.items
-        .map((item) => ({
-          booking_service_id: Number(item.booking_service_id || 0),
-          quantity: Number(item.quantity || 0),
-        }))
-        .filter((item) => item.booking_service_id > 0 && item.quantity > 0),
-    }
-
-    const isEdit = Boolean(form.id)
-    const target = isEdit ? `/api/proxy/service-packages/${form.id}` : '/api/proxy/service-packages'
-    const method = isEdit ? 'PUT' : 'POST'
-
-    try {
-      const res = await fetch(target, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setMessage(json?.message ?? 'Unable to save service package.')
-        return
-      }
-      setMessage(isEdit ? 'Service package updated.' : 'Service package created.')
-      setForm(emptyForm)
-      await loadData()
-    } finally {
-      setSaving(false)
-    }
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > (meta.last_page || 1)) return
+    setCurrentPage(page)
   }
 
-  const onEdit = (pkg: ServicePackage) => {
-    setForm({
-      id: pkg.id,
-      name: pkg.name,
-      description: pkg.description ?? '',
-      selling_price: String(pkg.selling_price ?? ''),
-      total_sessions: String(pkg.total_sessions ?? ''),
-      valid_days: pkg.valid_days == null ? '' : String(pkg.valid_days),
-      is_active: Boolean(pkg.is_active),
-      items: (pkg.items && pkg.items.length > 0
-        ? pkg.items.map((item) => ({
-            booking_service_id: String(item.booking_service_id),
-            quantity: String(item.quantity),
-          }))
-        : [{ booking_service_id: '', quantity: '1' }]),
-    })
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
   }
 
-  const onDelete = async (id: number) => {
-    if (!window.confirm('Delete this service package?')) return
-    const res = await fetch(`/api/proxy/service-packages/${id}`, { method: 'DELETE' })
-    if (res.ok) {
-      setMessage('Service package deleted.')
-      await loadData()
-    }
-  }
+  const totalPages = meta.last_page || 1
+  const colCount = showActions ? 6 : 5
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <h3 className="text-lg font-semibold">Service Package CRUD</h3>
-        <p className="mt-1 text-sm text-gray-600">Create / edit package and package items (services + qty).</p>
-        {message ? <p className="mt-2 text-sm text-blue-700">{message}</p> : null}
-
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <input className="rounded border px-3 py-2" placeholder="Package name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
-          <input className="rounded border px-3 py-2" placeholder="Selling price" value={form.selling_price} onChange={(e) => setForm((prev) => ({ ...prev, selling_price: e.target.value }))} />
-          <input className="rounded border px-3 py-2" placeholder="Total sessions" value={form.total_sessions} onChange={(e) => setForm((prev) => ({ ...prev, total_sessions: e.target.value }))} />
-          <input className="rounded border px-3 py-2" placeholder="Valid days (optional)" value={form.valid_days} onChange={(e) => setForm((prev) => ({ ...prev, valid_days: e.target.value }))} />
-          <input className="rounded border px-3 py-2 md:col-span-2" placeholder="Description" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
+    <div>
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canCreate && (
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+              onClick={() => {
+                // TODO: Open create modal
+                alert('Create modal - to be implemented')
+              }}
+              type="button"
+            >
+              <i className="fa-solid fa-plus" />
+              {t('common.create')}
+            </button>
+          )}
         </div>
 
-        <div className="mt-4 space-y-2">
-          <p className="text-sm font-semibold">Package Items</p>
-          {form.items.map((item, idx) => (
-            <div key={`item-${idx}`} className="grid gap-2 md:grid-cols-[1fr_120px_auto]">
-              <select
-                className="rounded border px-3 py-2"
-                value={item.booking_service_id}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    items: prev.items.map((r, i) => (i === idx ? { ...r, booking_service_id: e.target.value } : r)),
-                  }))
-                }
-              >
-                <option value="">Select service</option>
-                {services.map((service) => (
-                  <option key={service.id} value={service.id}>{service.name}</option>
-                ))}
-              </select>
-              <input
-                className="rounded border px-3 py-2"
-                placeholder="Qty"
-                value={item.quantity}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    items: prev.items.map((r, i) => (i === idx ? { ...r, quantity: e.target.value } : r)),
-                  }))
-                }
-              />
-              <button
-                className="rounded border border-red-300 px-3 py-2 text-red-700"
-                onClick={() => setForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) || [] }))}
-                type="button"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            className="rounded border px-3 py-1 text-sm"
-            onClick={() => setForm((prev) => ({ ...prev, items: [...prev.items, { booking_service_id: '', quantity: '1' }] }))}
+        <div className="flex items-center gap-3">
+          <label htmlFor="pageSize" className="text-sm text-gray-700">
+            {t('common.show')}
+          </label>
+          <select
+            id="pageSize"
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            disabled={loading}
           >
-            + Add Item
-          </button>
-        </div>
-
-        <label className="mt-4 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.checked }))} />
-          Active
-        </label>
-
-        <div className="mt-4 flex gap-2">
-          <button className="rounded bg-blue-600 px-4 py-2 text-white" onClick={() => void submit()} disabled={saving}>
-            {saving ? 'Saving...' : form.id ? 'Update Package' : 'Create Package'}
-          </button>
-          <button className="rounded border px-4 py-2" onClick={() => setForm(emptyForm)} type="button">Reset</button>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <h3 className="text-lg font-semibold">Service Package Listing</h3>
-        {loading ? (
-          <p className="mt-3 text-sm text-gray-500">Loading...</p>
-        ) : rows.length === 0 ? (
-          <p className="mt-3 text-sm text-gray-500">No package created yet.</p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {rows.map((pkg) => (
-              <div key={pkg.id} className="rounded border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">{pkg.name}</p>
-                    <p className="text-xs text-gray-600">RM {Number(pkg.selling_price).toFixed(2)} • Sessions {pkg.total_sessions} • Valid {pkg.valid_days ?? '-'} days</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="rounded border px-3 py-1 text-sm" onClick={() => onEdit(pkg)} type="button">Edit</button>
-                    <button className="rounded border border-red-300 px-3 py-1 text-sm text-red-700" onClick={() => void onDelete(pkg.id)} type="button">Delete</button>
-                  </div>
-                </div>
-                <div className="mt-2 text-xs text-gray-600">
-                  {(pkg.items ?? []).length > 0 ? (pkg.items ?? []).map((item) => `${item.booking_service?.name ?? `Service#${item.booking_service_id}`} x${item.quantity}`).join(' • ') : 'No items'}
-                </div>
-              </div>
+            {[50, 100, 150, 200].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
             ))}
-          </div>
-        )}
+          </select>
+        </div>
       </div>
+
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
+            <tr>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Name
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Description
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Price
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Sessions
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Status
+              </th>
+              {showActions && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                  {t('common.actions')}
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <TableLoadingRow colSpan={colCount} />
+            ) : rows.length > 0 ? (
+              rows.map((pkg) => (
+                <tr key={pkg.id} className="text-sm">
+                  <td className="border border-gray-200 px-4 py-2 font-medium text-gray-900">
+                    {pkg.name}
+                  </td>
+                  <td className="border border-gray-200 px-4 py-2 text-gray-700">
+                    {pkg.description || '-'}
+                  </td>
+                  <td className="border border-gray-200 px-4 py-2 text-gray-700">
+                    RM {Number(pkg.selling_price).toFixed(2)}
+                  </td>
+                  <td className="border border-gray-200 px-4 py-2 text-gray-700">
+                    {pkg.total_sessions}
+                    {pkg.valid_days && ` (${pkg.valid_days} days)`}
+                  </td>
+                  <td className="border border-gray-200 px-4 py-2">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      pkg.is_active 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {pkg.is_active ? t('common.active') : t('common.inactive')}
+                    </span>
+                  </td>
+                  {showActions && (
+                    <td className="border border-gray-200 px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        {canUpdate && (
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
+                            onClick={() => {
+                              // TODO: Open edit modal
+                              alert(`Edit package ${pkg.id} - to be implemented`)
+                            }}
+                            aria-label="Edit"
+                            title="Edit"
+                          >
+                            <i className="fa-solid fa-pen-to-square" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
+                            onClick={async () => {
+                              if (!window.confirm('Delete this service package?')) return
+                              const res = await fetch(`/api/proxy/service-packages/${pkg.id}`, { method: 'DELETE' })
+                              if (res.ok) {
+                                await fetchPackages()
+                              }
+                            }}
+                            aria-label="Delete"
+                            title="Delete"
+                          >
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))
+            ) : (
+              <TableEmptyState colSpan={colCount} />
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        disabled={loading}
+      />
     </div>
   )
 }
