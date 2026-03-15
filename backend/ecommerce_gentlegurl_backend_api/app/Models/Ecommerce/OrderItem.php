@@ -11,9 +11,12 @@ class OrderItem extends Model
 
     protected $fillable = [
         'order_id',
+        'type',
         'product_id',
+        'booking_service_id',
         'product_variant_id',
         'product_name_snapshot',
+        'service_name_snapshot',
         'sku_snapshot',
         'variant_name_snapshot',
         'variant_sku_snapshot',
@@ -48,6 +51,7 @@ class OrderItem extends Model
     protected function casts(): array
     {
         return [
+            'type' => 'string',
             'price_snapshot' => 'decimal:2',
             'variant_price_snapshot' => 'decimal:2',
             'variant_cost_snapshot' => 'decimal:2',

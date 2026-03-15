@@ -8,8 +8,12 @@ class PosCartItem extends Model
 {
     protected $fillable = [
         'pos_cart_id',
+        'type',
         'product_id',
         'variant_id',
+        'booking_service_id',
+        'service_name',
+        'staff_id',
         'qty',
         'price_snapshot',
         'discount_type',
@@ -22,6 +26,7 @@ class PosCartItem extends Model
             'qty' => 'integer',
             'price_snapshot' => 'decimal:2',
             'discount_value' => 'decimal:2',
+            'type' => 'string',
         ];
     }
 
@@ -38,5 +43,15 @@ class PosCartItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function bookingService()
+    {
+        return $this->belongsTo(\App\Models\Booking\BookingService::class, 'booking_service_id');
+    }
+
+    public function staff()
+    {
+        return $this->belongsTo(\App\Models\Staff::class, 'staff_id');
     }
 }

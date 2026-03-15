@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 
 type CartItem = {
+  type?: 'product' | 'service'
   id: number
   qty: number
   unit_price: number
@@ -11,6 +12,9 @@ type CartItem = {
   line_total_snapshot?: number
   is_staff_free_applied?: boolean
   product_id?: number | null
+  booking_service_id?: number | null
+  service_name?: string | null
+  staff_id?: number | null
   variant_id?: number | null
   product_name?: string | null
   variant_name?: string | null
@@ -74,6 +78,13 @@ type ProductOption = {
   variants: ProductVariantOption[]
   variants_count?: number
   default_variant_id?: number | null
+}
+
+type ServiceOption = {
+  id: number
+  booking_service_id: number
+  service_name: string
+  price: number
 }
 
 type ProductSearchHit = {
@@ -287,14 +298,18 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [debouncedSkuQuery, setDebouncedSkuQuery] = useState('')
   const [productSearchMode, setProductSearchMode] = useState<ProductSearchMode>('name')
   const [products, setProducts] = useState<ProductOption[]>([])
+  const [services, setServices] = useState<ServiceOption[]>([])
   const [productPage, setProductPage] = useState(1)
   const [productLastPage, setProductLastPage] = useState(1)
   const [productLoading, setProductLoading] = useState(false)
+  const [serviceLoading, setServiceLoading] = useState(false)
   const [productHighlighted, setProductHighlighted] = useState(0)
   const [productSelectModalOpen, setProductSelectModalOpen] = useState(false)
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
+  const [selectedService, setSelectedService] = useState<ServiceOption | null>(null)
+  const [selectedServiceStaffId, setSelectedServiceStaffId] = useState<number | null>(null)
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null)
   const [productVariantLoading, setProductVariantLoading] = useState(false)
   const [selectedProductQty, setSelectedProductQty] = useState(1)
@@ -1031,6 +1046,67 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
   }, [])
 
+  const fetchServiceOptions = useCallback(async (keyword: string) => {
+    const trimmed = keyword.trim()
+    if (!trimmed) {
+      setServices([])
+      return
+    }
+
+    setServiceLoading(true)
+    try {
+      const params = new URLSearchParams({
+        q: trimmed,
+        page: '1',
+        per_page: '100',
+      })
+      const res = await fetch(`/api/proxy/pos/services/search?${params.toString()}`)
+      const json = await res.json()
+      const paged = extractPaged<{ id?: number; service_name?: string; price?: number }>(json)
+      const mapped = paged.data
+        .map((item) => {
+          const id = Number(item.id)
+          if (!Number.isFinite(id) || id <= 0) return null
+          return {
+            id,
+            booking_service_id: id,
+            service_name: String(item.service_name ?? '').trim() || `Service #${id}`,
+            price: Number(item.price ?? 0),
+          }
+        })
+        .filter((item): item is ServiceOption => Boolean(item))
+      setServices(mapped)
+    } finally {
+      setServiceLoading(false)
+    }
+  }, [])
+
+  const addServiceToCart = useCallback(async (service: ServiceOption, staffId: number, qty = 1) => {
+    const res = await fetch('/api/proxy/pos/cart/add-service', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        booking_service_id: service.booking_service_id,
+        service_name: service.service_name,
+        price: service.price,
+        staff_id: staffId,
+        qty,
+      }),
+    })
+    const json = await res.json()
+
+    if (res.ok) {
+      setCart(json.data.cart)
+      setSelectedService(null)
+      setSelectedServiceStaffId(null)
+      showMsg('Service added to cart.', 'success')
+      return true
+    }
+
+    showMsg(json?.message ?? 'Unable to add service.', 'error')
+    return false
+  }, [showMsg])
+
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     setMemberLoading(true)
     const params = new URLSearchParams()
@@ -1175,6 +1251,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [effectiveServerProductQuery, fetchProductPage, selectedCategoryId])
 
   useEffect(() => {
+    if (productSearchMode !== 'name') {
+      setServices([])
+      return
+    }
+
+    void fetchServiceOptions(productQuery)
+  }, [fetchServiceOptions, productQuery, productSearchMode])
+
+  useEffect(() => {
     const previousCategoryId = Number(previousCategoryIdRef.current)
     if (previousCategoryId !== Number(selectedCategoryId)) {
       productsGridRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1281,6 +1366,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         memberOpen ||
         checkoutConfirmationOpen ||
         productSelectModalOpen ||
+        Boolean(selectedService) ||
         voucherModalOpen ||
         itemSplitEditorOpen ||
         Boolean(checkoutResult) ||
@@ -1416,6 +1502,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     itemSplitEditorOpen,
     memberOpen,
     productSelectModalOpen,
+    selectedService,
     qrCodeFullscreen,
     voucherModalOpen,
   ])
@@ -1598,6 +1685,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           qty: item.qty,
           unit_price: item.unit_price,
           line_total: item.line_total,
+          type: item.type ?? 'product',
+          booking_service_id: item.booking_service_id ?? null,
+          service_name: item.service_name ?? null,
+          price: item.unit_price,
+          staff_id: item.type === 'service' ? (item.staff_id ?? null) : null,
+          redeem_package: item.type === 'service',
           staff_splits: (selectedStaffSplitsByCartItemId.get(item.id) ?? []).map((split) => ({
             staff_id: split.staff_id,
             share_percent: split.share_percent,
@@ -1863,11 +1956,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCheckoutItemAssignments((prev) => cart.items.map((item) => {
       const existing = prev.find((x) => x.cart_item_id === item.id)
       if (existing) return existing
-      const defaultStaffId = currentUser.staff_id ?? null
+      const preferredStaffId = item.type === 'service'
+        ? (item.staff_id ?? null)
+        : (currentUser.staff_id ?? null)
       return {
         cart_item_id: item.id,
-        splits: defaultStaffId ? [{ staff_id: defaultStaffId, share_percent: 100 }] : [],
-        is_default: Boolean(defaultStaffId),
+        splits: preferredStaffId ? [{ staff_id: preferredStaffId, share_percent: 100 }] : [],
+        is_default: Boolean(preferredStaffId),
       }
     }))
   }, [activeStaffs, cart?.items, currentUser.staff_id, fetchStaffOptions])
@@ -2178,6 +2273,32 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     `View More (${productPage + 1}/${productLastPage})`
                   )}
                 </button>
+              </div>
+            )}
+
+            {/* Booking Services Search Results */}
+            {productSearchMode === 'name' && normalizedProductQuery && (
+              <div className="mt-4 border-t border-gray-200 pt-4">
+                <h4 className="mb-2 text-sm font-semibold text-gray-700">Booking Services</h4>
+                {serviceLoading ? (
+                  <p className="text-xs text-gray-500">Loading services...</p>
+                ) : services.length === 0 ? (
+                  <p className="text-xs text-gray-500">No services found.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {services.map((service) => (
+                      <button
+                        key={service.booking_service_id}
+                        type="button"
+                        onClick={() => setSelectedService(service)}
+                        className="flex w-full items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left hover:bg-emerald-100"
+                      >
+                        <span className="text-sm font-medium text-emerald-900">{service.service_name}</span>
+                        <span className="text-sm font-semibold text-emerald-700">RM {Number(service.price ?? 0).toFixed(2)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2639,6 +2760,44 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         </div>
       )}
 
+      {selectedService && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h4 className="text-lg font-bold text-gray-900">Add Service</h4>
+              <button type="button" onClick={() => { setSelectedService(null); setSelectedServiceStaffId(null) }} className="text-xl text-gray-500">×</button>
+            </div>
+            <p className="text-sm font-semibold text-gray-900">{selectedService.service_name}</p>
+            <p className="text-sm text-gray-600">RM {Number(selectedService.price ?? 0).toFixed(2)}</p>
+            <label className="mt-4 block text-sm font-medium text-gray-700">Staff</label>
+            <select
+              value={selectedServiceStaffId ?? ''}
+              onChange={(e) => setSelectedServiceStaffId(Number(e.target.value) || null)}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="">Select staff</option>
+              {activeStaffs.map((staff) => (
+                <option key={staff.id} value={staff.id}>{staff.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedServiceStaffId) {
+                  showMsg('Staff is required for service items.', 'error')
+                  return
+                }
+                void addServiceToCart(selectedService, selectedServiceStaffId)
+              }}
+              className="mt-4 w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Add Service to Cart
+            </button>
+          </div>
+        </div>
+      )}
+
+
       {checkoutConfirmationOpen && cart?.items?.length ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
           <div className="w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
@@ -2712,7 +2871,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => void openItemSplitEditor(item.id)}
+                                  onClick={() => { if (item.type !== 'service') { void openItemSplitEditor(item.id) } }}
                                   className={`inline-flex items-center gap-1.5 rounded-lg border-2 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md active:scale-95 ${
                                     assignment?.splits?.length
                                       ? 'border-indigo-500 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700'
@@ -2733,7 +2892,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                     </svg>
                                   )}
-                                  {assignment?.splits?.length ? 'Edit Staff' : 'Assign Staff'}
+                                  {item.type === 'service' ? 'Service Staff (Required)' : (assignment?.splits?.length ? 'Edit Staff' : 'Assign Staff')}
                                 </button>
                                 {assignment?.splits?.length ? (
                                   <button
