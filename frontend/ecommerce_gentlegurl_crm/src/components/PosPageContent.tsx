@@ -103,6 +103,7 @@ type ServicePackageOption = {
   selling_price?: number
   total_sessions?: number
   valid_days?: number
+  is_active?: boolean
 }
 
 type PosCatalogTab = 'products' | 'book-service' | 'service-packages'
@@ -1157,7 +1158,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const fetchServicePackages = useCallback(async () => {
     setServicePackagesLoading(true)
     try {
-      const res = await fetch('/api/proxy/booking/service-packages', { cache: 'no-store' })
+      const res = await fetch('/api/proxy/service-packages?per_page=100', { cache: 'no-store' })
       if (!res.ok) {
         setServicePackages([])
         return
@@ -1181,9 +1182,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             selling_price: Number(maybe.selling_price ?? 0),
             total_sessions: Number(maybe.total_sessions ?? 0),
             valid_days: Number(maybe.valid_days ?? 0),
+            is_active: Boolean(maybe.is_active ?? true),
           }
         })
-        .filter((item): item is ServicePackageOption => Boolean(item && item.name))
+        .filter((item): item is ServicePackageOption => Boolean(item && item.name && item.is_active !== false))
 
       setServicePackages(mapped)
     } catch {
@@ -3645,9 +3647,20 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             <p className="mt-1 text-sm text-gray-600">{bookingServiceDraft.name}</p>
             <div className="mt-4 space-y-3">
               <div>
-                <label className="text-xs font-semibold text-gray-600">Member</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-semibold text-gray-600">Member</label>
+                  <button
+                    type="button"
+                    onClick={() => void toggleMemberDropdown()}
+                    className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
+                  >
+                    {selectedMember ? 'Change Member' : 'Assign Member'}
+                  </button>
+                </div>
                 <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                  {selectedMember ? selectedMember.name : 'No member selected'}
+                  {selectedMember
+                    ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
+                    : 'No member selected'}
                 </div>
               </div>
               <div>
@@ -3695,7 +3708,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       )}
 
       {memberOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
               <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
@@ -3814,7 +3827,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       )}
 
       {voucherModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
               <h4 className="text-xl font-bold text-gray-900">Apply Voucher</h4>
@@ -3888,7 +3901,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       {/* Checkout Success Modal with QR Code */}
       {checkoutResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
             <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex items-center justify-between">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
@@ -4028,7 +4041,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       {/* Checkout Error Modal */}
       {checkoutError && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
             <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-5">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
