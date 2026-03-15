@@ -113,6 +113,7 @@ type ServicePackageOption = {
   selling_price?: number
   total_sessions?: number
   valid_days?: number
+  items_summary?: string[]
   is_active?: boolean
 }
 
@@ -1184,17 +1185,53 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         return
       }
       const json = await res.json().catch(() => null)
-      const payload = (json && typeof json === 'object' && 'data' in json)
-        ? (json as { data?: unknown }).data
-        : json
+      console.log('service packages response', json)
 
-      const list = Array.isArray(payload) ? payload : []
-      const mapped = list
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: { data?: unknown } }).data
+        : null
+      const packages = Array.isArray(payload?.data) ? payload.data : []
+      console.log('parsed packages', packages)
+
+      const mapped = packages
         .map((item): ServicePackageOption | null => {
           if (!item || typeof item !== 'object') return null
           const maybe = item as Record<string, unknown>
           const id = Number(maybe.id)
           if (!Number.isFinite(id) || id <= 0) return null
+
+          const rawItems = Array.isArray(maybe.items)
+            ? maybe.items
+            : Array.isArray(maybe.service_package_items)
+              ? maybe.service_package_items
+              : []
+
+          const itemsSummary = rawItems
+            .map((rawItem) => {
+              if (!rawItem || typeof rawItem !== 'object') return null
+              const itemObj = rawItem as Record<string, unknown>
+              const quantity = Number(itemObj.quantity ?? itemObj.qty ?? 0)
+
+              const bookingService = itemObj.booking_service && typeof itemObj.booking_service === 'object'
+                ? (itemObj.booking_service as Record<string, unknown>)
+                : null
+
+              const serviceName = String(
+                bookingService?.name
+                  ?? itemObj.booking_service_name
+                  ?? itemObj.service_name
+                  ?? itemObj.name
+                  ?? ''
+              ).trim()
+
+              if (!serviceName) return null
+              if (Number.isFinite(quantity) && quantity > 0) {
+                return `${serviceName} x${Math.trunc(quantity)}`
+              }
+
+              return serviceName
+            })
+            .filter((value): value is string => Boolean(value))
 
           return {
             id,
@@ -1203,6 +1240,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             selling_price: Number(maybe.selling_price ?? 0),
             total_sessions: Number(maybe.total_sessions ?? 0),
             valid_days: Number(maybe.valid_days ?? 0),
+            items_summary: itemsSummary,
             is_active: Boolean(maybe.is_active ?? true),
           }
         })
@@ -2703,7 +2741,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   {servicePackagesLoading ? (
                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading packages...</div>
                   ) : filteredServicePackages.length === 0 ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No packages found.</div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No service packages available</div>
                   ) : (
                     filteredServicePackages.map((servicePackage) => (
                       <div key={servicePackage.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
@@ -2714,6 +2752,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           ) : null}
                           <p className="text-xs text-gray-500">Sessions: {servicePackage.total_sessions ?? 0}</p>
                           <p className="text-xs text-gray-500">Validity: {Number(servicePackage.valid_days ?? 0) > 0 ? `${servicePackage.valid_days} day(s)` : 'No expiry'}</p>
+                          {servicePackage.items_summary && servicePackage.items_summary.length > 0 ? (
+                            <div className="mt-1 space-y-0.5">
+                              {servicePackage.items_summary.map((summary, idx) => (
+                                <p key={`${servicePackage.id}-${idx}`} className="text-xs text-gray-500">{summary}</p>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-bold text-gray-900">RM {Number(servicePackage.selling_price ?? 0).toFixed(2)}</span>
