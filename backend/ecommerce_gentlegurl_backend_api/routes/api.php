@@ -354,9 +354,11 @@ $protectedRoutes = function () {
         Route::get('/members/search', [PosController::class, 'memberSearch']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
         Route::get('/products/search', [PosController::class, 'productSearch']);
+        Route::get('/services/search', [PosController::class, 'serviceSearch']);
         Route::get('/cart', [PosController::class, 'cart']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
         Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
+        Route::post('/cart/add-service', [PosController::class, 'addService']);
         Route::post('/cart/voucher/apply', [PosController::class, 'applyVoucher']);
         Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
