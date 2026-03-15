@@ -4276,6 +4276,76 @@
           "response": []
         }
       ]
+    }    ,{
+      "name": "Service Packages & POS Services",
+      "item": [
+        {
+          "name": "Create Staff (with service_commission_rate)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Service Staff\",\n  \"email\": \"service.staff@example.com\",\n  \"password\": \"password\",\n  \"commission_rate\": 0.0500,\n  \"service_commission_rate\": 0.1200,\n  \"is_active\": true\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {"raw": "{{base_url}}/staffs", "host": ["{{base_url}}"], "path": ["staffs"]}
+          },
+          "response": []
+        },
+        {
+          "name": "Create Service Package",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hair Wash 10x\",\n  \"description\": \"10 sessions package\",\n  \"selling_price\": 199.00,\n  \"total_sessions\": 10,\n  \"valid_days\": 180,\n  \"is_active\": true,\n  \"items\": [\n    {\"booking_service_id\": 1, \"quantity\": 10}\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {"raw": "{{base_url}}/service-packages", "host": ["{{base_url}}"], "path": ["service-packages"]}
+          },
+          "response": []
+        },
+        {
+          "name": "Redeem Service Package",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"booking_service_id\": 1,\n  \"source\": \"POS\",\n  \"source_ref_id\": 10001,\n  \"used_qty\": 1\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {"raw": "{{base_url}}/service-packages/redeem", "host": ["{{base_url}}"], "path": ["service-packages", "redeem"]}
+          },
+          "response": []
+        },
+        {
+          "name": "Available Balance For Service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/customers/1/service-package-available-for/1", "host": ["{{base_url}}"], "path": ["customers", "1", "service-package-available-for", "1"]}
+          },
+          "response": []
+        },
+        {
+          "name": "POS Add Service Item",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"booking_service_id\": 1,\n  \"qty\": 1,\n  \"assigned_staff_id\": 1\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {"raw": "{{base_url}}/pos/cart/add-service", "host": ["{{base_url}}"], "path": ["pos", "cart", "add-service"]}
+          },
+          "response": []
+        }
+      ]
     }
+
   ]
 }
