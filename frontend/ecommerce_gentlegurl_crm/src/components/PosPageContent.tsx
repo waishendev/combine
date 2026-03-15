@@ -47,6 +47,7 @@ type AppliedPromotion = {
 type Cart = {
   id: number
   items: CartItem[]
+  service_items?: ServiceCartItem[]
   subtotal: number
   grand_total: number
   voucher?: {
@@ -61,6 +62,31 @@ type Cart = {
   } | null
   promotions?: AppliedPromotion[]
 }
+
+
+type ServiceCartItem = {
+  id: number
+  type?: 'service'
+  booking_service_id: number
+  service_name: string
+  qty: number
+  unit_price: number
+  line_total: number
+  assigned_staff_id?: number | null
+  assigned_staff_name?: string | null
+  commission_rate_used?: number
+}
+
+type BookingServiceOption = {
+  id: number
+  name: string
+  service_type?: string | null
+  price?: number
+  service_price?: number
+  is_active?: boolean
+}
+
+type PosCatalogTab = 'products' | 'services'
 
 type ProductOption = {
   id: number
@@ -292,6 +318,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [productLoading, setProductLoading] = useState(false)
   const [productHighlighted, setProductHighlighted] = useState(0)
   const [productSelectModalOpen, setProductSelectModalOpen] = useState(false)
+  const [catalogTab, setCatalogTab] = useState<PosCatalogTab>('products')
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
@@ -299,6 +326,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [productVariantLoading, setProductVariantLoading] = useState(false)
   const [selectedProductQty, setSelectedProductQty] = useState(1)
   const [fullProductData, setFullProductData] = useState<any>(null)
+  const [serviceQuery, setServiceQuery] = useState('')
+  const [services, setServices] = useState<BookingServiceOption[]>([])
+  const [servicesLoading, setServicesLoading] = useState(false)
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -407,7 +437,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return firstActive?.sku?.trim() ?? ''
   }, [])
 
-  const totalItems = useMemo(() => cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0, [cart])
+  const totalItems = useMemo(() => {
+    const productQty = cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0
+    const serviceQty = cart?.service_items?.reduce((sum, item) => sum + item.qty, 0) ?? 0
+    return productQty + serviceQty
+  }, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
   
@@ -1050,6 +1084,64 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setMemberLoading(false)
   }, [])
 
+  const fetchServices = useCallback(async () => {
+    setServicesLoading(true)
+    try {
+      const res = await fetch('/api/proxy/booking/services', { cache: 'no-store' })
+      if (!res.ok) {
+        setServices([])
+        return
+      }
+
+      const json = await res.json().catch(() => null)
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: unknown }).data
+        : json
+
+      const list = Array.isArray(payload) ? payload : []
+      const mapped = list
+        .map((item): BookingServiceOption | null => {
+          if (!item || typeof item !== 'object') return null
+          const maybe = item as Record<string, unknown>
+          const id = Number(maybe.id)
+          if (!Number.isFinite(id) || id <= 0) return null
+
+          return {
+            id,
+            name: String(maybe.name ?? '').trim(),
+            service_type: typeof maybe.service_type === 'string' ? maybe.service_type : null,
+            price: Number(maybe.price ?? 0),
+            service_price: Number(maybe.service_price ?? 0),
+            is_active: Boolean(maybe.is_active ?? true),
+          }
+        })
+        .filter((item): item is BookingServiceOption => Boolean(item && item.name))
+
+      setServices(mapped)
+    } catch {
+      setServices([])
+    } finally {
+      setServicesLoading(false)
+    }
+  }, [])
+
+  const addServiceToCart = useCallback(async (service: BookingServiceOption) => {
+    const res = await fetch('/api/proxy/pos/cart/add-service', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ booking_service_id: service.id, qty: 1 }),
+    })
+    const json = await res.json().catch(() => null)
+
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to add service.', 'error')
+      return
+    }
+
+    setCart((json?.data?.cart ?? null) as Cart | null)
+    showMsg('Service added to cart.', 'success')
+  }, [showMsg])
+
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return
     const res = await fetch(`/api/proxy/pos/cart/items/${itemId}`, {
@@ -1155,7 +1247,21 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
     void loadCategories()
     void fetchActiveStaffs()
-  }, [fetchActiveStaffs])
+    void fetchServices()
+  }, [fetchActiveStaffs, fetchServices])
+
+
+  const filteredServices = useMemo(() => {
+    const keyword = serviceQuery.trim().toLowerCase()
+    if (!keyword) return services
+
+    return services.filter((service) =>
+      service.name.toLowerCase().includes(keyword) ||
+      String(service.service_type ?? '').toLowerCase().includes(keyword),
+    )
+  }, [serviceQuery, services])
+
+  const hasCartItems = (cart?.items.length ?? 0) > 0 || (cart?.service_items?.length ?? 0) > 0
 
   useEffect(() => {
     if (productSearchMode !== 'sku') {
@@ -1581,7 +1687,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const canCheckout = Boolean(cart?.items.length) && !checkingOut
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
-    if (!cart || cart.items.length === 0 || checkingOut) return
+    if (!cart || !hasCartItems || checkingOut) return
 
     setCheckingOut(true)
     setCheckoutError(null)
@@ -1683,7 +1789,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const confirmCheckout = async () => {
-    if (!cart || cart.items.length === 0 || checkingOut) return
+    if (!cart || !hasCartItems || checkingOut) return
 
     if (paymentMethod === 'qrpay') {
       if (!qrProofFileName) {
@@ -1716,7 +1822,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const checkout = async () => {
-    if (!cart || cart.items.length === 0 || checkingOut) return
+    if (!cart || !hasCartItems || checkingOut) return
     await openCheckoutConfirmation()
   }
 
@@ -2006,20 +2112,40 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             autoFocus
           />
 
-          {/* Products Section - Always Visible */}
+          {/* Products / Services Section */}
           <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
-              Products
-              {productLoading && (
+              POS Catalog
+              {catalogTab === 'products' && productLoading && (
                 <svg className="h-4 w-4 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
               )}
             </h3>
+
+            <div className="mb-4 inline-flex w-fit rounded-lg border border-gray-200 bg-gray-100 p-1">
+              <button
+                type="button"
+                onClick={() => setCatalogTab('products')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'products' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                PRODUCTS
+              </button>
+              <button
+                type="button"
+                onClick={() => setCatalogTab('services')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'services' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                SERVICES
+              </button>
+            </div>
+
+            {catalogTab === 'products' ? (
+              <>
             
             {/* Search + Category Filters */}
             <div className="mb-5 space-y-3">
@@ -2180,6 +2306,52 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 </button>
               </div>
             )}
+              </>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="mb-4">
+                  <input
+                    value={serviceQuery}
+                    onChange={(e) => setServiceQuery(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    placeholder="Search by service name / type"
+                  />
+                </div>
+
+                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                  {servicesLoading ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading services...</div>
+                  ) : filteredServices.length === 0 ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
+                  ) : (
+                    filteredServices.map((service) => {
+                      const displayPrice = Number.isFinite(service.price) && Number(service.price) > 0
+                        ? Number(service.price)
+                        : Number(service.service_price ?? 0)
+
+                      return (
+                        <div key={service.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{service.name}</p>
+                            <p className="text-xs text-gray-500">Type: {(service.service_type ?? 'standard').toUpperCase()}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-bold text-gray-900">RM {displayPrice.toFixed(2)}</span>
+                            <button
+                              type="button"
+                              onClick={() => void addServiceToCart(service)}
+                              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                            >
+                              Add Service
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2193,7 +2365,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               </svg>
               Shopping Cart
             </h3>
-            {cart?.items.length ? (
+            {hasCartItems ? (
               <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 xl:min-h-0">
                 {cart.items.map((item) => {
                   // Get current variant stock info
@@ -2322,6 +2494,28 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       )}
                     </div>
                   )
+
+
+                {(cart.service_items ?? []).map((serviceItem) => (
+                  <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Service</p>
+                        <h4 className="font-bold text-gray-900 text-sm mt-0.5">{serviceItem.service_name}</h4>
+                        <p className="text-xs text-gray-600 mt-1">Qty: {serviceItem.qty}</p>
+                        {serviceItem.assigned_staff_name ? (
+                          <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
+                        ) : null}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">Unit</div>
+                        <div className="font-semibold text-gray-900 text-sm">RM {Number(serviceItem.unit_price ?? 0).toFixed(2)}</div>
+                        <div className="mt-1 text-xs text-gray-500">Total</div>
+                        <div className="font-bold text-emerald-700">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
                 })}
               </div>
             ) : (
@@ -2639,7 +2833,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         </div>
       )}
 
-      {checkoutConfirmationOpen && cart?.items?.length ? (
+      {checkoutConfirmationOpen && hasCartItems ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
           <div className="w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-8 py-6 flex-shrink-0">

@@ -87,11 +87,15 @@
 
 ### Case 3.1 页面加载
 1. 进入 POS 页面
-2. 搜索一个商品并加入购物车
-3. 观察小计、结账按钮
+2. 在商品区上方确认有两个 TAB：`PRODUCTS`、`SERVICES`
+3. 先停留在 `PRODUCTS`，搜索一个商品并加入购物车
+4. 切换到 `SERVICES`，搜索并加入一个服务
+5. 观察购物车、小计、结账按钮
 
 ### 预期
 - POS 页面可正常打开
+- 可切换 `PRODUCTS` / `SERVICES` TAB
+- `SERVICES` TAB 能看到服务列表并可加入购物车
 - 现有商品加购/结账流程不被本次改动破坏
 
 > 备注：
@@ -141,4 +145,3 @@
 2. Staff Create modal（有 Service Commission Rate 输入框）
 3. Staff Edit modal（有 Service Commission Rate 输入框）
 4. Booking Services 列表/编辑成功后的价格显示
-
