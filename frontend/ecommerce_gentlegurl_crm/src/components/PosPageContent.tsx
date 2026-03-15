@@ -51,6 +51,8 @@ type Cart = {
   package_items?: PackageCartItem[]
   subtotal: number
   grand_total: number
+  booking_deposit_total?: number
+  booking_deposit_breakdown?: { premium_count?: number; standard_count?: number; deposit_total?: number; per_premium_amount?: number; standard_base_amount?: number }
   voucher?: {
     id?: number | null
     customer_voucher_id?: number | null
@@ -73,6 +75,8 @@ type ServiceCartItem = {
   qty: number
   unit_price: number
   line_total: number
+  service_type?: string | null
+  deposit_contribution?: number
   assigned_staff_id?: number | null
   assigned_staff_name?: string | null
   customer_id?: number | null
@@ -483,6 +487,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
+  const bookingDepositTotal = Number(cart?.booking_deposit_total ?? 0)
+  const bookingDepositBreakdown = cart?.booking_deposit_breakdown ?? null
   
   // Calculate promotion discount from items
   const promotionDiscount = useMemo(() => {
@@ -2873,6 +2879,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Service</p>
                         <h4 className="font-bold text-gray-900 text-sm mt-0.5">{serviceItem.service_name}</h4>
                         <p className="text-xs text-gray-600 mt-1">Qty: {serviceItem.qty}</p>
+                        <p className="text-xs text-emerald-700">Type: {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
                         {serviceItem.start_at ? (
                           <p className="text-xs text-gray-700">Appointment: {new Date(serviceItem.start_at).toLocaleString()}</p>
                         ) : null}
@@ -2884,10 +2891,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         ) : null}
                       </div>
                       <div className="text-right">
-                        <div className="text-xs text-gray-500">Unit</div>
-                        <div className="font-semibold text-gray-900 text-sm">RM {Number(serviceItem.unit_price ?? 0).toFixed(2)}</div>
-                        <div className="mt-1 text-xs text-gray-500">Total</div>
-                        <div className="font-bold text-emerald-700">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
+                        <div className="text-xs text-gray-500">Service Price (ref)</div>
+                        <div className="font-semibold text-gray-700 text-sm">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
+                        <div className="mt-1 text-xs text-gray-500">Deposit Contribution</div>
+                        <div className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</div>
                         <div className="mt-2 text-[11px] text-emerald-700">Package balance: {serviceAvailabilityMap[serviceItem.id] ?? 0}</div>
                         <button
                           type="button"
@@ -3401,6 +3408,22 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   </tbody>
                 </table>
               </div>
+
+
+              {(cart.service_items?.length ?? 0) > 0 && (
+                <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <h5 className="text-sm font-bold text-emerald-900">Booking Deposit Summary</h5>
+                  <div className="mt-2 space-y-1 text-xs text-emerald-900">
+                    <p>Premium services: {bookingDepositBreakdown?.premium_count ?? 0}</p>
+                    <p>Standard services: {bookingDepositBreakdown?.standard_count ?? 0}</p>
+                    <p>Per premium deposit: RM {Number(bookingDepositBreakdown?.per_premium_amount ?? 0).toFixed(2)}</p>
+                    <p>Standard-only base deposit: RM {Number(bookingDepositBreakdown?.standard_base_amount ?? 0).toFixed(2)}</p>
+                  </div>
+                  <div className="mt-2 border-t border-emerald-200 pt-2 text-sm font-bold text-emerald-800">
+                    Booking deposit total: RM {bookingDepositTotal.toFixed(2)}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 shadow-sm">
                 <div className="space-y-2">

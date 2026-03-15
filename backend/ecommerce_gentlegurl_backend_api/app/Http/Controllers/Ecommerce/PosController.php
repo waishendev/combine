@@ -861,10 +861,9 @@ class PosController extends Controller
             $isStaffUser = !empty($request->user()?->staff_id);
 
             $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
-            $serviceSubtotal = (float) $cart->serviceItems->sum(fn (PosCartServiceItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $packageSubtotal = (float) $cart->packageItems->sum(fn (PosCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $depositTotal = $this->resolvePosBookingDepositForCart($cart);
-            $subtotal = (float) $cartPricing['subtotal'] + $serviceSubtotal + $packageSubtotal + $depositTotal;
+            $subtotal = (float) $cartPricing['subtotal'] + $packageSubtotal + $depositTotal;
             $discountTotal = 0.0;
             $voucherData = null;
 
@@ -1233,17 +1232,31 @@ class PosController extends Controller
             ];
         })->values();
 
-        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) {
+        $depositBreakdown = $this->resolvePosBookingDepositBreakdown($cart);
+        $standardBaseAppliedItemId = $depositBreakdown['standard_base_applied_item_id'] ?? null;
+        $premiumItemDeposit = (float) ($depositBreakdown['per_premium_amount'] ?? 0);
+        $hasPremium = (int) ($depositBreakdown['premium_count'] ?? 0) > 0;
+
+        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($standardBaseAppliedItemId, $premiumItemDeposit, $hasPremium) {
             $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
+            $serviceType = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
+            $depositContribution = 0.0;
+            if ($serviceType === 'PREMIUM') {
+                $depositContribution = (float) $item->qty * $premiumItemDeposit;
+            } elseif (! $hasPremium && $standardBaseAppliedItemId && (int) $item->id === (int) $standardBaseAppliedItemId) {
+                $depositContribution = (float) ($depositBreakdown['standard_base_amount'] ?? 0);
+            }
 
             return [
                 'id' => $item->id,
                 'type' => 'service',
                 'booking_service_id' => (int) $item->booking_service_id,
                 'service_name' => $item->service_name_snapshot,
+                'service_type' => $serviceType,
                 'qty' => (int) $item->qty,
                 'unit_price' => (float) $item->price_snapshot,
                 'line_total' => (float) $lineTotal,
+                'deposit_contribution' => (float) $depositContribution,
                 'customer_id' => $item->customer_id ? (int) $item->customer_id : null,
                 'assigned_staff_id' => $item->assigned_staff_id ? (int) $item->assigned_staff_id : null,
                 'assigned_staff_name' => $item->assignedStaff?->name,
@@ -1270,7 +1283,8 @@ class PosController extends Controller
         })->values();
 
         $voucherDiscount = (float) ($cart->voucher_discount_amount ?? 0);
-        $subtotal = (float) (($cartPricing['subtotal'] ?? $items->sum('line_total')) + $serviceItems->sum('line_total') + $packageItems->sum('line_total'));
+        $bookingDepositTotal = (float) ($depositBreakdown['deposit_total'] ?? 0);
+        $subtotal = (float) (($cartPricing['subtotal'] ?? $items->sum('line_total')) + $packageItems->sum('line_total') + $bookingDepositTotal);
         $grandTotal = max(0, $subtotal - $voucherDiscount);
 
         return [
@@ -1278,6 +1292,8 @@ class PosController extends Controller
             'items' => $items,
             'service_items' => $serviceItems,
             'package_items' => $packageItems,
+            'booking_deposit_total' => $bookingDepositTotal,
+            'booking_deposit_breakdown' => $depositBreakdown,
             'subtotal' => $subtotal,
             'grand_total' => $grandTotal,
             'voucher' => !empty($cart->voucher_code) ? [
@@ -1294,20 +1310,55 @@ class PosController extends Controller
 
     protected function resolvePosBookingDepositForCart(PosCart $cart): float
     {
+        return (float) ($this->resolvePosBookingDepositBreakdown($cart)['deposit_total'] ?? 0);
+    }
+
+    protected function resolvePosBookingDepositBreakdown(PosCart $cart): array
+    {
         if ($cart->serviceItems->isEmpty()) {
-            return 0.0;
+            return [
+                'premium_count' => 0,
+                'standard_count' => 0,
+                'per_premium_amount' => 0,
+                'standard_base_amount' => 0,
+                'standard_base_applied_item_id' => null,
+                'deposit_total' => 0,
+            ];
         }
 
         $settings = BookingSetting::query()->first();
         $premiumDeposit = (float) ($settings?->deposit_amount_per_premium ?? 0);
         $standardDeposit = (float) ($settings?->deposit_base_amount_if_only_standard ?? 0);
 
-        $hasPremium = $cart->serviceItems->contains(function (PosCartServiceItem $item) {
-            $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
-            return $type === 'PREMIUM';
-        });
+        $premiumCount = 0;
+        $standardCount = 0;
+        $standardBaseAppliedItemId = null;
 
-        return $hasPremium ? $premiumDeposit : $standardDeposit;
+        foreach ($cart->serviceItems as $item) {
+            $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
+            $qty = max(1, (int) $item->qty);
+            if ($type === 'PREMIUM') {
+                $premiumCount += $qty;
+            } else {
+                $standardCount += $qty;
+                if ($standardBaseAppliedItemId === null) {
+                    $standardBaseAppliedItemId = (int) $item->id;
+                }
+            }
+        }
+
+        $depositTotal = $premiumCount > 0
+            ? ($premiumCount * $premiumDeposit)
+            : ($standardCount > 0 ? $standardDeposit : 0);
+
+        return [
+            'premium_count' => $premiumCount,
+            'standard_count' => $standardCount,
+            'per_premium_amount' => $premiumDeposit,
+            'standard_base_amount' => $standardDeposit,
+            'standard_base_applied_item_id' => $standardBaseAppliedItemId,
+            'deposit_total' => (float) $depositTotal,
+        ];
     }
 
     protected function serializeCartItemsForVoucher(PosCart $cart): array
