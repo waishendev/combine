@@ -992,6 +992,10 @@ class PosController extends Controller
 
             $purchasedPackageLines = [];
 
+            $packagePayloadByCartId = collect($validated['package_items'] ?? [])
+                ->filter(fn (array $item) => !empty($item['cart_package_item_id']))
+                ->keyBy(fn (array $item) => (int) $item['cart_package_item_id']);
+
             $staffSplitsByCartItemId = collect($validated['items'] ?? [])->mapWithKeys(function (array $item) {
                 $cartItemId = isset($item['cart_item_id']) ? (int) $item['cart_item_id'] : 0;
                 return $cartItemId > 0 ? [$cartItemId => collect($item['staff_splits'] ?? [])->values()->all()] : [];
