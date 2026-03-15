@@ -1,0 +1,3528 @@
+{
+  "info": {
+    "_postman_id": "core-backend-laravel-api",
+    "name": "Core Backend Laravel API",
+    "description": "API Collection for Core Backend Laravel Application",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"infrax1@example.com\",\n    \"password\": \"password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "login"
+              ]
+            },
+            "description": "Login with email and password. Returns user data with roles and permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "logout"
+              ]
+            },
+            "description": "Logout the current user and invalidate session."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profile"
+              ]
+            },
+            "description": "Get current authenticated user profile with roles and permissions. Requires authentication."
+          },
+          "response": []
+        }
+      ],
+      "description": "Authentication endpoints"
+    },
+    {
+      "name": "Admins",
+      "item": [
+        {
+          "name": "List Admins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admins",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admins"
+              ]
+            },
+            "description": "Get list of all admins. Requires authentication and 'users.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Admin Name\",\n    \"email\": \"infrax1@example.com\",\n    \"username\": \"admin\",\n    \"password\": \"password\",\n    \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admins",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admins"
+              ]
+            },
+            "description": "Create a new admin user. Requires authentication and 'users.create' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admins/:admin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admins",
+                ":admin"
+              ],
+              "variable": [
+                {
+                  "key": "admin",
+                  "value": "1",
+                  "description": "Admin ID"
+                }
+              ]
+            },
+            "description": "Get a specific admin by ID. Requires authentication and 'users.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Admin",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Updated Admin Name\",\n    \"email\": \"updated@example.com\",\n    \"username\": \"updated_admin\",\n    \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admins/:admin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admins",
+                ":admin"
+              ],
+              "variable": [
+                {
+                  "key": "admin",
+                  "value": "1",
+                  "description": "Admin ID"
+                }
+              ]
+            },
+            "description": "Update an admin user. Requires authentication and 'users.update' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Admin",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admins/:admin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admins",
+                ":admin"
+              ],
+              "variable": [
+                {
+                  "key": "admin",
+                  "value": "1",
+                  "description": "Admin ID"
+                }
+              ]
+            },
+            "description": "Delete an admin user. Requires authentication and 'users.delete' permission."
+          },
+          "response": []
+        }
+      ],
+      "description": "Admin management endpoints"
+    },
+    {
+      "name": "Roles",
+      "item": [
+        {
+          "name": "List Roles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "roles"
+              ]
+            },
+            "description": "Get list of all roles. Requires authentication and 'roles.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Role Name\",\n    \"permissions\": [1, 2, 3]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "roles"
+              ]
+            },
+            "description": "Create a new role. Requires authentication and 'roles.create' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Role",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/roles/:role",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "roles",
+                ":role"
+              ],
+              "variable": [
+                {
+                  "key": "role",
+                  "value": "1",
+                  "description": "Role ID"
+                }
+              ]
+            },
+            "description": "Get a specific role by ID. Requires authentication and 'roles.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Updated Role Name\",\n    \"permissions\": [1, 2, 3, 4]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/roles/:role",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "roles",
+                ":role"
+              ],
+              "variable": [
+                {
+                  "key": "role",
+                  "value": "1",
+                  "description": "Role ID"
+                }
+              ]
+            },
+            "description": "Update a role. Requires authentication and 'roles.update' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Role",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/roles/:role",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "roles",
+                ":role"
+              ],
+              "variable": [
+                {
+                  "key": "role",
+                  "value": "1",
+                  "description": "Role ID"
+                }
+              ]
+            },
+            "description": "Delete a role. Requires authentication and 'roles.delete' permission."
+          },
+          "response": []
+        }
+      ],
+      "description": "Role management endpoints"
+    },
+    {
+      "name": "Permissions",
+      "item": [
+        {
+          "name": "List Permissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/permissions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permissions"
+              ]
+            },
+            "description": "Get list of all permissions. Requires authentication and 'permissions.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Permission",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"permission.name\",\n    \"permission_group_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/permissions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permissions"
+              ]
+            },
+            "description": "Create a new permission. Requires authentication and 'permissions.create' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Permission",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/permissions/:permission",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permissions",
+                ":permission"
+              ],
+              "variable": [
+                {
+                  "key": "permission",
+                  "value": "1",
+                  "description": "Permission ID"
+                }
+              ]
+            },
+            "description": "Get a specific permission by ID. Requires authentication and 'permissions.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Permission",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"updated.permission.name\",\n    \"permission_group_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/permissions/:permission",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permissions",
+                ":permission"
+              ],
+              "variable": [
+                {
+                  "key": "permission",
+                  "value": "1",
+                  "description": "Permission ID"
+                }
+              ]
+            },
+            "description": "Update a permission. Requires authentication and 'permissions.update' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Permission",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/permissions/:permission",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permissions",
+                ":permission"
+              ],
+              "variable": [
+                {
+                  "key": "permission",
+                  "value": "1",
+                  "description": "Permission ID"
+                }
+              ]
+            },
+            "description": "Delete a permission. Requires authentication and 'permissions.delete' permission."
+          },
+          "response": []
+        }
+      ],
+      "description": "Permission management endpoints"
+    },
+    {
+      "name": "Permission Groups",
+      "item": [
+        {
+          "name": "List Permission Groups",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/permission-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permission-groups"
+              ]
+            },
+            "description": "Get list of all permission groups. Requires authentication and 'permission-groups.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Permission Group",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Group Name\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/permission-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permission-groups"
+              ]
+            },
+            "description": "Create a new permission group. Requires authentication and 'permission-groups.create' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Permission Group",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/permission-groups/:group",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permission-groups",
+                ":group"
+              ],
+              "variable": [
+                {
+                  "key": "group",
+                  "value": "1",
+                  "description": "Permission Group ID"
+                }
+              ]
+            },
+            "description": "Get a specific permission group by ID. Requires authentication and 'permission-groups.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Permission Group",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Updated Group Name\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/permission-groups/:group",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permission-groups",
+                ":group"
+              ],
+              "variable": [
+                {
+                  "key": "group",
+                  "value": "1",
+                  "description": "Permission Group ID"
+                }
+              ]
+            },
+            "description": "Update a permission group. Requires authentication and 'permission-groups.update' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Permission Group",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/permission-groups/:group",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "permission-groups",
+                ":group"
+              ],
+              "variable": [
+                {
+                  "key": "group",
+                  "value": "1",
+                  "description": "Permission Group ID"
+                }
+              ]
+            },
+            "description": "Delete a permission group. Requires authentication and 'permission-groups.delete' permission."
+          },
+          "response": []
+        }
+      ],
+      "description": "Permission group management endpoints"
+    },
+    {
+      "name": "Staffs",
+      "item": [
+        {
+          "name": "List Staffs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/staffs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "staffs"
+              ]
+            },
+            "description": "Get list of all staffs. Requires authentication and 'staff.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Staff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Service Staff\",\n  \"email\": \"service.staff@example.com\",\n  \"password\": \"password\",\n  \"commission_rate\": 0.0500,\n  \"service_commission_rate\": 0.1200,\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/staffs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "staffs"
+              ]
+            },
+            "description": "Create a new staff. Requires authentication and 'staff.create' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Staff",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/staffs/:staff",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "staffs",
+                ":staff"
+              ],
+              "variable": [
+                {
+                  "key": "staff",
+                  "value": "1",
+                  "description": "Staff ID"
+                }
+              ]
+            },
+            "description": "Get a specific staff by ID. Requires authentication and 'staff.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Staff",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Staff Name\",\n  \"email\": \"updated.staff@example.com\",\n  \"commission_rate\": 0.0600,\n  \"service_commission_rate\": 0.1300,\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/staffs/:staff",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "staffs",
+                ":staff"
+              ],
+              "variable": [
+                {
+                  "key": "staff",
+                  "value": "1",
+                  "description": "Staff ID"
+                }
+              ]
+            },
+            "description": "Update a staff. Requires authentication and 'staff.update' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Staff",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/staffs/:staff",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "staffs",
+                ":staff"
+              ],
+              "variable": [
+                {
+                  "key": "staff",
+                  "value": "1",
+                  "description": "Staff ID"
+                }
+              ]
+            },
+            "description": "Delete a staff. Requires authentication and 'staff.delete' permission."
+          },
+          "response": []
+        }
+      ],
+      "description": "Staff management endpoints"
+    },
+    {
+      "name": "Service Packages & POS Services",
+      "item": [
+        {
+          "name": "Create Service Package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hair Wash 10x\",\n  \"description\": \"10 sessions package\",\n  \"selling_price\": 199.00,\n  \"total_sessions\": 10,\n  \"valid_days\": 180,\n  \"is_active\": true,\n  \"items\": [\n    {\"booking_service_id\": 1, \"quantity\": 10}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/service-packages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "service-packages"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Redeem Service Package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"booking_service_id\": 1,\n  \"source\": \"POS\",\n  \"source_ref_id\": 10001,\n  \"used_qty\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/service-packages/redeem",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "service-packages",
+                "redeem"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Available Balance For Service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers/1/service-package-available-for/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers",
+                "1",
+                "service-package-available-for",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POS Add Service Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"booking_service_id\": 1,\n  \"qty\": 1,\n  \"assigned_staff_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pos/cart/add-service",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "pos",
+                "cart",
+                "add-service"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Staff Commission Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/reports/staff-commission",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "reports",
+                "staff-commission"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": "",
+                  "description": "Start date (YYYY-MM-DD)"
+                },
+                {
+                  "key": "date_to",
+                  "value": "",
+                  "description": "End date (YYYY-MM-DD)"
+                }
+              ]
+            },
+            "description": "Get staff commission summary report. Requires authentication and 'ecommerce.reports.sales.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Staff Commission Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/reports/staff-commission/detail",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "reports",
+                "staff-commission",
+                "detail"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": "",
+                  "description": "Start date (YYYY-MM-DD)"
+                },
+                {
+                  "key": "date_to",
+                  "value": "",
+                  "description": "End date (YYYY-MM-DD)"
+                },
+                {
+                  "key": "staff_id",
+                  "value": "",
+                  "description": "Staff ID (optional)"
+                }
+              ]
+            },
+            "description": "Get staff commission detail report. Requires authentication and 'ecommerce.reports.sales.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "My POS Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/reports/my-pos-summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "reports",
+                "my-pos-summary"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": "",
+                  "description": "Start date (YYYY-MM-DD)"
+                },
+                {
+                  "key": "date_to",
+                  "value": "",
+                  "description": "End date (YYYY-MM-DD)"
+                }
+              ]
+            },
+            "description": "Get my POS summary report. Requires authentication and 'reports.my-pos-summary.view' permission."
+          },
+          "response": []
+        }
+      ],
+      "description": "Report endpoints"
+    },
+    {
+      "name": "POS",
+      "item": [
+        {
+          "name": "Send Receipt Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/orders/:orderId/send-receipt-email",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                ":orderId",
+                "send-receipt-email"
+              ],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "1",
+                  "description": "Order ID"
+                }
+              ]
+            },
+            "description": "Send receipt email for an order. Requires authentication and 'pos.checkout' permission. Rate limited to 6 requests per minute."
+          },
+          "response": []
+        }
+      ],
+      "description": "POS endpoints"
+    },
+    {
+      "name": "Export/Import",
+      "item": [
+        {
+          "name": "Export Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/products/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "products",
+                "export"
+              ]
+            },
+            "description": "Export products to CSV. Requires authentication and 'ecommerce.products.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Import Products",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/products/import",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "products",
+                "import"
+              ]
+            },
+            "description": "Import products from CSV. Requires authentication and 'ecommerce.products.create' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Export Shop Menu Items",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/shop-menu-items/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "shop-menu-items",
+                "export"
+              ]
+            },
+            "description": "Export shop menu items to CSV. Requires authentication and 'ecommerce.shop-menu.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Import Shop Menu Items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/shop-menu-items/import",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "shop-menu-items",
+                "import"
+              ]
+            },
+            "description": "Import shop menu items from CSV. Requires authentication and 'ecommerce.shop-menu.create' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Export Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/categories/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "categories",
+                "export"
+              ]
+            },
+            "description": "Export categories to CSV. Requires authentication and 'ecommerce.categories.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Import Categories",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/categories/import",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "categories",
+                "import"
+              ]
+            },
+            "description": "Import categories from CSV. Requires authentication and 'ecommerce.categories.create' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Export Customers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/customers/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "customers",
+                "export"
+              ]
+            },
+            "description": "Export customers to CSV. Requires authentication and 'customers.view' permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Import Customers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/customers/import",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "customers",
+                "import"
+              ]
+            },
+            "description": "Import customers from CSV. Requires authentication and 'customers.create' permission."
+          },
+          "response": []
+        }
+      ],
+      "description": "Export and Import endpoints"
+    },
+    {
+      "name": "SEO Global",
+      "item": [
+        {
+          "name": "Show SEO Global",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/seo-global",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "seo-global"
+              ]
+            },
+            "description": "Get SEO global settings. Requires authentication."
+          },
+          "response": []
+        },
+        {
+          "name": "Update SEO Global",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_title\": \"MyShop Official Store\",\n  \"default_description\": \"Default site description...\",\n  \"default_keywords\": \"myshop, shop, ecommerce\",\n  \"default_og_image\": \"/uploads/seo/default-og.jpg\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/seo-global",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "seo-global"
+              ]
+            },
+            "description": "Update SEO global settings. Requires authentication."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload SEO Global Image",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ecommerce/seo-global/upload-image",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ecommerce",
+                "seo-global",
+                "upload-image"
+              ]
+            },
+            "description": "Upload SEO global image. Requires authentication."
+          },
+          "response": []
+        }
+      ],
+      "description": "SEO Global endpoints"
+    },
+    {
+      "name": "Booking",
+      "item": [
+        {
+          "name": "Public Booking",
+          "item": [
+            {
+              "name": "List Booking Services",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/booking/services",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "services"
+                  ]
+                },
+                "description": "Get list of booking services. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Booking Service",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/booking/services/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "services",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Service ID"
+                    }
+                  ]
+                },
+                "description": "Get a specific booking service. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Service Package Available For",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/booking/customers/:id/service-package-available-for/:serviceId",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "customers",
+                    ":id",
+                    "service-package-available-for",
+                    ":serviceId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Customer ID"
+                    },
+                    {
+                      "key": "serviceId",
+                      "value": "1",
+                      "description": "Service ID"
+                    }
+                  ]
+                },
+                "description": "Get available service packages for a customer and service. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Availability",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/booking/availability",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "availability"
+                  ],
+                  "query": [
+                    {
+                      "key": "service_id",
+                      "value": "1"
+                    },
+                    {
+                      "key": "staff_id",
+                      "value": ""
+                    },
+                    {
+                      "key": "date",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Get booking availability. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Bulk Availability",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/booking/availability/bulk",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "availability",
+                    "bulk"
+                  ]
+                },
+                "description": "Get bulk booking availability. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Hold",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_id\": 1,\n  \"staff_id\": 1,\n  \"start_at\": \"2024-01-01 10:00:00\",\n  \"guest_name\": \"Guest Name\",\n  \"guest_phone\": \"0123456789\",\n  \"guest_email\": \"guest@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/booking/hold",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "hold"
+                  ]
+                },
+                "description": "Create a booking hold. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Booking Cart",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/booking/cart",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "cart"
+                  ]
+                },
+                "description": "Get booking cart. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Add Booking Cart Item",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"service_id\": 1,\n  \"staff_id\": 1,\n  \"start_at\": \"2024-01-01 10:00:00\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/booking/cart/add",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "cart",
+                    "add"
+                  ]
+                },
+                "description": "Add item to booking cart. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Remove Booking Cart Item",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/booking/cart/item/:itemId",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "cart",
+                    "item",
+                    ":itemId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "itemId",
+                      "value": "1",
+                      "description": "Cart Item ID"
+                    }
+                  ]
+                },
+                "description": "Remove item from booking cart. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Checkout Booking Cart",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customer_id\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/booking/cart/checkout",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "cart",
+                    "checkout"
+                  ]
+                },
+                "description": "Checkout booking cart. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Pay Booking",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"payment_method\": \"FPX\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/booking/:id/pay",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    ":id",
+                    "pay"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Booking ID"
+                    }
+                  ]
+                },
+                "description": "Pay for a booking. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Reschedule Booking",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"start_at\": \"2024-01-01 14:00:00\",\n  \"reason\": \"Need to reschedule\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/booking/:id/reschedule",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    ":id",
+                    "reschedule"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Booking ID"
+                    }
+                  ]
+                },
+                "description": "Reschedule a booking. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Booking Payment Callback",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"booking_id\": 1,\n  \"status\": \"PAID\",\n  \"ref\": \"FPX-TEST-001\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/booking/payment/callback",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "payment",
+                    "callback"
+                  ]
+                },
+                "description": "Booking payment callback. Requires api.session middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get My Bookings",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/booking/my",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "booking",
+                    "my"
+                  ]
+                },
+                "description": "Get my bookings. Requires api.session and auth:customer,sanctum middleware."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Admin Booking",
+          "item": [
+            {
+              "name": "List Appointments",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/appointments",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "appointments"
+                  ],
+                  "query": [
+                    {
+                      "key": "date",
+                      "value": ""
+                    },
+                    {
+                      "key": "staff_id",
+                      "value": ""
+                    },
+                    {
+                      "key": "status",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "List appointments. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Appointment",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/appointments/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "appointments",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Appointment ID"
+                    }
+                  ]
+                },
+                "description": "Get appointment. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Appointment Status",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CONFIRMED\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/appointments/:id/status",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "appointments",
+                    ":id",
+                    "status"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Appointment ID"
+                    }
+                  ]
+                },
+                "description": "Update appointment status. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Upload Appointment Photo",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "url",
+                      "value": "https://example.com/photo.jpg",
+                      "type": "text"
+                    },
+                    {
+                      "key": "uploaded_by_staff_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/appointments/:id/photos",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "appointments",
+                    ":id",
+                    "photos"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Appointment ID"
+                    }
+                  ]
+                },
+                "description": "Upload appointment photo. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Admin Reschedule Booking",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"start_at\": \"2024-01-01 14:00:00\",\n  \"reason\": \"Admin reschedule\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/:id/reschedule",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    ":id",
+                    "reschedule"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Booking ID"
+                    }
+                  ]
+                },
+                "description": "Admin reschedule booking. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Staff Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/reports/staff",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "reports",
+                    "staff"
+                  ]
+                },
+                "description": "Get staff report. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Export Staff Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "text/csv",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/reports/staff/export.csv",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "reports",
+                    "staff",
+                    "export.csv"
+                  ]
+                },
+                "description": "Export staff report to CSV. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Summary Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/reports/summary",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "reports",
+                    "summary"
+                  ]
+                },
+                "description": "Get summary report. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Export Summary Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "text/csv",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/reports/summary/export.csv",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "reports",
+                    "summary",
+                    "export.csv"
+                  ]
+                },
+                "description": "Export summary report to CSV. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Logs",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/logs",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "logs"
+                  ]
+                },
+                "description": "Get booking logs. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Export Logs",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "text/csv",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/logs/export.csv",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "logs",
+                    "export.csv"
+                  ]
+                },
+                "description": "Export booking logs to CSV. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Notified Cancellation Voucher Setting",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/settings/notified-cancellation-voucher",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "settings",
+                    "notified-cancellation-voucher"
+                  ]
+                },
+                "description": "Get notified cancellation voucher setting. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Notified Cancellation Voucher Setting",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"voucher_id\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/settings/notified-cancellation-voucher",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "settings",
+                    "notified-cancellation-voucher"
+                  ]
+                },
+                "description": "Update notified cancellation voucher setting. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "List Booking Services",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/services",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "services"
+                  ]
+                },
+                "description": "List booking services (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Booking Service",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Hair Wash\",\n  \"duration_minutes\": 30,\n  \"price\": 50.00\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/services",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "services"
+                  ]
+                },
+                "description": "Create booking service (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Booking Service",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/services/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "services",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Service ID"
+                    }
+                  ]
+                },
+                "description": "Get booking service (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Booking Service",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Hair Wash\",\n  \"duration_minutes\": 45,\n  \"price\": 60.00\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/services/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "services",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Service ID"
+                    }
+                  ]
+                },
+                "description": "Update booking service (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Booking Service",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/services/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "services",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Service ID"
+                    }
+                  ]
+                },
+                "description": "Delete booking service (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "List Staff Schedules",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/staff-schedules",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "staff-schedules"
+                  ]
+                },
+                "description": "List staff schedules (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Staff Schedule",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"staff_id\": 1,\n  \"day_of_week\": 1,\n  \"start_time\": \"10:00\",\n  \"end_time\": \"18:00\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/staff-schedules",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "staff-schedules"
+                  ]
+                },
+                "description": "Create staff schedule (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Staff Schedule",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/staff-schedules/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "staff-schedules",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Staff Schedule ID"
+                    }
+                  ]
+                },
+                "description": "Get staff schedule (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Staff Schedule",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"staff_id\": 1,\n  \"day_of_week\": 1,\n  \"start_time\": \"09:00\",\n  \"end_time\": \"17:00\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/staff-schedules/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "staff-schedules",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Staff Schedule ID"
+                    }
+                  ]
+                },
+                "description": "Update staff schedule (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Staff Schedule",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/staff-schedules/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "staff-schedules",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Staff Schedule ID"
+                    }
+                  ]
+                },
+                "description": "Delete staff schedule (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "List Blocks",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/blocks",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "blocks"
+                  ]
+                },
+                "description": "List blocks (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Block",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"staff_id\": 1,\n  \"start_at\": \"2024-01-01 12:00:00\",\n  \"end_at\": \"2024-01-01 13:00:00\",\n  \"reason\": \"Lunch break\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/blocks",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "blocks"
+                  ]
+                },
+                "description": "Create block (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Block",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/blocks/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "blocks",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Block ID"
+                    }
+                  ]
+                },
+                "description": "Get block (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Block",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"staff_id\": 1,\n  \"start_at\": \"2024-01-01 12:30:00\",\n  \"end_at\": \"2024-01-01 13:30:00\",\n  \"reason\": \"Extended lunch break\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/blocks/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "blocks",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Block ID"
+                    }
+                  ]
+                },
+                "description": "Update block (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Block",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/blocks/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "blocks",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Block ID"
+                    }
+                  ]
+                },
+                "description": "Delete block (apiResource). Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "List Commission Tiers",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/commission-tiers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "commission-tiers"
+                  ]
+                },
+                "description": "List commission tiers. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Commission Tier",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Tier 1\",\n  \"min_amount\": 0,\n  \"max_amount\": 1000,\n  \"commission_rate\": 0.10\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/commission-tiers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "commission-tiers"
+                  ]
+                },
+                "description": "Create commission tier. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Commission Tier",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Tier 1\",\n  \"min_amount\": 0,\n  \"max_amount\": 1500,\n  \"commission_rate\": 0.12\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/commission-tiers/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "commission-tiers",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Commission Tier ID"
+                    }
+                  ]
+                },
+                "description": "Update commission tier. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Commission Tier",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/commission-tiers/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "commission-tiers",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Commission Tier ID"
+                    }
+                  ]
+                },
+                "description": "Delete commission tier. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "List Commissions",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/commissions",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "commissions"
+                  ]
+                },
+                "description": "List commissions. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Override Commission",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"commission_amount\": 100.00\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/commissions/:id/override",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "commissions",
+                    ":id",
+                    "override"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "1",
+                      "description": "Commission ID"
+                    }
+                  ]
+                },
+                "description": "Override commission. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            },
+            {
+              "name": "Recalculate Commissions",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"booking_ids\": [1, 2, 3]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/booking/commissions/recalculate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "booking",
+                    "commissions",
+                    "recalculate"
+                  ]
+                },
+                "description": "Recalculate commissions. Requires api.session and auth:web,sanctum middleware."
+              },
+              "response": []
+            }
+          ]
+        }
+      ],
+      "description": "Booking endpoints"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ]
+}
