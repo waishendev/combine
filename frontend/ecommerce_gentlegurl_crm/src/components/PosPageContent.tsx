@@ -2494,7 +2494,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       )}
                     </div>
                   )
-
+                })}
 
                 {(cart.service_items ?? []).map((serviceItem) => (
                   <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
@@ -2516,7 +2516,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     </div>
                   </div>
                 ))}
-                })}
               </div>
             ) : (
               <div className="mt-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
