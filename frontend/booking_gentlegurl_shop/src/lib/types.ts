@@ -36,6 +36,8 @@ export type BookingCartItem = {
   end_at: string;
   expires_at: string;
   status: string;
+  deposit_amount?: number | null;
+  package_claim_status?: "reserved" | "consumed" | "released" | null;
 };
 
 export type BookingCart = {
@@ -66,6 +68,7 @@ export type BookingRecord = {
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;
+  package_claim_status?: 'reserved' | 'consumed' | 'released' | null;
 };
 
 export type AuthUser = {

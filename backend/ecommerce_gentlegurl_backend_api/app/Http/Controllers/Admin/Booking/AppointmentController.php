@@ -9,6 +9,7 @@ use App\Models\Booking\BookingPhoto;
 use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\Voucher;
 use App\Services\Booking\StaffCommissionService;
+use App\Services\Booking\CustomerServicePackageService;
 use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -16,7 +17,10 @@ use Illuminate\Support\Facades\DB;
 
 class AppointmentController extends Controller
 {
-    public function __construct(private readonly StaffCommissionService $staffCommissionService)
+    public function __construct(
+        private readonly StaffCommissionService $staffCommissionService,
+        private readonly CustomerServicePackageService $customerServicePackageService,
+    )
     {
     }
 
@@ -95,7 +99,12 @@ class AppointmentController extends Controller
             $booking->save();
 
             if ($status === 'COMPLETED') {
+                $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
                 $this->staffCommissionService->applyCompletedBooking($booking->loadMissing('service'));
+            }
+
+            if (in_array($status, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW', 'NOTIFIED_CANCELLATION'], true)) {
+                $this->customerServicePackageService->releaseReservedClaimsForBooking((int) $booking->id);
             }
 
             $logAction = 'UPDATE_STATUS';

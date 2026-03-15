@@ -24,7 +24,24 @@ class LogController extends Controller
             }
         }
 
-        return $this->respond($query->orderByDesc('created_at')->paginate($request->integer('per_page', 50)));
+        $paginator = $query->orderByDesc('created_at')->paginate($request->integer('per_page', 50));
+        
+        // Add actor_name to each log entry
+        $paginator->getCollection()->transform(function ($log) {
+            $actorName = null;
+            if ($log->actor_id && $log->actor_type) {
+                if ($log->actor_type === 'STAFF' || $log->actor_type === 'ADMIN') {
+                    $user = \App\Models\User::find($log->actor_id);
+                    $actorName = $user?->name ?? null;
+                } elseif ($log->actor_type === 'SYSTEM') {
+                    $actorName = 'System';
+                }
+            }
+            $log->actor_name = $actorName;
+            return $log;
+        });
+
+        return $this->respond($paginator);
     }
 
     public function export(Request $request)

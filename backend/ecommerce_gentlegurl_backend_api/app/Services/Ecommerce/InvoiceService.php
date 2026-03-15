@@ -2,6 +2,7 @@
 
 namespace App\Services\Ecommerce;
 
+use App\Models\Booking\CustomerServicePackage;
 use App\Models\Ecommerce\Order;
 use App\Services\SettingService;
 
@@ -9,10 +10,10 @@ class InvoiceService
 {
     public function buildPdf(Order $order)
     {
-        $order->loadMissing(['items', 'pickupStore']);
+        $order->loadMissing(['items', 'serviceItems', 'pickupStore']);
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
-        $items = $order->items->map(function ($item) {
+        $productItems = $order->items->map(function ($item) {
             return [
                 'product_name' => $item->product_name_snapshot,
                 'product_sku' => $item->sku_snapshot,
@@ -24,6 +25,44 @@ class InvoiceService
                 'promotion_summary' => data_get($item->promotion_snapshot, 'summary'),
             ];
         })->values();
+
+        $serviceItems = $order->serviceItems
+            ->where('item_type', 'service')
+            ->map(fn ($item) => [
+                'product_name' => $item->service_name_snapshot,
+                'product_sku' => null,
+                'variant_name' => 'Service',
+                'variant_sku' => null,
+                'quantity' => (int) $item->qty,
+                'unit_price' => (float) $item->price_snapshot,
+                'line_total' => (float) $item->line_total,
+                'promotion_summary' => null,
+            ])
+            ->values();
+
+        $packageItems = CustomerServicePackage::query()
+            ->with('servicePackage:id,name,selling_price')
+            ->where('purchased_from', 'POS')
+            ->where('purchased_ref_id', (int) $order->id)
+            ->get()
+            ->groupBy('service_package_id')
+            ->map(function ($rows) {
+                $first = $rows->first();
+
+                return [
+                    'product_name' => (string) ($first?->servicePackage?->name ?? 'Service Package'),
+                    'product_sku' => null,
+                    'variant_name' => 'Service Package',
+                    'variant_sku' => null,
+                    'quantity' => (int) $rows->count(),
+                    'unit_price' => (float) ($first?->servicePackage?->selling_price ?? 0),
+                    'line_total' => round((float) $rows->count() * (float) ($first?->servicePackage?->selling_price ?? 0), 2),
+                    'promotion_summary' => null,
+                ];
+            })
+            ->values();
+
+        $items = $productItems->concat($serviceItems)->concat($packageItems)->values();
 
         return app('snappy.pdf.wrapper')->loadView('invoices.order', [
             'order' => $order,

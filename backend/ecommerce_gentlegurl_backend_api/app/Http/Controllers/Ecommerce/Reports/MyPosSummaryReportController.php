@@ -40,34 +40,67 @@ class MyPosSummaryReportController extends Controller
             $this->baseOrderQuery($validated, $ownerUserId),
             $staffId,
         );
+        $basePackageQuery = fn () => $this->applyPackageStaffFilter(
+            $this->basePackageItemQuery($validated, $ownerUserId),
+            $staffId,
+        );
 
         $effectiveLineTotalExpr = $this->effectiveLineTotalExpr();
         $snapshotLineTotalExpr = $this->snapshotLineTotalExpr();
         $commissionRateExpr = $this->commissionRateExpr();
 
-        $ordersCount = (clone $baseQuery())
+        $ordersCount = (clone $this->baseOrdersScopeQuery($validated, $ownerUserId))
+            ->where(function (Builder $query) {
+                $query->whereExists(function ($subQuery) {
+                    $subQuery->selectRaw('1')
+                        ->from('order_items as oi_exists')
+                        ->whereColumn('oi_exists.order_id', 'orders.id');
+                })->orWhereExists(function ($subQuery) {
+                    $subQuery->selectRaw('1')
+                        ->from('customer_service_packages as csp_exists')
+                        ->whereColumn('csp_exists.purchased_ref_id', 'orders.id')
+                        ->where('csp_exists.purchased_from', 'POS');
+                });
+            })
             ->distinct('orders.id')
             ->count('orders.id');
 
         $itemsCount = (clone $baseQuery())
-            ->count('order_items.id');
+            ->count('order_items.id')
+            + (clone $basePackageQuery())->count('customer_service_packages.id');
 
         $itemsWithStaffCount = (clone $baseQuery())
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->distinct('order_items.id')
-            ->count('order_items.id');
+            ->count('order_items.id')
+            + (clone $basePackageQuery())
+                ->whereExists(function ($subQuery) {
+                    $subQuery->selectRaw('1')
+                        ->from('service_package_staff_splits as sps_exists')
+                        ->whereColumn('sps_exists.customer_service_package_id', 'customer_service_packages.id');
+                })
+                ->distinct('customer_service_packages.id')
+                ->count('customer_service_packages.id');
 
         $itemsWithoutStaffCount = max(0, $itemsCount - $itemsWithStaffCount);
 
         $totalItemAmount = (float) ((clone $baseQuery())
             ->selectRaw("COALESCE(SUM($effectiveLineTotalExpr), 0) AS total_item_amount")
             ->value('total_item_amount') ?? 0);
+        $totalItemAmount += (float) ((clone $basePackageQuery())
+            ->selectRaw('COALESCE(SUM(COALESCE((SELECT SUM(sps_sum.split_sales_amount) FROM service_package_staff_splits sps_sum WHERE sps_sum.customer_service_package_id = customer_service_packages.id), service_packages.selling_price)), 0) AS total_package_amount')
+            ->value('total_package_amount') ?? 0);
 
         $totalStaffCommission = (float) ((clone $baseQuery())
             ->leftJoin('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->when($staffId, fn (Builder $query) => $query->where('order_item_staff_splits.staff_id', $staffId))
             ->selectRaw("COALESCE(SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS total_staff_commission")
             ->value('total_staff_commission') ?? 0);
+        $totalStaffCommission += (float) ((clone $basePackageQuery())
+            ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
+            ->when($staffId, fn (Builder $query) => $query->where('service_package_staff_splits.staff_id', $staffId))
+            ->selectRaw('COALESCE(SUM(service_package_staff_splits.commission_amount_snapshot), 0) AS total_package_commission')
+            ->value('total_package_commission') ?? 0);
 
         $myCommission = $totalStaffCommission;
         if ($restrictToCurrentUser && $user->staff_id) {
@@ -76,6 +109,11 @@ class MyPosSummaryReportController extends Controller
                 ->where('order_item_staff_splits.staff_id', (int) $user->staff_id)
                 ->selectRaw("COALESCE(SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS my_commission")
                 ->value('my_commission') ?? 0);
+            $myCommission += (float) ((clone $basePackageQuery())
+                ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
+                ->where('service_package_staff_splits.staff_id', (int) $user->staff_id)
+                ->selectRaw('COALESCE(SUM(service_package_staff_splits.commission_amount_snapshot), 0) AS my_package_commission')
+                ->value('my_package_commission') ?? 0);
         }
 
         $freeMetrics = (clone $baseQuery())
@@ -103,7 +141,7 @@ class MyPosSummaryReportController extends Controller
             ])
             ->values();
 
-        $paginator = (clone $baseQuery())
+        $productDetailQuery = (clone $baseQuery())
             ->selectRaw('orders.id AS order_id')
             ->selectRaw('orders.order_number AS order_no')
             ->selectRaw('orders.created_at AS order_date')
@@ -112,24 +150,55 @@ class MyPosSummaryReportController extends Controller
             ->selectRaw('creator_staff.phone AS created_by_phone')
             ->selectRaw('COALESCE(creator_staff.email, creator_user.email) AS created_by_email')
             ->selectRaw('order_items.id AS order_item_id')
+            ->selectRaw("'product' AS item_type")
             ->selectRaw('order_items.product_name_snapshot AS product_name')
             ->selectRaw('order_items.quantity AS qty')
             ->selectRaw("($effectiveLineTotalExpr) AS item_total_price")
             ->selectRaw("($snapshotLineTotalExpr) AS item_snapshot_total")
             ->selectRaw('COALESCE(order_items.is_staff_free_applied, false) AS is_staff_free_applied')
-            ->selectRaw('EXISTS (SELECT 1 FROM order_item_staff_splits oiss WHERE oiss.order_item_id = order_items.id) AS has_staff_assignment')
-            ->orderByDesc('orders.created_at')
-            ->orderByDesc('order_items.id')
+            ->selectRaw('EXISTS (SELECT 1 FROM order_item_staff_splits oiss WHERE oiss.order_item_id = order_items.id) AS has_staff_assignment');
+
+        $packageDetailQuery = (clone $basePackageQuery())
+            ->selectRaw('orders.id AS order_id')
+            ->selectRaw('orders.order_number AS order_no')
+            ->selectRaw('orders.created_at AS order_date')
+            ->selectRaw('orders.created_by_user_id AS created_by_user_id')
+            ->selectRaw('COALESCE(creator_staff.name, creator_user.name) AS created_by_name')
+            ->selectRaw('creator_staff.phone AS created_by_phone')
+            ->selectRaw('COALESCE(creator_staff.email, creator_user.email) AS created_by_email')
+            ->selectRaw('customer_service_packages.id AS order_item_id')
+            ->selectRaw("'service_package' AS item_type")
+            ->selectRaw('service_packages.name AS product_name')
+            ->selectRaw('1 AS qty')
+            ->selectRaw('COALESCE((SELECT SUM(sps_amount.split_sales_amount) FROM service_package_staff_splits sps_amount WHERE sps_amount.customer_service_package_id = customer_service_packages.id), service_packages.selling_price) AS item_total_price')
+            ->selectRaw('COALESCE((SELECT SUM(sps_amount.split_sales_amount) FROM service_package_staff_splits sps_amount WHERE sps_amount.customer_service_package_id = customer_service_packages.id), service_packages.selling_price) AS item_snapshot_total')
+            ->selectRaw('false AS is_staff_free_applied')
+            ->selectRaw('EXISTS (SELECT 1 FROM service_package_staff_splits sps WHERE sps.customer_service_package_id = customer_service_packages.id) AS has_staff_assignment');
+
+        $combinedDetailQuery = $productDetailQuery->unionAll($packageDetailQuery);
+
+        $paginator = DB::query()->fromSub($combinedDetailQuery, 'report_rows')
+            ->orderByDesc('report_rows.order_date')
+            ->orderByDesc('report_rows.order_item_id')
             ->paginate($perPage);
 
-        $itemIds = collect($paginator->items())->pluck('order_item_id')->map(fn ($v) => (int) $v)->all();
+        $productItemIds = collect($paginator->items())
+            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'product')
+            ->pluck('order_item_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+        $packageItemIds = collect($paginator->items())
+            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'service_package')
+            ->pluck('order_item_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
 
         $splitsGrouped = collect();
-        if (! empty($itemIds)) {
-            $splitsGrouped = DB::table('order_item_staff_splits')
+        if (! empty($productItemIds)) {
+            $productSplitsGrouped = DB::table('order_item_staff_splits')
                 ->leftJoin('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
                 ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
-                ->whereIn('order_item_staff_splits.order_item_id', $itemIds)
+                ->whereIn('order_item_staff_splits.order_item_id', $productItemIds)
                 ->selectRaw('order_item_staff_splits.order_item_id')
                 ->selectRaw('order_item_staff_splits.staff_id')
                 ->selectRaw('staffs.name AS staff_name')
@@ -139,14 +208,41 @@ class MyPosSummaryReportController extends Controller
                 ->orderBy('order_item_staff_splits.id')
                 ->get()
                 ->map(fn ($row) => [
-                    'order_item_id' => (int) $row->order_item_id,
+                    'split_key' => sprintf('product:%d', (int) $row->order_item_id),
                     'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
                     'staff_name' => $row->staff_name,
                     'share_percent' => (int) $row->share_percent,
                     'commission_rate_snapshot' => (float) ($row->commission_rate_snapshot ?? 0),
                     'staff_commission_amount' => round((float) $row->staff_commission_amount, 2),
                 ])
-                ->groupBy('order_item_id');
+                ->groupBy('split_key');
+
+            $splitsGrouped = $splitsGrouped->merge($productSplitsGrouped);
+        }
+
+        if (! empty($packageItemIds)) {
+            $packageSplitsGrouped = DB::table('service_package_staff_splits')
+                ->leftJoin('staffs', 'staffs.id', '=', 'service_package_staff_splits.staff_id')
+                ->whereIn('service_package_staff_splits.customer_service_package_id', $packageItemIds)
+                ->selectRaw('service_package_staff_splits.customer_service_package_id AS order_item_id')
+                ->selectRaw('service_package_staff_splits.staff_id')
+                ->selectRaw('staffs.name AS staff_name')
+                ->selectRaw('service_package_staff_splits.share_percent')
+                ->selectRaw('service_package_staff_splits.service_commission_rate_snapshot AS commission_rate_snapshot')
+                ->selectRaw('service_package_staff_splits.commission_amount_snapshot AS staff_commission_amount')
+                ->orderBy('service_package_staff_splits.id')
+                ->get()
+                ->map(fn ($row) => [
+                    'split_key' => sprintf('service_package:%d', (int) $row->order_item_id),
+                    'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
+                    'staff_name' => $row->staff_name,
+                    'share_percent' => (int) $row->share_percent,
+                    'commission_rate_snapshot' => (float) ($row->commission_rate_snapshot ?? 0),
+                    'staff_commission_amount' => round((float) $row->staff_commission_amount, 2),
+                ])
+                ->groupBy('split_key');
+
+            $splitsGrouped = $splitsGrouped->merge($packageSplitsGrouped);
         }
 
         $details = collect($paginator->items())
@@ -159,13 +255,16 @@ class MyPosSummaryReportController extends Controller
                 'created_by_phone' => $row->created_by_phone,
                 'created_by_email' => $row->created_by_email,
                 'order_item_id' => (int) $row->order_item_id,
+                'item_type' => $row->item_type,
                 'product_name' => $row->product_name,
                 'qty' => (int) $row->qty,
                 'item_total_price' => round((float) $row->item_total_price, 2),
                 'item_snapshot_total' => round((float) ($row->item_snapshot_total ?? 0), 2),
                 'is_staff_free_applied' => (bool) $row->is_staff_free_applied,
                 'has_staff_assignment' => (bool) $row->has_staff_assignment,
-                'staff_splits' => ($splitsGrouped->get((int) $row->order_item_id) ?? collect())->values(),
+                'staff_splits' => ($splitsGrouped->get(sprintf('%s:%d', $row->item_type, (int) $row->order_item_id)) ?? collect())
+                    ->map(fn ($split) => collect($split)->except('split_key')->all())
+                    ->values(),
             ])
             ->values();
 
@@ -199,8 +298,15 @@ class MyPosSummaryReportController extends Controller
 
     protected function baseOrderQuery(array $filters, ?int $ownerUserId = null): Builder
     {
+        $query = $this->baseOrdersScopeQuery($filters, $ownerUserId)
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id');
+
+        return $query;
+    }
+
+    protected function baseOrdersScopeQuery(array $filters, ?int $ownerUserId = null): Builder
+    {
         $query = DB::table('orders')
-            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->leftJoin('users as creator_user', 'creator_user.id', '=', 'orders.created_by_user_id')
             ->leftJoin('staffs as creator_staff', 'creator_staff.id', '=', 'creator_user.staff_id')
             ->whereDate('orders.created_at', '>=', $filters['start_date'])
@@ -223,6 +329,16 @@ class MyPosSummaryReportController extends Controller
         return $query;
     }
 
+    protected function basePackageItemQuery(array $filters, ?int $ownerUserId = null): Builder
+    {
+        return $this->baseOrdersScopeQuery($filters, $ownerUserId)
+            ->join('customer_service_packages', function ($join) {
+                $join->on('customer_service_packages.purchased_ref_id', '=', 'orders.id')
+                    ->where('customer_service_packages.purchased_from', 'POS');
+            })
+            ->join('service_packages', 'service_packages.id', '=', 'customer_service_packages.service_package_id');
+    }
+
     protected function applyStaffFilter(Builder $query, ?int $staffId = null): Builder
     {
         if (! $staffId) {
@@ -234,6 +350,20 @@ class MyPosSummaryReportController extends Controller
                 ->from('order_item_staff_splits as oiss_filter')
                 ->whereColumn('oiss_filter.order_item_id', 'order_items.id')
                 ->where('oiss_filter.staff_id', $staffId);
+        });
+    }
+
+    protected function applyPackageStaffFilter(Builder $query, ?int $staffId = null): Builder
+    {
+        if (! $staffId) {
+            return $query;
+        }
+
+        return $query->whereExists(function ($subquery) use ($staffId) {
+            $subquery->selectRaw('1')
+                ->from('service_package_staff_splits as sps_filter')
+                ->whereColumn('sps_filter.customer_service_package_id', 'customer_service_packages.id')
+                ->where('sps_filter.staff_id', $staffId);
         });
     }
 

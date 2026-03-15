@@ -194,6 +194,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                           timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur",
                         })}
                       </p>
+                      <p className="text-sm text-neutral-600">Item deposit: RM {Number(item.deposit_amount ?? 0).toFixed(2)}</p>
+                      {item.package_claim_status === "reserved" || item.package_claim_status === "consumed" ? (
+                        <p className="text-xs text-emerald-700">Claimed from package. Deposit waived for this item.</p>
+                      ) : null}
                       <p className="mt-1 text-sm text-red-600">Expires in {formatDuration(secondsLeft(item.expires_at))}</p>
                     </div>
                     <div className="shrink-0 space-y-2 text-right">
@@ -202,7 +206,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                           <p className="text-xs text-emerald-700">Package sessions: {availableMap[item.id] ?? 0}</p>
                           <button
                             className="rounded-full border border-emerald-300 px-3 py-1 text-xs text-emerald-700 disabled:opacity-40"
-                            disabled={!customerId || (availableMap[item.id] ?? 0) <= 0}
+                            disabled={!customerId || (availableMap[item.id] ?? 0) <= 0 || item.package_claim_status === "reserved" || item.package_claim_status === "consumed"}
                             onClick={async () => {
                               if (!customerId) return;
                               try {
@@ -213,14 +217,17 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                                   source_ref_id: item.id,
                                   used_qty: 1,
                                 });
-                                setMessage(`Redeemed 1 package session for ${item.service_name}.`);
+                                setMessage(`Package reserved for ${item.service_name}. Session will be consumed when booking is completed.`);
                                 setAvailableMap((prev) => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] ?? 0) - 1) }));
+                                await loadCart();
                               } catch (err) {
-                                setMessage(err instanceof Error ? err.message : "Unable to redeem package.");
+                                setMessage(err instanceof Error ? err.message : "Unable to reserve package.");
                               }
                             }}
                           >
-                            Claim package session
+                            {item.package_claim_status === "reserved" || item.package_claim_status === "consumed"
+                              ? "Package Claimed"
+                              : "Claim Package (Reserve)"}
                           </button>
                         </>
                       ) : null}

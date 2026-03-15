@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking\CustomerServicePackage;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Services\Ecommerce\InvoiceService;
 use Carbon\Carbon;
@@ -18,7 +19,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items'])
+            ->with(['order.items', 'order.serviceItems'])
             ->first();
 
         if (!$receiptToken) {
@@ -30,6 +31,12 @@ class PublicReceiptController extends Controller
         }
 
         $order = $receiptToken->order;
+
+        $servicePackageItems = CustomerServicePackage::query()
+            ->with('servicePackage:id,name,selling_price')
+            ->where('purchased_from', 'POS')
+            ->where('purchased_ref_id', (int) $order->id)
+            ->get();
 
         return $this->respond([
             'order_number' => $order->order_number,
@@ -43,6 +50,7 @@ class PublicReceiptController extends Controller
             'grand_total' => $order->grand_total,
             'promotion_snapshot' => $order->promotion_snapshot,
             'items' => $order->items->map(fn ($item) => [
+                'type' => 'product',
                 'name' => $item->product_name_snapshot,
                 'variant_name' => $item->variant_name_snapshot,
                 'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
@@ -54,6 +62,24 @@ class PublicReceiptController extends Controller
                 'promotion_tier_summary' => data_get($item->promotion_snapshot, 'summary'),
                 'promotion_snapshot' => $item->promotion_snapshot,
             ])->values(),
+            'service_items' => $order->serviceItems->where('item_type', 'service')->values()->map(fn ($item) => [
+                'type' => 'service',
+                'name' => $item->service_name_snapshot,
+                'qty' => $item->qty,
+                'unit_price' => $item->price_snapshot,
+                'line_total' => $item->line_total,
+            ])->values(),
+            'package_items' => $servicePackageItems->groupBy('service_package_id')->map(function ($rows) {
+                $first = $rows->first();
+                return [
+                    'type' => 'service_package',
+                    'service_package_id' => (int) ($first->service_package_id ?? 0),
+                    'name' => (string) ($first?->servicePackage?->name ?? 'Service Package'),
+                    'qty' => (int) $rows->count(),
+                    'unit_price' => (float) ($first?->servicePackage?->selling_price ?? 0),
+                    'line_total' => round((float) $rows->count() * (float) ($first?->servicePackage?->selling_price ?? 0), 2),
+                ];
+            })->values(),
         ]);
     }
 
@@ -61,7 +87,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items'])
+            ->with(['order.items', 'order.serviceItems'])
             ->first();
 
         if (! $receiptToken) {

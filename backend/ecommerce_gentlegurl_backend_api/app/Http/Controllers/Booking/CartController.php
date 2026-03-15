@@ -9,6 +9,7 @@ use App\Models\Booking\BookingCartItem;
 use App\Models\Booking\BookingCartPackageItem;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingSetting;
+use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\ServicePackage;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
@@ -156,6 +157,7 @@ class CartController extends Controller
             $item = BookingCartItem::where('booking_cart_id', $cart->id)->findOrFail($itemId);
             if ($item->status === 'active') {
                 $item->update(['status' => 'removed']);
+                $this->customerServicePackageService->releaseReservedClaimsBySource('BOOKING', (int) $item->id);
             }
 
             return $this->respond($this->buildCartPayload($cart->fresh()));
@@ -174,6 +176,7 @@ class CartController extends Controller
 
             if ($item->status === 'active') {
                 $item->update(['status' => 'removed']);
+                $this->customerServicePackageService->releaseReservedClaimsBySource('BOOKING', (int) $item->id);
             }
 
             return $this->respond($this->buildCartPayload($cart->fresh()));
@@ -216,7 +219,8 @@ class CartController extends Controller
 
             $bookingIds = [];
             $ownedPackageIds = [];
-            $depositTotal = $this->calculateDepositTotal($activeItems->all());
+            $claimStatusesByItem = $this->claimStatusesByCartItem($customer?->id, $activeItems->pluck('id')->all());
+            $depositTotal = $this->calculateDepositTotal($activeItems->all(), $claimStatusesByItem);
             $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $activeItemIds = $activeItems->pluck('id')->all();
 
@@ -244,6 +248,16 @@ class CartController extends Controller
                     'payment_status' => 'UNPAID',
                     'hold_expires_at' => $item->expires_at,
                 ]);
+
+                if ($customer) {
+                    $this->customerServicePackageService->attachReservedClaimsToBooking(
+                        (int) $customer->id,
+                        (int) $item->service_id,
+                        'BOOKING',
+                        (int) $item->id,
+                        (int) $booking->id,
+                    );
+                }
 
                 $item->update(['status' => 'converted']);
                 $bookingIds[] = $booking->id;
@@ -415,7 +429,8 @@ class CartController extends Controller
         $activePackageItems = $cart->packageItems;
 
         $nextExpiry = $activeItems->min('expires_at');
-        $depositTotal = $this->calculateDepositTotal($activeItems->all());
+        $claimStatusesByItem = $this->claimStatusesByCartItem($cart->customer_id, $activeItems->pluck('id')->all());
+        $depositTotal = $this->calculateDepositTotal($activeItems->all(), $claimStatusesByItem);
         $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
 
         return [
@@ -432,7 +447,10 @@ class CartController extends Controller
                 'end_at' => $item->end_at?->toIso8601String(),
                 'expires_at' => $item->expires_at?->toIso8601String(),
                 'status' => $item->status,
-                'deposit_amount' => $item->service ? (float) $item->service->deposit_amount : null,
+                'package_claim_status' => $claimStatusesByItem[(int) $item->id] ?? null,
+                'deposit_amount' => in_array(($claimStatusesByItem[(int) $item->id] ?? null), ['reserved', 'consumed'], true)
+                    ? 0.0
+                    : ($item->service ? (float) $item->service->deposit_amount : null),
             ])->values(),
             'package_items' => $activePackageItems->map(fn (BookingCartPackageItem $item) => [
                 'id' => (int) $item->id,
@@ -477,16 +495,53 @@ class CartController extends Controller
         return ! $cartConflict;
     }
 
-    private function calculateDepositTotal(array $items): float
+    private function calculateDepositTotal(array $items, array $claimStatusesByItem = []): float
     {
         $settings = $this->getSettings();
-        $premiumCount = collect($items)->where('service_type', 'premium')->count();
+        $payableItems = collect($items)->filter(function (BookingCartItem $item) use ($claimStatusesByItem) {
+            return ! in_array($claimStatusesByItem[(int) $item->id] ?? null, ['reserved', 'consumed'], true);
+        })->values();
+
+        $premiumCount = $payableItems->where('service_type', 'premium')->count();
 
         if ($premiumCount > 0) {
             return (float) $settings->deposit_amount_per_premium * $premiumCount;
         }
 
-        return count($items) > 0 ? (float) $settings->deposit_base_amount_if_only_standard : 0.0;
+        return $payableItems->count() > 0 ? (float) $settings->deposit_base_amount_if_only_standard : 0.0;
+    }
+
+    private function claimStatusesByCartItem(?int $customerId, array $cartItemIds): array
+    {
+        if (! $customerId || empty($cartItemIds)) {
+            return [];
+        }
+
+        $claims = CustomerServicePackageUsage::query()
+            ->where('customer_id', $customerId)
+            ->where('used_from', 'BOOKING')
+            ->whereIn('used_ref_id', $cartItemIds)
+            ->whereIn('status', ['reserved', 'consumed', 'released'])
+            ->get(['used_ref_id', 'status']);
+
+        $priority = ['released' => 1, 'reserved' => 2, 'consumed' => 3];
+        $map = [];
+
+        foreach ($claims as $claim) {
+            $itemId = (int) ($claim->used_ref_id ?? 0);
+            if ($itemId <= 0) {
+                continue;
+            }
+
+            $incomingPriority = $priority[$claim->status] ?? 0;
+            $existingPriority = $priority[$map[$itemId] ?? ''] ?? 0;
+
+            if ($incomingPriority >= $existingPriority) {
+                $map[$itemId] = $claim->status;
+            }
+        }
+
+        return $map;
     }
 
     private function getSettings(): BookingSetting

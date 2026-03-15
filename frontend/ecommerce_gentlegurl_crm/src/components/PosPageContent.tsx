@@ -77,6 +77,8 @@ type ServiceCartItem = {
   line_total: number
   service_type?: string | null
   deposit_contribution?: number
+  package_claim_status?: 'reserved' | 'consumed' | 'released' | null
+  claimed_by_package?: boolean
   assigned_staff_id?: number | null
   assigned_staff_name?: string | null
   customer_id?: number | null
@@ -95,6 +97,15 @@ type PackageCartItem = {
   qty: number
   unit_price: number
   line_total: number
+  customer_id?: number | null
+  customer_name?: string | null
+  staff_splits?: Array<{
+    staff_id: number
+    share_percent: number
+    split_sales_amount?: number
+    service_commission_rate_snapshot?: number
+    commission_amount_snapshot?: number
+  }>
 }
 
 type BookingServiceOption = {
@@ -109,9 +120,11 @@ type BookingServiceOption = {
 type ServicePackageOption = {
   id: number
   name: string
+  description?: string | null
   selling_price?: number
   total_sessions?: number
   valid_days?: number
+  items_summary?: string[]
   is_active?: boolean
 }
 
@@ -180,8 +193,10 @@ type StaffOption = {
   phone?: string | null
   email?: string | null
   code?: string | null
+  service_commission_rate?: number
   is_active?: boolean | number | string | null
 }
+
 
 type CheckoutItemAssignment = {
   cart_item_id: number
@@ -361,6 +376,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [servicePackages, setServicePackages] = useState<ServicePackageOption[]>([])
   const [servicePackagesLoading, setServicePackagesLoading] = useState(false)
   const [packageQuery, setPackageQuery] = useState('')
+  const [packageModalOpen, setPackageModalOpen] = useState(false)
+  const [packageDraft, setPackageDraft] = useState<ServicePackageOption | null>(null)
+  const [packageSelectedMember, setPackageSelectedMember] = useState<Member | null>(null)
+  const [packageMemberQuery, setPackageMemberQuery] = useState('')
+  const [packageMembers, setPackageMembers] = useState<Member[]>([])
+  const [packageMembersLoading, setPackageMembersLoading] = useState(false)
+  const [packageModalError, setPackageModalError] = useState<string | null>(null)
+  const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
   const [bookingSubmitting, setBookingSubmitting] = useState(false)
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
@@ -390,8 +413,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [checkoutConfirmationOpen, setCheckoutConfirmationOpen] = useState(false)
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
+  const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
-  const [itemSplitEditorItemId, setItemSplitEditorItemId] = useState<number | null>(null)
+  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package'; id: number } | null>(null)
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
   const [itemSplitError, setItemSplitError] = useState<string | null>(null)
@@ -480,11 +504,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return firstActive?.sku?.trim() ?? ''
   }, [])
 
+  const cartItems = useMemo(() => cart?.items ?? [], [cart?.items])
+  const cartServiceItems = useMemo(() => cart?.service_items ?? [], [cart?.service_items])
+  const cartPackageItems = useMemo(() => cart?.package_items ?? [], [cart?.package_items])
+
   const totalItems = useMemo(() => {
-    const productQty = cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0
-    const serviceQty = cart?.service_items?.reduce((sum, item) => sum + item.qty, 0) ?? 0
+    const productQty = cartItems.reduce((sum, item) => sum + item.qty, 0)
+    const serviceQty = cartServiceItems.reduce((sum, item) => sum + item.qty, 0)
     return productQty + serviceQty
-  }, [cart])
+  }, [cartItems, cartServiceItems])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
   const bookingDepositTotal = Number(cart?.booking_deposit_total ?? 0)
@@ -655,6 +683,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         phone: staff.phone ?? null,
         email: staff.email ?? null,
         code: staff.code ?? null,
+        service_commission_rate: Number((staff as { service_commission_rate?: number }).service_commission_rate ?? 0),
         is_active: staff.is_active,
       }))
       .filter((staff) => staff.id > 0 && staff.name)
@@ -1179,24 +1208,62 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         return
       }
       const json = await res.json().catch(() => null)
-      const payload = (json && typeof json === 'object' && 'data' in json)
-        ? (json as { data?: unknown }).data
-        : json
+      console.log('service packages response', json)
 
-      const list = Array.isArray(payload) ? payload : []
-      const mapped = list
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: { data?: unknown } }).data
+        : null
+      const packages = Array.isArray(payload?.data) ? payload.data : []
+      console.log('parsed packages', packages)
+
+      const mapped = packages
         .map((item): ServicePackageOption | null => {
           if (!item || typeof item !== 'object') return null
           const maybe = item as Record<string, unknown>
           const id = Number(maybe.id)
           if (!Number.isFinite(id) || id <= 0) return null
 
+          const rawItems = Array.isArray(maybe.items)
+            ? maybe.items
+            : Array.isArray(maybe.service_package_items)
+              ? maybe.service_package_items
+              : []
+
+          const itemsSummary = rawItems
+            .map((rawItem) => {
+              if (!rawItem || typeof rawItem !== 'object') return null
+              const itemObj = rawItem as Record<string, unknown>
+              const quantity = Number(itemObj.quantity ?? itemObj.qty ?? 0)
+
+              const bookingService = itemObj.booking_service && typeof itemObj.booking_service === 'object'
+                ? (itemObj.booking_service as Record<string, unknown>)
+                : null
+
+              const serviceName = String(
+                bookingService?.name
+                  ?? itemObj.booking_service_name
+                  ?? itemObj.service_name
+                  ?? itemObj.name
+                  ?? ''
+              ).trim()
+
+              if (!serviceName) return null
+              if (Number.isFinite(quantity) && quantity > 0) {
+                return `${serviceName} x${Math.trunc(quantity)}`
+              }
+
+              return serviceName
+            })
+            .filter((value): value is string => Boolean(value))
+
           return {
             id,
             name: String(maybe.name ?? '').trim(),
+            description: String(maybe.description ?? '').trim() || null,
             selling_price: Number(maybe.selling_price ?? 0),
             total_sessions: Number(maybe.total_sessions ?? 0),
             valid_days: Number(maybe.valid_days ?? 0),
+            items_summary: itemsSummary,
             is_active: Boolean(maybe.is_active ?? true),
           }
         })
@@ -1307,43 +1374,82 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     void loadSlots()
   }, [bookingAssignedStaffId, bookingDate, bookingModalOpen, bookingServiceDraft?.id])
 
-  const addPackageToCart = useCallback(async (servicePackage: ServicePackageOption) => {
-    if (!selectedMember?.id) {
-      showMsg('Please assign member before adding package.', 'error')
+  const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
+    let staffs = activeStaffs
+    if (!staffs.length) {
+      staffs = await fetchStaffOptions('')
+      setActiveStaffs(staffs)
+    }
+
+
+    setPackageDraft(servicePackage)
+    setPackageSelectedMember(selectedMember)
+    setPackageMemberQuery(selectedMember?.name ?? '')
+    setPackageMembers([])
+    setPackageMembersLoading(false)
+    setPackageModalError(null)
+    setPackageModalOpen(true)
+  }, [activeStaffs, fetchStaffOptions, selectedMember])
+
+  const submitPackageToCart = useCallback(async () => {
+    if (!packageDraft?.id) return
+
+    const selectedModalMember = packageSelectedMember
+    if (!selectedModalMember?.id) {
+      setPackageModalError('Please select member.')
       return
     }
 
+
+    setPackageSubmitting(true)
     const res = await fetch('/api/proxy/pos/cart/add-package', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ service_package_id: servicePackage.id, qty: 1 }),
+      body: JSON.stringify({
+        service_package_id: packageDraft.id,
+        customer_id: selectedModalMember.id,
+        qty: 1,
+      }),
     })
     const json = await res.json().catch(() => null)
 
     if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to add package.', 'error')
+      setPackageModalError(json?.message ?? 'Unable to add package.')
+      setPackageSubmitting(false)
       return
     }
 
     setCart((json?.data?.cart ?? null) as Cart | null)
+    setSelectedMember(selectedModalMember)
+    setPackageModalOpen(false)
+    setPackageSubmitting(false)
+    setPackageModalError(null)
     showMsg('Package added to cart.', 'success')
-  }, [selectedMember?.id, showMsg])
+  }, [packageDraft?.id, packageSelectedMember, showMsg])
 
-  const updatePackageCartQty = useCallback(async (itemId: number, qty: number) => {
-    if (qty < 1) return
-    const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ qty }),
-    })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to update package quantity.', 'error')
-      return
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!packageModalOpen) return
+      setPackageMembersLoading(true)
+      try {
+        const params = new URLSearchParams({ page: '1', per_page: '20' })
+        if (packageMemberQuery.trim()) params.set('q', packageMemberQuery.trim())
+        const res = await fetch(`/api/proxy/pos/members/search?${params.toString()}`)
+        const json = await res.json().catch(() => null)
+        const paged = extractPaged<Member>(json)
+        if (!cancelled) setPackageMembers(paged.data)
+      } finally {
+        if (!cancelled) setPackageMembersLoading(false)
+      }
     }
 
-    setCart((json?.data?.cart ?? null) as Cart | null)
-  }, [showMsg])
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [packageMemberQuery, packageModalOpen])
 
   const removePackageCartItem = useCallback(async (itemId: number) => {
     const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, { method: 'DELETE' })
@@ -1360,7 +1466,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const redeemServiceItem = useCallback(async (serviceItem: ServiceCartItem) => {
     if (!selectedMember?.id) {
-      showMsg('Please assign member first before redeeming package.', 'error')
+      showMsg('Please assign member first before reserving package claim.', 'error')
       return
     }
 
@@ -1380,12 +1486,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        showMsg(json?.message ?? 'Unable to redeem package.', 'error')
+        showMsg(json?.message ?? 'Unable to reserve package claim.', 'error')
         return
       }
 
       setServiceAvailabilityMap((prev) => ({ ...prev, [serviceItem.id]: Math.max(0, (prev[serviceItem.id] ?? 0) - 1) }))
-      showMsg('Package session redeemed for this service item.', 'success')
+      await loadCart()
+      showMsg('Package claim reserved. It will be consumed once booking is completed.', 'success')
     } finally {
       setServiceRedeemingIds((prev) => ({ ...prev, [serviceItem.id]: false }))
     }
@@ -1571,7 +1678,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
   }, [cart?.service_items, selectedMember?.id])
 
-  const hasCartItems = (cart?.items.length ?? 0) > 0 || (cart?.service_items?.length ?? 0) > 0 || (cart?.package_items?.length ?? 0) > 0
+  const hasCartItems = cartItems.length > 0 || cartServiceItems.length > 0 || cartPackageItems.length > 0
 
   useEffect(() => {
     if (productSearchMode !== 'sku') {
@@ -1998,7 +2105,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || !hasCartItems || checkingOut) return
-    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+    if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
     }
@@ -2006,13 +2113,43 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCheckingOut(true)
     setCheckoutError(null)
 
+    for (const packageItem of cartPackageItems) {
+      const rows = packageCheckoutSplits[packageItem.id] ?? []
+      if (rows.length === 0) {
+        setCheckoutError(`Please assign at least one staff split for package ${packageItem.package_name}.`)
+        setCheckingOut(false)
+        return
+      }
+      const ids = new Set<number>()
+      let total = 0
+      for (const row of rows) {
+        if (!row.staff_id || row.staff_id <= 0) {
+          setCheckoutError(`Please select staff for all splits of package ${packageItem.package_name}.`)
+          setCheckingOut(false)
+          return
+        }
+        if (ids.has(row.staff_id)) {
+          setCheckoutError(`Duplicate staff found in package split for ${packageItem.package_name}.`)
+          setCheckingOut(false)
+          return
+        }
+        ids.add(row.staff_id)
+        total += Number(row.share_percent || 0)
+      }
+      if (total !== 100) {
+        setCheckoutError(`Total split for package ${packageItem.package_name} must be 100%.`)
+        setCheckingOut(false)
+        return
+      }
+    }
+
     const res = await fetch('/api/proxy/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         payment_method: paymentMethod,
         member_id: selectedMember?.id ?? null,
-        items: cart.items.map((item) => ({
+        items: cartItems.map((item) => ({
           cart_item_id: item.id,
           product_id: item.product_id,
           qty: item.qty,
@@ -2033,13 +2170,18 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           assigned_staff_id: item.assigned_staff_id ?? null,
           service_commission_rate_used: item.commission_rate_used ?? 0,
         })),
-        package_items: (cart.package_items ?? []).map((item) => ({
+        package_items: cartPackageItems.map((item) => ({
           type: 'service_package',
           cart_package_item_id: item.id,
           service_package_id: item.service_package_id,
           quantity: item.qty,
           snapshot_name: item.package_name,
           snapshot_price: item.unit_price,
+          customer_id: item.customer_id ?? selectedMember?.id ?? null,
+          staff_splits: (packageCheckoutSplits[item.id] ?? []).map((split) => ({
+            staff_id: split.staff_id,
+            share_percent: split.share_percent,
+          })),
         })),
       }),
     })
@@ -2122,7 +2264,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const confirmCheckout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
-    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+    if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
     }
@@ -2159,7 +2301,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const checkout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
-    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+    if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
     }
@@ -2294,7 +2436,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const syncCheckoutAssignments = useCallback(async () => {
-    if (!cart?.items?.length) {
+    if (!cartItems.length) {
       setCheckoutItemAssignments([])
       return
     }
@@ -2306,7 +2448,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       setActiveStaffs(fetched)
     }
 
-    setCheckoutItemAssignments((prev) => cart.items.map((item) => {
+    setCheckoutItemAssignments((prev) => cartItems.map((item) => {
       const existing = prev.find((x) => x.cart_item_id === item.id)
       if (existing) return existing
       const defaultStaffId = currentUser.staff_id ?? null
@@ -2316,7 +2458,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         is_default: Boolean(defaultStaffId),
       }
     }))
-  }, [activeStaffs, cart?.items, currentUser.staff_id, fetchStaffOptions])
+  }, [activeStaffs, cartItems, currentUser.staff_id, fetchStaffOptions])
 
   const openItemSplitEditor = async (cartItemId: number) => {
     let nextStaffs = activeStaffs
@@ -2337,7 +2479,33 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     })
 
     setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
-    setItemSplitEditorItemId(cartItemId)
+    setItemSplitEditorTarget({ type: 'product', id: cartItemId })
+    setItemSplitAutoBalance(true)
+    setItemSplitError(null)
+    setItemSplitEditorOpen(true)
+  }
+
+
+  const openPackageSplitEditor = async (packageItemId: number) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+
+    const existingSplits = packageCheckoutSplits[packageItemId] ?? []
+    const rows = existingSplits.map((split) => {
+      const selected = nextStaffs.find((staff) => staff.id === split.staff_id)
+      return createDraftRow({
+        staff_id: split.staff_id,
+        share_percent: split.share_percent,
+        search: selected ? getStaffInputLabel(selected) : '',
+        options: nextStaffs,
+      })
+    })
+
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
+    setItemSplitEditorTarget({ type: 'package', id: packageItemId })
     setItemSplitAutoBalance(true)
     setItemSplitError(null)
     setItemSplitEditorOpen(true)
@@ -2363,16 +2531,28 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       return
     }
 
-    if (!itemSplitEditorItemId) return
-    setCheckoutItemAssignments((prev) => prev.map((assignment) => {
-      if (assignment.cart_item_id !== itemSplitEditorItemId) return assignment
-      return {
-        ...assignment,
-        is_default: false,
-        splits: itemSplitDraftRows.map((row) => ({ staff_id: row.staff_id!, share_percent: row.share_percent })),
-      }
-    }))
+    if (!itemSplitEditorTarget) return
+
+    const mappedSplits = itemSplitDraftRows.map((row) => ({ staff_id: row.staff_id!, share_percent: row.share_percent }))
+
+    if (itemSplitEditorTarget.type === 'product') {
+      setCheckoutItemAssignments((prev) => prev.map((assignment) => {
+        if (assignment.cart_item_id !== itemSplitEditorTarget.id) return assignment
+        return {
+          ...assignment,
+          is_default: false,
+          splits: mappedSplits,
+        }
+      }))
+    } else {
+      setPackageCheckoutSplits((prev) => ({
+        ...prev,
+        [itemSplitEditorTarget.id]: mappedSplits,
+      }))
+    }
+
     setItemSplitEditorOpen(false)
+    setItemSplitEditorTarget(null)
   }
 
   const onAddDraftSplitRow = () => {
@@ -2413,6 +2593,21 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const openCheckoutConfirmation = async () => {
     await syncCheckoutAssignments()
+
+    setPackageCheckoutSplits((prev) => {
+      const next: Record<number, CheckoutItemStaffSplit[]> = {}
+      const defaultStaffId = currentUser.staff_id ?? activeStaffs[0]?.id ?? null
+      for (const pkg of cartPackageItems) {
+        const existing = prev[pkg.id]
+        if (existing && existing.length > 0) {
+          next[pkg.id] = existing
+          continue
+        }
+        next[pkg.id] = defaultStaffId ? [{ staff_id: defaultStaffId, share_percent: 100 }] : []
+      }
+      return next
+    })
+
     setCheckoutConfirmationOpen(true)
   }
 
@@ -2713,19 +2908,30 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   {servicePackagesLoading ? (
                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading packages...</div>
                   ) : filteredServicePackages.length === 0 ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No packages found.</div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No service packages available</div>
                   ) : (
                     filteredServicePackages.map((servicePackage) => (
                       <div key={servicePackage.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{servicePackage.name}</p>
-                          <p className="text-xs text-gray-500">Sessions: {servicePackage.total_sessions ?? 0} • Valid: {servicePackage.valid_days ?? 0} days</p>
+                          {servicePackage.description ? (
+                            <p className="mt-1 text-xs text-gray-600 line-clamp-2">{servicePackage.description}</p>
+                          ) : null}
+                          <p className="text-xs text-gray-500">Sessions: {servicePackage.total_sessions ?? 0}</p>
+                          <p className="text-xs text-gray-500">Validity: {Number(servicePackage.valid_days ?? 0) > 0 ? `${servicePackage.valid_days} day(s)` : 'No expiry'}</p>
+                          {servicePackage.items_summary && servicePackage.items_summary.length > 0 ? (
+                            <div className="mt-1 space-y-0.5">
+                              {servicePackage.items_summary.map((summary, idx) => (
+                                <p key={`${servicePackage.id}-${idx}`} className="text-xs text-gray-500">{summary}</p>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-bold text-gray-900">RM {Number(servicePackage.selling_price ?? 0).toFixed(2)}</span>
                           <button
                             type="button"
-                            onClick={() => void addPackageToCart(servicePackage)}
+                            onClick={() => void openPackageModal(servicePackage)}
                             className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                           >
                             Add Package
@@ -2752,7 +2958,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             </h3>
             {hasCartItems ? (
               <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 xl:min-h-0">
-                {cart.items.map((item) => {
+                {cartItems.map((item) => {
                   // Get current variant stock info
                   const currentVariant = item.variant_id 
                     ? (cartVariantOptions[item.id] ?? []).find(v => v.id === item.variant_id)
@@ -2881,7 +3087,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   )
                 })}
 
-                {(cart.service_items ?? []).map((serviceItem) => (
+                {cartServiceItems.map((serviceItem) => (
                   <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -2904,14 +3110,21 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="font-semibold text-gray-700 text-sm">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
                         <div className="mt-1 text-xs text-gray-500">Deposit Contribution</div>
                         <div className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</div>
+                        {serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed' ? (
+                          <div className="mt-1 text-[11px] font-semibold text-emerald-700">Reserved from Package</div>
+                        ) : null}
                         <div className="mt-2 text-[11px] text-emerald-700">Package balance: {serviceAvailabilityMap[serviceItem.id] ?? 0}</div>
                         <button
                           type="button"
-                          disabled={!selectedMember?.id || (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0 || serviceRedeemingIds[serviceItem.id]}
+                          disabled={!selectedMember?.id || (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0 || serviceRedeemingIds[serviceItem.id] || serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed'}
                           onClick={() => void redeemServiceItem(serviceItem)}
                           className="mt-1 rounded border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {serviceRedeemingIds[serviceItem.id] ? 'Claiming...' : 'Claim Package'}
+                          {serviceRedeemingIds[serviceItem.id]
+                            ? 'Reserving...'
+                            : (serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed')
+                              ? 'Package Applied'
+                              : 'Claim Package (Reserve)'}
                         </button>
 
                         <button
@@ -2926,35 +3139,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   </div>
                 ))}
 
-                {(cart.package_items ?? []).map((packageItem) => (
+                {cartPackageItems.map((packageItem) => (
                   <div key={`package-${packageItem.id}`} className="rounded-xl border border-purple-200 bg-purple-50 p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Service Package</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Service Package</p>
                         <h4 className="font-bold text-gray-900 text-sm mt-0.5">{packageItem.package_name}</h4>
-                        <div className="mt-2 flex w-fit items-center gap-2 rounded-lg bg-white p-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (packageItem.qty <= 1) {
-                                void removePackageCartItem(packageItem.id)
-                                return
-                              }
-                              void updatePackageCartQty(packageItem.id, packageItem.qty - 1)
-                            }}
-                            className="h-7 w-7 rounded-md border border-gray-300 bg-white text-xs font-bold"
-                          >
-                            -
-                          </button>
-                          <span className="w-8 text-center text-sm font-bold text-gray-900">{packageItem.qty}</span>
-                          <button
-                            type="button"
-                            onClick={() => void updatePackageCartQty(packageItem.id, packageItem.qty + 1)}
-                            className="h-7 w-7 rounded-md border border-gray-300 bg-white text-xs font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
+                        <p className="mt-2 text-xs text-gray-600">Qty: {packageItem.qty}</p>
+                        <p className="text-xs text-gray-600">Member: {packageItem.customer_name ?? (packageItem.customer_id ? `Member #${packageItem.customer_id}` : 'Not assigned')}</p>
+                        <p className="text-xs text-gray-600">Split: {(packageItem.staff_splits?.length ?? 0) > 0 ? `${packageItem.staff_splits?.length} staff split` : 'No split'}</p>
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-gray-500">Unit</div>
@@ -3008,6 +3201,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <span className="text-gray-900">Total</span>
                   <span className="text-lg text-gray-900">RM {cartTotal.toFixed(2)}</span>
                 </div>
+                {cartPackageItems.length > 0 && (
+                  <div className="border-t border-gray-200 pt-2 text-xs text-gray-700">
+                    Package assignment: {selectedMember ? selectedMember.name : 'No member selected'}
+                  </div>
+                )}
               </div>
 
             </div>
@@ -3326,7 +3524,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {cart.items.map((item) => {
+                    {cartItems.map((item) => {
                       const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === item.id)
                       const hasVariant = Boolean(item.variant_id || item.variant_name || item.variant_sku)
                       const variantDisplay = item.variant_name || item.variant_sku || null
@@ -3422,7 +3620,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         </tr>
                       )
                     })}
-                    {(cart.service_items ?? []).map((serviceItem) => {
+                    {cartServiceItems.map((serviceItem) => {
                       const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
                         ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
                         : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
@@ -3444,6 +3642,41 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           </td>
                           <td className="px-4 py-3">
                             <p className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                          </td>
+                        </tr>
+                      )
+                    })}
+
+                    {cartPackageItems.map((packageItem) => {
+                      const splitRows = packageCheckoutSplits[packageItem.id] ?? []
+
+                      return (
+                        <tr key={`checkout-package-${packageItem.id}`} className="bg-purple-50/60 hover:bg-purple-50 transition-colors align-top">
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-900">{packageItem.package_name}</p>
+                            <p className="text-[11px] text-purple-700 font-semibold">SERVICE PACKAGE</p>
+                            <p className="text-xs text-gray-600 mt-0.5">Member: {packageItem.customer_name ?? (packageItem.customer_id ? `Member #${packageItem.customer_id}` : 'Not assigned')}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">Qty: {packageItem.qty}</p>
+                          </td>
+                          <td className="px-4 py-3 min-w-[320px]">
+                            <div className="space-y-2">
+                              <p className="text-xs text-gray-700">
+                                {splitRows.length > 0 ? `${splitRows.length} staff (${splitRows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)}%)` : 'No staff assigned'}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => void openPackageSplitEditor(packageItem.id)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border-2 border-purple-500 bg-gradient-to-r from-purple-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-purple-600 hover:to-purple-700"
+                              >
+                                Assign Staff Split
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-gray-700">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-purple-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
                           </td>
                         </tr>
                       )
@@ -3652,12 +3885,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         </div>
       ) : null}
 
-      {itemSplitEditorOpen && itemSplitEditorItemId ? (
+      {itemSplitEditorOpen && itemSplitEditorTarget ? (
         <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
           <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
               <h5 className="text-lg font-bold text-gray-900">Item Staff Split</h5>
-              <button type="button" onClick={() => setItemSplitEditorOpen(false)} className="text-2xl leading-none text-gray-500">×</button>
+              <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="text-2xl leading-none text-gray-500">×</button>
             </div>
 
             <div className="space-y-3 p-5">
@@ -3757,7 +3990,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               {itemSplitError && <p className="text-xs font-medium text-red-600">{itemSplitError}</p>}
 
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setItemSplitEditorOpen(false)} className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700">Cancel</button>
+                <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700">Cancel</button>
                 <button
                   type="button"
                   onClick={saveItemSplitEditor}
@@ -3771,6 +4004,87 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           </div>
         </div>
       ) : null}
+
+      {packageModalOpen && packageDraft && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900">Add Package to Cart</h3>
+            <p className="mt-1 text-sm text-gray-600">{packageDraft.name}</p>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+                <p className="font-semibold text-gray-900">Package Summary</p>
+                <p className="mt-1 text-xs text-gray-600">Selling Price: RM {Number(packageDraft.selling_price ?? 0).toFixed(2)}</p>
+                <p className="text-xs text-gray-600">Validity: {Number(packageDraft.valid_days ?? 0) > 0 ? `${packageDraft.valid_days} day(s)` : 'No expiry'}</p>
+                <p className="text-xs text-gray-600">Sessions: {packageDraft.total_sessions ?? 0}</p>
+                {(packageDraft.items_summary ?? []).length > 0 ? (
+                  <div className="mt-1 space-y-0.5">
+                    {(packageDraft.items_summary ?? []).map((summary, idx) => (
+                      <p key={`package-summary-${idx}`} className="text-xs text-gray-600">{summary}</p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-3">
+                <label className="block text-xs font-semibold text-gray-600">Member</label>
+                <input
+                  value={packageMemberQuery}
+                  onChange={(event) => setPackageMemberQuery(event.target.value)}
+                  placeholder="Search member by name / phone / email"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+                <div className="mt-2 max-h-28 overflow-y-auto rounded border border-gray-200">
+                  {packageMembersLoading ? (
+                    <p className="px-3 py-2 text-xs text-gray-500">Loading members...</p>
+                  ) : packageMembers.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-gray-500">No members found.</p>
+                  ) : (
+                    packageMembers.map((member) => (
+                      <button
+                        key={`package-member-${member.id}`}
+                        type="button"
+                        onClick={() => {
+                          setPackageSelectedMember(member)
+                          setPackageMemberQuery(member.name)
+                        }}
+                        className={`block w-full border-b border-gray-100 px-3 py-2 text-left text-xs last:border-b-0 ${packageSelectedMember?.id === member.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                      >
+                        {member.name}{member.phone ? ` (${member.phone})` : ''}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-600">Selected: {packageSelectedMember ? packageSelectedMember.name : 'None'}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Staff split and commission preview will be configured in Checkout Confirmation.
+            </div>
+
+            {packageModalError ? <p className="mt-3 text-sm font-medium text-red-600">{packageModalError}</p> : null}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPackageModalOpen(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitPackageToCart()}
+                disabled={packageSubmitting}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {packageSubmitting ? 'Adding...' : 'Add Package to Cart'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">

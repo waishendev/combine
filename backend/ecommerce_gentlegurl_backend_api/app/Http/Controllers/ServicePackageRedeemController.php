@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Booking\CustomerServicePackageService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 
 class ServicePackageRedeemController extends Controller
@@ -20,14 +21,18 @@ class ServicePackageRedeemController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
-        $usage = $this->service->redeem(
-            (int) $validated['customer_id'],
-            (int) $validated['booking_service_id'],
-            (string) $validated['source'],
-            isset($validated['source_ref_id']) ? (int) $validated['source_ref_id'] : null,
-            (int) ($validated['used_qty'] ?? 1),
-            $validated['notes'] ?? null,
-        );
+        try {
+            $usage = $this->service->redeem(
+                (int) $validated['customer_id'],
+                (int) $validated['booking_service_id'],
+                (string) $validated['source'],
+                isset($validated['source_ref_id']) ? (int) $validated['source_ref_id'] : null,
+                (int) ($validated['used_qty'] ?? 1),
+                $validated['notes'] ?? null,
+            );
+        } catch (ModelNotFoundException | \RuntimeException $e) {
+            return $this->respondError($e->getMessage() ?: 'No package balance available.', 422);
+        }
 
         return $this->respond($usage);
     }
