@@ -329,6 +329,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [serviceQuery, setServiceQuery] = useState('')
   const [services, setServices] = useState<BookingServiceOption[]>([])
   const [servicesLoading, setServicesLoading] = useState(false)
+  const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
+  const [serviceRedeemingIds, setServiceRedeemingIds] = useState<Record<number, boolean>>({})
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -1142,6 +1144,41 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     showMsg('Service added to cart.', 'success')
   }, [showMsg])
 
+
+
+  const redeemServiceItem = useCallback(async (serviceItem: ServiceCartItem) => {
+    if (!selectedMember?.id) {
+      showMsg('Please assign member first before redeeming package.', 'error')
+      return
+    }
+
+    setServiceRedeemingIds((prev) => ({ ...prev, [serviceItem.id]: true }))
+    try {
+      const res = await fetch('/api/proxy/service-packages/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: selectedMember.id,
+          booking_service_id: serviceItem.booking_service_id,
+          source: 'POS',
+          source_ref_id: serviceItem.id,
+          used_qty: 1,
+        }),
+      })
+
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to redeem package.', 'error')
+        return
+      }
+
+      setServiceAvailabilityMap((prev) => ({ ...prev, [serviceItem.id]: Math.max(0, (prev[serviceItem.id] ?? 0) - 1) }))
+      showMsg('Package session redeemed for this service item.', 'success')
+    } finally {
+      setServiceRedeemingIds((prev) => ({ ...prev, [serviceItem.id]: false }))
+    }
+  }, [selectedMember?.id, showMsg])
+
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return
     const res = await fetch(`/api/proxy/pos/cart/items/${itemId}`, {
@@ -1260,6 +1297,47 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       String(service.service_type ?? '').toLowerCase().includes(keyword),
     )
   }, [serviceQuery, services])
+
+  useEffect(() => {
+    const memberId = selectedMember?.id
+    const serviceItems = cart?.service_items ?? []
+
+    if (!memberId || serviceItems.length === 0) {
+      setServiceAvailabilityMap({})
+      return
+    }
+
+    let cancelled = false
+
+    const run = async () => {
+      const next: Record<number, number> = {}
+      await Promise.all(serviceItems.map(async (item) => {
+        try {
+          const res = await fetch(`/api/proxy/customers/${memberId}/service-package-available-for/${item.booking_service_id}`, { cache: 'no-store' })
+          if (!res.ok) {
+            next[item.id] = 0
+            return
+          }
+          const json = await res.json().catch(() => null)
+          const rows = Array.isArray(json?.data) ? json.data : []
+          next[item.id] = rows.reduce((sum: number, row: unknown) => {
+            if (!row || typeof row !== 'object') return sum
+            const maybe = row as Record<string, unknown>
+            return sum + Number(maybe.remaining_qty ?? 0)
+          }, 0)
+        } catch {
+          next[item.id] = 0
+        }
+      }))
+
+      if (!cancelled) setServiceAvailabilityMap(next)
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [cart?.service_items, selectedMember?.id])
 
   const hasCartItems = (cart?.items.length ?? 0) > 0 || (cart?.service_items?.length ?? 0) > 0
 
@@ -2512,6 +2590,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="font-semibold text-gray-900 text-sm">RM {Number(serviceItem.unit_price ?? 0).toFixed(2)}</div>
                         <div className="mt-1 text-xs text-gray-500">Total</div>
                         <div className="font-bold text-emerald-700">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
+                        <div className="mt-2 text-[11px] text-emerald-700">Package balance: {serviceAvailabilityMap[serviceItem.id] ?? 0}</div>
+                        <button
+                          type="button"
+                          disabled={!selectedMember?.id || (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0 || serviceRedeemingIds[serviceItem.id]}
+                          onClick={() => void redeemServiceItem(serviceItem)}
+                          className="mt-1 rounded border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {serviceRedeemingIds[serviceItem.id] ? 'Claiming...' : 'Claim Package'}
+                        </button>
                       </div>
                     </div>
                   </div>
