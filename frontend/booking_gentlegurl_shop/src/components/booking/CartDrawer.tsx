@@ -213,14 +213,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                                   source_ref_id: item.id,
                                   used_qty: 1,
                                 });
-                                setMessage(`Redeemed 1 package session for ${item.service_name}.`);
+                                setMessage(`Package reserved for ${item.service_name}. Session will be consumed when booking is completed.`);
                                 setAvailableMap((prev) => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] ?? 0) - 1) }));
                               } catch (err) {
-                                setMessage(err instanceof Error ? err.message : "Unable to redeem package.");
+                                setMessage(err instanceof Error ? err.message : "Unable to reserve package.");
                               }
                             }}
                           >
-                            Claim package session
+                            Claim Package (Reserve)
                           </button>
                         </>
                       ) : null}

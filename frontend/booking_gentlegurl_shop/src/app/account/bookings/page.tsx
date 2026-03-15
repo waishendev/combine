@@ -47,6 +47,13 @@ export default function MyBookingsPage() {
             <p className="text-sm text-neutral-600">{booking.staff_name || "Any staff"}</p>
             <p className="text-sm text-neutral-600">{new Date(booking.starts_at).toLocaleString("en-MY", { timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
             <p className="mt-1 text-sm">Status: {booking.status}</p>
+            {booking.package_claim_status === 'reserved' ? (
+              <p className="mt-1 text-sm text-amber-700">Package Applied (Reserved) — will be consumed when booking is completed.</p>
+            ) : booking.package_claim_status === 'consumed' ? (
+              <p className="mt-1 text-sm text-emerald-700">Consumed from package.</p>
+            ) : booking.package_claim_status === 'released' ? (
+              <p className="mt-1 text-sm text-slate-600">Package reservation released.</p>
+            ) : null}
           </div>
         ))}
       </div>

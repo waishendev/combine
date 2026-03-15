@@ -66,6 +66,7 @@ export type BookingRecord = {
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;
+  package_claim_status?: 'reserved' | 'consumed' | 'released' | null;
 };
 
 export type AuthUser = {

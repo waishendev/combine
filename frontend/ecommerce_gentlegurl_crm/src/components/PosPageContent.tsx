@@ -1464,7 +1464,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const redeemServiceItem = useCallback(async (serviceItem: ServiceCartItem) => {
     if (!selectedMember?.id) {
-      showMsg('Please assign member first before redeeming package.', 'error')
+      showMsg('Please assign member first before reserving package claim.', 'error')
       return
     }
 
@@ -1484,12 +1484,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        showMsg(json?.message ?? 'Unable to redeem package.', 'error')
+        showMsg(json?.message ?? 'Unable to reserve package claim.', 'error')
         return
       }
 
       setServiceAvailabilityMap((prev) => ({ ...prev, [serviceItem.id]: Math.max(0, (prev[serviceItem.id] ?? 0) - 1) }))
-      showMsg('Package session redeemed for this service item.', 'success')
+      showMsg('Package claim reserved. It will be consumed once booking is completed.', 'success')
     } finally {
       setServiceRedeemingIds((prev) => ({ ...prev, [serviceItem.id]: false }))
     }
@@ -3114,7 +3114,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           onClick={() => void redeemServiceItem(serviceItem)}
                           className="mt-1 rounded border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {serviceRedeemingIds[serviceItem.id] ? 'Claiming...' : 'Claim Package'}
+                          {serviceRedeemingIds[serviceItem.id] ? 'Reserving...' : 'Claim Package (Reserve)'}
                         </button>
 
                         <button

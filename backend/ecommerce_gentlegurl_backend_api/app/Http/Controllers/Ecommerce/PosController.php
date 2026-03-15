@@ -597,6 +597,7 @@ class PosController extends Controller
     {
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = $cart->serviceItems()->findOrFail($itemId);
+        $this->customerServicePackageService->releaseReservedClaimsBySource('POS', (int) $item->id);
         $item->delete();
 
         return $this->respond([
@@ -1121,6 +1122,15 @@ class PosController extends Controller
                     'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
                     'notes' => $serviceItem->notes,
                 ]);
+
+
+                $this->customerServicePackageService->attachReservedClaimsToBooking(
+                    (int) $serviceItem->customer_id,
+                    (int) $serviceItem->booking_service_id,
+                    'POS',
+                    (int) $serviceItem->id,
+                    (int) $booking->id,
+                );
 
                 $lineTotal = round(((float) $serviceItem->price_snapshot) * (int) $serviceItem->qty, 2);
                 $splits = collect($serviceItem->staff_splits ?? []);

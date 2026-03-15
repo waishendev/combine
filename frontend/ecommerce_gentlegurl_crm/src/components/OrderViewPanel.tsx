@@ -73,6 +73,8 @@ type OrderDetailData = {
     assigned_staff_name?: string | null
     start_at?: string | null
     end_at?: string | null
+    package_claim_status?: 'reserved' | 'consumed' | 'released' | null
+    package_claim_note?: string | null
   }>
   package_items?: Array<{
     item_type?: 'service_package' | string
@@ -459,6 +461,7 @@ export default function OrderViewPanel({
                                 <th className="px-2 py-2 text-right font-medium">Quantity</th>
                                 <th className="px-2 py-2 text-right font-medium">Unit Price</th>
                                 <th className="px-2 py-2 text-right font-medium">Total</th>
+                                <th className="px-2 py-2 text-left font-medium">Package Claim</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -508,6 +511,7 @@ export default function OrderViewPanel({
                                 <th className="px-2 py-2 text-right font-medium">Quantity</th>
                                 <th className="px-2 py-2 text-right font-medium">Unit Price</th>
                                 <th className="px-2 py-2 text-right font-medium">Total</th>
+                                <th className="px-2 py-2 text-left font-medium">Package Claim</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -520,6 +524,10 @@ export default function OrderViewPanel({
                                     {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
                                   </td>
                                   <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                                  <td className="px-2 py-2 text-slate-700">
+                                    {item.package_claim_status === 'reserved' ? 'Package Applied (Reserved)' : item.package_claim_status === 'consumed' ? 'Consumed from package' : item.package_claim_status === 'released' ? 'Package reservation released' : '-'}
+                                    {item.package_claim_note ? <p className="text-xs text-slate-500">{item.package_claim_note}</p> : null}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>

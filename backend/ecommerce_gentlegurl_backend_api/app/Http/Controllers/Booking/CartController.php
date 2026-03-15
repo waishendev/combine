@@ -156,6 +156,7 @@ class CartController extends Controller
             $item = BookingCartItem::where('booking_cart_id', $cart->id)->findOrFail($itemId);
             if ($item->status === 'active') {
                 $item->update(['status' => 'removed']);
+                $this->customerServicePackageService->releaseReservedClaimsBySource('BOOKING', (int) $item->id);
             }
 
             return $this->respond($this->buildCartPayload($cart->fresh()));
@@ -174,6 +175,7 @@ class CartController extends Controller
 
             if ($item->status === 'active') {
                 $item->update(['status' => 'removed']);
+                $this->customerServicePackageService->releaseReservedClaimsBySource('BOOKING', (int) $item->id);
             }
 
             return $this->respond($this->buildCartPayload($cart->fresh()));
@@ -244,6 +246,16 @@ class CartController extends Controller
                     'payment_status' => 'UNPAID',
                     'hold_expires_at' => $item->expires_at,
                 ]);
+
+                if ($customer) {
+                    $this->customerServicePackageService->attachReservedClaimsToBooking(
+                        (int) $customer->id,
+                        (int) $item->service_id,
+                        'BOOKING',
+                        (int) $item->id,
+                        (int) $booking->id,
+                    );
+                }
 
                 $item->update(['status' => 'converted']);
                 $bookingIds[] = $booking->id;

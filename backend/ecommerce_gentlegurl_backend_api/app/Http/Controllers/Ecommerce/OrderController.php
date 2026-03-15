@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Models\Booking\CustomerServicePackage;
+use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
 // use App\Services\Ecommerce\OrderReserveService;
@@ -139,6 +140,12 @@ class OrderController extends Controller
             ->where('purchased_ref_id', (int) $order->id)
             ->get();
 
+        $claimsByBooking = CustomerServicePackageUsage::query()
+            ->whereIn('booking_id', $order->serviceItems->pluck('booking_id')->filter()->all())
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('booking_id');
+
         return $this->respond([
             'id' => $order->id,
             'order_no' => $order->order_number,
@@ -198,7 +205,17 @@ class OrderController extends Controller
                     'cover_image_url' => $thumbnail,
                 ];
             }),
-            'service_items' => $order->serviceItems->values()->map(function ($item) {
+            'service_items' => $order->serviceItems->values()->map(function ($item) use ($claimsByBooking) {
+                $claims = $item->booking_id ? ($claimsByBooking->get((int) $item->booking_id) ?? collect()) : collect();
+                $claimStatus = null;
+                if ($claims->contains(fn ($claim) => $claim->status === 'consumed')) {
+                    $claimStatus = 'consumed';
+                } elseif ($claims->contains(fn ($claim) => $claim->status === 'reserved')) {
+                    $claimStatus = 'reserved';
+                } elseif ($claims->contains(fn ($claim) => $claim->status === 'released')) {
+                    $claimStatus = 'released';
+                }
+
                 return [
                     'item_type' => $item->item_type ?: 'service',
                     'service_name' => $item->service_name_snapshot,
@@ -208,6 +225,12 @@ class OrderController extends Controller
                     'assigned_staff_name' => $item->assignedStaff?->name,
                     'start_at' => $item->start_at,
                     'end_at' => $item->end_at,
+                    'package_claim_status' => $claimStatus,
+                    'package_claim_note' => $claimStatus === 'reserved'
+                        ? 'Reserved from package, will be consumed upon service completion'
+                        : ($claimStatus === 'consumed'
+                            ? 'Consumed from package'
+                            : ($claimStatus === 'released' ? 'Package reservation released' : null)),
                 ];
             }),
             'package_items' => $servicePackageItems->groupBy('service_package_id')->map(function ($rows) {
