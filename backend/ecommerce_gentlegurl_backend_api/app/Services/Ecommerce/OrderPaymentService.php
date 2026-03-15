@@ -24,7 +24,14 @@ class OrderPaymentService
 
     protected function deductStock(Order $order): void
     {
-        $items = $order->items;
+        $items = $order->items()
+            ->whereNotNull('product_id')
+            ->where(function ($query) {
+                $query->whereNull('line_type')
+                    ->orWhere('line_type', 'product');
+            })
+            ->get();
+
         foreach ($items as $item) {
             /** @var OrderItem $item */
             StockMovement::create([
