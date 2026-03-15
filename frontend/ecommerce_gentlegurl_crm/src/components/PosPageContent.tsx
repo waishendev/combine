@@ -1116,7 +1116,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const fetchServices = useCallback(async () => {
     setServicesLoading(true)
     try {
-      const res = await fetch('/api/proxy/pos/services/search', { cache: 'no-store' })
+      const res = await fetch('/api/proxy/booking/services', { cache: 'no-store' })
       if (!res.ok) {
         setServices([])
         return
@@ -1157,7 +1157,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const fetchServicePackages = useCallback(async () => {
     setServicePackagesLoading(true)
     try {
-      const res = await fetch('/api/proxy/pos/service-packages/search', { cache: 'no-store' })
+      const res = await fetch('/api/proxy/booking/service-packages', { cache: 'no-store' })
       if (!res.ok) {
         setServicePackages([])
         return
@@ -1286,24 +1286,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
 
     setCart((json?.data?.cart ?? null) as Cart | null)
-  }, [showMsg])
-
-  const addServiceToCart = useCallback(async (service: BookingServiceOption) => {
-
-    const res = await fetch('/api/proxy/pos/cart/add-service', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ booking_service_id: service.id, qty: 1 }),
-    })
-    const json = await res.json().catch(() => null)
-
-    if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to add service.', 'error')
-      return
-    }
-
-    setCart((json?.data?.cart ?? null) as Cart | null)
-    showMsg('Service added to cart.', 'success')
   }, [showMsg])
 
 
