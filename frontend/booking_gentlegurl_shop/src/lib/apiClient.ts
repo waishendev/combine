@@ -1,5 +1,5 @@
 import { getOrCreateBookingGuestToken } from "./bookingGuestToken";
-import { AuthUser, BookingCart, BookingRecord, BookingSlot, Service, ServicePackage, ServicePackageAvailability, Staff } from "./types";
+import { AuthUser, BookingCart, BookingRecord, BookingSlot, MyServicePackage, Service, ServicePackage, ServicePackageAvailability, Staff } from "./types";
 
 const API_PREFIX = "/api/proxy";
 
@@ -171,4 +171,19 @@ export async function redeemServicePackage(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+
+export async function purchaseServicePackage(payload: {
+  service_package_id: number;
+}) {
+  return request<{ success?: boolean; message?: string; data?: unknown }>("/booking/service-packages/purchase", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getMyServicePackages() {
+  const response = await request<{ data: MyServicePackage[] } | MyServicePackage[]>("/booking/my/service-packages");
+  return unwrapData<MyServicePackage[]>(response);
 }

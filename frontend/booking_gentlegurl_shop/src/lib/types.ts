@@ -87,3 +87,20 @@ export type ServicePackageAvailability = {
   remaining_qty: number;
   expires_at?: string | null;
 };
+
+
+export type MyServicePackage = {
+  id: number;
+  status: string;
+  started_at?: string | null;
+  expires_at?: string | null;
+  service_package?: ServicePackage;
+  balances?: Array<{
+    id: number;
+    booking_service_id: number;
+    total_qty: number;
+    used_qty: number;
+    remaining_qty: number;
+    booking_service?: { id: number; name: string };
+  }>;
+};

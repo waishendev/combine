@@ -72,6 +72,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
             {user ? (
               <>
                 <Link href="/account/bookings" className={isActive("/account/bookings")}>My Bookings</Link>
+                <Link href="/account/packages" className={isActive("/account/packages")}>My Packages</Link>
                 <button onClick={onLogout} className="rounded-full border border-neutral-200 px-4 py-2">Logout</button>
               </>
             ) : (

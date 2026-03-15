@@ -943,6 +943,8 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
 
     Route::middleware('auth:customer,sanctum')->group(function () {
         Route::get('/my', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
+        Route::get('/my/service-packages', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'index']);
+        Route::post('/service-packages/purchase', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'purchase']);
     });
 });
 
