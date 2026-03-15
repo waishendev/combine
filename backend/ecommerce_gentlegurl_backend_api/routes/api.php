@@ -380,9 +380,15 @@ $protectedRoutes = function () {
         Route::get('/members/search', [PosController::class, 'memberSearch']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
         Route::get('/products/search', [PosController::class, 'productSearch']);
+        Route::get('/services/search', [PosController::class, 'serviceSearch']);
+        Route::get('/service-packages/search', [PosController::class, 'packageSearch']);
         Route::get('/cart', [PosController::class, 'cart']);
+        Route::post('/book-service', [PosController::class, 'bookService']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
         Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
+        Route::post('/cart/add-package', [PosController::class, 'addPackageToCart']);
+        Route::patch('/cart/package-items/{itemId}', [PosController::class, 'updatePackageCartItem']);
+        Route::delete('/cart/package-items/{itemId}', [PosController::class, 'removePackageCartItem']);
         Route::post('/cart/add-service', [PosController::class, 'addService']);
         Route::post('/packages/purchase', [PosController::class, 'purchasePackage']);
         Route::post('/cart/voucher/apply', [PosController::class, 'applyVoucher']);
@@ -390,6 +396,7 @@ $protectedRoutes = function () {
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
         Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
+        Route::delete('/cart/service-items/{itemId}', [PosController::class, 'removeServiceCartItem']);
         Route::post('/checkout', [PosController::class, 'checkout']);
     });
 

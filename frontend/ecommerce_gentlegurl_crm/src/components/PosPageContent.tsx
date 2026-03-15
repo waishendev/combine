@@ -48,8 +48,11 @@ type Cart = {
   id: number
   items: CartItem[]
   service_items?: ServiceCartItem[]
+  package_items?: PackageCartItem[]
   subtotal: number
   grand_total: number
+  booking_deposit_total?: number
+  booking_deposit_breakdown?: { premium_count?: number; standard_count?: number; deposit_total?: number; per_premium_amount?: number; standard_base_amount?: number }
   voucher?: {
     id?: number | null
     customer_voucher_id?: number | null
@@ -72,9 +75,26 @@ type ServiceCartItem = {
   qty: number
   unit_price: number
   line_total: number
+  service_type?: string | null
+  deposit_contribution?: number
   assigned_staff_id?: number | null
   assigned_staff_name?: string | null
+  customer_id?: number | null
+  start_at?: string | null
+  end_at?: string | null
+  notes?: string | null
+  staff_splits?: Array<{ staff_id: number; share_percent: number; service_commission_rate_snapshot?: number }>
   commission_rate_used?: number
+}
+
+type PackageCartItem = {
+  id: number
+  type?: 'service_package'
+  service_package_id: number
+  package_name: string
+  qty: number
+  unit_price: number
+  line_total: number
 }
 
 type BookingServiceOption = {
@@ -86,7 +106,16 @@ type BookingServiceOption = {
   is_active?: boolean
 }
 
-type PosCatalogTab = 'products' | 'services'
+type ServicePackageOption = {
+  id: number
+  name: string
+  selling_price?: number
+  total_sessions?: number
+  valid_days?: number
+  is_active?: boolean
+}
+
+type PosCatalogTab = 'products' | 'book-service' | 'service-packages'
 
 type ProductOption = {
   id: number
@@ -329,6 +358,18 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [serviceQuery, setServiceQuery] = useState('')
   const [services, setServices] = useState<BookingServiceOption[]>([])
   const [servicesLoading, setServicesLoading] = useState(false)
+  const [servicePackages, setServicePackages] = useState<ServicePackageOption[]>([])
+  const [servicePackagesLoading, setServicePackagesLoading] = useState(false)
+  const [packageQuery, setPackageQuery] = useState('')
+  const [bookingModalOpen, setBookingModalOpen] = useState(false)
+  const [bookingSubmitting, setBookingSubmitting] = useState(false)
+  const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
+  const [bookingAssignedStaffId, setBookingAssignedStaffId] = useState<number | null>(null)
+  const [bookingDate, setBookingDate] = useState('')
+  const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string }>>([])
+  const [bookingSlotValue, setBookingSlotValue] = useState('')
+  const [bookingNotes, setBookingNotes] = useState('')
+  const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
   const [serviceRedeemingIds, setServiceRedeemingIds] = useState<Record<number, boolean>>({})
 
@@ -446,6 +487,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [cart])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
+  const bookingDepositTotal = Number(cart?.booking_deposit_total ?? 0)
+  const bookingDepositBreakdown = cart?.booking_deposit_breakdown ?? null
   
   // Calculate promotion discount from items
   const promotionDiscount = useMemo(() => {
@@ -1127,21 +1170,190 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
   }, [])
 
-  const addServiceToCart = useCallback(async (service: BookingServiceOption) => {
+  const fetchServicePackages = useCallback(async () => {
+    setServicePackagesLoading(true)
+    try {
+      const res = await fetch('/api/proxy/service-packages?per_page=100', { cache: 'no-store' })
+      if (!res.ok) {
+        setServicePackages([])
+        return
+      }
+      const json = await res.json().catch(() => null)
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: unknown }).data
+        : json
+
+      const list = Array.isArray(payload) ? payload : []
+      const mapped = list
+        .map((item): ServicePackageOption | null => {
+          if (!item || typeof item !== 'object') return null
+          const maybe = item as Record<string, unknown>
+          const id = Number(maybe.id)
+          if (!Number.isFinite(id) || id <= 0) return null
+
+          return {
+            id,
+            name: String(maybe.name ?? '').trim(),
+            selling_price: Number(maybe.selling_price ?? 0),
+            total_sessions: Number(maybe.total_sessions ?? 0),
+            valid_days: Number(maybe.valid_days ?? 0),
+            is_active: Boolean(maybe.is_active ?? true),
+          }
+        })
+        .filter((item): item is ServicePackageOption => Boolean(item && item.name && item.is_active !== false))
+
+      setServicePackages(mapped)
+    } catch {
+      setServicePackages([])
+    } finally {
+      setServicePackagesLoading(false)
+    }
+  }, [])
+
+  const openBookingModal = useCallback((service: BookingServiceOption) => {
+    setBookingServiceDraft(service)
+    setBookingAssignedStaffId(currentUser.staff_id ?? null)
+    setBookingDate('')
+    setBookingSlots([])
+    setBookingSlotValue('')
+    setBookingNotes('')
+    setBookingModalOpen(true)
+  }, [currentUser.staff_id])
+
+  const submitBooking = useCallback(async () => {
+    if (!bookingServiceDraft) return
+    if (!selectedMember?.id) {
+      showMsg('Please assign member.', 'error')
+      return
+    }
+    if (!bookingAssignedStaffId) {
+      showMsg('Please select assigned staff.', 'error')
+      return
+    }
+    if (!bookingDate) {
+      showMsg('Please select appointment date.', 'error')
+      return
+    }
+    if (!bookingSlotValue) {
+      showMsg('Please select appointment slot/time.', 'error')
+      return
+    }
+
+    setBookingSubmitting(true)
     const res = await fetch('/api/proxy/pos/cart/add-service', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ booking_service_id: service.id, qty: 1 }),
+      body: JSON.stringify({
+        booking_service_id: bookingServiceDraft.id,
+        customer_id: selectedMember.id,
+        assigned_staff_id: bookingAssignedStaffId,
+        start_at: bookingSlotValue,
+        notes: bookingNotes || null,
+        staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
+        qty: 1,
+      }),
     })
     const json = await res.json().catch(() => null)
 
     if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to add service.', 'error')
+      showMsg(json?.message ?? 'Unable to add service to cart.', 'error')
+      setBookingSubmitting(false)
       return
     }
 
     setCart((json?.data?.cart ?? null) as Cart | null)
-    showMsg('Service added to cart.', 'success')
+    showMsg('Service added to cart. Continue with checkout to collect payment.', 'success')
+    setBookingModalOpen(false)
+    setBookingSubmitting(false)
+  }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingServiceDraft, bookingSlotValue, selectedMember?.id, showMsg])
+
+
+  useEffect(() => {
+    const loadSlots = async () => {
+      if (!bookingModalOpen || !bookingServiceDraft?.id || !bookingAssignedStaffId || !bookingDate) {
+        setBookingSlots([])
+        setBookingSlotValue('')
+        return
+      }
+
+      setBookingSlotsLoading(true)
+      try {
+        const params = new URLSearchParams({
+          service_id: String(bookingServiceDraft.id),
+          staff_id: String(bookingAssignedStaffId),
+          date: bookingDate,
+        })
+        const res = await fetch(`/api/proxy/booking/availability?${params.toString()}`, { cache: 'no-store' })
+        const json = await res.json().catch(() => null)
+        const rows = Array.isArray(json?.data?.slots) ? json.data.slots : []
+        const slots = rows
+          .map((row: unknown) => {
+            if (!row || typeof row !== 'object') return null
+            const maybe = row as Record<string, unknown>
+            const startAt = String(maybe.start_at ?? '')
+            const endAt = String(maybe.end_at ?? '')
+            if (!startAt || !endAt) return null
+            return { start_at: startAt, end_at: endAt }
+          })
+          .filter((row): row is { start_at: string; end_at: string } => Boolean(row))
+
+        setBookingSlots(slots)
+        setBookingSlotValue((prev) => slots.some((slot) => slot.start_at === prev) ? prev : '')
+      } finally {
+        setBookingSlotsLoading(false)
+      }
+    }
+
+    void loadSlots()
+  }, [bookingAssignedStaffId, bookingDate, bookingModalOpen, bookingServiceDraft?.id])
+
+  const addPackageToCart = useCallback(async (servicePackage: ServicePackageOption) => {
+    if (!selectedMember?.id) {
+      showMsg('Please assign member before adding package.', 'error')
+      return
+    }
+
+    const res = await fetch('/api/proxy/pos/cart/add-package', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service_package_id: servicePackage.id, qty: 1 }),
+    })
+    const json = await res.json().catch(() => null)
+
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to add package.', 'error')
+      return
+    }
+
+    setCart((json?.data?.cart ?? null) as Cart | null)
+    showMsg('Package added to cart.', 'success')
+  }, [selectedMember?.id, showMsg])
+
+  const updatePackageCartQty = useCallback(async (itemId: number, qty: number) => {
+    if (qty < 1) return
+    const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qty }),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to update package quantity.', 'error')
+      return
+    }
+
+    setCart((json?.data?.cart ?? null) as Cart | null)
+  }, [showMsg])
+
+  const removePackageCartItem = useCallback(async (itemId: number) => {
+    const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, { method: 'DELETE' })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to remove package.', 'error')
+      return
+    }
+
+    setCart((json?.data?.cart ?? null) as Cart | null)
   }, [showMsg])
 
 
@@ -1252,6 +1464,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
   }
 
+
+  const removeServiceItem = async (itemId: number) => {
+    const res = await fetch(`/api/proxy/pos/cart/service-items/${itemId}`, { method: 'DELETE' })
+    const json = await res.json().catch(() => null)
+    if (res.ok) {
+      setCart((json?.data?.cart ?? null) as Cart | null)
+    }
+  }
+
   useEffect(() => {
     focusScanner()
     void loadCart()
@@ -1285,7 +1506,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     void loadCategories()
     void fetchActiveStaffs()
     void fetchServices()
-  }, [fetchActiveStaffs, fetchServices])
+    void fetchServicePackages()
+  }, [fetchActiveStaffs, fetchServicePackages, fetchServices])
 
 
   const filteredServices = useMemo(() => {
@@ -1297,6 +1519,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       String(service.service_type ?? '').toLowerCase().includes(keyword),
     )
   }, [serviceQuery, services])
+
+
+  const filteredServicePackages = useMemo(() => {
+    const keyword = packageQuery.trim().toLowerCase()
+    if (!keyword) return servicePackages
+
+    return servicePackages.filter((item) =>
+      item.name.toLowerCase().includes(keyword),
+    )
+  }, [packageQuery, servicePackages])
 
   useEffect(() => {
     const memberId = selectedMember?.id
@@ -1339,7 +1571,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
   }, [cart?.service_items, selectedMember?.id])
 
-  const hasCartItems = (cart?.items.length ?? 0) > 0 || (cart?.service_items?.length ?? 0) > 0
+  const hasCartItems = (cart?.items.length ?? 0) > 0 || (cart?.service_items?.length ?? 0) > 0 || (cart?.package_items?.length ?? 0) > 0
 
   useEffect(() => {
     if (productSearchMode !== 'sku') {
@@ -1762,10 +1994,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
 
-  const canCheckout = Boolean(cart?.items.length) && !checkingOut
+  const canCheckout = hasCartItems && !checkingOut
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || !hasCartItems || checkingOut) return
+    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+      setCheckoutError('Please assign member before purchasing service package.')
+      return
+    }
 
     setCheckingOut(true)
     setCheckoutError(null)
@@ -1786,6 +2022,24 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             staff_id: split.staff_id,
             share_percent: split.share_percent,
           })),
+        })),
+        service_items: (cart.service_items ?? []).map((item) => ({
+          type: 'service',
+          cart_service_item_id: item.id,
+          booking_service_id: item.booking_service_id,
+          snapshot_name: item.service_name,
+          snapshot_price: item.unit_price,
+          quantity: item.qty,
+          assigned_staff_id: item.assigned_staff_id ?? null,
+          service_commission_rate_used: item.commission_rate_used ?? 0,
+        })),
+        package_items: (cart.package_items ?? []).map((item) => ({
+          type: 'service_package',
+          cart_package_item_id: item.id,
+          service_package_id: item.service_package_id,
+          quantity: item.qty,
+          snapshot_name: item.package_name,
+          snapshot_price: item.unit_price,
         })),
       }),
     })
@@ -1812,7 +2066,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setSelectedMember(null)
     setMemberQuery('')
     setMembers([])
-    setCart({ id: cart.id, items: [], subtotal: 0, grand_total: 0 })
+    setCart({ id: cart.id, items: [], service_items: [], package_items: [], subtotal: 0, grand_total: 0 })
     setCashReceived('')
     setCheckoutItemAssignments([])
     if (qrProofPreviewUrl) {
@@ -1868,6 +2122,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const confirmCheckout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
+    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+      setCheckoutError('Please assign member before purchasing service package.')
+      return
+    }
 
     if (paymentMethod === 'qrpay') {
       if (!qrProofFileName) {
@@ -1901,6 +2159,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const checkout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
+    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+      setCheckoutError('Please assign member before purchasing service package.')
+      return
+    }
     await openCheckoutConfirmation()
   }
 
@@ -2215,10 +2477,17 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               </button>
               <button
                 type="button"
-                onClick={() => setCatalogTab('services')}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'services' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                onClick={() => setCatalogTab('book-service')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'book-service' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
               >
-                SERVICES
+                BOOK SERVICE
+              </button>
+              <button
+                type="button"
+                onClick={() => setCatalogTab('service-packages')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'service-packages' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                SERVICE PACKAGES
               </button>
             </div>
 
@@ -2385,7 +2654,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               </div>
             )}
               </>
-            ) : (
+            ) : catalogTab === 'book-service' ? (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="mb-4">
                   <input
@@ -2417,15 +2686,53 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <span className="text-sm font-bold text-gray-900">RM {displayPrice.toFixed(2)}</span>
                             <button
                               type="button"
-                              onClick={() => void addServiceToCart(service)}
+                              onClick={() => openBookingModal(service)}
                               className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                             >
-                              Add Service
+                              Add Service to Cart
                             </button>
                           </div>
                         </div>
                       )
                     })
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="mb-4">
+                  <input
+                    value={packageQuery}
+                    onChange={(e) => setPackageQuery(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    placeholder="Search service packages"
+                  />
+                </div>
+
+                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                  {servicePackagesLoading ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading packages...</div>
+                  ) : filteredServicePackages.length === 0 ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No packages found.</div>
+                  ) : (
+                    filteredServicePackages.map((servicePackage) => (
+                      <div key={servicePackage.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{servicePackage.name}</p>
+                          <p className="text-xs text-gray-500">Sessions: {servicePackage.total_sessions ?? 0} • Valid: {servicePackage.valid_days ?? 0} days</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-bold text-gray-900">RM {Number(servicePackage.selling_price ?? 0).toFixed(2)}</span>
+                          <button
+                            type="button"
+                            onClick={() => void addPackageToCart(servicePackage)}
+                            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                          >
+                            Add Package
+                          </button>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
@@ -2581,15 +2888,22 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Service</p>
                         <h4 className="font-bold text-gray-900 text-sm mt-0.5">{serviceItem.service_name}</h4>
                         <p className="text-xs text-gray-600 mt-1">Qty: {serviceItem.qty}</p>
+                        <p className="text-xs text-emerald-700">Type: {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
+                        {serviceItem.start_at ? (
+                          <p className="text-xs text-gray-700">Appointment: {new Date(serviceItem.start_at).toLocaleString()}</p>
+                        ) : null}
+                        {serviceItem.customer_id ? (
+                          <p className="text-xs text-gray-600">Member ID: {serviceItem.customer_id}</p>
+                        ) : null}
                         {serviceItem.assigned_staff_name ? (
                           <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
                         ) : null}
                       </div>
                       <div className="text-right">
-                        <div className="text-xs text-gray-500">Unit</div>
-                        <div className="font-semibold text-gray-900 text-sm">RM {Number(serviceItem.unit_price ?? 0).toFixed(2)}</div>
-                        <div className="mt-1 text-xs text-gray-500">Total</div>
-                        <div className="font-bold text-emerald-700">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
+                        <div className="text-xs text-gray-500">Service Price (ref)</div>
+                        <div className="font-semibold text-gray-700 text-sm">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
+                        <div className="mt-1 text-xs text-gray-500">Deposit Contribution</div>
+                        <div className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</div>
                         <div className="mt-2 text-[11px] text-emerald-700">Package balance: {serviceAvailabilityMap[serviceItem.id] ?? 0}</div>
                         <button
                           type="button"
@@ -2598,6 +2912,61 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           className="mt-1 rounded border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {serviceRedeemingIds[serviceItem.id] ? 'Claiming...' : 'Claim Package'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void removeServiceItem(serviceItem.id)}
+                          className="mt-1 ml-1 rounded border border-red-300 bg-white px-2 py-1 text-[11px] font-semibold text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {(cart.package_items ?? []).map((packageItem) => (
+                  <div key={`package-${packageItem.id}`} className="rounded-xl border border-purple-200 bg-purple-50 p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Service Package</p>
+                        <h4 className="font-bold text-gray-900 text-sm mt-0.5">{packageItem.package_name}</h4>
+                        <div className="mt-2 flex w-fit items-center gap-2 rounded-lg bg-white p-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (packageItem.qty <= 1) {
+                                void removePackageCartItem(packageItem.id)
+                                return
+                              }
+                              void updatePackageCartQty(packageItem.id, packageItem.qty - 1)
+                            }}
+                            className="h-7 w-7 rounded-md border border-gray-300 bg-white text-xs font-bold"
+                          >
+                            -
+                          </button>
+                          <span className="w-8 text-center text-sm font-bold text-gray-900">{packageItem.qty}</span>
+                          <button
+                            type="button"
+                            onClick={() => void updatePackageCartQty(packageItem.id, packageItem.qty + 1)}
+                            className="h-7 w-7 rounded-md border border-gray-300 bg-white text-xs font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">Unit</div>
+                        <div className="font-semibold text-gray-900 text-sm">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</div>
+                        <div className="mt-1 text-xs text-gray-500">Total</div>
+                        <div className="font-bold text-purple-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</div>
+                        <button
+                          type="button"
+                          onClick={() => void removePackageCartItem(packageItem.id)}
+                          className="mt-2 rounded border border-purple-300 bg-white px-2 py-1 text-[11px] font-semibold text-purple-700"
+                        >
+                          Remove
                         </button>
                       </div>
                     </div>
@@ -3053,9 +3422,51 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         </tr>
                       )
                     })}
+                    {(cart.service_items ?? []).map((serviceItem) => {
+                      const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
+                        ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
+                        : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
+
+                      return (
+                        <tr key={`checkout-service-${serviceItem.id}`} className="bg-emerald-50/60 hover:bg-emerald-50 transition-colors align-top">
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-900">{serviceItem.service_name}</p>
+                            <p className="text-[11px] text-emerald-700 font-semibold">BOOKING SERVICE · {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
+                            {serviceItem.start_at ? <p className="text-xs text-gray-600 mt-0.5">{new Date(serviceItem.start_at).toLocaleString()}</p> : null}
+                            <p className="text-xs text-gray-500 mt-0.5">Qty: {serviceItem.qty}</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">Service price ref: RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</p>
+                          </td>
+                          <td className="px-4 py-3 min-w-[280px]">
+                            <p className="text-xs text-gray-700">{splitSummary}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-gray-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
+
+
+              {(cart.service_items?.length ?? 0) > 0 && (
+                <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <h5 className="text-sm font-bold text-emerald-900">Booking Deposit Summary</h5>
+                  <div className="mt-2 space-y-1 text-xs text-emerald-900">
+                    <p>Premium services: {bookingDepositBreakdown?.premium_count ?? 0}</p>
+                    <p>Standard services: {bookingDepositBreakdown?.standard_count ?? 0}</p>
+                    <p>Per premium deposit: RM {Number(bookingDepositBreakdown?.per_premium_amount ?? 0).toFixed(2)}</p>
+                    <p>Standard-only base deposit: RM {Number(bookingDepositBreakdown?.standard_base_amount ?? 0).toFixed(2)}</p>
+                  </div>
+                  <div className="mt-2 border-t border-emerald-200 pt-2 text-sm font-bold text-emerald-800">
+                    Booking deposit total: RM {bookingDepositTotal.toFixed(2)}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 shadow-sm">
                 <div className="space-y-2">
@@ -3361,8 +3772,101 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         </div>
       ) : null}
 
+      {bookingModalOpen && bookingServiceDraft && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900">Add Service to Cart</h3>
+            <p className="mt-1 text-sm text-gray-600">{bookingServiceDraft.name}</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-semibold text-gray-600">Member</label>
+                  <button
+                    type="button"
+                    onClick={() => void toggleMemberDropdown()}
+                    className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
+                  >
+                    {selectedMember ? 'Change Member' : 'Assign Member'}
+                  </button>
+                </div>
+                <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  {selectedMember
+                    ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
+                    : 'No member selected'}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
+                <select
+                  value={bookingAssignedStaffId ?? ''}
+                  onChange={(e) => setBookingAssignedStaffId(Number(e.target.value) || null)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Select staff</option>
+                  {activeStaffs.map((staff) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Appointment Date</label>
+                <input
+                  type="date"
+                  value={bookingDate}
+                  onChange={(e) => setBookingDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
+                <select
+                  value={bookingSlotValue}
+                  onChange={(e) => setBookingSlotValue(e.target.value)}
+                  disabled={!bookingAssignedStaffId || !bookingDate || bookingSlotsLoading}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                >
+                  <option value="">{bookingSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
+                  {bookingSlots.map((slot) => (
+                    <option key={slot.start_at} value={slot.start_at}>
+                      {new Date(slot.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Notes (optional)</label>
+                <textarea
+                  value={bookingNotes}
+                  onChange={(e) => setBookingNotes(e.target.value)}
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBookingModalOpen(false)}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={bookingSubmitting}
+                onClick={() => void submitBooking()}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {bookingSubmitting ? 'Creating...' : 'Add Service to Cart'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {memberOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
               <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
@@ -3481,7 +3985,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       )}
 
       {voucherModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
               <h4 className="text-xl font-bold text-gray-900">Apply Voucher</h4>
@@ -3555,7 +4059,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       {/* Checkout Success Modal with QR Code */}
       {checkoutResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
             <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex items-center justify-between">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
@@ -3695,7 +4199,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       {/* Checkout Error Modal */}
       {checkoutError && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
             <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-5">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">

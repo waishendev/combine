@@ -13,11 +13,15 @@ use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
+use App\Models\Booking\Booking;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\BookingSetting;
 use App\Models\Booking\ServicePackage;
 use App\Models\Ecommerce\OrderServiceItem;
+use App\Models\Ecommerce\PosCartPackageItem;
 use App\Models\Ecommerce\PosCartServiceItem;
 use App\Models\Staff;
+use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
@@ -41,6 +45,7 @@ class PosController extends Controller
         protected VoucherService $voucherService,
         protected InvoiceService $invoiceService,
         protected CustomerServicePackageService $customerServicePackageService,
+        protected BookingAvailabilityService $availabilityService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -76,6 +81,40 @@ class PosController extends Controller
             'last_page' => $paginator->lastPage(),
             'per_page' => $paginator->perPage(),
             'total' => $paginator->total(),
+        ]);
+    }
+
+
+    public function serviceSearch(Request $request)
+    {
+        $query = trim((string) $request->query('q', ''));
+
+        $builder = BookingService::query()->where('is_active', true)->orderBy('name');
+
+        if ($query !== '') {
+            $builder->where(function ($q) use ($query) {
+                $q->where('name', 'like', "%{$query}%")
+                    ->orWhere('service_type', 'like', "%{$query}%");
+            });
+        }
+
+        return $this->respond([
+            'data' => $builder->get(['id', 'name', 'service_type', 'service_price', 'duration_min', 'buffer_min']),
+        ]);
+    }
+
+    public function packageSearch(Request $request)
+    {
+        $query = trim((string) $request->query('q', ''));
+
+        $builder = ServicePackage::query()->where('is_active', true)->orderBy('name');
+
+        if ($query !== '') {
+            $builder->where('name', 'like', "%{$query}%");
+        }
+
+        return $this->respond([
+            'data' => $builder->get(['id', 'name', 'selling_price', 'total_sessions', 'valid_days']),
         ]);
     }
 
@@ -169,30 +208,168 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'customer_id' => ['required', 'integer', 'exists:customers,id'],
+            'start_at' => ['required', 'date'],
+            'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'qty' => ['nullable', 'integer', 'min:1'],
-            'assigned_staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'staff_splits' => ['nullable', 'array'],
+            'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
         $service = BookingService::query()->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
-        $qty = (int) ($validated['qty'] ?? 1);
-        $staff = !empty($validated['assigned_staff_id']) ? Staff::query()->find((int) $validated['assigned_staff_id']) : null;
+        $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
+        $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+        $qty = max(1, (int) ($validated['qty'] ?? 1));
+
+        $startAt = Carbon::parse((string) $validated['start_at']);
+        $endAt = $startAt->copy()->addMinutes((int) ($service->duration_min ?? 0));
+
+        $splits = collect($validated['staff_splits'] ?? [
+            ['staff_id' => (int) $staff->id, 'share_percent' => 100],
+        ])->values();
+
+        $sum = (int) $splits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
+        $uniqueCount = $splits->pluck('staff_id')->filter()->unique()->count();
+        if ($sum !== 100 || $uniqueCount !== $splits->count()) {
+            return $this->respondError(__('Invalid staff split. Total must be 100% and staffs must be unique.'), 422);
+        }
+
+        $staffIds = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $staffCommissionRates = DB::table('staffs')
+            ->whereIn('id', $staffIds)
+            ->pluck('service_commission_rate', 'id')
+            ->map(fn ($rate) => (float) $rate)
+            ->all();
+
+        $normalizedSplits = $splits->map(fn (array $split) => [
+            'staff_id' => (int) $split['staff_id'],
+            'share_percent' => (int) $split['share_percent'],
+            'service_commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+        ])->values()->all();
+
+        $primaryStaffId = (int) ($normalizedSplits[0]['staff_id'] ?? $staff->id);
+        $primaryCommissionRate = (float) ($staffCommissionRates[$primaryStaffId] ?? $staff->service_commission_rate ?? 0);
 
         $cart = $this->resolveCart((int) $request->user()->id);
 
         $item = PosCartServiceItem::query()->create([
             'pos_cart_id' => $cart->id,
             'booking_service_id' => $service->id,
+            'customer_id' => $customer->id,
             'service_name_snapshot' => $service->name,
             'price_snapshot' => (float) ($service->price ?? $service->service_price ?? 0),
             'qty' => $qty,
-            'assigned_staff_id' => $staff?->id,
-            'commission_rate_used' => (float) ($staff?->service_commission_rate ?? 0),
+            'assigned_staff_id' => $primaryStaffId,
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+            'notes' => $validated['notes'] ?? null,
+            'staff_splits' => $normalizedSplits,
+            'commission_rate_used' => $primaryCommissionRate,
         ]);
 
         return $this->respond([
             'item' => $item->load(['bookingService:id,name', 'assignedStaff:id,name']),
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff'])),
-        ], __('Service added to POS cart.'));
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
+        ], __('Booking service added to POS cart.'));
+    }
+
+
+    public function bookService(Request $request, BookingAvailabilityService $availabilityService)
+    {
+        $validated = $request->validate([
+            'customer_id' => ['required', 'integer', 'exists:customers,id'],
+            'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'start_at' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $service = BookingService::query()->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
+        $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
+        $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+
+        $startAt = Carbon::parse((string) $validated['start_at']);
+        $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
+
+        if ($availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, (int) $service->buffer_min)) {
+            return $this->respondError(__('Selected slot is no longer available.'), 409);
+        }
+
+        $booking = Booking::query()->create([
+            'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+            'source' => 'STAFF',
+            'customer_id' => $customer->id,
+            'staff_id' => $staff->id,
+            'service_id' => $service->id,
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+            'buffer_min' => (int) $service->buffer_min,
+            'status' => 'CONFIRMED',
+            'deposit_amount' => (float) ($service->deposit_amount ?? 0),
+            'payment_status' => 'UNPAID',
+            'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        return $this->respond([
+            'booking' => $booking->load(['service', 'staff', 'customer']),
+        ], __('Booking created successfully.'));
+    }
+
+    public function addPackageToCart(Request $request)
+    {
+        $validated = $request->validate([
+            'service_package_id' => ['required', 'integer', 'exists:service_packages,id'],
+            'qty' => ['nullable', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        $package = ServicePackage::query()->where('is_active', true)->findOrFail((int) $validated['service_package_id']);
+        $qty = (int) ($validated['qty'] ?? 1);
+        $cart = $this->resolveCart((int) $request->user()->id);
+
+        $item = PosCartPackageItem::query()->firstOrNew([
+            'pos_cart_id' => $cart->id,
+            'service_package_id' => $package->id,
+        ]);
+
+        $item->qty = min(10, (int) ($item->exists ? $item->qty : 0) + $qty);
+        $item->price_snapshot = (float) ($package->selling_price ?? 0);
+        $item->package_name_snapshot = (string) $package->name;
+        $item->save();
+
+        return $this->respond([
+            'item' => $item->load(['servicePackage:id,name,selling_price']),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
+        ], __('Package added to POS cart.'));
+    }
+
+    public function updatePackageCartItem(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'qty' => ['required', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->packageItems()->findOrFail($itemId);
+        $item->qty = (int) $validated['qty'];
+        $item->save();
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
+        ]);
+    }
+
+    public function removePackageCartItem(Request $request, int $itemId)
+    {
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->packageItems()->findOrFail($itemId);
+        $item->delete();
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
+        ]);
     }
 
     public function purchasePackage(Request $request)
@@ -267,7 +444,7 @@ class PosController extends Controller
         $item->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
         ]);
     }
 
@@ -378,7 +555,7 @@ class PosController extends Controller
             }
 
             return $this->respond([
-                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff'])),
+                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
             ]);
         }
 
@@ -394,7 +571,7 @@ class PosController extends Controller
         $item->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
         ]);
     }
 
@@ -405,13 +582,24 @@ class PosController extends Controller
         $item->delete();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
+        ]);
+    }
+
+    public function removeServiceCartItem(Request $request, int $itemId)
+    {
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->serviceItems()->findOrFail($itemId);
+        $item->delete();
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
         ]);
     }
 
     public function cart(Request $request)
     {
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff']);
+        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage']);
 
         return $this->respond([
             'cart' => $this->serializeCart($cart),
@@ -491,8 +679,8 @@ class PosController extends Controller
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff']);
-        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty()) {
+        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage']);
+        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
         }
 
@@ -545,7 +733,7 @@ class PosController extends Controller
         $cart->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
         ]);
     }
 
@@ -555,7 +743,7 @@ class PosController extends Controller
         $this->clearVoucherFromCart($cart);
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
         ]);
     }
 
@@ -579,7 +767,7 @@ class PosController extends Controller
             $item->discount_value = 0;
             $item->save();
 
-            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff']))]);
+            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage']))]);
         }
 
         $isStaffUser = !empty($request->user()?->staff_id);
@@ -598,7 +786,7 @@ class PosController extends Controller
         $item->discount_value = $discountValue;
         $item->save();
 
-        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff']))]);
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage']))]);
     }
 
     public function checkout(Request $request, OrderPaymentService $orderPaymentService)
@@ -611,20 +799,82 @@ class PosController extends Controller
             'items.*.staff_splits' => ['nullable', 'array'],
             'items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'service_items' => ['nullable', 'array'],
+            'service_items.*.type' => ['nullable', 'in:service'],
+            'service_items.*.cart_service_item_id' => ['nullable', 'integer'],
+            'service_items.*.booking_service_id' => ['nullable', 'integer', 'exists:booking_services,id'],
+            'service_items.*.quantity' => ['nullable', 'integer', 'min:1'],
+            'service_items.*.customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'service_items.*.assigned_staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+            'service_items.*.start_at' => ['nullable', 'date'],
+            'service_items.*.service_commission_rate_used' => ['nullable', 'numeric', 'min:0'],
+            'package_items' => ['nullable', 'array'],
+            'package_items.*.cart_package_item_id' => ['nullable', 'integer'],
+            'package_items.*.service_package_id' => ['nullable', 'integer', 'exists:service_packages,id'],
+            'package_items.*.quantity' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff']);
-        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty()) {
+        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage']);
+        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
+        }
+
+        $serviceItemsPayload = collect($validated['service_items'] ?? []);
+        if ($serviceItemsPayload->isNotEmpty()) {
+            $servicePayloadByCartId = $serviceItemsPayload
+                ->filter(fn (array $item) => !empty($item['cart_service_item_id']))
+                ->keyBy(fn (array $item) => (int) $item['cart_service_item_id']);
+
+            foreach ($cart->serviceItems as $serviceItem) {
+                $payloadItem = $servicePayloadByCartId->get((int) $serviceItem->id);
+                if (!$payloadItem) {
+                    continue;
+                }
+
+                if (!empty($payloadItem['booking_service_id']) && (int) $payloadItem['booking_service_id'] !== (int) $serviceItem->booking_service_id) {
+                    return $this->respondError(__('Service item mismatch in checkout payload.'), 422);
+                }
+
+                if (!empty($payloadItem['assigned_staff_id']) && (int) $payloadItem['assigned_staff_id'] !== (int) ($serviceItem->assigned_staff_id ?? 0)) {
+                    return $this->respondError(__('Assigned staff mismatch in checkout payload.'), 422);
+                }
+
+                if (!empty($payloadItem['customer_id']) && (int) $payloadItem['customer_id'] !== (int) ($serviceItem->customer_id ?? 0)) {
+                    return $this->respondError(__('Customer mismatch in checkout payload.'), 422);
+                }
+            }
+        }
+
+        $packageItemsPayload = collect($validated['package_items'] ?? []);
+        if ($packageItemsPayload->isNotEmpty()) {
+            $packagePayloadByCartId = $packageItemsPayload
+                ->filter(fn (array $item) => !empty($item['cart_package_item_id']))
+                ->keyBy(fn (array $item) => (int) $item['cart_package_item_id']);
+
+            foreach ($cart->packageItems as $packageItem) {
+                $payloadItem = $packagePayloadByCartId->get((int) $packageItem->id);
+                if (!$payloadItem) {
+                    continue;
+                }
+
+                if (!empty($payloadItem['service_package_id']) && (int) $payloadItem['service_package_id'] !== (int) $packageItem->service_package_id) {
+                    return $this->respondError(__('Package item mismatch in checkout payload.'), 422);
+                }
+            }
         }
 
         [$order, $receiptUrl] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
             $customerId = $validated['member_id'] ?? null;
+            if ($cart->packageItems->isNotEmpty() && empty($customerId)) {
+                abort(422, __('Please assign member before purchasing service package.'));
+            }
+
             $isStaffUser = !empty($request->user()?->staff_id);
 
             $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
-            $serviceSubtotal = (float) $cart->serviceItems->sum(fn (PosCartServiceItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
-            $subtotal = (float) $cartPricing['subtotal'] + $serviceSubtotal;
+            $packageSubtotal = (float) $cart->packageItems->sum(fn (PosCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
+            $depositTotal = $this->resolvePosBookingDepositForCart($cart);
+            $subtotal = (float) $cartPricing['subtotal'] + $packageSubtotal + $depositTotal;
             $discountTotal = 0.0;
             $voucherData = null;
 
@@ -681,7 +931,7 @@ class PosController extends Controller
                 'placed_at' => now(),
                 'paid_at' => now(),
                 'completed_at' => now(),
-                'notes' => 'POS checkout by staff #' . $request->user()->id,
+                'notes' => 'POS checkout by staff #' . $request->user()->id . ' | booking_deposit=' . number_format((float) $depositTotal, 2, '.', ''),
                 'promotion_snapshot' => $cartPricing['promotions'] ?? [],
             ]);
 
@@ -699,7 +949,7 @@ class PosController extends Controller
 
             $staffCommissionRates = DB::table('staffs')
                 ->whereIn('id', $staffIds)
-                ->pluck('commission_rate', 'id')
+                ->pluck('service_commission_rate', 'id')
                 ->map(fn ($rate) => (float) $rate)
                 ->all();
 
@@ -771,20 +1021,100 @@ class PosController extends Controller
             }
 
             foreach ($cart->serviceItems as $serviceItem) {
+                if (! $serviceItem->bookingService || ! $serviceItem->bookingService->is_active) {
+                    abort(422, __('Service is not available for checkout.'));
+                }
+
+                if (! $serviceItem->customer_id) {
+                    abort(422, __('Member is required for booking service item.'));
+                }
+
+                if (! $serviceItem->start_at) {
+                    abort(422, __('Appointment time is required for booking service item.'));
+                }
+
+                if ($serviceItem->assigned_staff_id && ! $serviceItem->assignedStaff) {
+                    abort(422, __('Assigned staff is invalid for service checkout.'));
+                }
+
+                $startAt = Carbon::parse((string) $serviceItem->start_at);
+                $endAt = $serviceItem->end_at ? Carbon::parse((string) $serviceItem->end_at) : $startAt->copy()->addMinutes((int) ($serviceItem->bookingService->duration_min ?? 0));
+                $bufferMin = (int) ($serviceItem->bookingService->buffer_min ?? 0);
+
+                if ($serviceItem->assigned_staff_id && $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin)) {
+                    abort(409, __('Selected slot is no longer available.'));
+                }
+
+                $booking = Booking::query()->create([
+                    'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                    'source' => 'STAFF',
+                    'customer_id' => (int) $serviceItem->customer_id,
+                    'staff_id' => $serviceItem->assigned_staff_id,
+                    'service_id' => $serviceItem->booking_service_id,
+                    'start_at' => $startAt,
+                    'end_at' => $endAt,
+                    'buffer_min' => $bufferMin,
+                    'status' => 'CONFIRMED',
+                    'deposit_amount' => 0,
+                    'payment_status' => 'PAID',
+                    'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
+                    'notes' => $serviceItem->notes,
+                ]);
+
                 $lineTotal = round(((float) $serviceItem->price_snapshot) * (int) $serviceItem->qty, 2);
+                $splits = collect($serviceItem->staff_splits ?? []);
+                if ($splits->isEmpty()) {
+                    $splits = collect([[
+                        'staff_id' => (int) ($serviceItem->assigned_staff_id ?? 0),
+                        'share_percent' => 100,
+                        'service_commission_rate_snapshot' => (float) ($serviceItem->commission_rate_used ?? 0),
+                    ]]);
+                }
+
+                DB::table('booking_service_staff_splits')->insert($splits->map(fn (array $split) => [
+                    'booking_id' => (int) $booking->id,
+                    'staff_id' => (int) ($split['staff_id'] ?? 0),
+                    'split_percent' => (int) ($split['share_percent'] ?? 0),
+                    'service_commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ])->filter(fn (array $row) => $row['staff_id'] > 0)->values()->all());
+
                 $commissionRate = (float) ($serviceItem->commission_rate_used ?? 0);
                 OrderServiceItem::create([
                     'order_id' => $order->id,
+                    'booking_id' => $booking->id,
                     'booking_service_id' => $serviceItem->booking_service_id,
+                    'customer_id' => (int) $serviceItem->customer_id,
                     'service_name_snapshot' => $serviceItem->service_name_snapshot,
                     'price_snapshot' => (float) $serviceItem->price_snapshot,
                     'qty' => (int) $serviceItem->qty,
                     'line_total' => $lineTotal,
                     'assigned_staff_id' => $serviceItem->assigned_staff_id,
+                    'start_at' => $startAt,
+                    'end_at' => $endAt,
+                    'notes' => $serviceItem->notes,
+                    'staff_splits' => $splits->values()->all(),
                     'commission_rate_used' => $commissionRate,
                     'commission_amount' => round($lineTotal * $commissionRate, 2),
                     'item_type' => 'service',
                 ]);
+            }
+
+            foreach ($cart->packageItems as $packageItem) {
+                $servicePackage = ServicePackage::query()
+                    ->with('items')
+                    ->where('is_active', true)
+                    ->findOrFail((int) $packageItem->service_package_id);
+
+                for ($i = 0; $i < (int) $packageItem->qty; $i++) {
+                    $this->customerServicePackageService->purchase(
+                        (int) $customerId,
+                        $servicePackage,
+                        'POS',
+                        (int) $order->id,
+                    );
+                }
             }
 
             $order->load(['items', 'customer']);
@@ -816,6 +1146,7 @@ class PosController extends Controller
 
             $cart->items()->delete();
             $cart->serviceItems()->delete();
+            $cart->packageItems()->delete();
             $this->clearVoucherFromCart($cart);
 
             return [$order, $receiptUrl];
@@ -912,31 +1243,68 @@ class PosController extends Controller
             ];
         })->values();
 
-        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) {
+        $depositBreakdown = $this->resolvePosBookingDepositBreakdown($cart);
+        $standardBaseAppliedItemId = $depositBreakdown['standard_base_applied_item_id'] ?? null;
+        $premiumItemDeposit = (float) ($depositBreakdown['per_premium_amount'] ?? 0);
+        $hasPremium = (int) ($depositBreakdown['premium_count'] ?? 0) > 0;
+
+        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($standardBaseAppliedItemId, $premiumItemDeposit, $hasPremium) {
             $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
+            $serviceType = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
+            $depositContribution = 0.0;
+            if ($serviceType === 'PREMIUM') {
+                $depositContribution = (float) $item->qty * $premiumItemDeposit;
+            } elseif (! $hasPremium && $standardBaseAppliedItemId && (int) $item->id === (int) $standardBaseAppliedItemId) {
+                $depositContribution = (float) ($depositBreakdown['standard_base_amount'] ?? 0);
+            }
 
             return [
                 'id' => $item->id,
                 'type' => 'service',
                 'booking_service_id' => (int) $item->booking_service_id,
                 'service_name' => $item->service_name_snapshot,
+                'service_type' => $serviceType,
                 'qty' => (int) $item->qty,
                 'unit_price' => (float) $item->price_snapshot,
                 'line_total' => (float) $lineTotal,
+                'deposit_contribution' => (float) $depositContribution,
+                'customer_id' => $item->customer_id ? (int) $item->customer_id : null,
                 'assigned_staff_id' => $item->assigned_staff_id ? (int) $item->assigned_staff_id : null,
                 'assigned_staff_name' => $item->assignedStaff?->name,
+                'start_at' => $item->start_at?->toIso8601String(),
+                'end_at' => $item->end_at?->toIso8601String(),
+                'notes' => $item->notes,
+                'staff_splits' => $item->staff_splits ?? [],
                 'commission_rate_used' => (float) ($item->commission_rate_used ?? 0),
             ];
         })->values();
 
+        $packageItems = $cart->packageItems->map(function (PosCartPackageItem $item) {
+            $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
+
+            return [
+                'id' => $item->id,
+                'type' => 'service_package',
+                'service_package_id' => (int) $item->service_package_id,
+                'package_name' => $item->package_name_snapshot,
+                'qty' => (int) $item->qty,
+                'unit_price' => (float) $item->price_snapshot,
+                'line_total' => (float) $lineTotal,
+            ];
+        })->values();
+
         $voucherDiscount = (float) ($cart->voucher_discount_amount ?? 0);
-        $subtotal = (float) (($cartPricing['subtotal'] ?? $items->sum('line_total')) + $serviceItems->sum('line_total'));
+        $bookingDepositTotal = (float) ($depositBreakdown['deposit_total'] ?? 0);
+        $subtotal = (float) (($cartPricing['subtotal'] ?? $items->sum('line_total')) + $packageItems->sum('line_total') + $bookingDepositTotal);
         $grandTotal = max(0, $subtotal - $voucherDiscount);
 
         return [
             'id' => $cart->id,
             'items' => $items,
             'service_items' => $serviceItems,
+            'package_items' => $packageItems,
+            'booking_deposit_total' => $bookingDepositTotal,
+            'booking_deposit_breakdown' => $depositBreakdown,
             'subtotal' => $subtotal,
             'grand_total' => $grandTotal,
             'voucher' => !empty($cart->voucher_code) ? [
@@ -947,6 +1315,60 @@ class PosController extends Controller
                 'scope_snapshot' => $cart->voucher_snapshot,
             ] : null,
             'promotions' => $cartPricing['promotions'] ?? [],
+        ];
+    }
+
+
+    protected function resolvePosBookingDepositForCart(PosCart $cart): float
+    {
+        return (float) ($this->resolvePosBookingDepositBreakdown($cart)['deposit_total'] ?? 0);
+    }
+
+    protected function resolvePosBookingDepositBreakdown(PosCart $cart): array
+    {
+        if ($cart->serviceItems->isEmpty()) {
+            return [
+                'premium_count' => 0,
+                'standard_count' => 0,
+                'per_premium_amount' => 0,
+                'standard_base_amount' => 0,
+                'standard_base_applied_item_id' => null,
+                'deposit_total' => 0,
+            ];
+        }
+
+        $settings = BookingSetting::query()->first();
+        $premiumDeposit = (float) ($settings?->deposit_amount_per_premium ?? 0);
+        $standardDeposit = (float) ($settings?->deposit_base_amount_if_only_standard ?? 0);
+
+        $premiumCount = 0;
+        $standardCount = 0;
+        $standardBaseAppliedItemId = null;
+
+        foreach ($cart->serviceItems as $item) {
+            $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
+            $qty = max(1, (int) $item->qty);
+            if ($type === 'PREMIUM') {
+                $premiumCount += $qty;
+            } else {
+                $standardCount += $qty;
+                if ($standardBaseAppliedItemId === null) {
+                    $standardBaseAppliedItemId = (int) $item->id;
+                }
+            }
+        }
+
+        $depositTotal = $premiumCount > 0
+            ? ($premiumCount * $premiumDeposit)
+            : ($standardCount > 0 ? $standardDeposit : 0);
+
+        return [
+            'premium_count' => $premiumCount,
+            'standard_count' => $standardCount,
+            'per_premium_amount' => $premiumDeposit,
+            'standard_base_amount' => $standardDeposit,
+            'standard_base_applied_item_id' => $standardBaseAppliedItemId,
+            'deposit_total' => (float) $depositTotal,
         ];
     }
 

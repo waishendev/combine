@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 class OrderServiceItem extends Model
 {
     protected $fillable = [
-        'order_id', 'booking_service_id', 'service_name_snapshot', 'price_snapshot', 'qty', 'line_total',
-        'assigned_staff_id', 'commission_rate_used', 'commission_amount', 'item_type',
+        'order_id', 'booking_id', 'booking_service_id', 'customer_id', 'service_name_snapshot', 'price_snapshot', 'qty', 'line_total',
+        'assigned_staff_id', 'start_at', 'end_at', 'notes', 'staff_splits', 'commission_rate_used', 'commission_amount', 'item_type',
     ];
 
     protected function casts(): array
@@ -19,6 +19,9 @@ class OrderServiceItem extends Model
             'price_snapshot' => 'decimal:2',
             'qty' => 'integer',
             'line_total' => 'decimal:2',
+            'start_at' => 'datetime',
+            'end_at' => 'datetime',
+            'staff_splits' => 'array',
             'commission_rate_used' => 'decimal:4',
             'commission_amount' => 'decimal:2',
         ];
