@@ -16,6 +16,7 @@ use App\Models\Ecommerce\ProductVariant;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingSetting;
+use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\ServicePackage;
 use App\Models\Ecommerce\OrderServiceItem;
 use App\Models\Ecommerce\PosCartPackageItem;
@@ -1351,16 +1352,21 @@ class PosController extends Controller
             ];
         })->values();
 
-        $depositBreakdown = $this->resolvePosBookingDepositBreakdown($cart);
+        $serviceClaimStatuses = $this->resolveServiceItemClaimStatuses($cart);
+        $depositBreakdown = $this->resolvePosBookingDepositBreakdown($cart, $serviceClaimStatuses);
         $standardBaseAppliedItemId = $depositBreakdown['standard_base_applied_item_id'] ?? null;
         $premiumItemDeposit = (float) ($depositBreakdown['per_premium_amount'] ?? 0);
         $hasPremium = (int) ($depositBreakdown['premium_count'] ?? 0) > 0;
 
-        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($standardBaseAppliedItemId, $premiumItemDeposit, $hasPremium) {
+        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($standardBaseAppliedItemId, $premiumItemDeposit, $hasPremium, $serviceClaimStatuses, $depositBreakdown) {
             $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
             $serviceType = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
+            $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
+            $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
             $depositContribution = 0.0;
-            if ($serviceType === 'PREMIUM') {
+            if ($claimedByPackage) {
+                $depositContribution = 0.0;
+            } elseif ($serviceType === 'PREMIUM') {
                 $depositContribution = (float) $item->qty * $premiumItemDeposit;
             } elseif (! $hasPremium && $standardBaseAppliedItemId && (int) $item->id === (int) $standardBaseAppliedItemId) {
                 $depositContribution = (float) ($depositBreakdown['standard_base_amount'] ?? 0);
@@ -1376,6 +1382,8 @@ class PosController extends Controller
                 'unit_price' => (float) $item->price_snapshot,
                 'line_total' => (float) $lineTotal,
                 'deposit_contribution' => (float) $depositContribution,
+                'package_claim_status' => $claimStatus,
+                'claimed_by_package' => $claimedByPackage,
                 'customer_id' => $item->customer_id ? (int) $item->customer_id : null,
                 'assigned_staff_id' => $item->assigned_staff_id ? (int) $item->assigned_staff_id : null,
                 'assigned_staff_name' => $item->assignedStaff?->name,
@@ -1430,10 +1438,10 @@ class PosController extends Controller
 
     protected function resolvePosBookingDepositForCart(PosCart $cart): float
     {
-        return (float) ($this->resolvePosBookingDepositBreakdown($cart)['deposit_total'] ?? 0);
+        return (float) ($this->resolvePosBookingDepositBreakdown($cart, $this->resolveServiceItemClaimStatuses($cart))['deposit_total'] ?? 0);
     }
 
-    protected function resolvePosBookingDepositBreakdown(PosCart $cart): array
+    protected function resolvePosBookingDepositBreakdown(PosCart $cart, array $serviceClaimStatuses = []): array
     {
         if ($cart->serviceItems->isEmpty()) {
             return [
@@ -1455,6 +1463,11 @@ class PosController extends Controller
         $standardBaseAppliedItemId = null;
 
         foreach ($cart->serviceItems as $item) {
+            $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
+            if (in_array($claimStatus, ['reserved', 'consumed'], true)) {
+                continue;
+            }
+
             $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
             $qty = max(1, (int) $item->qty);
             if ($type === 'PREMIUM') {
@@ -1479,6 +1492,42 @@ class PosController extends Controller
             'standard_base_applied_item_id' => $standardBaseAppliedItemId,
             'deposit_total' => (float) $depositTotal,
         ];
+    }
+
+    protected function resolveServiceItemClaimStatuses(PosCart $cart): array
+    {
+        if ($cart->serviceItems->isEmpty()) {
+            return [];
+        }
+
+        $serviceItemIds = $cart->serviceItems->pluck('id')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values();
+        if ($serviceItemIds->isEmpty()) {
+            return [];
+        }
+
+        $claims = CustomerServicePackageUsage::query()
+            ->where('used_from', 'POS')
+            ->whereIn('used_ref_id', $serviceItemIds->all())
+            ->whereIn('status', ['reserved', 'consumed', 'released'])
+            ->get(['used_ref_id', 'status']);
+
+        $priority = ['released' => 1, 'reserved' => 2, 'consumed' => 3];
+        $map = [];
+
+        foreach ($claims as $claim) {
+            $itemId = (int) ($claim->used_ref_id ?? 0);
+            if ($itemId <= 0) {
+                continue;
+            }
+
+            $incoming = $priority[$claim->status] ?? 0;
+            $existing = $priority[$map[$itemId] ?? ''] ?? 0;
+            if ($incoming >= $existing) {
+                $map[$itemId] = $claim->status;
+            }
+        }
+
+        return $map;
     }
 
     protected function serializeCartItemsForVoucher(PosCart $cart): array

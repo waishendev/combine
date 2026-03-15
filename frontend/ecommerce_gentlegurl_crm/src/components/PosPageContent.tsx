@@ -77,6 +77,8 @@ type ServiceCartItem = {
   line_total: number
   service_type?: string | null
   deposit_contribution?: number
+  package_claim_status?: 'reserved' | 'consumed' | 'released' | null
+  claimed_by_package?: boolean
   assigned_staff_id?: number | null
   assigned_staff_name?: string | null
   customer_id?: number | null
@@ -1489,6 +1491,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       }
 
       setServiceAvailabilityMap((prev) => ({ ...prev, [serviceItem.id]: Math.max(0, (prev[serviceItem.id] ?? 0) - 1) }))
+      await loadCart()
       showMsg('Package claim reserved. It will be consumed once booking is completed.', 'success')
     } finally {
       setServiceRedeemingIds((prev) => ({ ...prev, [serviceItem.id]: false }))
@@ -3107,14 +3110,21 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="font-semibold text-gray-700 text-sm">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
                         <div className="mt-1 text-xs text-gray-500">Deposit Contribution</div>
                         <div className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</div>
+                        {serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed' ? (
+                          <div className="mt-1 text-[11px] font-semibold text-emerald-700">Reserved from Package</div>
+                        ) : null}
                         <div className="mt-2 text-[11px] text-emerald-700">Package balance: {serviceAvailabilityMap[serviceItem.id] ?? 0}</div>
                         <button
                           type="button"
-                          disabled={!selectedMember?.id || (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0 || serviceRedeemingIds[serviceItem.id]}
+                          disabled={!selectedMember?.id || (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0 || serviceRedeemingIds[serviceItem.id] || serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed'}
                           onClick={() => void redeemServiceItem(serviceItem)}
                           className="mt-1 rounded border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {serviceRedeemingIds[serviceItem.id] ? 'Reserving...' : 'Claim Package (Reserve)'}
+                          {serviceRedeemingIds[serviceItem.id]
+                            ? 'Reserving...'
+                            : (serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed')
+                              ? 'Package Applied'
+                              : 'Claim Package (Reserve)'}
                         </button>
 
                         <button
