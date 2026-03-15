@@ -49,6 +49,19 @@ const emptyForm: FormState = {
   items: [{ booking_service_id: '', quantity: '1' }],
 }
 
+function parseServicePackageRows(payload: unknown): ServicePackage[] {
+  if (Array.isArray(payload)) return payload as ServicePackage[]
+
+  if (payload && typeof payload === 'object') {
+    const maybe = payload as Record<string, unknown>
+    if (Array.isArray(maybe.data)) {
+      return maybe.data as ServicePackage[]
+    }
+  }
+
+  return []
+}
+
 export default function ServicePackagesPage() {
   const [rows, setRows] = useState<ServicePackage[]>([])
   const [services, setServices] = useState<BookingServiceOption[]>([])
@@ -61,14 +74,14 @@ export default function ServicePackagesPage() {
     setLoading(true)
     try {
       const [pkgRes, svcRes] = await Promise.all([
-        fetch('/api/proxy/service-packages', { cache: 'no-store' }),
+        fetch('/api/proxy/service-packages?per_page=100', { cache: 'no-store' }),
         fetch('/api/proxy/booking/services', { cache: 'no-store' }),
       ])
 
       const pkgJson = await pkgRes.json().catch(() => ({}))
       const svcJson = await svcRes.json().catch(() => ({}))
 
-      const packageData = Array.isArray(pkgJson?.data) ? pkgJson.data : []
+      const packageData = parseServicePackageRows(pkgJson?.data)
       const serviceData = Array.isArray(svcJson?.data) ? svcJson.data : []
 
       setRows(packageData)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type CustomerPackage = {
   id: number
@@ -30,26 +30,71 @@ type CustomerPackageUsage = {
   booking_service?: { id: number; name: string }
 }
 
+type CustomerOption = {
+  id: number
+  name: string
+  phone?: string | null
+  email?: string | null
+}
+
+function parseRows<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[]
+  if (payload && typeof payload === 'object') {
+    const maybe = payload as Record<string, unknown>
+    if (Array.isArray(maybe.data)) return maybe.data as T[]
+  }
+  return []
+}
+
 export default function CustomerServicePackagesPage() {
   const [customerId, setCustomerId] = useState('')
+  const [customerOptions, setCustomerOptions] = useState<CustomerOption[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [packages, setPackages] = useState<CustomerPackage[]>([])
   const [balances, setBalances] = useState<CustomerPackageBalance[]>([])
   const [usages, setUsages] = useState<CustomerPackageUsage[]>([])
 
-  const load = async () => {
-    if (!customerId.trim()) {
-      setMessage('Please enter customer id.')
+  const loadCustomers = async () => {
+    const res = await fetch('/api/proxy/customers?per_page=50', { cache: 'no-store' })
+    const json = await res.json().catch(() => ({}))
+    const rows = parseRows<unknown>(json?.data)
+
+    const mapped = rows
+      .map((row): CustomerOption | null => {
+        if (!row || typeof row !== 'object') return null
+        const maybe = row as Record<string, unknown>
+        const id = Number(maybe.id)
+        if (!Number.isFinite(id) || id <= 0) return null
+        return {
+          id,
+          name: String(maybe.name ?? `Customer #${id}`),
+          phone: typeof maybe.phone === 'string' ? maybe.phone : null,
+          email: typeof maybe.email === 'string' ? maybe.email : null,
+        }
+      })
+      .filter((row): row is CustomerOption => Boolean(row))
+
+    setCustomerOptions(mapped)
+    if (!customerId && mapped.length > 0) {
+      setCustomerId(String(mapped[0].id))
+    }
+  }
+
+  const load = async (idArg?: string) => {
+    const id = (idArg ?? customerId).trim()
+    if (!id) {
+      setMessage('Please select customer first.')
       return
     }
+
     setLoading(true)
     setMessage(null)
     try {
       const [pkgRes, balRes, usageRes] = await Promise.all([
-        fetch(`/api/proxy/customers/${customerId}/service-packages`, { cache: 'no-store' }),
-        fetch(`/api/proxy/customers/${customerId}/service-package-balances`, { cache: 'no-store' }),
-        fetch(`/api/proxy/customers/${customerId}/service-package-usages`, { cache: 'no-store' }),
+        fetch(`/api/proxy/customers/${id}/service-packages`, { cache: 'no-store' }),
+        fetch(`/api/proxy/customers/${id}/service-package-balances`, { cache: 'no-store' }),
+        fetch(`/api/proxy/customers/${id}/service-package-usages`, { cache: 'no-store' }),
       ])
 
       if (!pkgRes.ok || !balRes.ok || !usageRes.ok) {
@@ -61,28 +106,40 @@ export default function CustomerServicePackagesPage() {
       const balJson = await balRes.json().catch(() => ({}))
       const usageJson = await usageRes.json().catch(() => ({}))
 
-      setPackages(Array.isArray(pkgJson?.data) ? pkgJson.data : [])
-      setBalances(Array.isArray(balJson?.data) ? balJson.data : [])
-      setUsages(Array.isArray(usageJson?.data) ? usageJson.data : [])
+      setPackages(parseRows<CustomerPackage>(pkgJson?.data))
+      setBalances(parseRows<CustomerPackageBalance>(balJson?.data))
+      setUsages(parseRows<CustomerPackageUsage>(usageJson?.data))
     } finally {
       setLoading(false)
     }
   }
 
+  useEffect(() => {
+    void loadCustomers()
+  }, [])
+
+  useEffect(() => {
+    if (customerId) {
+      void load(customerId)
+    }
+  }, [customerId])
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <h3 className="text-lg font-semibold">Customer Service Packages</h3>
-        <p className="mt-1 text-sm text-gray-600">Inspect owned packages, balances and usage logs by customer id.</p>
+        <p className="mt-1 text-sm text-gray-600">Inspect owned packages, balances and usage logs by customer.</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <input
-            className="rounded border px-3 py-2"
-            placeholder="Customer ID"
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-          />
+          <select className="rounded border px-3 py-2" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+            <option value="">Select Customer</option>
+            {customerOptions.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.name} ({customer.phone || customer.email || `#${customer.id}`})
+              </option>
+            ))}
+          </select>
           <button className="rounded bg-blue-600 px-4 py-2 text-white" onClick={() => void load()} disabled={loading}>
-            {loading ? 'Loading...' : 'Load'}
+            {loading ? 'Loading...' : 'Refresh'}
           </button>
         </div>
         {message ? <p className="mt-2 text-sm text-red-600">{message}</p> : null}

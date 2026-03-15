@@ -57,7 +57,7 @@ export default function BookingPage() {
         ))}
       </div>
 
-      <section className="mt-10">
+      <section id="packages" className="mt-10">
         <h2 className="text-2xl font-semibold">Service Packages</h2>
         <p className="mt-1 text-sm text-neutral-600">You can buy these package plans at POS/CRM counter, then claim sessions in booking cart.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">

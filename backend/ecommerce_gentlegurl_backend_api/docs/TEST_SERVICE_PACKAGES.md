@@ -1,16 +1,24 @@
-# TEST SERVICE PACKAGES / POS SERVICES
+# TEST SERVICE PACKAGES / POS SERVICES (Zero-Setup)
 
-## 1) 先准备
+## 1) 先准备（不用手工造资料）
 
-1. 启动 backend (`php artisan serve`)。
+1. 启动 backend (`php artisan serve`)
 2. 跑 migration：
    ```bash
    php artisan migrate
    ```
-3. 可选：补权限
+3. 跑 seed（会自动带 ServicePackageTestingSeeder）：
    ```bash
-   php artisan db:seed --class=AddServicePackagePermissionsSeeder
+   php artisan db:seed
    ```
+
+> `ServicePackageTestingSeeder` 会自动准备：
+> - booking services（含 package eligibility / price）
+> - service packages + package items
+> - customer owned packages
+> - balances
+> - 至少一笔 usage log（方便马上验证 usage 列表）
+
 4. 用 Postman import：
    - `docs/api/postman_collection.json`
    - `docs/postman_collection.json`
@@ -147,15 +155,24 @@
 
 ---
 
-## 8) 常见问题
+## 8) UI 快速验证（重点）
+
+1. CRM：`/booking/service-packages` 应直接看到 list（支持 create 后自动刷新）
+2. CRM：`/booking/customer-service-packages` 支持下拉 customer，选完即加载
+3. Booking Shop Header：应有 `Packages` 菜单，点击到 `/booking/packages`
+4. Booking cart：登录 customer 可点 `Claim package session`
+5. CRM POS service line：member 选定后可点 `Claim Package`
+
+---
+
+## 9) 常见问题
 
 1. `403`：账号没权限，先给
    - `service-packages.*`
    - `customer-service-packages.*`
 2. `422`：确认 `booking_service_id`、`service_package_id`、`customer_id` 都存在。
 3. Redeem 失败：通常是 balance 不足或 package 已过期/非 active。
-
-
+4. 页面显示空：先确认 `php artisan db:seed` 有执行成功。
 
 ---
 
