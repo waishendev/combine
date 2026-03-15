@@ -45,6 +45,7 @@ class DatabaseSeeder extends Seeder
             SelfPickupCompletedOrderSeeder::class,
             GuestCompletedOrderSeeder::class,
             BookingTestingSeeder::class,
+            ServicePackageTestingSeeder::class,
 
             //ReturnDemoSeeder::class,
             // SalesReportSeeder::class,
