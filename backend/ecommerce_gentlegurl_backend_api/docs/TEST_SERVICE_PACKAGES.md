@@ -155,3 +155,10 @@
 2. `422`：确认 `booking_service_id`、`service_package_id`、`customer_id` 都存在。
 3. Redeem 失败：通常是 balance 不足或 package 已过期/非 active。
 
+
+
+---
+
+## UI 跟点测试
+
+- 请参考：`docs/TEST_UI_SERVICE_FLOW.md`（给业务同学的点点点测试步骤）。
