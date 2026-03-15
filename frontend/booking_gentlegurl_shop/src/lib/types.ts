@@ -69,6 +69,11 @@ export type BookingRecord = {
   starts_at: string;
   deposit_amount: number;
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null;
+  paid_via_order?: {
+    order_id: number;
+    order_number: string;
+    deposit_order_item_id: number;
+  } | null;
 };
 
 export type AuthUser = {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\CustomerServicePackageUsage;
+use App\Models\Ecommerce\OrderItem;
 use Illuminate\Http\Request;
 
 class MyBookingController extends Controller
@@ -29,6 +30,13 @@ class MyBookingController extends Controller
             ->groupBy('booking_id');
 
         $payload = $bookings->map(function (Booking $booking) use ($claimsByBooking) {
+            $depositOrderItem = OrderItem::query()
+                ->with('order:id,order_number')
+                ->where('line_type', 'booking_deposit')
+                ->where('booking_id', (int) $booking->id)
+                ->latest('id')
+                ->first();
+
             return [
                 'id' => (int) $booking->id,
                 'status' => $booking->status,
@@ -54,6 +62,11 @@ class MyBookingController extends Controller
                 'staff' => $booking->staff ? [
                     'id' => (int) $booking->staff->id,
                     'name' => $booking->staff->name,
+                ] : null,
+                'paid_via_order' => $depositOrderItem?->order ? [
+                    'order_id' => (int) $depositOrderItem->order->id,
+                    'order_number' => (string) $depositOrderItem->order->order_number,
+                    'deposit_order_item_id' => (int) $depositOrderItem->id,
                 ] : null,
             ];
         })->values();

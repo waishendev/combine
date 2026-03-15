@@ -13,11 +13,19 @@ class InvoiceService
         $order->loadMissing(['items', 'serviceItems', 'pickupStore']);
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
-        $productItems = $order->items->map(function ($item) {
+        $mixedItems = $order->items->map(function ($item) {
+            $lineType = (string) ($item->line_type ?: 'product');
+            $variantName = $item->variant_name_snapshot;
+            if ($lineType === 'booking_deposit') {
+                $variantName = 'Booking Deposit';
+            } elseif ($lineType === 'service_package') {
+                $variantName = 'Service Package';
+            }
+
             return [
-                'product_name' => $item->product_name_snapshot,
+                'product_name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
                 'product_sku' => $item->sku_snapshot,
-                'variant_name' => $item->variant_name_snapshot,
+                'variant_name' => $variantName,
                 'variant_sku' => $item->variant_sku_snapshot,
                 'quantity' => (int) $item->quantity,
                 'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
@@ -62,7 +70,11 @@ class InvoiceService
             })
             ->values();
 
-        $items = $productItems->concat($serviceItems)->concat($packageItems)->values();
+        $items = $mixedItems->concat($serviceItems)->values();
+
+        if ($mixedItems->where('variant_name', 'Service Package')->isEmpty()) {
+            $items = $items->concat($packageItems)->values();
+        }
 
         return app('snappy.pdf.wrapper')->loadView('invoices.order', [
             'order' => $order,

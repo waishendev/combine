@@ -54,6 +54,11 @@ export default function MyBookingsPage() {
             ) : booking.package_claim_status === 'released' ? (
               <p className="mt-1 text-sm text-slate-600">Package reservation released.</p>
             ) : null}
+            {booking.paid_via_order?.order_number ? (
+              <p className="mt-1 text-sm text-neutral-700">
+                Paid via order/receipt <span className="font-semibold">{booking.paid_via_order.order_number}</span>
+              </p>
+            ) : null}
           </div>
         ))}
       </div>

@@ -1016,6 +1016,12 @@ class PosController extends Controller
                 ->map(fn ($rate) => (float) $rate)
                 ->all();
 
+            $serviceClaimStatuses = $this->resolveServiceItemClaimStatuses($cart);
+            $depositBreakdown = $this->resolvePosBookingDepositBreakdown($cart, $serviceClaimStatuses);
+            $standardBaseAppliedItemId = (int) ($depositBreakdown['standard_base_applied_item_id'] ?? 0);
+            $premiumDepositAmount = (float) ($depositBreakdown['per_premium_amount'] ?? 0);
+            $standardBaseAmount = (float) ($depositBreakdown['standard_base_amount'] ?? 0);
+
             foreach ($cart->items as $item) {
                 $variant = $item->variant;
                 $product = $variant?->product ?? $item->product;
@@ -1035,9 +1041,11 @@ class PosController extends Controller
                 $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
                 $orderItem = OrderItem::create([
                     'order_id' => $order->id,
+                    'line_type' => 'product',
                     'product_id' => $product->id,
                     'product_variant_id' => $variant?->id,
                     'product_name_snapshot' => $product->name,
+                    'display_name_snapshot' => $product->name,
                     'sku_snapshot' => $product->sku,
                     'variant_name_snapshot' => $variant?->title,
                     'variant_sku_snapshot' => $variant?->sku,
@@ -1171,6 +1179,38 @@ class PosController extends Controller
                     'commission_amount' => round($lineTotal * $commissionRate, 2),
                     'item_type' => 'service',
                 ]);
+
+                $claimStatus = $serviceClaimStatuses[(int) $serviceItem->id] ?? null;
+                $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
+                $serviceType = strtoupper((string) ($serviceItem->bookingService?->service_type ?? 'STANDARD'));
+                $depositContribution = 0.0;
+                if (! $claimedByPackage) {
+                    if ($serviceType === 'PREMIUM') {
+                        $depositContribution = (float) $serviceItem->qty * $premiumDepositAmount;
+                    } elseif ($standardBaseAppliedItemId > 0 && (int) $serviceItem->id === $standardBaseAppliedItemId) {
+                        $depositContribution = $standardBaseAmount;
+                    }
+                }
+
+                if ($depositContribution > 0) {
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'line_type' => 'booking_deposit',
+                        'product_id' => null,
+                        'product_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
+                        'display_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
+                        'quantity' => 1,
+                        'price_snapshot' => $depositContribution,
+                        'unit_price_snapshot' => $depositContribution,
+                        'line_total' => $depositContribution,
+                        'line_total_snapshot' => $depositContribution,
+                        'effective_unit_price' => $depositContribution,
+                        'effective_line_total' => $depositContribution,
+                        'locked' => true,
+                        'booking_id' => $booking->id,
+                        'booking_service_id' => $serviceItem->booking_service_id,
+                    ]);
+                }
             }
 
             foreach ($cart->packageItems as $packageItem) {
@@ -1210,6 +1250,24 @@ class PosController extends Controller
                             'commission_amount_snapshot' => round($splitSales * $rate, 2),
                         ]);
                     }
+
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'line_type' => 'service_package',
+                        'product_id' => null,
+                        'product_name_snapshot' => (string) ($packageItem->package_name_snapshot ?: $servicePackage->name),
+                        'display_name_snapshot' => (string) ($packageItem->package_name_snapshot ?: $servicePackage->name),
+                        'quantity' => 1,
+                        'price_snapshot' => (float) $packageItem->price_snapshot,
+                        'unit_price_snapshot' => (float) $packageItem->price_snapshot,
+                        'line_total' => (float) $packageItem->price_snapshot,
+                        'line_total_snapshot' => (float) $packageItem->price_snapshot,
+                        'effective_unit_price' => (float) $packageItem->price_snapshot,
+                        'effective_line_total' => (float) $packageItem->price_snapshot,
+                        'locked' => true,
+                        'service_package_id' => (int) $packageItem->service_package_id,
+                        'customer_service_package_id' => (int) $ownedPackage->id,
+                    ]);
                 }
 
                 $purchasedPackageLines[] = [
@@ -1296,7 +1354,7 @@ class PosController extends Controller
             pdfBytes: $pdf->output(),
             pdfFilename: 'Invoice-' . (string) ($order->order_number ?? $order->id) . '.pdf',
             items: $order->items->map(fn (OrderItem $item) => [
-                'name' => $item->product_name_snapshot ?: 'Item #' . $item->id,
+                'name' => $item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Item #' . $item->id,
                 'qty' => (int) $item->quantity,
                 'line_total' => (float) ($item->effective_line_total ?? $item->line_total),
             ])->values()->all(),
