@@ -143,8 +143,16 @@ export { ApiError };
 
 
 export async function getServicePackages() {
-  const response = await request<{ data: ServicePackage[] } | ServicePackage[]>("/service-packages");
-  return unwrapData<ServicePackage[]>(response);
+  const response = await request<
+    { data?: ServicePackage[] | { data?: ServicePackage[] } } | ServicePackage[]
+  >("/service-packages");
+
+  const unwrapped = unwrapData<ServicePackage[] | { data?: ServicePackage[] }>(response);
+  if (Array.isArray(unwrapped)) return unwrapped;
+  if (unwrapped && typeof unwrapped === "object" && Array.isArray(unwrapped.data)) {
+    return unwrapped.data;
+  }
+  return [];
 }
 
 export async function getServicePackageAvailableFor(customerId: number, serviceId: number) {
