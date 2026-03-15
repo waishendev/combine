@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
-use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
@@ -134,11 +133,7 @@ class OrderController extends Controller
             'returns.items.orderItem',
         ]);
 
-        $servicePackageItems = CustomerServicePackage::query()
-            ->with(['servicePackage:id,name,selling_price', 'customer:id,name'])
-            ->where('purchased_from', 'POS')
-            ->where('purchased_ref_id', (int) $order->id)
-            ->get();
+        $orderLineItems = $order->items->values();
 
         $claimsByBooking = CustomerServicePackageUsage::query()
             ->whereIn('booking_id', $order->serviceItems->pluck('booking_id')->filter()->all())
@@ -186,7 +181,7 @@ class OrderController extends Controller
                 'country' => $order->billing_country,
             ],
             'customer' => $order->customer,
-            'items' => $order->items->map(function ($item) {
+            'items' => $orderLineItems->where('line_type', 'product')->map(function ($item) {
                 $thumbnail = $item->product?->cover_image_url;
                 $productType = $item->product?->type;
 
@@ -203,6 +198,17 @@ class OrderController extends Controller
                     'line_total' => $item->line_total,
                     'product_image' => $thumbnail,
                     'cover_image_url' => $thumbnail,
+                ];
+            }),
+            'booking_deposit_items' => $orderLineItems->where('line_type', 'booking_deposit')->values()->map(function ($item) {
+                return [
+                    'item_type' => 'booking_deposit',
+                    'display_name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
+                    'quantity' => (int) $item->quantity,
+                    'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
+                    'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
+                    'booking_id' => $item->booking_id,
+                    'booking_service_id' => $item->booking_service_id,
                 ];
             }),
             'service_items' => $order->serviceItems->values()->map(function ($item) use ($claimsByBooking) {
@@ -233,17 +239,17 @@ class OrderController extends Controller
                             : ($claimStatus === 'released' ? 'Package reservation released' : null)),
                 ];
             }),
-            'package_items' => $servicePackageItems->groupBy('service_package_id')->map(function ($rows) {
+            'package_items' => $orderLineItems->where('line_type', 'service_package')->groupBy('service_package_id')->map(function ($rows) {
                 $first = $rows->first();
-                $unitPrice = (float) ($first?->servicePackage?->selling_price ?? 0);
+                $unitPrice = (float) ($first?->effective_unit_price ?? $first?->unit_price_snapshot ?? $first?->price_snapshot ?? 0);
                 return [
                     'item_type' => 'service_package',
-                    'service_package_id' => (int) ($first->service_package_id ?? 0),
-                    'package_name' => (string) ($first?->servicePackage?->name ?? 'Service Package'),
-                    'customer_name' => $first?->customer?->name,
+                    'service_package_id' => (int) ($first?->service_package_id ?? 0),
+                    'customer_service_package_id' => (int) ($first?->customer_service_package_id ?? 0),
+                    'package_name' => (string) ($first?->display_name_snapshot ?: $first?->product_name_snapshot ?: 'Service Package'),
                     'quantity' => (int) $rows->count(),
                     'unit_price' => $unitPrice,
-                    'line_total' => round((float) $rows->count() * $unitPrice, 2),
+                    'line_total' => (float) $rows->sum(fn ($row) => (float) ($row->effective_line_total ?? $row->line_total_snapshot ?? $row->line_total ?? 0)),
                 ];
             })->values(),
             'returns' => $order->returns->map(function ($return) use ($order) {

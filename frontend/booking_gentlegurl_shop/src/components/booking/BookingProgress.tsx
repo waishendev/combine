@@ -5,7 +5,7 @@ export function BookingProgress({ step }: { step: number }) {
       {steps.map((label, index) => {
         const active = index + 1 <= step;
         return (
-          <div key={label} className={`rounded-full px-3 py-2 text-center ${active ? "bg-black text-white" : "bg-neutral-100 text-neutral-500"}`}>
+          <div key={label} className={`rounded-full px-3 py-2 text-center ${active ? "bg-[var(--accent-strong)] text-white" : "bg-[var(--muted)] text-[var(--text-muted)]"}`}>
             {label}
           </div>
         );

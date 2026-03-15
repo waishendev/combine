@@ -27,13 +27,13 @@ export default function LoginPage() {
   return (
     <main className="mx-auto max-w-md px-4 py-12">
       <h1 className="text-3xl font-semibold">Welcome back</h1>
-      <form onSubmit={onSubmit} className="mt-6 space-y-4 rounded-3xl border border-neutral-200 p-6">
-        <input name="email" type="email" required placeholder="Email" className="w-full rounded-xl border px-4 py-2" />
-        <input name="password" type="password" required placeholder="Password" className="w-full rounded-xl border px-4 py-2" />
-        {error ? <p className="text-sm text-red-500">{error}</p> : null}
-        <button disabled={loading} className="w-full rounded-full bg-black py-3 text-white">{loading ? "Signing in..." : "Login"}</button>
+      <form onSubmit={onSubmit} className="mt-6 space-y-4 rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-6">
+        <input name="email" type="email" required placeholder="Email" className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-2" />
+        <input name="password" type="password" required placeholder="Password" className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-2" />
+        {error ? <p className="text-sm text-[var(--status-error)]">{error}</p> : null}
+        <button disabled={loading} className="w-full rounded-full bg-[var(--accent-strong)] py-3 text-white hover:bg-[var(--accent-stronger)] transition-colors disabled:opacity-50">{loading ? "Signing in..." : "Login"}</button>
       </form>
-      <p className="mt-4 text-sm text-neutral-600">No account? <Link href="/register" className="text-black">Create one</Link></p>
+      <p className="mt-4 text-sm text-[var(--text-muted)]">No account? <Link href="/register" className="text-[var(--foreground)]">Create one</Link></p>
     </main>
   );
 }

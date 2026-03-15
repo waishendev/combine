@@ -421,7 +421,7 @@ export default function ProductDetailClient({
                       {formatPromoEndAt(saleEndAt)}
                     </p>
                   </div>
-                  <div className="inline-flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
+                  <div className="inline-flex items-center gap-2 rounded-lg bg-[var(--card)]/70 px-3 py-2 text-xs font-semibold text-[color:var(--status-warning)]">
                     <span>ENDS IN</span>
                     <span className="font-mono text-sm text-[var(--foreground)]">
                       {countdownLabel}
@@ -481,7 +481,7 @@ export default function ProductDetailClient({
                           ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
                           : !isAvailable
                             ? "border-[var(--card-border)] bg-[var(--background-soft)] text-[var(--text-muted)] opacity-70"
-                            : "border-[var(--card-border)] bg-white text-[var(--foreground)] hover:border-[var(--accent)]"
+                            : "border-[var(--card-border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--accent)]"
                       }`}
                     >
                       <span className="block">{variant.name}</span>

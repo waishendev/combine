@@ -81,12 +81,12 @@ export default function SlotPage() {
         <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-700">TEST</span>
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-xl border px-4 py-2" />
-        <button onClick={loadSlots} className="rounded-full bg-black px-5 py-2 text-white">Find slots</button>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-2" />
+        <button onClick={loadSlots} className="rounded-full bg-[var(--accent-strong)] px-5 py-2 text-white hover:bg-[var(--accent-stronger)] transition-colors">Find slots</button>
       </div>
       {loading ? <p className="mt-4">Loading availability...</p> : null}
-      {error ? <p className="mt-4 text-red-600">{error}</p> : null}
-      {cartMessage ? <p className="mt-4 text-green-700">{cartMessage}</p> : null}
+      {error ? <p className="mt-4 text-[var(--status-error)]">{error}</p> : null}
+      {cartMessage ? <p className="mt-4 text-[var(--status-success)]">{cartMessage}</p> : null}
       <div className="mt-6 grid gap-3 md:grid-cols-3">
         {Array.isArray(slots) && slots.length > 0 ? (
           slots.map((slot, idx) => {
@@ -95,15 +95,15 @@ export default function SlotPage() {
             if (!startAt || !endAt) return null;
 
             return (
-              <button key={startAt + idx} onClick={() => reserveSlot(slot)} className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-black hover:shadow">
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">TEST Slot</p>
+              <button key={startAt + idx} onClick={() => reserveSlot(slot)} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--status-success)]">TEST Slot</p>
                 <p className="mt-1 font-medium">{new Date(startAt).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
-                <p className="text-sm text-neutral-500">to {new Date(endAt).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
+                <p className="text-sm text-[var(--text-muted)]">to {new Date(endAt).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur" })}</p>
               </button>
             );
           })
         ) : (
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600 md:col-span-3">
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 text-sm text-[var(--text-muted)] md:col-span-3">
             No slots available for selected date
           </div>
         )}

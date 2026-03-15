@@ -156,17 +156,17 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
       {/* Drawer */}
       <div
-        className={`fixed right-0 top-0 z-50 h-full w-full max-w-md transform bg-white shadow-xl transition-transform duration-300 ease-in-out ${
+        className={`fixed right-0 top-0 z-50 h-full w-full max-w-md transform bg-[var(--card)] shadow-xl transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <div className="flex h-full flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-6 py-4">
+          <div className="flex items-center justify-between border-b border-[var(--card-border)] px-6 py-4">
             <h2 className="text-xl font-semibold">Booking Cart</h2>
             <button
               onClick={onClose}
-              className="rounded-full p-2 hover:bg-neutral-100 transition-colors"
+              className="rounded-full p-2 hover:bg-[var(--muted)] transition-colors"
               aria-label="Close cart"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -177,35 +177,35 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
-            {message ? <p className="mb-4 text-sm text-amber-700">{message}</p> : null}
-            <p className="mb-4 text-sm text-neutral-600">Deposit is charged per Premium service.</p>
-            <p className="mb-4 text-sm text-neutral-600">Standard services do not add extra deposit if at least one Premium exists.</p>
-            <p className="mb-6 text-sm text-neutral-600">If only Standard services selected, base deposit applies.</p>
+            {message ? <p className="mb-4 text-sm text-[var(--status-warning)]">{message}</p> : null}
+            <p className="mb-4 text-sm text-[var(--text-muted)]">Deposit is charged per Premium service.</p>
+            <p className="mb-4 text-sm text-[var(--text-muted)]">Standard services do not add extra deposit if at least one Premium exists.</p>
+            <p className="mb-6 text-sm text-[var(--text-muted)]">If only Standard services selected, base deposit applies.</p>
 
             <div className="space-y-3">
               {cart?.items?.map((item) => (
-                <div key={item.id} className="rounded-xl border p-4">
+                <div key={item.id} className="rounded-xl border border-[var(--card-border)] p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <p className="font-medium">{item.service_name} ({item.service_type})</p>
-                      <p className="text-sm text-neutral-600">{item.staff_name}</p>
-                      <p className="text-sm text-neutral-600">
+                      <p className="text-sm text-[var(--text-muted)]">{item.staff_name}</p>
+                      <p className="text-sm text-[var(--text-muted)]">
                         {new Date(item.start_at).toLocaleString("en-MY", {
                           timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur",
                         })}
                       </p>
-                      <p className="text-sm text-neutral-600">Item deposit: RM {Number(item.deposit_amount ?? 0).toFixed(2)}</p>
+                      <p className="text-sm text-[var(--text-muted)]">Item deposit: RM {Number(item.deposit_amount ?? 0).toFixed(2)}</p>
                       {item.package_claim_status === "reserved" || item.package_claim_status === "consumed" ? (
-                        <p className="text-xs text-emerald-700">Claimed from package. Deposit waived for this item.</p>
+                        <p className="text-xs text-[var(--status-success)]">Claimed from package. Deposit waived for this item.</p>
                       ) : null}
-                      <p className="mt-1 text-sm text-red-600">Expires in {formatDuration(secondsLeft(item.expires_at))}</p>
+                      <p className="mt-1 text-sm text-[var(--status-error)]">Expires in {formatDuration(secondsLeft(item.expires_at))}</p>
                     </div>
                     <div className="shrink-0 space-y-2 text-right">
                       {isLoggedIn ? (
                         <>
-                          <p className="text-xs text-emerald-700">Package sessions: {availableMap[item.id] ?? 0}</p>
+                          <p className="text-xs text-[var(--status-success)]">Package sessions: {availableMap[item.id] ?? 0}</p>
                           <button
-                            className="rounded-full border border-emerald-300 px-3 py-1 text-xs text-emerald-700 disabled:opacity-40"
+                            className="rounded-full border border-[var(--status-success-border)] px-3 py-1 text-xs text-[var(--status-success)] disabled:opacity-40"
                             disabled={!customerId || (availableMap[item.id] ?? 0) <= 0 || item.package_claim_status === "reserved" || item.package_claim_status === "consumed"}
                             onClick={async () => {
                               if (!customerId) return;
@@ -232,7 +232,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         </>
                       ) : null}
                       <button
-                        className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50 transition-colors"
+                        className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
                         onClick={async () => {
                           const updatedCart = await removeCartItem(item.id);
                           setCart(updatedCart);
@@ -249,16 +249,16 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               ))}
 
               {cart?.package_items?.map((pkg) => (
-                <div key={`pkg-${pkg.id}`} className="rounded-xl border p-4">
+                <div key={`pkg-${pkg.id}`} className="rounded-xl border border-[var(--card-border)] p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <p className="font-medium">{pkg.package_name}</p>
-                      <p className="text-sm text-neutral-600">Qty: {pkg.qty}</p>
-                      <p className="text-sm text-neutral-600">Line total: RM {pkg.line_total}</p>
+                      <p className="text-sm text-[var(--text-muted)]">Qty: {pkg.qty}</p>
+                      <p className="text-sm text-[var(--text-muted)]">Line total: RM {pkg.line_total}</p>
                     </div>
                     <div className="shrink-0 text-right">
                       <button
-                        className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50 transition-colors"
+                        className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
                         onClick={async () => {
                           const updatedCart = await removePackageCartItem(pkg.id);
                           setCart(updatedCart);
@@ -273,12 +273,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 </div>
               ))}
               {!(cart?.items?.length || cart?.package_items?.length) ? (
-                <div className="rounded-xl border border-dashed p-6 text-center">
-                  <p className="text-neutral-600">Your cart is empty.</p>
+                <div className="rounded-xl border border-dashed border-[var(--card-border)] p-6 text-center">
+                  <p className="text-[var(--text-muted)]">Your cart is empty.</p>
                   <Link
                     href="/booking"
                     onClick={onClose}
-                    className="mt-3 inline-flex rounded-full border px-4 py-2 text-sm hover:bg-neutral-50 transition-colors"
+                    className="mt-3 inline-flex rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
                   >
                     Browse services
                   </Link>
@@ -287,28 +287,28 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             </div>
 
             {(cart?.items?.length || cart?.package_items?.length) ? (
-              <div className="mt-8 rounded-xl border p-4">
+              <div className="mt-8 rounded-xl border border-[var(--card-border)] p-4">
                 {!isLoggedIn && hasPackageItems ? (
-                  <p className="mb-3 text-sm text-amber-700">Please login first to checkout package items.</p>
+                  <p className="mb-3 text-sm text-[var(--status-warning)]">Please login first to checkout package items.</p>
                 ) : null}
                 {!isLoggedIn ? (
                   <div className="mb-4 grid gap-3">
                     <input
                       value={guestName}
                       onChange={(e) => setGuestName(e.target.value)}
-                      className="rounded-lg border px-3 py-2"
+                      className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2"
                       placeholder="Guest name *"
                     />
                     <input
                       value={guestPhone}
                       onChange={(e) => setGuestPhone(e.target.value)}
-                      className="rounded-lg border px-3 py-2"
+                      className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2"
                       placeholder="Guest phone *"
                     />
                     <input
                       value={guestEmail}
                       onChange={(e) => setGuestEmail(e.target.value)}
-                      className="rounded-lg border px-3 py-2"
+                      className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2"
                       placeholder="Guest email (optional)"
                     />
                   </div>
@@ -316,11 +316,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 <p className="font-semibold">Deposit total: RM {cart?.deposit_total ?? 0}</p>
                 <p className="font-semibold">Package total: RM {cart?.package_total ?? 0}</p>
                 <p className="font-semibold">Cart total: RM {cart?.cart_total ?? cart?.deposit_total ?? 0}</p>
-                <p className="text-sm text-neutral-600">Next expiry in: {nextExpiryIn ?? "-"}</p>
+                <p className="text-sm text-[var(--text-muted)]">Next expiry in: {nextExpiryIn ?? "-"}</p>
                 <button
                   onClick={onCheckout}
                   disabled={!(cart?.items?.length || cart?.package_items?.length) || (!isLoggedIn && hasPackageItems)}
-                  className="mt-4 w-full rounded-full bg-black px-6 py-3 text-white disabled:opacity-40 hover:bg-neutral-800 transition-colors"
+                  className="mt-4 w-full rounded-full bg-[var(--accent-strong)] px-6 py-3 text-white disabled:opacity-40 hover:bg-[var(--accent-stronger)] transition-colors"
                 >
                   Proceed to Checkout
                 </button>

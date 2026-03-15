@@ -8,7 +8,19 @@ import { getCurrentUser } from '@/lib/auth'
 
 export default async function Page() {
   const user = await getCurrentUser()
-  if (!user) redirect('/login')
+
+  if (!user) {
+    redirect('/login')
+  }
+
+  // Check if user has permission to view booking commissions
+  const hasPermission = user.permissions.some(
+    (perm) => perm === 'booking.commissions.view' || perm === 'booking.commissions.override',
+  )
+
+  if (!hasPermission) {
+    redirect('/dashboard')
+  }
 
   return (
     <div className="overflow-y-auto py-6 px-10">

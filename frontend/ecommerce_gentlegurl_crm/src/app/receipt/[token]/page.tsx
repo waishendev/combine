@@ -1,12 +1,19 @@
 export const dynamic = 'force-dynamic'
 
 type ReceiptItem = {
+  type?: 'product' | 'booking_deposit' | 'service_package' | string
   sku?: string
   name: string
   variant_name?: string
   qty: number
   unit_price: number
   line_total?: number
+}
+
+function lineTypeLabel(type?: string) {
+  if (type === 'booking_deposit') return 'Booking Deposit'
+  if (type === 'service_package') return 'Service Package'
+  return 'Product'
 }
 
 type ReceiptData = {
@@ -115,6 +122,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               <tr key={`${item.sku}-${idx}`} className="border-t border-gray-200 text-sm">
                 <td className="px-4 py-3">
                   <p className="font-semibold">{item.name}</p>
+                  <p className="text-xs text-gray-500">Type: {lineTypeLabel(item.type)}</p>
                   {item.sku ? <p className="text-xs text-gray-500">SKU: {item.sku}</p> : null}
                   {item.variant_name ? <p className="text-xs text-gray-500">Variant: {item.variant_name}</p> : null}
                 </td>

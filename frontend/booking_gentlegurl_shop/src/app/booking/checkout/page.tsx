@@ -42,9 +42,9 @@ export default function CheckoutPage() {
     <main className="mx-auto max-w-3xl px-4 py-10">
       <BookingProgress step={4} />
       <h1 className="text-3xl font-semibold">Checkout deposit</h1>
-      <p className="mt-2 text-neutral-600">Your slot is reserved for 15 minutes.</p>
-      <p className="mt-2 inline-block rounded-full bg-neutral-100 px-3 py-1 text-sm">Time left: {countdown}</p>
-      <button onClick={onPay} disabled={paying || !bookingId} className="mt-8 rounded-full bg-black px-6 py-3 text-white disabled:opacity-40">
+      <p className="mt-2 text-[var(--text-muted)]">Your slot is reserved for 15 minutes.</p>
+      <p className="mt-2 inline-block rounded-full bg-[var(--muted)] px-3 py-1 text-sm">Time left: {countdown}</p>
+      <button onClick={onPay} disabled={paying || !bookingId} className="mt-8 rounded-full bg-[var(--accent-strong)] px-6 py-3 text-white disabled:opacity-40 hover:bg-[var(--accent-stronger)] transition-colors">
         {paying ? "Processing..." : "Pay Deposit"}
       </button>
     </main>

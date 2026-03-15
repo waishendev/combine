@@ -39,21 +39,21 @@ export default function MyServicePackagesPage() {
   }, [user]);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
+    <>
       <h1 className="text-3xl font-semibold">My Packages</h1>
       {loading ? <p className="mt-4">Loading packages...</p> : null}
-      {error ? <p className="mt-4 text-red-500">{error}</p> : null}
+      {error ? <p className="mt-4 text-[var(--status-error)]">{error}</p> : null}
 
       <div className="mt-6 space-y-3">
         {rows.length === 0 && !loading ? (
-          <div className="rounded-2xl border border-dashed border-neutral-300 p-5 text-sm text-neutral-600">No package purchased yet.</div>
+          <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-5 text-sm text-[var(--text-muted)]">No package purchased yet.</div>
         ) : null}
 
         {rows.map((row) => (
-          <div key={row.id} className="rounded-2xl border border-neutral-200 p-5">
+          <div key={row.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5">
             <p className="font-semibold">{row.service_package?.name || `Package #${row.id}`}</p>
-            <p className="text-sm text-neutral-600">Status: {row.status}</p>
-            <p className="text-sm text-neutral-600">Expires: {row.expires_at || "-"}</p>
+            <p className="text-sm text-[var(--text-muted)]">Status: {row.status}</p>
+            <p className="text-sm text-[var(--text-muted)]">Expires: {row.expires_at || "-"}</p>
 
             <div className="mt-3 space-y-1 text-sm">
               {(row.balances ?? []).map((bal) => (
@@ -65,6 +65,6 @@ export default function MyServicePackagesPage() {
           </div>
         ))}
       </div>
-    </main>
+    </>
   );
 }

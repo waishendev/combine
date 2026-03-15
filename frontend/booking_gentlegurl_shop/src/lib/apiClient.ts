@@ -1,5 +1,19 @@
 import { getOrCreateBookingGuestToken } from "./bookingGuestToken";
-import { AuthUser, BookingCart, BookingRecord, BookingSlot, MyServicePackage, Service, ServicePackage, ServicePackageAvailability, Staff } from "./types";
+import { 
+  AddressPayload, 
+  AuthUser, 
+  BookingCart, 
+  BookingRecord, 
+  BookingSlot, 
+  CustomerAddress, 
+  CustomerProfileWithAddresses, 
+  MyServicePackage, 
+  Service, 
+  ServicePackage, 
+  ServicePackageAvailability, 
+  Staff,
+  UpdateCustomerProfilePayload 
+} from "./types";
 
 const API_PREFIX = "/api/proxy";
 
@@ -207,4 +221,91 @@ export async function purchaseServicePackage(payload: {
 export async function getMyServicePackages() {
   const response = await request<{ data: MyServicePackage[] } | MyServicePackage[]>("/booking/my/service-packages");
   return unwrapData<MyServicePackage[]>(response);
+}
+
+// Customer Profile APIs
+export async function getCustomerProfile() {
+  const response = await request<{ data: CustomerProfileWithAddresses } | CustomerProfileWithAddresses>("/public/auth/profile");
+  return { data: unwrapData<CustomerProfileWithAddresses>(response) };
+}
+
+export async function updateCustomerProfile(payload: UpdateCustomerProfilePayload) {
+  const formData = new FormData();
+
+  if (payload.name !== undefined) {
+    formData.append("name", payload.name);
+  }
+
+  if (payload.phone !== undefined) {
+    formData.append("phone", payload.phone ?? "");
+  }
+
+  if (payload.gender !== undefined) {
+    formData.append("gender", payload.gender ?? "");
+  }
+
+  if (payload.date_of_birth !== undefined) {
+    formData.append("date_of_birth", payload.date_of_birth ?? "");
+  }
+
+  if (payload.photo !== undefined && payload.photo !== null) {
+    formData.append("photo", payload.photo);
+  }
+
+  const response = await request<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", {
+    method: "PUT",
+    body: formData,
+  });
+
+  return { data: unwrapData<CustomerProfileWithAddresses>(response) };
+}
+
+export async function changeCustomerPassword(payload: {
+  current_password: string;
+  password: string;
+  password_confirmation: string;
+}) {
+  const response = await request<{ data: CustomerProfileWithAddresses }>("/public/auth/password", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return { data: unwrapData<CustomerProfileWithAddresses>(response) };
+}
+
+// Customer Address APIs
+export async function getCustomerAddresses() {
+  const response = await request<{ data: CustomerAddress[] } | CustomerAddress[]>("/public/auth/addresses");
+  return { data: unwrapData<CustomerAddress[]>(response) };
+}
+
+export async function createCustomerAddress(payload: AddressPayload) {
+  const response = await request<{ data: CustomerAddress } | CustomerAddress>("/public/auth/addresses", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return { data: unwrapData<CustomerAddress>(response) };
+}
+
+export async function updateCustomerAddress(id: number, payload: AddressPayload) {
+  const response = await request<{ data: CustomerAddress } | CustomerAddress>(`/public/auth/addresses/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return { data: unwrapData<CustomerAddress>(response) };
+}
+
+export async function deleteCustomerAddress(id: number) {
+  const response = await request<{ data: null } | null>(`/public/auth/addresses/${id}`, {
+    method: "DELETE",
+    body: JSON.stringify({}),
+  });
+  return { data: unwrapData<null>(response) };
+}
+
+export async function makeDefaultCustomerAddress(id: number) {
+  const response = await request<{ data: CustomerAddress } | CustomerAddress>(`/public/auth/addresses/${id}/default`, {
+    method: "PUT",
+    body: JSON.stringify({}),
+  });
+  return { data: unwrapData<CustomerAddress>(response) };
 }

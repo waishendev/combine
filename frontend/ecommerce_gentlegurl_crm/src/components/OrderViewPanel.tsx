@@ -85,6 +85,14 @@ type OrderDetailData = {
     unit_price?: string | number | null
     line_total: string | number
   }>
+  booking_deposit_items?: Array<{
+    item_type?: 'booking_deposit' | string
+    display_name: string
+    quantity: number
+    unit_price?: string | number | null
+    line_total: string | number
+    booking_id?: number | null
+  }>
   vouchers?: Array<{
     code: string
     discount_amount: string
@@ -416,6 +424,7 @@ export default function OrderViewPanel({
   const hasProductItems = (order.items?.length ?? 0) > 0
   const hasServiceItems = (order.service_items?.length ?? 0) > 0
   const hasPackageItems = (order.package_items?.length ?? 0) > 0
+  const hasBookingDepositItems = (order.booking_deposit_items?.length ?? 0) > 0
 
   return (
     <>
@@ -444,7 +453,7 @@ export default function OrderViewPanel({
             <div className="space-y-5">
 
               {/* Order Items */}
-              {(hasProductItems || hasServiceItems || hasPackageItems) && (
+              {(hasProductItems || hasServiceItems || hasPackageItems || hasBookingDepositItems) && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                     <p className="text-sm font-semibold text-slate-900">Order Details</p>
@@ -555,6 +564,40 @@ export default function OrderViewPanel({
                                 <tr key={`package-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
                                   <td className="px-2 py-2 text-slate-900">{item.package_name || 'Service Package'}</td>
                                   <td className="px-2 py-2 text-slate-700">{item.customer_name || '-'}</td>
+                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
+                                  <td className="px-2 py-2 text-right text-slate-700">
+                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
+                                  </td>
+                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasBookingDepositItems && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Booking Deposits</p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[640px] text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-600">
+                                <th className="px-2 py-2 text-left font-medium">Deposit Line</th>
+                                <th className="px-2 py-2 text-left font-medium">Booking</th>
+                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
+                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
+                                <th className="px-2 py-2 text-right font-medium">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.booking_deposit_items?.map((item, idx) => (
+                                <tr key={`booking-deposit-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                                  <td className="px-2 py-2 text-slate-900">{item.display_name || 'Booking Deposit'}</td>
+                                  <td className="px-2 py-2 text-slate-700">
+                                    {item.booking_id ? `Booking #${item.booking_id}` : '-'}
+                                  </td>
                                   <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
                                   <td className="px-2 py-2 text-right text-slate-700">
                                     {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}

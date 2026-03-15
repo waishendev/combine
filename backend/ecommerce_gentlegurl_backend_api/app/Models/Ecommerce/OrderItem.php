@@ -11,9 +11,11 @@ class OrderItem extends Model
 
     protected $fillable = [
         'order_id',
+        'line_type',
         'product_id',
         'product_variant_id',
         'product_name_snapshot',
+        'display_name_snapshot',
         'sku_snapshot',
         'variant_name_snapshot',
         'variant_sku_snapshot',
@@ -43,6 +45,10 @@ class OrderItem extends Model
         'is_reward',
         'reward_redemption_id',
         'locked',
+        'booking_id',
+        'booking_service_id',
+        'service_package_id',
+        'customer_service_package_id',
     ];
 
     protected function casts(): array
@@ -58,6 +64,10 @@ class OrderItem extends Model
             'quantity' => 'integer',
             'line_total' => 'decimal:2',
             'is_package' => 'boolean',
+            'booking_id' => 'integer',
+            'booking_service_id' => 'integer',
+            'service_package_id' => 'integer',
+            'customer_service_package_id' => 'integer',
             'is_reward' => 'boolean',
             'is_staff_free_applied' => 'boolean',
             'discount_value' => 'decimal:2',
@@ -113,5 +123,10 @@ class OrderItem extends Model
     public function staffSplits()
     {
         return $this->hasMany(OrderItemStaffSplit::class);
+    }
+
+    public function booking()
+    {
+        return $this->belongsTo(\App\Models\Booking\Booking::class);
     }
 }

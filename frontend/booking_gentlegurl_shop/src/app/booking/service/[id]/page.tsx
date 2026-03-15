@@ -47,10 +47,10 @@ export default function ServiceDetailPage() {
       <div className="space-y-6">
         <BookingProgress step={2} />
 
-        {error ? <p className="text-red-500">{error}</p> : null}
+        {error ? <p className="text-[var(--status-error)]">{error}</p> : null}
 
         {packageHint ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[var(--status-success)]">
             {packageHint}
           </div>
         ) : null}
@@ -61,8 +61,8 @@ export default function ServiceDetailPage() {
           <section className="space-y-5">
             <div className="space-y-2">
               <h1 className="text-3xl font-semibold">{service.name}</h1>
-              <p className="text-neutral-600">{service.description || "Select your preferred stylist to continue."}</p>
-              <p className="text-sm text-neutral-500">
+              <p className="text-[var(--text-muted)]">{service.description || "Select your preferred stylist to continue."}</p>
+              <p className="text-sm text-[var(--text-muted)]">
                 Duration {service.duration_minutes} min • Deposit RM {service.deposit_amount}
               </p>
             </div>
@@ -71,7 +71,7 @@ export default function ServiceDetailPage() {
               <h2 className="text-xl font-semibold">Choose a stylist</h2>
 
               {staffs.length === 0 ? (
-                <div className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm text-neutral-600">
+                <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 text-sm text-[var(--text-muted)]">
                   No stylists available for this service.
                 </div>
               ) : (
@@ -80,11 +80,11 @@ export default function ServiceDetailPage() {
                     <Link
                       key={staff.id}
                       href={`/booking/service/${id}/slots?staff_id=${staff.id}`}
-                      className="group rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-black hover:shadow"
+                      className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow"
                     >
-                      <p className="font-semibold text-neutral-900">{staff.name}</p>
-                      <p className="mt-1 text-sm text-neutral-500">Available stylist</p>
-                      <span className="mt-4 inline-flex rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">
+                      <p className="font-semibold text-[var(--foreground)]">{staff.name}</p>
+                      <p className="mt-1 text-sm text-[var(--text-muted)]">Available stylist</p>
+                      <span className="mt-4 inline-flex rounded-full bg-[var(--accent-strong)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--accent-stronger)] transition-colors">
                         Select
                       </span>
                     </Link>

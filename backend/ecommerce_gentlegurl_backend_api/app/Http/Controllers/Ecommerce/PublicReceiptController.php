@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
-use App\Models\Booking\CustomerServicePackage;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Services\Ecommerce\InvoiceService;
 use Carbon\Carbon;
@@ -32,11 +31,7 @@ class PublicReceiptController extends Controller
 
         $order = $receiptToken->order;
 
-        $servicePackageItems = CustomerServicePackage::query()
-            ->with('servicePackage:id,name,selling_price')
-            ->where('purchased_from', 'POS')
-            ->where('purchased_ref_id', (int) $order->id)
-            ->get();
+        $mixedItems = $order->items->values();
 
         return $this->respond([
             'order_number' => $order->order_number,
@@ -49,14 +44,17 @@ class PublicReceiptController extends Controller
             'shipping_fee' => $order->shipping_fee,
             'grand_total' => $order->grand_total,
             'promotion_snapshot' => $order->promotion_snapshot,
-            'items' => $order->items->map(fn ($item) => [
-                'type' => 'product',
-                'name' => $item->product_name_snapshot,
+            'items' => $mixedItems->map(fn ($item) => [
+                'type' => (string) ($item->line_type ?: 'product'),
+                'name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
                 'variant_name' => $item->variant_name_snapshot,
                 'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
                 'qty' => $item->quantity,
                 'unit_price' => $item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot,
                 'line_total' => $item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total,
+                'booking_id' => $item->booking_id,
+                'service_package_id' => $item->service_package_id,
+                'customer_service_package_id' => $item->customer_service_package_id,
                 'promotion_applied' => (bool) ($item->promotion_applied ?? false),
                 'promotion_name' => $item->promotion_name_snapshot,
                 'promotion_tier_summary' => data_get($item->promotion_snapshot, 'summary'),
@@ -69,15 +67,15 @@ class PublicReceiptController extends Controller
                 'unit_price' => $item->price_snapshot,
                 'line_total' => $item->line_total,
             ])->values(),
-            'package_items' => $servicePackageItems->groupBy('service_package_id')->map(function ($rows) {
+            'package_items' => $mixedItems->where('line_type', 'service_package')->groupBy('service_package_id')->map(function ($rows) {
                 $first = $rows->first();
                 return [
                     'type' => 'service_package',
-                    'service_package_id' => (int) ($first->service_package_id ?? 0),
-                    'name' => (string) ($first?->servicePackage?->name ?? 'Service Package'),
+                    'service_package_id' => (int) ($first?->service_package_id ?? 0),
+                    'name' => (string) ($first?->display_name_snapshot ?: $first?->product_name_snapshot ?: 'Service Package'),
                     'qty' => (int) $rows->count(),
-                    'unit_price' => (float) ($first?->servicePackage?->selling_price ?? 0),
-                    'line_total' => round((float) $rows->count() * (float) ($first?->servicePackage?->selling_price ?? 0), 2),
+                    'unit_price' => (float) ($first?->effective_unit_price ?? $first?->unit_price_snapshot ?? $first?->price_snapshot ?? 0),
+                    'line_total' => (float) $rows->sum(fn ($row) => (float) ($row->effective_line_total ?? $row->line_total_snapshot ?? $row->line_total ?? 0)),
                 ];
             })->values(),
         ]);

@@ -54,16 +54,16 @@ export default function BookingPackagesPage() {
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
       <div className="mb-4 text-sm">
-        <Link href="/booking" className="text-neutral-500 hover:text-black">Booking</Link>
-        <span className="mx-2 text-neutral-400">/</span>
+        <Link href="/booking" className="text-[var(--text-muted)] hover:text-[var(--foreground)]">Booking</Link>
+        <span className="mx-2 text-[var(--text-muted)]/50">/</span>
         <span className="font-semibold">Packages</span>
       </div>
 
       <h1 className="text-3xl font-semibold">Service Packages</h1>
-      <p className="mt-2 text-neutral-600">Choose package plan and add to cart first before payment.</p>
+      <p className="mt-2 text-[var(--text-muted)]">Choose package plan and add to cart first before payment.</p>
 
       {!user ? (
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="mt-4 rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[var(--status-warning)]">
           You are not logged in. Please login first before adding package to cart.
           <Link
             href={`/login?redirect=${encodeURIComponent(pathname || "/booking/packages")}`}
@@ -73,27 +73,27 @@ export default function BookingPackagesPage() {
           </Link>
         </div>
       ) : (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="mt-4 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[var(--status-success)]">
           Logged in as <span className="font-semibold">{user.name}</span>. Added packages continue in
           <Link href="/booking/cart" className="ml-1 font-semibold underline">Booking Cart</Link>.
         </div>
       )}
 
-      {message ? <p className="mt-4 text-sm text-blue-700">{message}</p> : null}
+      {message ? <p className="mt-4 text-sm text-[var(--accent)]">{message}</p> : null}
       {loading ? <p className="mt-4">Loading packages...</p> : null}
-      {error ? <p className="mt-4 text-red-500">{error}</p> : null}
+      {error ? <p className="mt-4 text-[var(--status-error)]">{error}</p> : null}
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {packages.map((pkg) => (
-          <article key={pkg.id} className="rounded-2xl border border-neutral-200 p-5 shadow-sm">
+          <article key={pkg.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
             <h2 className="font-semibold">{pkg.name}</h2>
-            <p className="mt-1 text-sm text-neutral-600">{pkg.description || "Service package"}</p>
-            <p className="mt-2 text-sm text-neutral-500">Sessions: {pkg.total_sessions} • Valid: {pkg.valid_days ?? "-"} days</p>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">{pkg.description || "Service package"}</p>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">Sessions: {pkg.total_sessions} • Valid: {pkg.valid_days ?? "-"} days</p>
             <p className="mt-2 text-lg font-semibold">RM {pkg.selling_price}</p>
             <button
               type="button"
               onClick={() => void onAddToCart(pkg)}
-              className="mt-3 rounded-full bg-black px-4 py-2 text-sm text-white"
+              className="mt-3 rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white hover:bg-[var(--accent-stronger)] transition-colors"
             >
               Add to Cart
             </button>

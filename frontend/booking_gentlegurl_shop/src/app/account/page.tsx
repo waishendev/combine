@@ -1,0 +1,896 @@
+"use client";
+
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type {
+  AddressPayload,
+  CustomerAddress,
+  CustomerProfileWithAddresses,
+  UpdateCustomerProfilePayload,
+} from "@/lib/types";
+import {
+  createCustomerAddress,
+  deleteCustomerAddress,
+  changeCustomerPassword,
+  getCustomerProfile,
+  makeDefaultCustomerAddress,
+  updateCustomerAddress,
+  updateCustomerProfile,
+} from "@/lib/apiClient";
+
+const emptyAddress: AddressPayload = {
+  label: "",
+  type: "shipping",
+  name: "",
+  phone: "",
+  line1: "",
+  line2: "",
+  city: "",
+  state: "",
+  postcode: "",
+  country: "Malaysia",
+  is_default: false,
+};
+
+type ModalProps = {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+};
+
+function Modal({ open, title, onClose, children, footer }: ModalProps) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] shadow-xl">
+        <div className="flex items-center justify-between border-b border-[var(--muted)] px-6 py-4">
+          <h3 className="text-lg font-semibold text-[var(--accent-strong)]">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1 text-[var(--accent-strong)] transition hover:bg-[var(--background-soft)]"
+            aria-label="Close"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth="2"
+              stroke="currentColor"
+              className="h-5 w-5"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto px-6 py-4">{children}</div>
+        {footer && <div className="border-t border-[var(--muted)] px-6 py-4">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+type ProfileFormState = {
+  name: string;
+  phone: string;
+  photo: File | null;
+};
+
+type ChangePasswordFormState = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+  showCurrent: boolean;
+  showNew: boolean;
+  showConfirm: boolean;
+};
+
+type AddressFormState = AddressPayload;
+
+type ApiErrorShape = {
+  message?: string;
+  errors?: Record<string, string[] | string>;
+};
+
+export default function AccountPage() {
+  const router = useRouter();
+  const [profile, setProfile] = useState<CustomerProfileWithAddresses | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [changePasswordModalOpen, setChangePasswordModalOpen] = useState(false);
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [editingAddress, setEditingAddress] = useState<CustomerAddress | null>(null);
+  const [profileForm, setProfileForm] = useState<ProfileFormState>({
+    name: "",
+    phone: "",
+    photo: null,
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [changePasswordForm, setChangePasswordForm] = useState<ChangePasswordFormState>({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+    showCurrent: false,
+    showNew: false,
+    showConfirm: false,
+  });
+  const [addressForm, setAddressForm] = useState<AddressFormState>({ ...emptyAddress });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  const avatarUrl = useMemo(
+    () => profile?.avatar || "/images/default_user_image.jpg",
+    [profile?.avatar],
+  );
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const profileResponse = await getCustomerProfile();
+        setProfile(profileResponse.data);
+        setProfileForm((prev) => ({
+          ...prev,
+          name: profileResponse.data.name ?? "",
+          phone: profileResponse.data.phone ?? "",
+          photo: null,
+        }));
+      } catch (err) {
+        const status = (err as { status?: number })?.status;
+        if (status === 401) {
+          router.push("/login?redirect=/account");
+          return;
+        }
+        setError("Failed to load account details. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadData();
+  }, [router]);
+
+  const refreshProfile = async () => {
+    try {
+      const response = await getCustomerProfile();
+      setProfile(response.data);
+      setProfileForm((prev) => ({
+        ...prev,
+        name: response.data.name ?? "",
+        phone: response.data.phone ?? "",
+        photo: null,
+      }));
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      if (status === 401) {
+        router.push("/login?redirect=/account");
+        return;
+      }
+
+      setError("Failed to refresh profile. Please try again.");
+    }
+  };
+
+  const handleProfileSave = async () => {
+    if (!profile) return;
+
+    setSavingProfile(true);
+    setFeedback(null);
+    setError(null);
+
+    const updatePayload: UpdateCustomerProfilePayload = {};
+
+    if (profileForm.name.trim()) updatePayload.name = profileForm.name.trim();
+    updatePayload.phone = profileForm.phone.trim() ? profileForm.phone.trim() : null;
+    if (profileForm.photo) updatePayload.photo = profileForm.photo;
+
+    try {
+      const response = await updateCustomerProfile(updatePayload);
+      setProfile(response.data);
+      setProfileModalOpen(false);
+      setFeedback("Profile updated successfully.");
+      setProfileForm((prev) => ({ ...prev, photo: null }));
+      setPhotoPreview(null);
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    setChangingPassword(true);
+    setFeedback(null);
+    setError(null);
+
+    if (changePasswordForm.newPassword !== changePasswordForm.confirmPassword) {
+      setChangingPassword(false);
+      setError("Password confirmation does not match.");
+      return;
+    }
+
+    try {
+      await changeCustomerPassword({
+        current_password: changePasswordForm.currentPassword,
+        password: changePasswordForm.newPassword,
+        password_confirmation: changePasswordForm.confirmPassword,
+      });
+
+      setFeedback("Password updated successfully.");
+      setChangePasswordModalOpen(false);
+      setChangePasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+        showCurrent: false,
+        showNew: false,
+        showConfirm: false,
+      });
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const openAddressModal = (address?: CustomerAddress) => {
+    setFeedback(null);
+    setError(null);
+
+    if (address) {
+      setEditingAddress(address);
+      setAddressForm({
+        label: address.label ?? "",
+        type: address.type,
+        name: address.name,
+        phone: address.phone,
+        line1: address.line1,
+        line2: address.line2 ?? "",
+        city: address.city,
+        state: address.state ?? "",
+        postcode: address.postcode ?? "",
+        country: address.country,
+        is_default: address.is_default,
+      });
+    } else {
+      setEditingAddress(null);
+      setAddressForm({ ...emptyAddress });
+    }
+
+    setAddressModalOpen(true);
+  };
+
+  const handleAddressSave = async () => {
+    setSavingAddress(true);
+    setError(null);
+    setFeedback(null);
+
+    const payload: AddressPayload = {
+      ...addressForm,
+      label: addressForm.label?.trim() || null,
+      line2: addressForm.line2?.trim() || null,
+      state: addressForm.state?.trim() || null,
+      postcode: addressForm.postcode?.trim() || null,
+    };
+
+    try {
+      if (editingAddress) {
+        await updateCustomerAddress(editingAddress.id, payload);
+      } else {
+        await createCustomerAddress(payload);
+      }
+
+      await refreshProfile();
+      setAddressModalOpen(false);
+      setFeedback(editingAddress ? "Address updated successfully." : "Address added successfully.");
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
+  const handleDeleteAddress = async (addressId: number) => {
+    setError(null);
+    setFeedback(null);
+    try {
+      await deleteCustomerAddress(addressId);
+      await refreshProfile();
+      setFeedback("Address deleted successfully.");
+    } catch (err) {
+      setError(extractError(err));
+    }
+  };
+
+  const handleMakeDefault = async (addressId: number) => {
+    setError(null);
+    setFeedback(null);
+    try {
+      await makeDefaultCustomerAddress(addressId);
+      await refreshProfile();
+      setFeedback("Default address updated.");
+    } catch (err) {
+      setError(extractError(err));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-4 px-4 py-12 text-center text-[var(--accent-strong)]">
+        <p className="text-lg font-medium">Loading your account...</p>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--accent-stronger)]">My Account</h1>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={() => {
+              setFeedback(null);
+              setError(null);
+              setChangePasswordModalOpen(true);
+            }}
+            className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] shadow-sm transition hover:bg-[var(--background-soft)] sm:w-auto"
+          >
+            Change Password
+          </button>
+          <button
+            type="button"
+            onClick={() => setProfileModalOpen(true)}
+            className="w-full rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] sm:w-auto"
+          >
+            Edit Profile
+          </button>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-3 text-sm text-[var(--accent-stronger)]">
+          {feedback}
+        </div>
+      )}
+      {error && (
+        <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[var(--status-error)]">
+          {error}
+        </div>
+      )}
+
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)]">
+        <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="h-16 w-16 overflow-hidden rounded-full bg-[var(--background-soft)] ring-2 ring-[var(--muted)]">
+              <Image
+                src={avatarUrl}
+                alt={profile.name}
+                width={64}
+                height={64}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <div className="min-w-0 space-y-2">
+              <div className="inline-flex items-center gap-2">
+                <h2 className="break-words text-lg font-semibold text-[var(--accent-stronger)]">{profile.name}</h2>
+              </div>
+              <p className="break-words text-sm text-[color:var(--text-muted)]">{profile.email}</p>
+              {profile.phone && <p className="break-words text-sm text-[color:var(--text-muted)]">{profile.phone}</p>}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3 text-sm text-[color:var(--text-muted)]">
+            {profile.gender && (
+              <div className="flex justify-between">
+                <span>Gender</span>
+                <span className="font-medium capitalize">{profile.gender.toLowerCase()}</span>
+              </div>
+            )}
+            {profile.date_of_birth && (
+              <div className="flex justify-between">
+                <span>Date of Birth</span>
+                <span className="font-medium">{profile.date_of_birth}</span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-4 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Account Information</h2>
+          <p className="text-sm text-[color:var(--text-muted)]">Manage your profile and account settings.</p>
+        </section>
+      </div>
+
+      <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Address Book</h2>
+            <p className="text-xs text-[color:var(--text-muted)]">Manage your shipping and billing details.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openAddressModal()}
+            className="w-full rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] transition hover:bg-[var(--muted)] sm:w-auto"
+          >
+            Add Address
+          </button>
+        </div>
+
+        {profile.addresses.length === 0 ? (
+          <p className="text-sm text-[color:var(--text-muted)]">You have not added any address yet.</p>
+        ) : (
+          <div className="space-y-4">
+            {profile.addresses.map((addr) => (
+              <div
+                key={addr.id}
+                className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] p-4 text-sm text-[color:var(--text-muted)] shadow-sm"
+              >
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-[var(--accent-stronger)]">{addr.label || "Address"}</div>
+                    {addr.is_default && (
+                      <span className="rounded-full bg-[var(--accent-stronger)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
+                        Default
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openAddressModal(addr)}
+                      className="rounded-md border border-[var(--muted)] px-3 py-1 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--muted)]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAddress(addr.id)}
+                      className="rounded-md border border-[var(--status-error-border)] px-3 py-1 text-xs font-semibold text-[var(--status-error)] hover:bg-[var(--status-error-bg)]"
+                    >
+                      Delete
+                    </button>
+                    {!addr.is_default && (
+                      <button
+                        type="button"
+                        onClick={() => handleMakeDefault(addr.id)}
+                        className="rounded-md border border-[var(--status-success-border)] px-3 py-1 text-xs font-semibold text-[color:var(--status-success)] hover:bg-[var(--status-success-bg)]"
+                      >
+                        Make Default
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="font-semibold text-[var(--accent-stronger)]">{addr.name}</div>
+                <div className="text-sm text-[color:var(--text-muted)]">{addr.phone}</div>
+                <div className="mt-1 text-sm text-[color:var(--text-muted)]">
+                  {addr.line1}
+                  {addr.line2 && `, ${addr.line2}`}
+                </div>
+                <div className="text-xs text-[color:var(--text-muted)]">
+                  {addr.postcode} {addr.city}
+                  {addr.state && `, ${addr.state}`}
+                  {addr.country && `, ${addr.country}`}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <Modal
+        open={profileModalOpen}
+        title="Edit Profile"
+        onClose={() => {
+          setProfileModalOpen(false);
+          setPhotoPreview(null);
+        }}
+        footer={(
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setProfileModalOpen(false);
+                setPhotoPreview(null);
+              }}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleProfileSave}
+              disabled={savingProfile}
+              className="rounded-md bg-[var(--accent-strong)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {savingProfile ? "Saving..." : "Save"}
+            </button>
+          </div>
+        )}
+      >
+        <div className="flex flex-col gap-6 md:flex-row">
+          <div className="w-full max-w-xs md:w-auto">
+            <div className="space-y-3">
+              <div className="h-48 w-full overflow-hidden rounded-lg border border-[var(--muted)] bg-[var(--background-soft)]">
+                <Image
+                  src={photoPreview || profile?.avatar || "/images/default_user_image.jpg"}
+                  alt="Profile preview"
+                  width={192}
+                  height={192}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <label className="block cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setProfileForm({ ...profileForm, photo: file });
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setPhotoPreview(reader.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      setPhotoPreview(null);
+                    }
+                  }}
+                  className="hidden"
+                />
+                <div className="w-full rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2 text-center text-sm font-semibold text-[var(--accent-strong)] transition hover:bg-[var(--muted)]">
+                  Upload Photo
+                </div>
+              </label>
+              <p className="text-xs text-[color:var(--text-muted)] text-center">
+                Upload a new photo to update your avatar.
+              </p>
+            </div>
+          </div>
+          <div className="flex-1 space-y-4">
+            <label className="block space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Name</span>
+              <input
+                type="text"
+                value={profileForm.name}
+                onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Phone</span>
+              <input
+                type="text"
+                value={profileForm.phone}
+                onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={changePasswordModalOpen}
+        title="Change Password"
+        onClose={() => {
+          setChangePasswordModalOpen(false);
+          setChangePasswordForm({
+            currentPassword: "",
+            newPassword: "",
+            confirmPassword: "",
+            showCurrent: false,
+            showNew: false,
+            showConfirm: false,
+          });
+        }}
+        footer={(
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setChangePasswordModalOpen(false);
+                setChangePasswordForm({
+                  currentPassword: "",
+                  newPassword: "",
+                  confirmPassword: "",
+                  showCurrent: false,
+                  showNew: false,
+                  showConfirm: false,
+                });
+              }}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handlePasswordChange}
+              disabled={changingPassword}
+              className="rounded-md bg-[var(--accent-strong)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {changingPassword ? "Updating..." : "Update Password"}
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="currentPassword">
+              Current Password
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--foreground)]/45">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                  <path d="M6 11h12v10H6z" />
+                </svg>
+              </div>
+              <input
+                id="currentPassword"
+                type={changePasswordForm.showCurrent ? "text" : "password"}
+                value={changePasswordForm.currentPassword}
+                onChange={(e) =>
+                  setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })
+                }
+                className="w-full rounded-xl border bg-[var(--card)]/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--input-border)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25"
+                placeholder="Current password"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setChangePasswordForm((prev) => ({ ...prev, showCurrent: !prev.showCurrent }))
+                  }
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-[var(--background-soft)] hover:text-[var(--accent-strong)]"
+                  aria-label={changePasswordForm.showCurrent ? "Hide current password" : "Show current password"}
+                >
+                  {changePasswordForm.showCurrent ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="newPassword">
+              New Password
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--foreground)]/45">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                  <path d="M6 11h12v10H6z" />
+                </svg>
+              </div>
+              <input
+                id="newPassword"
+                type={changePasswordForm.showNew ? "text" : "password"}
+                value={changePasswordForm.newPassword}
+                onChange={(e) =>
+                  setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })
+                }
+                className="w-full rounded-xl border bg-[var(--card)]/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--input-border)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25"
+                placeholder="New password"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <button
+                  type="button"
+                  onClick={() => setChangePasswordForm((prev) => ({ ...prev, showNew: !prev.showNew }))}
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-[var(--background-soft)] hover:text-[var(--accent-strong)]"
+                  aria-label={changePasswordForm.showNew ? "Hide new password" : "Show new password"}
+                >
+                  {changePasswordForm.showNew ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="confirmPassword">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--foreground)]/45">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                  <path d="M6 11h12v10H6z" />
+                </svg>
+              </div>
+              <input
+                id="confirmPassword"
+                type={changePasswordForm.showConfirm ? "text" : "password"}
+                value={changePasswordForm.confirmPassword}
+                onChange={(e) =>
+                  setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })
+                }
+                className="w-full rounded-xl border bg-[var(--card)]/90 px-3 py-2.5 pl-10 pr-12 text-sm text-[var(--foreground)] border-[var(--input-border)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25"
+                placeholder="Confirm new password"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setChangePasswordForm((prev) => ({ ...prev, showConfirm: !prev.showConfirm }))
+                  }
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--foreground)]/60 hover:bg-[var(--background-soft)] hover:text-[var(--accent-strong)]"
+                  aria-label={changePasswordForm.showConfirm ? "Hide confirm password" : "Show confirm password"}
+                >
+                  {changePasswordForm.showConfirm ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={addressModalOpen}
+        title={editingAddress ? "Edit Address" : "Add Address"}
+        onClose={() => setAddressModalOpen(false)}
+        footer={(
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setAddressModalOpen(false)}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleAddressSave}
+              disabled={savingAddress}
+              className="rounded-md bg-[var(--accent-strong)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {savingAddress ? "Saving..." : editingAddress ? "Update" : "Save"}
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Label</span>
+              <input
+                type="text"
+                value={addressForm.label ?? ""}
+                onChange={(e) => setAddressForm({ ...addressForm, label: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                placeholder="e.g. Home"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Type</span>
+              <select
+                value={addressForm.type}
+                onChange={(e) => setAddressForm({ ...addressForm, type: e.target.value as AddressFormState["type"] })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              >
+                <option value="shipping">Shipping</option>
+                <option value="billing">Billing</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Recipient Name</span>
+              <input
+                type="text"
+                value={addressForm.name}
+                onChange={(e) => setAddressForm({ ...addressForm, name: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Phone</span>
+              <input
+                type="text"
+                value={addressForm.phone}
+                onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Address Line 1</span>
+              <input
+                type="text"
+                value={addressForm.line1}
+                onChange={(e) => setAddressForm({ ...addressForm, line1: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Address Line 2</span>
+              <input
+                type="text"
+                value={addressForm.line2 ?? ""}
+                onChange={(e) => setAddressForm({ ...addressForm, line2: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">City</span>
+              <input
+                type="text"
+                value={addressForm.city}
+                onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">State</span>
+              <input
+                type="text"
+                value={addressForm.state ?? ""}
+                onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Postcode</span>
+              <input
+                type="text"
+                value={addressForm.postcode ?? ""}
+                onChange={(e) => setAddressForm({ ...addressForm, postcode: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Country</span>
+              <input
+                type="text"
+                value={addressForm.country}
+                onChange={(e) => setAddressForm({ ...addressForm, country: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              />
+            </label>
+            <label className="mt-6 flex items-center gap-2 text-sm text-[var(--accent-stronger)]">
+              <input
+                type="checkbox"
+                checked={!!addressForm.is_default}
+                onChange={(e) => setAddressForm({ ...addressForm, is_default: e.target.checked })}
+                className="h-4 w-4 rounded border-[var(--muted)] text-[var(--accent-strong)] focus:ring-[var(--accent-strong)]"
+              />
+              Set as default address
+            </label>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function extractError(error: unknown) {
+  const apiError = error as { data?: ApiErrorShape; status?: number };
+  if (apiError?.data) {
+    const errors = apiError.data.errors;
+    if (errors && typeof errors === "object") {
+      const first = Object.values(errors)[0];
+      if (Array.isArray(first)) {
+        return first[0];
+      }
+      if (typeof first === "string") return first;
+    }
+    if (apiError.data.message) return apiError.data.message;
+  }
+
+  return "Something went wrong. Please try again.";
+}
