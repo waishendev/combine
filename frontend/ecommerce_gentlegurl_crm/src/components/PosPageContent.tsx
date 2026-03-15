@@ -356,7 +356,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [bookingSubmitting, setBookingSubmitting] = useState(false)
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
   const [bookingAssignedStaffId, setBookingAssignedStaffId] = useState<number | null>(null)
-  const [bookingStartAt, setBookingStartAt] = useState('')
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
   const [serviceRedeemingIds, setServiceRedeemingIds] = useState<Record<number, boolean>>({})
 
@@ -1198,48 +1197,39 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const openBookingModal = useCallback((service: BookingServiceOption) => {
     setBookingServiceDraft(service)
     setBookingAssignedStaffId(currentUser.staff_id ?? null)
-    setBookingStartAt('')
     setBookingModalOpen(true)
   }, [currentUser.staff_id])
 
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
-    if (!selectedMember?.id) {
-      showMsg('Please assign member before creating booking.', 'error')
-      return
-    }
     if (!bookingAssignedStaffId) {
       showMsg('Please select assigned staff.', 'error')
       return
     }
-    if (!bookingStartAt) {
-      showMsg('Please select appointment date/time.', 'error')
-      return
-    }
 
     setBookingSubmitting(true)
-    const res = await fetch('/api/proxy/pos/book-service', {
+    const res = await fetch('/api/proxy/pos/cart/add-service', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        customer_id: selectedMember.id,
         booking_service_id: bookingServiceDraft.id,
         assigned_staff_id: bookingAssignedStaffId,
-        start_at: bookingStartAt,
+        qty: 1,
       }),
     })
     const json = await res.json().catch(() => null)
 
     if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to create booking.', 'error')
+      showMsg(json?.message ?? 'Unable to add service to cart.', 'error')
       setBookingSubmitting(false)
       return
     }
 
-    showMsg('Booking created successfully.', 'success')
+    setCart((json?.data?.cart ?? null) as Cart | null)
+    showMsg('Service added to cart. Continue with checkout to collect payment.', 'success')
     setBookingModalOpen(false)
     setBookingSubmitting(false)
-  }, [bookingAssignedStaffId, bookingServiceDraft, bookingStartAt, selectedMember?.id, showMsg])
+  }, [bookingAssignedStaffId, bookingServiceDraft, showMsg])
 
   const addPackageToCart = useCallback(async (servicePackage: ServicePackageOption) => {
     if (!selectedMember?.id) {
@@ -2614,7 +2604,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                               onClick={() => openBookingModal(service)}
                               className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                             >
-                              Create Booking
+                              Add Service to Cart
                             </button>
                           </div>
                         </div>
@@ -3643,7 +3633,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900">Create Booking</h3>
+            <h3 className="text-lg font-bold text-gray-900">Add Service to Cart</h3>
             <p className="mt-1 text-sm text-gray-600">{bookingServiceDraft.name}</p>
             <div className="mt-4 space-y-3">
               <div>
@@ -3676,15 +3666,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Appointment Time</label>
-                <input
-                  type="datetime-local"
-                  value={bookingStartAt}
-                  onChange={(e) => setBookingStartAt(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -3700,7 +3681,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 onClick={() => void submitBooking()}
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {bookingSubmitting ? 'Creating...' : 'Create Booking'}
+                {bookingSubmitting ? 'Creating...' : 'Add Service to Cart'}
               </button>
             </div>
           </div>
