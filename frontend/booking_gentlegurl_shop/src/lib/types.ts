@@ -61,3 +61,46 @@ export type AuthUser = {
   email: string;
   phone?: string;
 };
+
+
+export type ServicePackage = {
+  id: number;
+  name: string;
+  description?: string | null;
+  selling_price: number;
+  total_sessions: number;
+  valid_days?: number | null;
+  is_active?: boolean;
+  items?: Array<{
+    id: number;
+    booking_service_id: number;
+    quantity: number;
+    booking_service?: { id: number; name: string };
+  }>;
+};
+
+export type ServicePackageAvailability = {
+  customer_service_package_id: number;
+  service_package_id?: number;
+  service_package_name?: string;
+  booking_service_id: number;
+  remaining_qty: number;
+  expires_at?: string | null;
+};
+
+
+export type MyServicePackage = {
+  id: number;
+  status: string;
+  started_at?: string | null;
+  expires_at?: string | null;
+  service_package?: ServicePackage;
+  balances?: Array<{
+    id: number;
+    booking_service_id: number;
+    total_qty: number;
+    used_qty: number;
+    remaining_qty: number;
+    booking_service?: { id: number; name: string };
+  }>;
+};

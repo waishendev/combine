@@ -49,6 +49,7 @@ class StaffController extends Controller
             'password' => ['required', 'string', 'min:6'],
             'username' => ['nullable', 'string', 'max:100', 'unique:users,username'],
             'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
+            'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -66,6 +67,7 @@ class StaffController extends Controller
                 'phone' => $validated['phone'] ?? null,
                 'email' => $validated['email'],
                 'commission_rate' => $validated['commission_rate'] ?? 0,
+                'service_commission_rate' => $validated['service_commission_rate'] ?? 0,
                 'is_active' => $validated['is_active'] ?? true,
             ]);
 
@@ -109,6 +111,7 @@ class StaffController extends Controller
             'username' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('users', 'username')->ignore($staff->admin?->id)],
             'password' => ['nullable', 'string', 'min:6'],
             'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
+            'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 

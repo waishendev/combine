@@ -435,6 +435,18 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             requiredPermission: 'booking.services.view',
           },
           {
+            key: 'booking-service-packages',
+            label: 'Service Packages',
+            href: '/booking/service-packages',
+            requiredPermission: 'service-packages.view',
+          },
+          {
+            key: 'booking-customer-service-packages',
+            label: 'Customer Packages',
+            href: '/booking/customer-service-packages',
+            requiredPermission: 'customer-service-packages.view',
+          },
+          {
             key: 'booking-schedules',
             label: 'Staff Schedules',
             href: '/booking/staff-schedules',

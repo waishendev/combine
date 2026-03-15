@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import { getBookingServiceDetail } from "@/lib/apiClient";
+import { getBookingServiceDetail, getMe, getServicePackageAvailableFor } from "@/lib/apiClient";
 import { Service, Staff } from "@/lib/types";
 
 type ServiceDetail = Service & { staffs?: Staff[] };
@@ -14,13 +14,24 @@ export default function ServiceDetailPage() {
   const id = params.id;
   const [service, setService] = useState<ServiceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [packageHint, setPackageHint] = useState<string | null>(null);
 
   useEffect(() => {
     const run = async () => {
       try {
         const detail = await getBookingServiceDetail(id);
-        console.log("[Booking Service Detail]", detail);
         setService(detail as ServiceDetail);
+
+        try {
+          const me = await getMe();
+          const available = await getServicePackageAvailableFor(me.id, Number(id));
+          const totalRemaining = available.reduce((sum, row) => sum + Number(row.remaining_qty || 0), 0);
+          if (totalRemaining > 0) {
+            setPackageHint(`You have ${totalRemaining} package session(s) remaining for this service.`);
+          }
+        } catch {
+          setPackageHint(null);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load service");
       }
@@ -37,6 +48,12 @@ export default function ServiceDetailPage() {
         <BookingProgress step={2} />
 
         {error ? <p className="text-red-500">{error}</p> : null}
+
+        {packageHint ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {packageHint}
+          </div>
+        ) : null}
 
         {!service ? (
           <p>Loading service...</p>
