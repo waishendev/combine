@@ -25,7 +25,7 @@ export default async function PosSummaryReport({ searchParams }: PosSummaryRepor
   }
 
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'reports.pos-summary.view',
+    (perm) => perm === 'reports.pos-summary.view' || perm === 'ecommerce.reports.sales.view',
   )
 
   if (!hasPermission) {

@@ -12,10 +12,7 @@ export default async function MyPosSummaryReport() {
   }
 
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'reports.my-pos-summary.view',
-  )
-  const canExport = user.permissions.some(
-    (perm) => perm === 'reports.my-pos-summary.export',
+    (perm) => perm === 'reports.my-pos-summary.view' || perm === 'ecommerce.reports.sales.view',
   )
 
   if (!hasPermission) {
