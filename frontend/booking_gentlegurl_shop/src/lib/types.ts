@@ -83,6 +83,58 @@ export type AuthUser = {
   phone?: string;
 };
 
+export type CustomerProfile = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  avatar: string | null;
+  gender: string | null;
+  date_of_birth: string | null;
+  tier?: string;
+};
+
+export type CustomerProfileWithAddresses = CustomerProfile & {
+  addresses: CustomerAddress[];
+};
+
+export type CustomerAddress = {
+  id: number;
+  label: string | null;
+  type: "billing" | "shipping";
+  name: string;
+  phone: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string | null;
+  postcode: string | null;
+  country: string;
+  is_default: boolean;
+};
+
+export type AddressPayload = {
+  label?: string | null;
+  type: "billing" | "shipping";
+  name: string;
+  phone: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state?: string | null;
+  postcode?: string | null;
+  country: string;
+  is_default?: boolean;
+};
+
+export type UpdateCustomerProfilePayload = Partial<{
+  name: string;
+  phone: string | null;
+  gender: string | null;
+  date_of_birth: string | null;
+  photo: File | null;
+}>;
+
 
 export type ServicePackage = {
   id: number;

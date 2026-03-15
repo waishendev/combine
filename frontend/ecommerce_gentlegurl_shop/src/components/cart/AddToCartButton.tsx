@@ -60,7 +60,7 @@ export default function AddToCartButton({
   return (
     <div className="mt-2 flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center rounded border bg-white">
+        <div className="flex items-center rounded border border-[var(--card-border)] bg-[var(--card)]">
           <button
             type="button"
             className="px-3 py-2 text-sm"

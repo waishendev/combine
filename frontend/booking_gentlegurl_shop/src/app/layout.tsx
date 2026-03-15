@@ -7,6 +7,7 @@ import Marquee from "@/components/home/Marquee";
 import AnnouncementModal from "@/components/home/AnnouncementModal";
 import { Footer } from "@/components/layout/Footer";
 import { WhatsappButton } from "@/components/layout/WhatsappButton";
+import CursorTrail from "@/components/visual/CursorTrail";
 import { getBookingHomepage } from "@/lib/serverHomepage";
 
 const heading = Playfair_Display({ subsets: ["latin"], variable: "--font-heading" });
@@ -53,9 +54,14 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const homepage = await getBookingHomepage();
+  
+  // Prioritize NEXT_PUBLIC_COLOR to avoid system env variable override
+  // System env variables can override .env.local, but NEXT_PUBLIC_* vars are handled differently
+  const colorMode = process.env.NEXT_PUBLIC_COLOR ?? "1";
+  const theme = colorMode === "2" ? "cream" : "soft";
 
   return (
-    <html lang="en">
+    <html lang="en" data-theme={theme}>
       <head>
         <link
           rel="stylesheet"
@@ -67,14 +73,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <link rel="preload" href={homepage.shop_logo_url} as="image" fetchPriority="high" />
         )}
       </head>
-      <body className={`${heading.variable} ${body.variable} bg-[#fffdf9] text-neutral-900 antialiased`}>
+      <body data-theme={theme} className={`${heading.variable} ${body.variable} antialiased`}>
         <Providers>
-          <Header logoUrl={homepage?.shop_logo_url ?? null} />
+          <CursorTrail />
           {homepage?.marquees && homepage.marquees.length > 0 && <Marquee items={homepage.marquees} />}
+          <Header logoUrl={homepage?.shop_logo_url ?? null} />
           {homepage?.announcements && homepage.announcements.length > 0 && (
             <AnnouncementModal items={homepage.announcements} />
           )}
-          {children}
+          <main className="min-h-[70vh] bg-[var(--background-soft)]/70">{children}</main>
           <Footer footer={homepage?.settings?.footer} />
           <WhatsappButton
             enabled={homepage?.contact?.whatsapp?.enabled}

@@ -743,7 +743,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                 </div>
 
                 {searchError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                  <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-xs text-[var(--status-error)]">
                     {searchError}
                   </div>
                 )}

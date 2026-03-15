@@ -42,16 +42,16 @@ export default function BookingPage() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search service"
-        className="mt-4 w-full rounded-xl border border-neutral-300 px-4 py-2"
+        className="mt-4 w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-2"
       />
       {loading ? <p className="mt-4">Loading services...</p> : null}
-      {error ? <p className="mt-4 text-red-500">{error}</p> : null}
+      {error ? <p className="mt-4 text-[var(--status-error)]">{error}</p> : null}
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {services.map((service) => (
-          <Link key={service.id} href={`/booking/service/${service.id}`} className="rounded-2xl border border-neutral-200 p-5 shadow-sm">
+          <Link key={service.id} href={`/booking/service/${service.id}`} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm transition hover:border-[var(--accent)] hover:shadow">
             <h2 className="font-semibold">{service.name}</h2>
-            <p className="text-sm text-neutral-500">{service.duration_minutes} min</p>
-            <p className="text-sm text-neutral-500">Deposit RM {service.deposit_amount}</p>
+            <p className="text-sm text-[var(--text-muted)]">{service.duration_minutes} min</p>
+            <p className="text-sm text-[var(--text-muted)]">Deposit RM {service.deposit_amount}</p>
             <p className="mt-2 text-lg font-semibold">RM {service.price}</p>
           </Link>
         ))}
@@ -59,16 +59,16 @@ export default function BookingPage() {
 
       <section id="packages" className="mt-10">
         <h2 className="text-2xl font-semibold">Service Packages</h2>
-        <p className="mt-1 text-sm text-neutral-600">You can buy these package plans at POS/CRM counter, then claim sessions in booking cart.</p>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">You can buy these package plans at POS/CRM counter, then claim sessions in booking cart.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           {packages.length === 0 ? (
-            <p className="text-sm text-neutral-500">No active package currently.</p>
+            <p className="text-sm text-[var(--text-muted)]">No active package currently.</p>
           ) : (
             packages.map((pkg) => (
-              <article key={pkg.id} className="rounded-2xl border border-neutral-200 p-5 shadow-sm">
+              <article key={pkg.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
                 <h3 className="font-semibold">{pkg.name}</h3>
-                <p className="mt-1 text-sm text-neutral-600">{pkg.description || "Service membership package"}</p>
-                <p className="mt-2 text-sm text-neutral-500">Sessions: {pkg.total_sessions} • Valid: {pkg.valid_days ?? "-"} days</p>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">{pkg.description || "Service membership package"}</p>
+                <p className="mt-2 text-sm text-[var(--text-muted)]">Sessions: {pkg.total_sessions} • Valid: {pkg.valid_days ?? "-"} days</p>
                 <p className="mt-2 text-lg font-semibold">RM {pkg.selling_price}</p>
               </article>
             ))

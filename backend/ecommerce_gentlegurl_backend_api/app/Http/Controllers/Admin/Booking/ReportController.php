@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use Carbon\Carbon;
-use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
@@ -44,8 +44,11 @@ class ReportController extends Controller
     {
         [$from, $to] = $this->resolveRange($request);
         $groupBy = $request->query('group_by', 'day');
+        $perPage = (int) $request->query('per_page', $request->query('limit', 15));
+        $page = (int) $request->query('page', 1);
 
-        $rows = Booking::query()
+        // Base query for rows
+        $baseQuery = Booking::query()
             ->selectRaw($this->periodExpression($groupBy) . ' as period')
             ->selectRaw('COUNT(*) as total_bookings')
             ->selectRaw("SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as confirmed_count")
@@ -58,10 +61,53 @@ class ReportController extends Controller
             ->when($from, fn (Builder $q) => $q->where('start_at', '>=', $from))
             ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to))
             ->groupBy('period')
-            ->orderBy('period')
-            ->get();
+            ->orderBy('period');
 
-        return $this->respond($rows);
+        // Get paginated results
+        $paginated = $baseQuery->paginate($perPage, ['*'], 'page', $page);
+        $rows = $paginated->items();
+
+        // Calculate grand totals (all data)
+        $grandTotalsQuery = Booking::query()
+            ->selectRaw('COUNT(*) as total_bookings')
+            ->selectRaw("SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count")
+            ->selectRaw("SUM(CASE WHEN status = 'NOTIFIED_CANCELLATION' THEN 1 ELSE 0 END) as notified_cancellation_count")
+            ->selectRaw('SUM(CASE WHEN payment_status = \'PAID\' THEN deposit_amount ELSE 0 END) as deposit_collected')
+            ->when($from, fn (Builder $q) => $q->where('start_at', '>=', $from))
+            ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to));
+
+        $grandTotals = $grandTotalsQuery->first();
+
+        // Calculate page totals (current page only)
+        $pageTotals = collect($rows)->reduce(function ($acc, $row) {
+            $acc['total_bookings'] += (int) ($row->total_bookings ?? 0);
+            $acc['completed_count'] += (int) ($row->completed_count ?? 0);
+            $acc['notified_cancellation_count'] += (int) ($row->notified_cancellation_count ?? 0);
+            $acc['deposit_collected'] += (float) ($row->deposit_collected ?? 0);
+            return $acc;
+        }, [
+            'total_bookings' => 0,
+            'completed_count' => 0,
+            'notified_cancellation_count' => 0,
+            'deposit_collected' => 0,
+        ]);
+
+        return response()->json([
+            'rows' => $rows,
+            'grand_totals' => [
+                'total_bookings' => (int) ($grandTotals->total_bookings ?? 0),
+                'completed_count' => (int) ($grandTotals->completed_count ?? 0),
+                'notified_cancellation_count' => (int) ($grandTotals->notified_cancellation_count ?? 0),
+                'deposit_collected' => (float) ($grandTotals->deposit_collected ?? 0),
+            ],
+            'totals_page' => $pageTotals,
+            'pagination' => [
+                'total' => $paginated->total(),
+                'per_page' => $paginated->perPage(),
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+            ],
+        ]);
     }
 
     public function summaryExport(Request $request)

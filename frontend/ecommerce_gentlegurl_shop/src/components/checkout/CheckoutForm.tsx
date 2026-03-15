@@ -1738,7 +1738,7 @@ export default function CheckoutForm() {
             ) : (
               <div className="space-y-3">
                 {error && (
-                  <div className="rounded bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                  <div className="rounded bg-[var(--status-error-bg)] border border-[var(--status-error-border)] px-4 py-3 text-sm text-[var(--status-error)]">
                     {error}
                   </div>
                 )}
@@ -1771,11 +1771,11 @@ export default function CheckoutForm() {
                       value={addressForm.name}
                       onChange={(e) => updateAddressForm("name", e.target.value)}
                       className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
-                        addressFormErrors.name ? "border-red-500" : "border-[var(--muted)]"
+                        addressFormErrors.name ? "border-[var(--status-error)]" : "border-[var(--muted)]"
                       }`}
                     />
                     {addressFormErrors.name && (
-                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.name[0]}</p>
+                      <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.name[0]}</p>
                     )}
                   </div>
                   <div>
@@ -1784,11 +1784,11 @@ export default function CheckoutForm() {
                       value={addressForm.phone}
                       onChange={(e) => updateAddressForm("phone", e.target.value)}
                       className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
-                        addressFormErrors.phone ? "border-red-500" : "border-[var(--muted)]"
+                        addressFormErrors.phone ? "border-[var(--status-error)]" : "border-[var(--muted)]"
                       }`}
                     />
                     {addressFormErrors.phone && (
-                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.phone[0]}</p>
+                      <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.phone[0]}</p>
                     )}
                   </div>
                 </div>
@@ -1799,11 +1799,11 @@ export default function CheckoutForm() {
                     value={addressForm.line1}
                     onChange={(e) => updateAddressForm("line1", e.target.value)}
                     className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
-                      addressFormErrors.line1 ? "border-red-500" : "border-[var(--muted)]"
+                      addressFormErrors.line1 ? "border-[var(--status-error)]" : "border-[var(--muted)]"
                     }`}
                   />
                   {addressFormErrors.line1 && (
-                    <p className="mt-1 text-xs text-red-500">{addressFormErrors.line1[0]}</p>
+                    <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.line1[0]}</p>
                   )}
                 </div>
                 <div>
@@ -1822,11 +1822,11 @@ export default function CheckoutForm() {
                       value={addressForm.city}
                       onChange={(e) => updateAddressForm("city", e.target.value)}
                       className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
-                        addressFormErrors.city ? "border-red-500" : "border-[var(--muted)]"
+                        addressFormErrors.city ? "border-[var(--status-error)]" : "border-[var(--muted)]"
                       }`}
                     />
                     {addressFormErrors.city && (
-                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.city[0]}</p>
+                      <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.city[0]}</p>
                     )}
                   </div>
                   <div>
@@ -1839,7 +1839,7 @@ export default function CheckoutForm() {
                         value={addressForm.state ?? ""}
                         onChange={(e) => updateAddressForm("state", e.target.value)}
                         className={`w-full rounded border bg-[var(--card)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
-                          addressFormErrors.state ? "border-red-500" : "border-[var(--muted)]"
+                          addressFormErrors.state ? "border-[var(--status-error)]" : "border-[var(--muted)]"
                         }`}
                       >
                         <option value="">Select state</option>
@@ -1859,12 +1859,12 @@ export default function CheckoutForm() {
                         value={addressForm.state ?? ""}
                         onChange={(e) => updateAddressForm("state", e.target.value)}
                         className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
-                          addressFormErrors.state ? "border-red-500" : "border-[var(--muted)]"
+                          addressFormErrors.state ? "border-[var(--status-error)]" : "border-[var(--muted)]"
                         }`}
                       />
                     )}
                     {addressFormErrors.state && (
-                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.state[0]}</p>
+                      <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.state[0]}</p>
                     )}
                   </div>
                   <div>
@@ -1873,11 +1873,11 @@ export default function CheckoutForm() {
                       value={addressForm.postcode ?? ""}
                       onChange={(e) => updateAddressForm("postcode", e.target.value)}
                       className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
-                        addressFormErrors.postcode ? "border-red-500" : "border-[var(--muted)]"
+                        addressFormErrors.postcode ? "border-[var(--status-error)]" : "border-[var(--muted)]"
                       }`}
                     />
                     {addressFormErrors.postcode && (
-                      <p className="mt-1 text-xs text-red-500">{addressFormErrors.postcode[0]}</p>
+                      <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.postcode[0]}</p>
                     )}
                   </div>
                 </div>

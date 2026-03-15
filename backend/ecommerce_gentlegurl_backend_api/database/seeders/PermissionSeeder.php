@@ -118,6 +118,9 @@ class PermissionSeeder extends Seeder
                 'settings.view',
                 'settings.update',
                 'seo.view',
+                'commission-tiers.view',
+                'commissions.view' ,
+                'commissions.override',
             ],
         ];
 
