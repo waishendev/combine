@@ -43,6 +43,7 @@ type DetailRow = {
   created_by_phone: string | null
   created_by_email: string | null
   order_item_id: number
+  item_type?: 'product' | 'service_package'
   product_name: string | null
   qty: number
   item_total_price: number
@@ -51,6 +52,9 @@ type DetailRow = {
   has_staff_assignment: boolean
   staff_splits: StaffSplit[]
 }
+
+const getItemTypeLabel = (itemType?: 'product' | 'service_package') =>
+  itemType === 'service_package' ? 'Service Package' : 'Product'
 
 const money = (value: number) =>
   value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -558,7 +562,7 @@ export default function MyPosSummaryPage({
               <TableEmptyState colSpan={10} />
             ) : (
               rows.map((row) => (
-                <Fragment key={row.order_item_id}>
+                <Fragment key={`${row.item_type ?? 'product'}-${row.order_item_id}`}>
                   <tr>
                     <td className="px-4 py-2 border border-gray-200 font-medium">
                       {row.order_no ?? row.order_id}
@@ -575,7 +579,8 @@ export default function MyPosSummaryPage({
                       })()}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      {row.product_name ?? '—'}
+                      <p className="font-medium text-slate-900">{row.product_name ?? '—'}</p>
+                      <p className="text-xs text-slate-500">{getItemTypeLabel(row.item_type)}</p>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
                       <p className="font-medium text-slate-900">
@@ -675,10 +680,13 @@ export default function MyPosSummaryPage({
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
                         <p className="text-xs font-semibold text-blue-600">
-                          Product
+                          Item
                         </p>
                         <p className="mt-1 text-base font-bold text-blue-900">
                           {selectedRow.product_name ?? '—'}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold uppercase text-blue-600">
+                          {getItemTypeLabel(selectedRow.item_type)}
                         </p>
                       </div>
                       <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">

@@ -16,10 +16,14 @@ type SummaryRow = {
   staff_id: number
   staff_name: string
   commission_rate: number
+  service_commission_rate?: number
   total_sales: number
   total_commission: number
   orders_count: number
   items_count: number
+  package_items_count?: number
+  package_sales?: number
+  package_commission?: number
   free_items_effective_total: number
 }
 
@@ -27,6 +31,7 @@ type DetailRow = {
   order_no: string | null
   order_id: number
   order_date: string
+  item_type?: 'product' | 'service_package'
   product_name: string | null
   qty: number
   item_net_amount: number
@@ -35,6 +40,9 @@ type DetailRow = {
   commission_rate: number
   staff_item_commission: number
 }
+
+const getItemTypeLabel = (itemType?: 'product' | 'service_package') =>
+  itemType === 'service_package' ? 'Service Package' : 'Product'
 
 const money = (v: number) =>
   v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -410,7 +418,7 @@ export default function StaffCommissionReportPage() {
                 Staff
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
-                Commission Rate
+                Product / Service Rate
               </th>
               <th className="px-4 py-2 font-semibold text-right text-gray-600 tracking-wider">
                 Total Sales
@@ -438,7 +446,10 @@ export default function StaffCommissionReportPage() {
                     {row.staff_name}
                   </td>
                   <td className="px-4 py-2 border border-gray-200">
-                    {(Number(row.commission_rate) * 100).toFixed(2)}%
+                    <div className="flex flex-col">
+                      <span className="text-xs text-slate-600">Product: {(Number(row.commission_rate) * 100).toFixed(2)}%</span>
+                      <span className="text-xs text-slate-600">Service: {(Number(row.service_commission_rate ?? 0) * 100).toFixed(2)}%</span>
+                    </div>
                   </td>
                   <td className="px-4 py-2 border border-gray-200 text-right">
                     RM {money(Number(row.total_sales))}
@@ -549,7 +560,7 @@ export default function StaffCommissionReportPage() {
                         Items
                       </p>
                       <p className="mt-1 text-base font-bold text-orange-900">
-                        {detailStaff.items_count}
+                        {detailStaff.items_count + Number(detailStaff.package_items_count ?? 0)}
                       </p>
                     </div>
                   </div>
@@ -567,7 +578,7 @@ export default function StaffCommissionReportPage() {
                             Date
                           </th>
                           <th className="px-4 py-2 font-semibold text-left text-gray-700">
-                            Product
+                            Item
                           </th>
                           <th className="px-4 py-2 font-semibold text-right text-gray-700">
                             Qty
@@ -609,7 +620,8 @@ export default function StaffCommissionReportPage() {
                                 })()}
                               </td>
                               <td className="px-4 py-2">
-                                {row.product_name ?? '—'}
+                                <p className="font-medium text-slate-900">{row.product_name ?? '—'}</p>
+                                <p className="text-xs text-slate-500">{getItemTypeLabel(row.item_type)}</p>
                               </td>
                               <td className="px-4 py-2 text-right">
                                 {row.qty}

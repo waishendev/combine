@@ -460,17 +460,38 @@ class SalesReportService
         $revenue = (float) $this->baseOrdersQuery($start, $end)->sum('grand_total');
         $returnAmount = $this->refundAmountForRange($start, $end);
         $netRevenue = $revenue - $returnAmount;
+        $packageTotals = $this->packageSalesTotals($start, $end);
         $cogs = $profitSupported ? $this->cogsForOrderItems($start, $end) : null;
         $grossProfit = $profitSupported && $cogs !== null ? $netRevenue - $cogs : null;
         $grossMargin = $grossProfit !== null && $netRevenue > 0 ? ($grossProfit / $netRevenue) * 100 : null;
+        $totalSales = $netRevenue + (float) ($packageTotals['package_sales_amount'] ?? 0);
 
         return [
             'revenue' => $revenue,
             'return_amount' => $returnAmount,
             'net_revenue' => $netRevenue,
+            'package_sales_count' => (int) ($packageTotals['package_sales_count'] ?? 0),
+            'package_sales_amount' => (float) ($packageTotals['package_sales_amount'] ?? 0),
+            'total_sales' => $totalSales,
             'cogs' => $cogs,
             'gross_profit' => $grossProfit,
             'gross_margin' => $grossMargin,
+        ];
+    }
+
+    private function packageSalesTotals(Carbon $start, Carbon $end): array
+    {
+        $row = DB::table('customer_service_packages')
+            ->join('service_packages', 'service_packages.id', '=', 'customer_service_packages.service_package_id')
+            ->whereBetween('customer_service_packages.created_at', [$start, $end])
+            ->whereIn('customer_service_packages.purchased_from', ['POS', 'BOOKING'])
+            ->selectRaw('COUNT(customer_service_packages.id) as package_sales_count')
+            ->selectRaw('COALESCE(SUM(service_packages.selling_price), 0) as package_sales_amount')
+            ->first();
+
+        return [
+            'package_sales_count' => (int) ($row?->package_sales_count ?? 0),
+            'package_sales_amount' => (float) ($row?->package_sales_amount ?? 0),
         ];
     }
 
