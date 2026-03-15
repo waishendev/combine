@@ -481,11 +481,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return firstActive?.sku?.trim() ?? ''
   }, [])
 
+  const cartItems = useMemo(() => cart?.items ?? [], [cart?.items])
+  const cartServiceItems = useMemo(() => cart?.service_items ?? [], [cart?.service_items])
+  const cartPackageItems = useMemo(() => cart?.package_items ?? [], [cart?.package_items])
+
   const totalItems = useMemo(() => {
-    const productQty = cart?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0
-    const serviceQty = cart?.service_items?.reduce((sum, item) => sum + item.qty, 0) ?? 0
+    const productQty = cartItems.reduce((sum, item) => sum + item.qty, 0)
+    const serviceQty = cartServiceItems.reduce((sum, item) => sum + item.qty, 0)
     return productQty + serviceQty
-  }, [cart])
+  }, [cartItems, cartServiceItems])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
   const bookingDepositTotal = Number(cart?.booking_deposit_total ?? 0)
@@ -1557,7 +1561,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
   }, [cart?.service_items, selectedMember?.id])
 
-  const hasCartItems = (cart?.items.length ?? 0) > 0 || (cart?.service_items?.length ?? 0) > 0 || (cart?.package_items?.length ?? 0) > 0
+  const hasCartItems = cartItems.length > 0 || cartServiceItems.length > 0 || cartPackageItems.length > 0
 
   useEffect(() => {
     if (productSearchMode !== 'sku') {
@@ -1984,7 +1988,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || !hasCartItems || checkingOut) return
-    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+    if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
     }
@@ -1998,7 +2002,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       body: JSON.stringify({
         payment_method: paymentMethod,
         member_id: selectedMember?.id ?? null,
-        items: cart.items.map((item) => ({
+        items: cartItems.map((item) => ({
           cart_item_id: item.id,
           product_id: item.product_id,
           qty: item.qty,
@@ -2019,7 +2023,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           assigned_staff_id: item.assigned_staff_id ?? null,
           service_commission_rate_used: item.commission_rate_used ?? 0,
         })),
-        package_items: (cart.package_items ?? []).map((item) => ({
+        package_items: cartPackageItems.map((item) => ({
           type: 'service_package',
           cart_package_item_id: item.id,
           service_package_id: item.service_package_id,
@@ -2108,7 +2112,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const confirmCheckout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
-    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+    if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
     }
@@ -2145,7 +2149,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const checkout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
-    if ((cart.package_items?.length ?? 0) > 0 && !selectedMember?.id) {
+    if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
     }
@@ -2280,7 +2284,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }
 
   const syncCheckoutAssignments = useCallback(async () => {
-    if (!cart?.items?.length) {
+    if (!cartItems.length) {
       setCheckoutItemAssignments([])
       return
     }
@@ -2292,7 +2296,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       setActiveStaffs(fetched)
     }
 
-    setCheckoutItemAssignments((prev) => cart.items.map((item) => {
+    setCheckoutItemAssignments((prev) => cartItems.map((item) => {
       const existing = prev.find((x) => x.cart_item_id === item.id)
       if (existing) return existing
       const defaultStaffId = currentUser.staff_id ?? null
@@ -2302,7 +2306,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         is_default: Boolean(defaultStaffId),
       }
     }))
-  }, [activeStaffs, cart?.items, currentUser.staff_id, fetchStaffOptions])
+  }, [activeStaffs, cartItems, currentUser.staff_id, fetchStaffOptions])
 
   const openItemSplitEditor = async (cartItemId: number) => {
     let nextStaffs = activeStaffs
@@ -2742,7 +2746,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             </h3>
             {hasCartItems ? (
               <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 xl:min-h-0">
-                {cart.items.map((item) => {
+                {cartItems.map((item) => {
                   // Get current variant stock info
                   const currentVariant = item.variant_id 
                     ? (cartVariantOptions[item.id] ?? []).find(v => v.id === item.variant_id)
@@ -2871,7 +2875,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   )
                 })}
 
-                {(cart.service_items ?? []).map((serviceItem) => (
+                {cartServiceItems.map((serviceItem) => (
                   <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -2916,7 +2920,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   </div>
                 ))}
 
-                {(cart.package_items ?? []).map((packageItem) => (
+                {cartPackageItems.map((packageItem) => (
                   <div key={`package-${packageItem.id}`} className="rounded-xl border border-purple-200 bg-purple-50 p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -2976,7 +2980,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <span className="text-gray-900">Total</span>
                   <span className="text-lg text-gray-900">RM {cartTotal.toFixed(2)}</span>
                 </div>
-                {(cart.package_items?.length ?? 0) > 0 && (
+                {cartPackageItems.length > 0 && (
                   <div className="border-t border-gray-200 pt-2 text-xs text-gray-700">
                     Package assignment: {selectedMember ? selectedMember.name : 'No member selected'}
                   </div>
@@ -3299,7 +3303,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {cart.items.map((item) => {
+                    {cartItems.map((item) => {
                       const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === item.id)
                       const hasVariant = Boolean(item.variant_id || item.variant_name || item.variant_sku)
                       const variantDisplay = item.variant_name || item.variant_sku || null
