@@ -109,6 +109,7 @@ type BookingServiceOption = {
 type ServicePackageOption = {
   id: number
   name: string
+  description?: string | null
   selling_price?: number
   total_sessions?: number
   valid_days?: number
@@ -1194,6 +1195,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           return {
             id,
             name: String(maybe.name ?? '').trim(),
+            description: String(maybe.description ?? '').trim() || null,
             selling_price: Number(maybe.selling_price ?? 0),
             total_sessions: Number(maybe.total_sessions ?? 0),
             valid_days: Number(maybe.valid_days ?? 0),
@@ -1328,22 +1330,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCart((json?.data?.cart ?? null) as Cart | null)
     showMsg('Package added to cart.', 'success')
   }, [selectedMember?.id, showMsg])
-
-  const updatePackageCartQty = useCallback(async (itemId: number, qty: number) => {
-    if (qty < 1) return
-    const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ qty }),
-    })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to update package quantity.', 'error')
-      return
-    }
-
-    setCart((json?.data?.cart ?? null) as Cart | null)
-  }, [showMsg])
 
   const removePackageCartItem = useCallback(async (itemId: number) => {
     const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, { method: 'DELETE' })
@@ -2719,7 +2705,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       <div key={servicePackage.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{servicePackage.name}</p>
-                          <p className="text-xs text-gray-500">Sessions: {servicePackage.total_sessions ?? 0} • Valid: {servicePackage.valid_days ?? 0} days</p>
+                          {servicePackage.description ? (
+                            <p className="mt-1 text-xs text-gray-600 line-clamp-2">{servicePackage.description}</p>
+                          ) : null}
+                          <p className="text-xs text-gray-500">Sessions: {servicePackage.total_sessions ?? 0}</p>
+                          <p className="text-xs text-gray-500">Validity: {Number(servicePackage.valid_days ?? 0) > 0 ? `${servicePackage.valid_days} day(s)` : 'No expiry'}</p>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-bold text-gray-900">RM {Number(servicePackage.selling_price ?? 0).toFixed(2)}</span>
@@ -2930,31 +2920,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <div key={`package-${packageItem.id}`} className="rounded-xl border border-purple-200 bg-purple-50 p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Service Package</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Package</p>
                         <h4 className="font-bold text-gray-900 text-sm mt-0.5">{packageItem.package_name}</h4>
-                        <div className="mt-2 flex w-fit items-center gap-2 rounded-lg bg-white p-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (packageItem.qty <= 1) {
-                                void removePackageCartItem(packageItem.id)
-                                return
-                              }
-                              void updatePackageCartQty(packageItem.id, packageItem.qty - 1)
-                            }}
-                            className="h-7 w-7 rounded-md border border-gray-300 bg-white text-xs font-bold"
-                          >
-                            -
-                          </button>
-                          <span className="w-8 text-center text-sm font-bold text-gray-900">{packageItem.qty}</span>
-                          <button
-                            type="button"
-                            onClick={() => void updatePackageCartQty(packageItem.id, packageItem.qty + 1)}
-                            className="h-7 w-7 rounded-md border border-gray-300 bg-white text-xs font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
+                        <p className="mt-2 text-xs text-gray-600">Qty: {packageItem.qty}</p>
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-gray-500">Unit</div>
@@ -3008,6 +2976,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <span className="text-gray-900">Total</span>
                   <span className="text-lg text-gray-900">RM {cartTotal.toFixed(2)}</span>
                 </div>
+                {(cart.package_items?.length ?? 0) > 0 && (
+                  <div className="border-t border-gray-200 pt-2 text-xs text-gray-700">
+                    Package assignment: {selectedMember ? selectedMember.name : 'No member selected'}
+                  </div>
+                )}
               </div>
 
             </div>

@@ -114,7 +114,7 @@ class PosController extends Controller
         }
 
         return $this->respond([
-            'data' => $builder->get(['id', 'name', 'selling_price', 'total_sessions', 'valid_days']),
+            'data' => $builder->get(['id', 'name', 'description', 'selling_price', 'total_sessions', 'valid_days']),
         ]);
     }
 
@@ -809,9 +809,12 @@ class PosController extends Controller
             'service_items.*.start_at' => ['nullable', 'date'],
             'service_items.*.service_commission_rate_used' => ['nullable', 'numeric', 'min:0'],
             'package_items' => ['nullable', 'array'],
+            'package_items.*.type' => ['nullable', 'in:service_package'],
             'package_items.*.cart_package_item_id' => ['nullable', 'integer'],
             'package_items.*.service_package_id' => ['nullable', 'integer', 'exists:service_packages,id'],
             'package_items.*.quantity' => ['nullable', 'integer', 'min:1'],
+            'package_items.*.snapshot_name' => ['nullable', 'string', 'max:255'],
+            'package_items.*.snapshot_price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage']);
@@ -857,13 +860,17 @@ class PosController extends Controller
                     continue;
                 }
 
+                if (!empty($payloadItem['type']) && (string) $payloadItem['type'] !== 'service_package') {
+                    return $this->respondError(__('Invalid package item type in checkout payload.'), 422);
+                }
+
                 if (!empty($payloadItem['service_package_id']) && (int) $payloadItem['service_package_id'] !== (int) $packageItem->service_package_id) {
                     return $this->respondError(__('Package item mismatch in checkout payload.'), 422);
                 }
             }
         }
 
-        [$order, $receiptUrl] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
+        [$order, $receiptUrl, $purchasedPackageLines] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
             $customerId = $validated['member_id'] ?? null;
             if ($cart->packageItems->isNotEmpty() && empty($customerId)) {
                 abort(422, __('Please assign member before purchasing service package.'));
@@ -934,6 +941,8 @@ class PosController extends Controller
                 'notes' => 'POS checkout by staff #' . $request->user()->id . ' | booking_deposit=' . number_format((float) $depositTotal, 2, '.', ''),
                 'promotion_snapshot' => $cartPricing['promotions'] ?? [],
             ]);
+
+            $purchasedPackageLines = [];
 
             $staffSplitsByCartItemId = collect($validated['items'] ?? [])->mapWithKeys(function (array $item) {
                 $cartItemId = isset($item['cart_item_id']) ? (int) $item['cart_item_id'] : 0;
@@ -1115,6 +1124,15 @@ class PosController extends Controller
                         (int) $order->id,
                     );
                 }
+
+                $purchasedPackageLines[] = [
+                    'type' => 'service_package',
+                    'service_package_id' => (int) $packageItem->service_package_id,
+                    'name' => (string) ($packageItem->package_name_snapshot ?: $servicePackage->name),
+                    'qty' => (int) $packageItem->qty,
+                    'unit_price' => (float) $packageItem->price_snapshot,
+                    'line_total' => round(((float) $packageItem->price_snapshot) * (int) $packageItem->qty, 2),
+                ];
             }
 
             $order->load(['items', 'customer']);
@@ -1149,7 +1167,7 @@ class PosController extends Controller
             $cart->packageItems()->delete();
             $this->clearVoucherFromCart($cart);
 
-            return [$order, $receiptUrl];
+            return [$order, $receiptUrl, $purchasedPackageLines];
         });
 
         return $this->respond([
@@ -1162,6 +1180,7 @@ class PosController extends Controller
             'status' => $order->status,
             'payment_status' => $order->payment_status,
             'receipt_public_url' => $receiptUrl,
+            'package_items' => $purchasedPackageLines,
         ]);
     }
 
