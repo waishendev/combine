@@ -19,6 +19,7 @@ interface FormState {
   password: string
   username: string
   commissionPercent: string
+  serviceCommissionPercent: string
 }
 
 const initialFormState: FormState = {
@@ -29,6 +30,7 @@ const initialFormState: FormState = {
   password: '',
   username: '',
   commissionPercent: '0',
+  serviceCommissionPercent: '0',
 }
 
 export default function StaffCreateModal({
@@ -68,6 +70,7 @@ export default function StaffCreateModal({
 
     try {
       const commissionRate = Number(form.commissionPercent || 0) / 100
+      const serviceCommissionRate = Number(form.serviceCommissionPercent || 0) / 100
       const payload = {
         code: form.code.trim() || null,
         name: form.name.trim(),
@@ -76,6 +79,7 @@ export default function StaffCreateModal({
         password: form.password.trim(),
         username: form.username.trim() || null,
         commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
+        service_commission_rate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
         is_active: true,
       }
 
@@ -128,6 +132,7 @@ export default function StaffCreateModal({
             loginUsername: form.username.trim() || '-',
             adminUserId: null,
             commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
+            serviceCommissionRate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
             isActive: true,
             createdAt: new Date().toISOString(),
           }
@@ -253,7 +258,7 @@ export default function StaffCreateModal({
                   htmlFor="commissionPercent"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Commission Rate (%)
+                  Product Commission Rate (%)
                 </label>
                 <input
                   id="commissionPercent"
@@ -265,11 +270,31 @@ export default function StaffCreateModal({
                   value={form.commissionPercent}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Commission Rate (%)"
+                  placeholder="Product Commission Rate (%)"
                   disabled={submitting}
                 />
               </div>
-              <div className="flex-1"></div>
+              <div className="flex-1">
+                <label
+                  htmlFor="serviceCommissionPercent"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Service Commission Rate (%)
+                </label>
+                <input
+                  id="serviceCommissionPercent"
+                  name="serviceCommissionPercent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.serviceCommissionPercent}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Service Commission Rate (%)"
+                  disabled={submitting}
+                />
+              </div>
             </div>
           </div>
 

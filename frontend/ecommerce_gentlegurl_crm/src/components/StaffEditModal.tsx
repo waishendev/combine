@@ -20,6 +20,7 @@ interface FormState {
   password: string
   username: string
   commissionPercent: string
+  serviceCommissionPercent: string
   isActive: 'true' | 'false'
 }
 
@@ -31,6 +32,7 @@ const initialFormState: FormState = {
   password: '',
   username: '',
   commissionPercent: '0',
+  serviceCommissionPercent: '0',
   isActive: 'true',
 }
 
@@ -99,6 +101,7 @@ export default function StaffEditModal({
           password: '',
           username: mappedStaff.loginUsername === '-' ? '' : mappedStaff.loginUsername,
           commissionPercent: String((mappedStaff.commissionRate * 100).toFixed(2)).replace(/\.00$/, ''),
+          serviceCommissionPercent: String((mappedStaff.serviceCommissionRate * 100).toFixed(2)).replace(/\.00$/, ''),
           isActive: mappedStaff.isActive ? 'true' : 'false',
         })
       } catch (err) {
@@ -142,6 +145,7 @@ export default function StaffEditModal({
 
     try {
       const commissionRate = Number(form.commissionPercent || 0) / 100
+      const serviceCommissionRate = Number(form.serviceCommissionPercent || 0) / 100
       const payload: Record<string, unknown> = {
         code: form.code.trim() || null,
         name: form.name.trim(),
@@ -149,6 +153,7 @@ export default function StaffEditModal({
         email: form.email.trim(),
         username: form.username.trim() || null,
         commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
+        service_commission_rate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
         is_active: form.isActive === 'true',
       }
 
@@ -217,6 +222,7 @@ export default function StaffEditModal({
             loginUsername: form.username.trim() || '-',
             adminUserId: loadedStaff?.adminUserId ?? null,
             commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
+            serviceCommissionRate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
             isActive: form.isActive === 'true',
             createdAt: loadedStaff?.createdAt ?? '',
           }
@@ -347,7 +353,7 @@ export default function StaffEditModal({
                     htmlFor="edit-commissionPercent"
                     className="block text-sm font-medium text-gray-700 mb-1"
                   >
-                    Commission Rate (%)
+                    Product Commission Rate (%)
                   </label>
                   <input
                     id="edit-commissionPercent"
@@ -359,11 +365,34 @@ export default function StaffEditModal({
                     value={form.commissionPercent}
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Commission Rate (%)"
+                    placeholder="Product Commission Rate (%)"
                     disabled={disableForm}
                   />
                 </div>
 
+                <div className="flex-1">
+                  <label
+                    htmlFor="edit-serviceCommissionPercent"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Service Commission Rate (%)
+                  </label>
+                  <input
+                    id="edit-serviceCommissionPercent"
+                    name="serviceCommissionPercent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={form.serviceCommissionPercent}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Service Commission Rate (%)"
+                    disabled={disableForm}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-4">
                 <div className="flex-1">
                   <label
                     htmlFor="edit-isActive"
@@ -383,6 +412,7 @@ export default function StaffEditModal({
                     <option value="false">Inactive</option>
                   </select>
                 </div>
+                <div className="flex-1" />
               </div>
             </div>
           )}

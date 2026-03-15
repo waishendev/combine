@@ -37,6 +37,9 @@ export default function StaffRow({
         {(staff.commissionRate * 100).toFixed(2)}%
       </td>
       <td className="px-4 py-2 border border-gray-200">
+        {(staff.serviceCommissionRate * 100).toFixed(2)}%
+      </td>
+      <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={staff.isActive ? 'active' : 'inactive'}
           label={staff.isActive ? t('common.active') : t('common.inactive')}

@@ -551,6 +551,7 @@ class PosController extends Controller
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
             'items' => ['nullable', 'array'],
             'items.*.cart_item_id' => ['nullable', 'integer'],
+            'items.*.type' => ['nullable', 'string', 'in:product,service'],
             'items.*.staff_splits' => ['nullable', 'array'],
             'items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
@@ -632,6 +633,11 @@ class PosController extends Controller
                 return $cartItemId > 0 ? [$cartItemId => collect($item['staff_splits'] ?? [])->values()->all()] : [];
             });
 
+            $lineItemTypesByCartItemId = collect($validated['items'] ?? [])->mapWithKeys(function (array $item) {
+                $cartItemId = isset($item['cart_item_id']) ? (int) $item['cart_item_id'] : 0;
+                return $cartItemId > 0 ? [$cartItemId => strtolower((string) ($item['type'] ?? 'product'))] : [];
+            });
+
             $staffIds = $staffSplitsByCartItemId
                 ->flatMap(fn (array $splits) => collect($splits)->pluck('staff_id'))
                 ->filter()
@@ -641,8 +647,15 @@ class PosController extends Controller
 
             $staffCommissionRates = DB::table('staffs')
                 ->whereIn('id', $staffIds)
-                ->pluck('commission_rate', 'id')
-                ->map(fn ($rate) => (float) $rate)
+                ->get(['id', 'commission_rate', 'service_commission_rate'])
+                ->mapWithKeys(function ($staff) {
+                    return [
+                        (int) $staff->id => [
+                            'product' => (float) ($staff->commission_rate ?? 0),
+                            'service' => (float) ($staff->service_commission_rate ?? 0),
+                        ],
+                    ];
+                })
                 ->all();
 
             foreach ($cart->items as $item) {
@@ -701,12 +714,17 @@ class PosController extends Controller
                         abort(422, __('Invalid staff split.'));
                     }
 
+                    $lineItemType = $lineItemTypesByCartItemId->get((int) $item->id, 'product');
+                    $rateType = $lineItemType === 'service' ? 'service' : 'product';
+
                     foreach ($itemSplits as $split) {
+                        $staffRate = $staffCommissionRates[(int) $split['staff_id']] ?? null;
+
                         OrderItemStaffSplit::create([
                             'order_item_id' => $orderItem->id,
                             'staff_id' => (int) $split['staff_id'],
                             'share_percent' => (int) $split['share_percent'],
-                            'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+                            'commission_rate_snapshot' => (float) (($staffRate[$rateType] ?? 0)),
                         ]);
                     }
                 }
