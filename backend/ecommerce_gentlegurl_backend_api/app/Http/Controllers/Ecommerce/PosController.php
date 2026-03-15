@@ -324,9 +324,6 @@ class PosController extends Controller
         $validated = $request->validate([
             'service_package_id' => ['required', 'integer', 'exists:service_packages,id'],
             'customer_id' => ['required', 'integer', 'exists:customers,id'],
-            'staff_splits' => ['required', 'array', 'min:1'],
-            'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
-            'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'qty' => ['nullable', 'integer', 'min:1', 'max:10'],
         ]);
 
@@ -335,35 +332,7 @@ class PosController extends Controller
         $qty = (int) ($validated['qty'] ?? 1);
         $cart = $this->resolveCart((int) $request->user()->id);
 
-        $splits = collect($validated['staff_splits'])->values();
-        $sum = (int) $splits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
-        $uniqueCount = $splits->pluck('staff_id')->filter()->unique()->count();
-        if ($sum !== 100 || $uniqueCount !== $splits->count()) {
-            return $this->respondError(__('Invalid staff split. Total must be 100% and staffs must be unique.'), 422);
-        }
-
-        $staffIds = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
-        $staffCommissionRates = DB::table('staffs')
-            ->whereIn('id', $staffIds)
-            ->pluck('service_commission_rate', 'id')
-            ->map(fn ($rate) => (float) $rate)
-            ->all();
-
         $packagePrice = (float) ($package->selling_price ?? 0);
-        $normalizedSplits = $splits->map(function (array $split) use ($staffCommissionRates, $packagePrice) {
-            $sharePercent = (int) ($split['share_percent'] ?? 0);
-            $staffId = (int) ($split['staff_id'] ?? 0);
-            $salesAmount = round($packagePrice * ($sharePercent / 100), 2);
-            $commissionRate = (float) ($staffCommissionRates[$staffId] ?? 0);
-
-            return [
-                'staff_id' => $staffId,
-                'share_percent' => $sharePercent,
-                'split_sales_amount' => $salesAmount,
-                'service_commission_rate_snapshot' => $commissionRate,
-                'commission_amount_snapshot' => round($salesAmount * $commissionRate, 2),
-            ];
-        })->values()->all();
 
         $item = PosCartPackageItem::query()->firstOrNew([
             'pos_cart_id' => $cart->id,
@@ -374,7 +343,7 @@ class PosController extends Controller
         $item->customer_id = (int) $customer->id;
         $item->price_snapshot = $packagePrice;
         $item->package_name_snapshot = (string) $package->name;
-        $item->staff_splits = $normalizedSplits;
+        $item->staff_splits = [];
         $item->save();
 
         return $this->respond([
@@ -896,6 +865,11 @@ class PosController extends Controller
                 ->filter(fn (array $item) => !empty($item['cart_package_item_id']))
                 ->keyBy(fn (array $item) => (int) $item['cart_package_item_id']);
 
+
+            $packagePayloadByCartId = collect($validated['package_items'] ?? [])
+                ->filter(fn (array $item) => !empty($item['cart_package_item_id']))
+                ->keyBy(fn (array $item) => (int) $item['cart_package_item_id']);
+
             foreach ($cart->packageItems as $packageItem) {
                 $payloadItem = $packagePayloadByCartId->get((int) $packageItem->id);
                 if (!$payloadItem) {
@@ -912,6 +886,17 @@ class PosController extends Controller
 
                 if (!empty($payloadItem['customer_id']) && (int) $payloadItem['customer_id'] !== (int) ($packageItem->customer_id ?? 0)) {
                     return $this->respondError(__('Package member mismatch in checkout payload.'), 422);
+                }
+
+                $splitRows = collect($payloadItem['staff_splits'] ?? [])->values();
+                if ($splitRows->isEmpty()) {
+                    return $this->respondError(__('Staff split is required for service package checkout.'), 422);
+                }
+
+                $sum = (int) $splitRows->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
+                $uniqueCount = $splitRows->pluck('staff_id')->filter()->unique()->count();
+                if ($sum !== 100 || $uniqueCount !== $splitRows->count()) {
+                    return $this->respondError(__('Invalid service package staff split. Total must be 100% and staffs must be unique.'), 422);
                 }
             }
         }
@@ -1179,7 +1164,8 @@ class PosController extends Controller
                     ->where('is_active', true)
                     ->findOrFail((int) $packageItem->service_package_id);
 
-                $splitRows = collect($packageItem->staff_splits ?? []);
+                $payloadItem = $packagePayloadByCartId->get((int) $packageItem->id) ?? [];
+                $splitRows = collect($payloadItem['staff_splits'] ?? []);
                 for ($i = 0; $i < (int) $packageItem->qty; $i++) {
                     $ownedPackage = $this->customerServicePackageService->purchase(
                         (int) $customerId,
@@ -1399,8 +1385,6 @@ class PosController extends Controller
                 'unit_price' => (float) $item->price_snapshot,
                 'line_total' => (float) $lineTotal,
                 'customer_id' => $item->customer_id ? (int) $item->customer_id : null,
-                'customer_name' => $item->customer?->name,
-                'staff_splits' => $item->staff_splits ?? [],
             ];
         })->values();
 

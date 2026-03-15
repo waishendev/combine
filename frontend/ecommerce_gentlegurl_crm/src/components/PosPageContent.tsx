@@ -417,6 +417,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [checkoutConfirmationOpen, setCheckoutConfirmationOpen] = useState(false)
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
+  const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
   const [itemSplitEditorItemId, setItemSplitEditorItemId] = useState<number | null>(null)
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
@@ -1392,13 +1393,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setPackageMembers([])
     setPackageMembersLoading(false)
     setPackageModalError(null)
-    setPackageSplitRows([
-      {
-        id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        staff_id: defaultStaff?.id ?? null,
-        share_percent: 100,
-      },
-    ])
+    setPackageSplitRows([])
     setPackageModalOpen(true)
   }, [activeStaffs, currentUser.staff_id, fetchStaffOptions, selectedMember])
 
@@ -1430,30 +1425,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       return
     }
 
-    if (!packageSplitRows.length) {
-      setPackageModalError('Please add at least one staff split row.')
-      return
-    }
-
-    const staffIds = new Set<number>()
-    let totalPercent = 0
-    for (const row of packageSplitRows) {
-      if (!row.staff_id || row.staff_id <= 0) {
-        setPackageModalError('Please select staff for all split rows.')
-        return
-      }
-      if (staffIds.has(row.staff_id)) {
-        setPackageModalError('Duplicate staff in split rows is not allowed.')
-        return
-      }
-      staffIds.add(row.staff_id)
-      totalPercent += Number(row.share_percent || 0)
-    }
-
-    if (totalPercent !== 100) {
-      setPackageModalError('Total split percent must be 100%.')
-      return
-    }
 
     setPackageSubmitting(true)
     const res = await fetch('/api/proxy/pos/cart/add-package', {
@@ -1462,10 +1433,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       body: JSON.stringify({
         service_package_id: packageDraft.id,
         customer_id: selectedModalMember.id,
-        staff_splits: packageSplitRows.map((row) => ({
-          staff_id: row.staff_id,
-          share_percent: Number(row.share_percent || 0),
-        })),
         qty: 1,
       }),
     })
@@ -1483,7 +1450,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setPackageSubmitting(false)
     setPackageModalError(null)
     showMsg('Package added to cart.', 'success')
-  }, [packageDraft?.id, packageSelectedMember, packageSplitRows, showMsg])
+  }, [packageDraft?.id, packageSelectedMember, showMsg])
 
 
   useEffect(() => {
@@ -2170,6 +2137,36 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCheckingOut(true)
     setCheckoutError(null)
 
+    for (const packageItem of cartPackageItems) {
+      const rows = packageCheckoutSplits[packageItem.id] ?? []
+      if (rows.length === 0) {
+        setCheckoutError(`Please assign at least one staff split for package ${packageItem.package_name}.`)
+        setCheckingOut(false)
+        return
+      }
+      const ids = new Set<number>()
+      let total = 0
+      for (const row of rows) {
+        if (!row.staff_id || row.staff_id <= 0) {
+          setCheckoutError(`Please select staff for all splits of package ${packageItem.package_name}.`)
+          setCheckingOut(false)
+          return
+        }
+        if (ids.has(row.staff_id)) {
+          setCheckoutError(`Duplicate staff found in package split for ${packageItem.package_name}.`)
+          setCheckingOut(false)
+          return
+        }
+        ids.add(row.staff_id)
+        total += Number(row.share_percent || 0)
+      }
+      if (total !== 100) {
+        setCheckoutError(`Total split for package ${packageItem.package_name} must be 100%.`)
+        setCheckingOut(false)
+        return
+      }
+    }
+
     const res = await fetch('/api/proxy/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2205,7 +2202,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           snapshot_name: item.package_name,
           snapshot_price: item.unit_price,
           customer_id: item.customer_id ?? selectedMember?.id ?? null,
-          staff_splits: (item.staff_splits ?? []).map((split) => ({
+          staff_splits: (packageCheckoutSplits[item.id] ?? []).map((split) => ({
             staff_id: split.staff_id,
             share_percent: split.share_percent,
           })),
@@ -2582,7 +2579,47 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const openCheckoutConfirmation = async () => {
     await syncCheckoutAssignments()
+
+    setPackageCheckoutSplits((prev) => {
+      const next: Record<number, CheckoutItemStaffSplit[]> = {}
+      const defaultStaffId = currentUser.staff_id ?? activeStaffs[0]?.id ?? null
+      for (const pkg of cartPackageItems) {
+        const existing = prev[pkg.id]
+        if (existing && existing.length > 0) {
+          next[pkg.id] = existing
+          continue
+        }
+        next[pkg.id] = defaultStaffId ? [{ staff_id: defaultStaffId, share_percent: 100 }] : []
+      }
+      return next
+    })
+
     setCheckoutConfirmationOpen(true)
+  }
+
+  const updatePackageCheckoutSplit = (packageItemId: number, index: number, patch: Partial<CheckoutItemStaffSplit>) => {
+    setPackageCheckoutSplits((prev) => {
+      const rows = [...(prev[packageItemId] ?? [])]
+      const row = rows[index]
+      if (!row) return prev
+      rows[index] = { ...row, ...patch }
+      return { ...prev, [packageItemId]: rows }
+    })
+  }
+
+  const addPackageCheckoutSplitRow = (packageItemId: number) => {
+    setPackageCheckoutSplits((prev) => ({
+      ...prev,
+      [packageItemId]: [...(prev[packageItemId] ?? []), { staff_id: 0, share_percent: 0 }],
+    }))
+  }
+
+  const removePackageCheckoutSplitRow = (packageItemId: number, index: number) => {
+    setPackageCheckoutSplits((prev) => {
+      const rows = [...(prev[packageItemId] ?? [])]
+      rows.splice(index, 1)
+      return { ...prev, [packageItemId]: rows }
+    })
   }
 
   const canConfirmCheckoutInModal = useMemo(() => {
@@ -3587,7 +3624,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         </tr>
                       )
                     })}
-                    {(cart.service_items ?? []).map((serviceItem) => {
+                    {cartServiceItems.map((serviceItem) => {
                       const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
                         ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
                         : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
@@ -3609,6 +3646,85 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           </td>
                           <td className="px-4 py-3">
                             <p className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                          </td>
+                        </tr>
+                      )
+                    })}
+
+                    {cartPackageItems.map((packageItem) => {
+                      const splitRows = packageCheckoutSplits[packageItem.id] ?? []
+
+                      return (
+                        <tr key={`checkout-package-${packageItem.id}`} className="bg-purple-50/60 hover:bg-purple-50 transition-colors align-top">
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-900">{packageItem.package_name}</p>
+                            <p className="text-[11px] text-purple-700 font-semibold">SERVICE PACKAGE</p>
+                            <p className="text-xs text-gray-600 mt-0.5">Member: {packageItem.customer_name ?? (packageItem.customer_id ? `Member #${packageItem.customer_id}` : 'Not assigned')}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">Qty: {packageItem.qty}</p>
+                          </td>
+                          <td className="px-4 py-3 min-w-[320px]">
+                            <div className="space-y-2">
+                              {splitRows.map((row, index) => {
+                                const staff = activeStaffs.find((item) => item.id === row.staff_id)
+                                const rate = Number(staff?.service_commission_rate ?? 0)
+                                const splitSales = Number(packageItem.unit_price ?? 0) * (Number(row.share_percent || 0) / 100)
+                                const commission = splitSales * rate
+                                return (
+                                  <div key={`pkg-split-${packageItem.id}-${index}`} className="rounded border border-purple-200 bg-white p-2">
+                                    <div className="grid grid-cols-[minmax(0,1fr)_80px_32px] gap-2">
+                                      <select
+                                        value={row.staff_id || ''}
+                                        onChange={(event) => updatePackageCheckoutSplit(packageItem.id, index, { staff_id: event.target.value ? Number(event.target.value) : 0 })}
+                                        className="rounded border border-gray-300 px-2 py-1 text-xs"
+                                      >
+                                        <option value="">Select staff</option>
+                                        {activeStaffs.map((staffOption) => (
+                                          <option key={`checkout-package-staff-${packageItem.id}-${staffOption.id}`} value={staffOption.id}>{staffOption.name}</option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        value={row.share_percent}
+                                        onChange={(event) => updatePackageCheckoutSplit(packageItem.id, index, { share_percent: Number(event.target.value || 0) })}
+                                        className="rounded border border-gray-300 px-2 py-1 text-xs"
+                                      />
+                                      <button
+                                        type="button"
+                                        disabled={splitRows.length <= 1}
+                                        onClick={() => removePackageCheckoutSplitRow(packageItem.id, index)}
+                                        className="rounded border border-red-300 text-red-700 disabled:opacity-40"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                    <div className="mt-1 grid grid-cols-4 gap-2 text-[11px] text-gray-600">
+                                      <span>Sales: RM {splitSales.toFixed(2)}</span>
+                                      <span>Rate: {(rate * 100).toFixed(2)}%</span>
+                                      <span>Commission: RM {commission.toFixed(2)}</span>
+                                      <span>{staff?.name ?? '-'}</span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                              <div className="flex items-center justify-between">
+                                <button
+                                  type="button"
+                                  onClick={() => addPackageCheckoutSplitRow(packageItem.id)}
+                                  className="rounded border border-purple-300 bg-white px-2 py-1 text-[11px] font-semibold text-purple-700"
+                                >
+                                  Add Staff Split
+                                </button>
+                                <span className="text-[11px] font-semibold text-gray-700">Total: {splitRows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)}%</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-gray-700">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-purple-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
                           </td>
                         </tr>
                       )
@@ -3991,81 +4107,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               </div>
             </div>
 
-            <div className="mt-4 rounded-lg border border-gray-200 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-gray-900">Staff Split</p>
-                <button
-                  type="button"
-                  onClick={addPackageSplitRow}
-                  className="rounded border border-emerald-300 px-2 py-1 text-xs font-semibold text-emerald-700"
-                >
-                  Add Row
-                </button>
-              </div>
-              <div className="space-y-2">
-                {packageSplitRows.map((row) => (
-                  <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_90px_40px] gap-2">
-                    <select
-                      value={row.staff_id ?? ''}
-                      onChange={(event) => updatePackageSplitRow(row.id, { staff_id: event.target.value ? Number(event.target.value) : null })}
-                      className="rounded border border-gray-300 px-2 py-2 text-sm"
-                    >
-                      <option value="">Select staff</option>
-                      {activeStaffs.map((staff) => (
-                        <option key={`package-staff-${staff.id}`} value={staff.id}>{staff.name}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={row.share_percent}
-                      onChange={(event) => updatePackageSplitRow(row.id, { share_percent: Number(event.target.value || 0) })}
-                      className="rounded border border-gray-300 px-2 py-2 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removePackageSplitRow(row.id)}
-                      disabled={packageSplitRows.length <= 1}
-                      className="rounded border border-red-300 px-2 py-2 text-xs text-red-700 disabled:opacity-40"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-gray-700">Total split: {packageSplitRows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)}%</p>
-            </div>
-
-            <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full text-xs">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-2 py-2 text-left">Staff</th>
-                    <th className="px-2 py-2 text-left">Share %</th>
-                    <th className="px-2 py-2 text-left">Split Sales</th>
-                    <th className="px-2 py-2 text-left">Service Commission Rate</th>
-                    <th className="px-2 py-2 text-left">Commission Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {packageSplitRows.map((row) => {
-                    const staff = activeStaffs.find((item) => item.id === row.staff_id)
-                    const rate = Number(staff?.service_commission_rate ?? 0)
-                    const splitSales = Number(packageDraft.selling_price ?? 0) * (Number(row.share_percent || 0) / 100)
-                    const commission = splitSales * rate
-                    return (
-                      <tr key={`package-preview-${row.id}`} className="border-t border-gray-100">
-                        <td className="px-2 py-2">{staff?.name ?? '-'}</td>
-                        <td className="px-2 py-2">{Number(row.share_percent || 0)}%</td>
-                        <td className="px-2 py-2">RM {splitSales.toFixed(2)}</td>
-                        <td className="px-2 py-2">{(rate * 100).toFixed(2)}%</td>
-                        <td className="px-2 py-2">RM {commission.toFixed(2)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Staff split and commission preview will be configured in Checkout Confirmation.
             </div>
 
             {packageModalError ? <p className="mt-3 text-sm font-medium text-red-600">{packageModalError}</p> : null}
