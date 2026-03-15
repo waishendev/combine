@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 class PosCartServiceItem extends Model
 {
     protected $fillable = [
-        'pos_cart_id', 'booking_service_id', 'service_name_snapshot', 'price_snapshot',
-        'qty', 'assigned_staff_id', 'commission_rate_used',
+        'pos_cart_id', 'booking_service_id', 'customer_id', 'service_name_snapshot', 'price_snapshot',
+        'qty', 'assigned_staff_id', 'start_at', 'end_at', 'notes', 'staff_splits', 'commission_rate_used',
     ];
 
     protected function casts(): array
@@ -18,6 +18,9 @@ class PosCartServiceItem extends Model
         return [
             'price_snapshot' => 'decimal:2',
             'qty' => 'integer',
+            'start_at' => 'datetime',
+            'end_at' => 'datetime',
+            'staff_splits' => 'array',
             'commission_rate_used' => 'decimal:4',
         ];
     }

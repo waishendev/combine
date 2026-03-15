@@ -75,6 +75,11 @@ type ServiceCartItem = {
   line_total: number
   assigned_staff_id?: number | null
   assigned_staff_name?: string | null
+  customer_id?: number | null
+  start_at?: string | null
+  end_at?: string | null
+  notes?: string | null
+  staff_splits?: Array<{ staff_id: number; share_percent: number; service_commission_rate_snapshot?: number }>
   commission_rate_used?: number
 }
 
@@ -356,6 +361,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [bookingSubmitting, setBookingSubmitting] = useState(false)
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
   const [bookingAssignedStaffId, setBookingAssignedStaffId] = useState<number | null>(null)
+  const [bookingDate, setBookingDate] = useState('')
+  const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string }>>([])
+  const [bookingSlotValue, setBookingSlotValue] = useState('')
+  const [bookingNotes, setBookingNotes] = useState('')
+  const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
   const [serviceRedeemingIds, setServiceRedeemingIds] = useState<Record<number, boolean>>({})
 
@@ -1197,13 +1207,29 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const openBookingModal = useCallback((service: BookingServiceOption) => {
     setBookingServiceDraft(service)
     setBookingAssignedStaffId(currentUser.staff_id ?? null)
+    setBookingDate('')
+    setBookingSlots([])
+    setBookingSlotValue('')
+    setBookingNotes('')
     setBookingModalOpen(true)
   }, [currentUser.staff_id])
 
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
+    if (!selectedMember?.id) {
+      showMsg('Please assign member.', 'error')
+      return
+    }
     if (!bookingAssignedStaffId) {
       showMsg('Please select assigned staff.', 'error')
+      return
+    }
+    if (!bookingDate) {
+      showMsg('Please select appointment date.', 'error')
+      return
+    }
+    if (!bookingSlotValue) {
+      showMsg('Please select appointment slot/time.', 'error')
       return
     }
 
@@ -1213,7 +1239,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         booking_service_id: bookingServiceDraft.id,
+        customer_id: selectedMember.id,
         assigned_staff_id: bookingAssignedStaffId,
+        start_at: bookingSlotValue,
+        notes: bookingNotes || null,
+        staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
         qty: 1,
       }),
     })
@@ -1229,7 +1259,47 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     showMsg('Service added to cart. Continue with checkout to collect payment.', 'success')
     setBookingModalOpen(false)
     setBookingSubmitting(false)
-  }, [bookingAssignedStaffId, bookingServiceDraft, showMsg])
+  }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingServiceDraft, bookingSlotValue, selectedMember?.id, showMsg])
+
+
+  useEffect(() => {
+    const loadSlots = async () => {
+      if (!bookingModalOpen || !bookingServiceDraft?.id || !bookingAssignedStaffId || !bookingDate) {
+        setBookingSlots([])
+        setBookingSlotValue('')
+        return
+      }
+
+      setBookingSlotsLoading(true)
+      try {
+        const params = new URLSearchParams({
+          service_id: String(bookingServiceDraft.id),
+          staff_id: String(bookingAssignedStaffId),
+          date: bookingDate,
+        })
+        const res = await fetch(`/api/proxy/booking/availability?${params.toString()}`, { cache: 'no-store' })
+        const json = await res.json().catch(() => null)
+        const rows = Array.isArray(json?.data?.slots) ? json.data.slots : []
+        const slots = rows
+          .map((row: unknown) => {
+            if (!row || typeof row !== 'object') return null
+            const maybe = row as Record<string, unknown>
+            const startAt = String(maybe.start_at ?? '')
+            const endAt = String(maybe.end_at ?? '')
+            if (!startAt || !endAt) return null
+            return { start_at: startAt, end_at: endAt }
+          })
+          .filter((row): row is { start_at: string; end_at: string } => Boolean(row))
+
+        setBookingSlots(slots)
+        setBookingSlotValue((prev) => slots.some((slot) => slot.start_at === prev) ? prev : '')
+      } finally {
+        setBookingSlotsLoading(false)
+      }
+    }
+
+    void loadSlots()
+  }, [bookingAssignedStaffId, bookingDate, bookingModalOpen, bookingServiceDraft?.id])
 
   const addPackageToCart = useCallback(async (servicePackage: ServicePackageOption) => {
     if (!selectedMember?.id) {
@@ -2803,6 +2873,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Service</p>
                         <h4 className="font-bold text-gray-900 text-sm mt-0.5">{serviceItem.service_name}</h4>
                         <p className="text-xs text-gray-600 mt-1">Qty: {serviceItem.qty}</p>
+                        {serviceItem.start_at ? (
+                          <p className="text-xs text-gray-700">Appointment: {new Date(serviceItem.start_at).toLocaleString()}</p>
+                        ) : null}
+                        {serviceItem.customer_id ? (
+                          <p className="text-xs text-gray-600">Member ID: {serviceItem.customer_id}</p>
+                        ) : null}
                         {serviceItem.assigned_staff_name ? (
                           <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
                         ) : null}
@@ -3665,6 +3741,41 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     <option key={staff.id} value={staff.id}>{staff.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Appointment Date</label>
+                <input
+                  type="date"
+                  value={bookingDate}
+                  onChange={(e) => setBookingDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
+                <select
+                  value={bookingSlotValue}
+                  onChange={(e) => setBookingSlotValue(e.target.value)}
+                  disabled={!bookingAssignedStaffId || !bookingDate || bookingSlotsLoading}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                >
+                  <option value="">{bookingSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
+                  {bookingSlots.map((slot) => (
+                    <option key={slot.start_at} value={slot.start_at}>
+                      {new Date(slot.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Notes (optional)</label>
+                <textarea
+                  value={bookingNotes}
+                  onChange={(e) => setBookingNotes(e.target.value)}
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
