@@ -299,7 +299,7 @@ class PosController extends Controller
 
         $booking = Booking::query()->create([
             'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-            'source' => 'POS',
+            'source' => 'STAFF',
             'customer_id' => $customer->id,
             'staff_id' => $staff->id,
             'service_id' => $service->id,
@@ -579,6 +579,17 @@ class PosController extends Controller
     {
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = $cart->items()->findOrFail($itemId);
+        $item->delete();
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage'])),
+        ]);
+    }
+
+    public function removeServiceCartItem(Request $request, int $itemId)
+    {
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->serviceItems()->findOrFail($itemId);
         $item->delete();
 
         return $this->respond([
@@ -1036,7 +1047,7 @@ class PosController extends Controller
 
                 $booking = Booking::query()->create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-                    'source' => 'POS',
+                    'source' => 'STAFF',
                     'customer_id' => (int) $serviceItem->customer_id,
                     'staff_id' => $serviceItem->assigned_staff_id,
                     'service_id' => $serviceItem->booking_service_id,

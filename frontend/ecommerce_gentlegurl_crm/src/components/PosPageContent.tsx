@@ -1464,6 +1464,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
   }
 
+
+  const removeServiceItem = async (itemId: number) => {
+    const res = await fetch(`/api/proxy/pos/cart/service-items/${itemId}`, { method: 'DELETE' })
+    const json = await res.json().catch(() => null)
+    if (res.ok) {
+      setCart((json?.data?.cart ?? null) as Cart | null)
+    }
+  }
+
   useEffect(() => {
     focusScanner()
     void loadCart()
@@ -2904,6 +2913,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         >
                           {serviceRedeemingIds[serviceItem.id] ? 'Claiming...' : 'Claim Package'}
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void removeServiceItem(serviceItem.id)}
+                          className="mt-1 ml-1 rounded border border-red-300 bg-white px-2 py-1 text-[11px] font-semibold text-red-700"
+                        >
+                          Remove
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -3401,6 +3418,32 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             ) : (
                               <p className="font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
                             )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {(cart.service_items ?? []).map((serviceItem) => {
+                      const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
+                        ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
+                        : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
+
+                      return (
+                        <tr key={`checkout-service-${serviceItem.id}`} className="bg-emerald-50/60 hover:bg-emerald-50 transition-colors align-top">
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-900">{serviceItem.service_name}</p>
+                            <p className="text-[11px] text-emerald-700 font-semibold">BOOKING SERVICE · {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
+                            {serviceItem.start_at ? <p className="text-xs text-gray-600 mt-0.5">{new Date(serviceItem.start_at).toLocaleString()}</p> : null}
+                            <p className="text-xs text-gray-500 mt-0.5">Qty: {serviceItem.qty}</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">Service price ref: RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</p>
+                          </td>
+                          <td className="px-4 py-3 min-w-[280px]">
+                            <p className="text-xs text-gray-700">{splitSummary}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-gray-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
                           </td>
                         </tr>
                       )
