@@ -18,4 +18,9 @@ class BookingCart extends Model
     {
         return $this->hasMany(BookingCartItem::class, 'booking_cart_id');
     }
+
+    public function packageItems()
+    {
+        return $this->hasMany(BookingCartPackageItem::class, 'booking_cart_id');
+    }
 }

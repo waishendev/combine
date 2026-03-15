@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { checkoutCart, getBookingCart, getMe, getServicePackageAvailableFor, redeemServicePackage, removeCartItem } from "@/lib/apiClient";
+import { checkoutCart, getBookingCart, getMe, getServicePackageAvailableFor, redeemServicePackage, removeCartItem, removePackageCartItem } from "@/lib/apiClient";
 import { BookingCart } from "@/lib/types";
 
 function secondsLeft(expiresAt: string) {
@@ -37,7 +37,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       const data = await getBookingCart();
       setCart(data);
       // Dispatch event to notify header to update cart count
-      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: data?.items?.length || 0 }));
+      const itemCount = (data?.items?.length || 0) + (data?.package_items?.length || 0);
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
     } catch {
       setMessage("Unable to load cart.");
     }
@@ -45,7 +46,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   useEffect(() => {
     if (isOpen) {
-      loadCart();
+      queueMicrotask(() => {
+        void loadCart();
+      });
       getMe()
         .then((me) => {
           setIsLoggedIn(true);
@@ -74,13 +77,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [cart, isOpen]);
+  }, [cart, isOpen, loadCart]);
 
   const nextExpiryIn = useMemo(() => {
     if (!cart?.next_expiry_at) return null;
     return formatDuration(secondsLeft(cart.next_expiry_at));
   }, [cart]);
 
+  const hasPackageItems = (cart?.package_items?.length || 0) > 0;
 
 
   useEffect(() => {
@@ -226,7 +230,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                           const updatedCart = await removeCartItem(item.id);
                           setCart(updatedCart);
                           // Notify header to update cart count
-                          window.dispatchEvent(new CustomEvent("cartUpdated", { detail: updatedCart?.items?.length || 0 }));
+                          const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
+                          window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
                         }}
                       >
                         Remove
@@ -235,7 +240,32 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   </div>
                 </div>
               ))}
-              {!cart?.items?.length ? (
+
+              {cart?.package_items?.map((pkg) => (
+                <div key={`pkg-${pkg.id}`} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <p className="font-medium">{pkg.package_name}</p>
+                      <p className="text-sm text-neutral-600">Qty: {pkg.qty}</p>
+                      <p className="text-sm text-neutral-600">Line total: RM {pkg.line_total}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <button
+                        className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50 transition-colors"
+                        onClick={async () => {
+                          const updatedCart = await removePackageCartItem(pkg.id);
+                          setCart(updatedCart);
+                          const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
+                          window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {!(cart?.items?.length || cart?.package_items?.length) ? (
                 <div className="rounded-xl border border-dashed p-6 text-center">
                   <p className="text-neutral-600">Your cart is empty.</p>
                   <Link
@@ -249,8 +279,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               ) : null}
             </div>
 
-            {cart?.items?.length ? (
+            {(cart?.items?.length || cart?.package_items?.length) ? (
               <div className="mt-8 rounded-xl border p-4">
+                {!isLoggedIn && hasPackageItems ? (
+                  <p className="mb-3 text-sm text-amber-700">Please login first to checkout package items.</p>
+                ) : null}
                 {!isLoggedIn ? (
                   <div className="mb-4 grid gap-3">
                     <input
@@ -274,10 +307,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   </div>
                 ) : null}
                 <p className="font-semibold">Deposit total: RM {cart?.deposit_total ?? 0}</p>
+                <p className="font-semibold">Package total: RM {cart?.package_total ?? 0}</p>
+                <p className="font-semibold">Cart total: RM {cart?.cart_total ?? cart?.deposit_total ?? 0}</p>
                 <p className="text-sm text-neutral-600">Next expiry in: {nextExpiryIn ?? "-"}</p>
                 <button
                   onClick={onCheckout}
-                  disabled={!cart?.items?.length}
+                  disabled={!(cart?.items?.length || cart?.package_items?.length) || (!isLoggedIn && hasPackageItems)}
                   className="mt-4 w-full rounded-full bg-black px-6 py-3 text-white disabled:opacity-40 hover:bg-neutral-800 transition-colors"
                 >
                   Proceed to Checkout

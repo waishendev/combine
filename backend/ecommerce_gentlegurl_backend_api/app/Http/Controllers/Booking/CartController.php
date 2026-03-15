@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCart;
 use App\Models\Booking\BookingCartItem;
+use App\Models\Booking\BookingCartPackageItem;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingSetting;
+use App\Models\Booking\ServicePackage;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
+use App\Services\Booking\CustomerServicePackageService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +22,7 @@ class CartController extends Controller
     public function __construct(
         private readonly BookingAvailabilityService $availabilityService,
         private readonly BookingCartCleanupService $cartCleanupService,
+        private readonly CustomerServicePackageService $customerServicePackageService,
     ) {}
 
     public function add(Request $request)
@@ -71,16 +75,68 @@ class CartController extends Controller
         });
     }
 
+    public function addPackage(Request $request)
+    {
+        $customer = $request->user('customer');
+        if (! $customer) {
+            return $this->respondError('Please login before adding package to cart.', 401);
+        }
+
+        $validated = $request->validate([
+            'service_package_id' => ['required', 'integer', 'exists:service_packages,id'],
+            'qty' => ['nullable', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        $package = ServicePackage::query()
+            ->where('is_active', true)
+            ->findOrFail((int) $validated['service_package_id']);
+
+        $qty = (int) ($validated['qty'] ?? 1);
+
+        return DB::transaction(function () use ($request, $package, $qty) {
+            $cart = $this->resolveActiveCart($request);
+            $this->cleanupExpiredItems($cart);
+
+            $item = BookingCartPackageItem::query()
+                ->where('booking_cart_id', $cart->id)
+                ->where('service_package_id', $package->id)
+                ->where('status', 'active')
+                ->first();
+
+            if ($item) {
+                $item->update([
+                    'qty' => min(10, (int) $item->qty + $qty),
+                    'price_snapshot' => (float) ($package->selling_price ?? 0),
+                    'package_name_snapshot' => (string) $package->name,
+                ]);
+            } else {
+                BookingCartPackageItem::query()->create([
+                    'booking_cart_id' => $cart->id,
+                    'service_package_id' => $package->id,
+                    'package_name_snapshot' => (string) $package->name,
+                    'price_snapshot' => (float) ($package->selling_price ?? 0),
+                    'qty' => $qty,
+                    'status' => 'active',
+                ]);
+            }
+
+            return $this->respond($this->buildCartPayload($cart->fresh()));
+        });
+    }
+
     public function show(Request $request)
     {
         return DB::transaction(function () use ($request) {
             $cart = $this->resolveActiveCart($request, false);
-            if (!$cart) {
+            if (! $cart) {
                 return $this->respond([
                     'id' => null,
                     'status' => 'active',
                     'items' => [],
+                    'package_items' => [],
                     'deposit_total' => 0,
+                    'package_total' => 0,
+                    'cart_total' => 0,
                     'next_expiry_at' => null,
                 ]);
             }
@@ -106,6 +162,24 @@ class CartController extends Controller
         });
     }
 
+    public function removePackageItem(Request $request, int $itemId)
+    {
+        return DB::transaction(function () use ($request, $itemId) {
+            $cart = $this->resolveActiveCart($request);
+            $this->cleanupExpiredItems($cart);
+
+            $item = BookingCartPackageItem::query()
+                ->where('booking_cart_id', $cart->id)
+                ->findOrFail($itemId);
+
+            if ($item->status === 'active') {
+                $item->update(['status' => 'removed']);
+            }
+
+            return $this->respond($this->buildCartPayload($cart->fresh()));
+        });
+    }
+
     public function checkout(Request $request)
     {
         $customer = $request->user('customer');
@@ -115,17 +189,19 @@ class CartController extends Controller
             'guest_email' => ['nullable', 'email', 'max:255'],
         ]);
 
-        if (!$customer && (empty($validated['guest_name']) || empty($validated['guest_phone']))) {
+        if (! $customer && (empty($validated['guest_name']) || empty($validated['guest_phone']))) {
             return $this->respondError('Guest name and phone are required for guest checkout.', 422);
         }
 
         return DB::transaction(function () use ($request) {
             $cart = $this->resolveActiveCart($request);
             $this->cleanupExpiredItems($cart);
-            $cart->load(['items.service']);
+            $cart->load(['items.service', 'packageItems.servicePackage']);
 
             $activeItems = $cart->items->where('status', 'active')->values();
-            if ($activeItems->isEmpty()) {
+            $activePackageItems = $cart->packageItems->where('status', 'active')->values();
+
+            if ($activeItems->isEmpty() && $activePackageItems->isEmpty()) {
                 return $this->respondError('Cart is empty or all items have expired.', 422);
             }
 
@@ -133,18 +209,24 @@ class CartController extends Controller
                 return $this->respondError('Some cart items are expired. Please refresh cart.', 422);
             }
 
+            $customer = $request->user('customer');
+            if (! $customer && $activePackageItems->isNotEmpty()) {
+                return $this->respondError('Please login to purchase service packages.', 422);
+            }
+
             $bookingIds = [];
+            $ownedPackageIds = [];
             $depositTotal = $this->calculateDepositTotal($activeItems->all());
+            $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $activeItemIds = $activeItems->pluck('id')->all();
 
             foreach ($activeItems as $item) {
                 $service = $item->service;
 
-                if (!$this->isItemStillAvailable($item, (int) $service->buffer_min, $activeItemIds)) {
+                if (! $this->isItemStillAvailable($item, (int) $service->buffer_min, $activeItemIds)) {
                     return $this->respondError('One or more selected slots are no longer available.', 409);
                 }
 
-                $customer = $request->user('customer');
                 $booking = Booking::create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => $customer ? 'CUSTOMER' : 'GUEST',
@@ -167,12 +249,37 @@ class CartController extends Controller
                 $bookingIds[] = $booking->id;
             }
 
+            if ($customer && $activePackageItems->isNotEmpty()) {
+                foreach ($activePackageItems as $packageItem) {
+                    $servicePackage = ServicePackage::query()
+                        ->with('items')
+                        ->where('is_active', true)
+                        ->findOrFail((int) $packageItem->service_package_id);
+
+                    for ($i = 0; $i < (int) $packageItem->qty; $i++) {
+                        $owned = $this->customerServicePackageService->purchase(
+                            (int) $customer->id,
+                            $servicePackage,
+                            'BOOKING',
+                            null,
+                        );
+
+                        $ownedPackageIds[] = (int) $owned->id;
+                    }
+
+                    $packageItem->update(['status' => 'converted']);
+                }
+            }
+
             $cart->update(['status' => 'converted']);
 
             return $this->respond([
                 'status' => 'success',
                 'booking_ids' => $bookingIds,
+                'owned_package_ids' => $ownedPackageIds,
                 'deposit_total' => $depositTotal,
+                'package_total' => round($packageTotal, 2),
+                'cart_total' => round($depositTotal + $packageTotal, 2),
                 'payment_expires_at' => $activeItems->min('expires_at')?->toIso8601String(),
                 'payment_instruction' => 'Complete payment before hold expires to confirm booking.',
             ]);
@@ -184,7 +291,7 @@ class CartController extends Controller
         $customerId = $request->user('customer')?->id;
         $guestToken = $request->header('X-Booking-Guest-Token');
 
-        if (!$customerId && !$guestToken) {
+        if (! $customerId && ! $guestToken) {
             abort(response()->json(['success' => false, 'message' => 'Missing booking guest token.', 'data' => null], 422));
         }
 
@@ -197,7 +304,7 @@ class CartController extends Controller
                 ->whereNull('guest_token');
 
             $cart = $query->oldest('created_at')->first();
-            if (!$cart && $createIfMissing) {
+            if (! $cart && $createIfMissing) {
                 $cart = BookingCart::create([
                     'customer_id' => $customerId,
                     'guest_token' => null,
@@ -210,7 +317,7 @@ class CartController extends Controller
 
         $query = BookingCart::query()->where('status', 'active')->where('guest_token', $guestToken);
         $cart = $query->oldest('created_at')->first();
-        if (!$cart && $createIfMissing) {
+        if (! $cart && $createIfMissing) {
             $cart = BookingCart::create([
                 'customer_id' => null,
                 'guest_token' => $guestToken,
@@ -223,7 +330,7 @@ class CartController extends Controller
 
     private function mergeGuestCartIntoCustomerCart(int $customerId, ?string $guestToken): void
     {
-        if (!$guestToken) {
+        if (! $guestToken) {
             return;
         }
 
@@ -234,7 +341,7 @@ class CartController extends Controller
             ->oldest('created_at')
             ->first();
 
-        if (!$guestCart) {
+        if (! $guestCart) {
             return;
         }
 
@@ -245,7 +352,7 @@ class CartController extends Controller
             ->oldest('created_at')
             ->first();
 
-        if (!$customerCart) {
+        if (! $customerCart) {
             $guestCart->update(['customer_id' => $customerId, 'guest_token' => null]);
             return;
         }
@@ -255,13 +362,17 @@ class CartController extends Controller
             ->where('status', 'active')
             ->update(['booking_cart_id' => $customerCart->id, 'updated_at' => now()]);
 
+        BookingCartPackageItem::query()
+            ->where('booking_cart_id', $guestCart->id)
+            ->where('status', 'active')
+            ->update(['booking_cart_id' => $customerCart->id, 'updated_at' => now()]);
+
         $guestCart->update(['status' => 'converted']);
     }
 
-
     private function ensureSingleActiveCartForOwner(?BookingCart $activeCart, ?int $customerId, ?string $guestToken): ?BookingCart
     {
-        if (!$activeCart) {
+        if (! $activeCart) {
             return null;
         }
 
@@ -293,11 +404,19 @@ class CartController extends Controller
 
     private function buildCartPayload(BookingCart $cart): array
     {
-        $cart->load(['items' => fn ($q) => $q->where('status', 'active')->orderBy('expires_at'), 'items.service:id,name,deposit_amount', 'items.staff:id,name']);
+        $cart->load([
+            'items' => fn ($q) => $q->where('status', 'active')->orderBy('expires_at'),
+            'items.service:id,name,deposit_amount',
+            'items.staff:id,name',
+            'packageItems' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
+        ]);
+
         $activeItems = $cart->items;
+        $activePackageItems = $cart->packageItems;
 
         $nextExpiry = $activeItems->min('expires_at');
         $depositTotal = $this->calculateDepositTotal($activeItems->all());
+        $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
 
         return [
             'id' => $cart->id,
@@ -315,7 +434,18 @@ class CartController extends Controller
                 'status' => $item->status,
                 'deposit_amount' => $item->service ? (float) $item->service->deposit_amount : null,
             ])->values(),
+            'package_items' => $activePackageItems->map(fn (BookingCartPackageItem $item) => [
+                'id' => (int) $item->id,
+                'service_package_id' => (int) $item->service_package_id,
+                'package_name' => $item->package_name_snapshot,
+                'qty' => (int) $item->qty,
+                'unit_price' => (float) $item->price_snapshot,
+                'line_total' => round(((float) $item->price_snapshot) * (int) $item->qty, 2),
+                'status' => (string) $item->status,
+            ])->values(),
             'deposit_total' => $depositTotal,
+            'package_total' => round($packageTotal, 2),
+            'cart_total' => round($depositTotal + $packageTotal, 2),
             'next_expiry_at' => $nextExpiry?->toIso8601String(),
         ];
     }
@@ -344,7 +474,7 @@ class CartController extends Controller
             ->whereRaw('end_at > ?', [$item->start_at->toDateTimeString()])
             ->exists();
 
-        return !$cartConflict;
+        return ! $cartConflict;
     }
 
     private function calculateDepositTotal(array $items): float
