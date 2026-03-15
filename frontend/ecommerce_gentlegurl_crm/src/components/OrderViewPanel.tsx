@@ -64,6 +64,25 @@ type OrderDetailData = {
     line_total: string
     product_image?: string | null
   }>
+  service_items?: Array<{
+    item_type?: 'service' | string
+    service_name: string
+    quantity: number
+    unit_price?: string | number | null
+    line_total: string | number
+    assigned_staff_name?: string | null
+    start_at?: string | null
+    end_at?: string | null
+  }>
+  package_items?: Array<{
+    item_type?: 'service_package' | string
+    service_package_id?: number
+    package_name: string
+    customer_name?: string | null
+    quantity: number
+    unit_price?: string | number | null
+    line_total: string | number
+  }>
   vouchers?: Array<{
     code: string
     discount_amount: string
@@ -392,6 +411,10 @@ export default function OrderViewPanel({
     (order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped'
   const invoiceUrl = `/api/proxy/ecommerce/orders/${order.id}/invoice`
 
+  const hasProductItems = (order.items?.length ?? 0) > 0
+  const hasServiceItems = (order.service_items?.length ?? 0) > 0
+  const hasPackageItems = (order.package_items?.length ?? 0) > 0
+
   return (
     <>
       <div className="fixed inset-0 z-50 flex bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
@@ -419,54 +442,123 @@ export default function OrderViewPanel({
             <div className="space-y-5">
 
               {/* Order Items */}
-              {order.items && order.items.length > 0 && (
+              {(hasProductItems || hasServiceItems || hasPackageItems) && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Order Items</p>
+                    <p className="text-sm font-semibold text-slate-900">Order Details</p>
                   </div>
-                  <div className="px-4 py-3">
-                    <div className="overflow-x-auto">
-                      <table className="min-w-[560px] w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-slate-600">
-                          <th className="px-2 py-2 text-left font-medium">Product</th>
-                          <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                          <th className="px-2 py-2 text-right font-medium">Unit Price</th>
-                          <th className="px-2 py-2 text-right font-medium">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {order.items.map((item, idx) => (
-                          <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
-                            <td className="py-2 px-2">
-                              <div className="flex items-center gap-3">
-                                <ProductImage
-                                  imagePath={item.product_image}
-                                  alt={item.product_name}
-                                />
-                                <div>
-                                  <div className="font-medium text-slate-900">{item.product_name}</div>
-                                  {(item.product_type === 'variant' || item.product_variant_id) && (
-                                    <div className="text-xs text-slate-500">
-                                      Variant: {item.variant_name ?? '—'}
-                                      {item.variant_sku ? ` (${item.variant_sku})` : ''}
+                  <div className="space-y-4 px-4 py-3 text-sm">
+                    {hasProductItems && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Products</p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[640px] text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-600">
+                                <th className="px-2 py-2 text-left font-medium">Product</th>
+                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
+                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
+                                <th className="px-2 py-2 text-right font-medium">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.items?.map((item, idx) => (
+                                <tr key={`product-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                                  <td className="py-2 px-2">
+                                    <div className="flex items-center gap-3">
+                                      <ProductImage
+                                        imagePath={item.product_image}
+                                        alt={item.product_name}
+                                      />
+                                      <div>
+                                        <div className="font-medium text-slate-900">{item.product_name}</div>
+                                        {(item.product_type === 'variant' || item.product_variant_id) && (
+                                          <div className="text-xs text-slate-500">
+                                            Variant: {item.variant_name ?? '—'}
+                                            {item.variant_sku ? ` (${item.variant_sku})` : ''}
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
-                            <td className="px-2 py-2 text-right text-slate-700">
-                              {item.unit_price ? `RM ${formatAmount(item.unit_price)}` : '-'}
-                            </td>
-                            <td className="px-2 py-2 text-right font-medium text-slate-900">
-                              RM {formatAmount(item.line_total)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      </table>
-                    </div>
+                                  </td>
+                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
+                                  <td className="px-2 py-2 text-right text-slate-700">
+                                    {item.unit_price ? `RM ${formatAmount(item.unit_price)}` : '-'}
+                                  </td>
+                                  <td className="px-2 py-2 text-right font-medium text-slate-900">
+                                    RM {formatAmount(item.line_total)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasServiceItems && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Services</p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[640px] text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-600">
+                                <th className="px-2 py-2 text-left font-medium">Service</th>
+                                <th className="px-2 py-2 text-left font-medium">Staff</th>
+                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
+                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
+                                <th className="px-2 py-2 text-right font-medium">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.service_items?.map((item, idx) => (
+                                <tr key={`service-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                                  <td className="px-2 py-2 text-slate-900">{item.service_name || 'Service'}</td>
+                                  <td className="px-2 py-2 text-slate-700">{item.assigned_staff_name || '-'}</td>
+                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
+                                  <td className="px-2 py-2 text-right text-slate-700">
+                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
+                                  </td>
+                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasPackageItems && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Service Packages</p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[640px] text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-600">
+                                <th className="px-2 py-2 text-left font-medium">Package</th>
+                                <th className="px-2 py-2 text-left font-medium">Member</th>
+                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
+                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
+                                <th className="px-2 py-2 text-right font-medium">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.package_items?.map((item, idx) => (
+                                <tr key={`package-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                                  <td className="px-2 py-2 text-slate-900">{item.package_name || 'Service Package'}</td>
+                                  <td className="px-2 py-2 text-slate-700">{item.customer_name || '-'}</td>
+                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
+                                  <td className="px-2 py-2 text-right text-slate-700">
+                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
+                                  </td>
+                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </section>
               )}

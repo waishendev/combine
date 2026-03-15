@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
+use App\Models\Booking\CustomerServicePackage;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
 // use App\Services\Ecommerce\OrderReserveService;
@@ -125,11 +126,18 @@ class OrderController extends Controller
     {
         $order->load([
             'items.product.images',
+            'serviceItems.assignedStaff',
             'customer',
             'vouchers',
             'vouchers.voucher',
             'returns.items.orderItem',
         ]);
+
+        $servicePackageItems = CustomerServicePackage::query()
+            ->with(['servicePackage:id,name,selling_price', 'customer:id,name'])
+            ->where('purchased_from', 'POS')
+            ->where('purchased_ref_id', (int) $order->id)
+            ->get();
 
         return $this->respond([
             'id' => $order->id,
@@ -190,6 +198,31 @@ class OrderController extends Controller
                     'cover_image_url' => $thumbnail,
                 ];
             }),
+            'service_items' => $order->serviceItems->values()->map(function ($item) {
+                return [
+                    'item_type' => $item->item_type ?: 'service',
+                    'service_name' => $item->service_name_snapshot,
+                    'quantity' => $item->qty,
+                    'unit_price' => $item->price_snapshot,
+                    'line_total' => $item->line_total,
+                    'assigned_staff_name' => $item->assignedStaff?->name,
+                    'start_at' => $item->start_at,
+                    'end_at' => $item->end_at,
+                ];
+            }),
+            'package_items' => $servicePackageItems->groupBy('service_package_id')->map(function ($rows) {
+                $first = $rows->first();
+                $unitPrice = (float) ($first?->servicePackage?->selling_price ?? 0);
+                return [
+                    'item_type' => 'service_package',
+                    'service_package_id' => (int) ($first->service_package_id ?? 0),
+                    'package_name' => (string) ($first?->servicePackage?->name ?? 'Service Package'),
+                    'customer_name' => $first?->customer?->name,
+                    'quantity' => (int) $rows->count(),
+                    'unit_price' => $unitPrice,
+                    'line_total' => round((float) $rows->count() * $unitPrice, 2),
+                ];
+            })->values(),
             'returns' => $order->returns->map(function ($return) use ($order) {
                 $refundStatus = $order->payment_status === 'refunded' ? 'refunded' : 'not_refunded';
 
