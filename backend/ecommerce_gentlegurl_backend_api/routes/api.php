@@ -942,6 +942,8 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::post('/payment/callback', [\App\Http\Controllers\Booking\PaymentController::class, 'callback']);
 
     Route::middleware('auth:customer,sanctum')->group(function () {
+        Route::post('/cart/add-package', [\App\Http\Controllers\Booking\CartController::class, 'addPackage']);
+        Route::delete('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removePackageItem']);
         Route::get('/my', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
         Route::get('/my/service-packages', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'index']);
         Route::post('/service-packages/purchase', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'purchase']);

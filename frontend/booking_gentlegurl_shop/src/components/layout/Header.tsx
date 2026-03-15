@@ -29,7 +29,8 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
     const loadCartCount = async () => {
       try {
         const cart = await getBookingCart();
-        setCartCount(cart?.items?.length || 0);
+        const nextCount = (cart?.items?.length || 0) + (cart?.package_items?.length || 0);
+        setCartCount(nextCount);
       } catch {
         setCartCount(0);
       }

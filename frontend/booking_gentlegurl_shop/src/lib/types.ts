@@ -42,8 +42,21 @@ export type BookingCart = {
   id: string | null;
   status: string;
   items: BookingCartItem[];
+  package_items: BookingCartPackageItem[];
   deposit_total: number;
+  package_total: number;
+  cart_total: number;
   next_expiry_at: string | null;
+};
+
+export type BookingCartPackageItem = {
+  id: number;
+  service_package_id: number;
+  package_name: string;
+  qty: number;
+  unit_price: number;
+  line_total: number;
+  status: string;
 };
 
 export type BookingRecord = {

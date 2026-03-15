@@ -79,6 +79,18 @@ export async function addCartItem(payload: {
   return unwrapData<BookingCart>(response);
 }
 
+export async function addPackageCartItem(payload: {
+  service_package_id: number;
+  qty?: number;
+}) {
+  const response = await request<{ data: BookingCart } | BookingCart>("/booking/cart/add-package", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  return unwrapData<BookingCart>(response);
+}
+
 export async function getBookingCart() {
   const response = await request<{ data: BookingCart } | BookingCart>("/booking/cart");
   return unwrapData<BookingCart>(response);
@@ -93,12 +105,21 @@ export async function removeCartItem(itemId: number) {
   return unwrapData<BookingCart>(response);
 }
 
+export async function removePackageCartItem(itemId: number) {
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/package-item/${itemId}`, {
+    method: "DELETE",
+    body: JSON.stringify({}),
+  });
+
+  return unwrapData<BookingCart>(response);
+}
+
 export async function checkoutCart(payload?: {
   guest_name?: string;
   guest_phone?: string;
   guest_email?: string;
 }) {
-  return request<{ status: string; booking_ids: number[]; deposit_total: number }>(`/booking/cart/checkout`, {
+  return request<{ status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number }>(`/booking/cart/checkout`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { getServicePackages } from "@/lib/apiClient";
+import { addPackageCartItem, getServicePackages } from "@/lib/apiClient";
 import { ServicePackage } from "@/lib/types";
 
 export default function BookingPackagesPage() {
@@ -34,14 +34,21 @@ export default function BookingPackagesPage() {
     void run();
   }, []);
 
-  const onAddToCart = (pkg: ServicePackage) => {
+  const onAddToCart = async (pkg: ServicePackage) => {
     if (!user) {
       router.push(`/login?redirect=${encodeURIComponent(pathname || "/booking/packages")}`);
       return;
     }
 
-    setMessage(`Added ${pkg.name}. Continue to cart to complete payment.`);
-    router.push("/booking/cart");
+    try {
+      const updatedCart = await addPackageCartItem({ service_package_id: pkg.id, qty: 1 });
+      const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
+      setMessage(`Added ${pkg.name} to cart.`);
+      router.push("/booking/cart");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Unable to add package into cart.");
+    }
   };
 
   return (
@@ -85,7 +92,7 @@ export default function BookingPackagesPage() {
             <p className="mt-2 text-lg font-semibold">RM {pkg.selling_price}</p>
             <button
               type="button"
-              onClick={() => onAddToCart(pkg)}
+              onClick={() => void onAddToCart(pkg)}
               className="mt-3 rounded-full bg-black px-4 py-2 text-sm text-white"
             >
               Add to Cart
