@@ -1762,7 +1762,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
 
-  const canCheckout = Boolean(cart?.items.length) && !checkingOut
+  const canCheckout = hasCartItems && !checkingOut
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || !hasCartItems || checkingOut) return
@@ -1786,6 +1786,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             staff_id: split.staff_id,
             share_percent: split.share_percent,
           })),
+        })),
+        service_items: (cart.service_items ?? []).map((item) => ({
+          type: 'service',
+          cart_service_item_id: item.id,
+          booking_service_id: item.booking_service_id,
+          snapshot_name: item.service_name,
+          snapshot_price: item.unit_price,
+          quantity: item.qty,
+          assigned_staff_id: item.assigned_staff_id ?? null,
+          service_commission_rate_used: item.commission_rate_used ?? 0,
         })),
       }),
     })

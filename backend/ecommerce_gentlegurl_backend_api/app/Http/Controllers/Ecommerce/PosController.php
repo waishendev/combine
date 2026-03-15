@@ -611,11 +611,40 @@ class PosController extends Controller
             'items.*.staff_splits' => ['nullable', 'array'],
             'items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'service_items' => ['nullable', 'array'],
+            'service_items.*.type' => ['nullable', 'in:service'],
+            'service_items.*.cart_service_item_id' => ['nullable', 'integer'],
+            'service_items.*.booking_service_id' => ['nullable', 'integer', 'exists:booking_services,id'],
+            'service_items.*.quantity' => ['nullable', 'integer', 'min:1'],
+            'service_items.*.assigned_staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+            'service_items.*.service_commission_rate_used' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff']);
         if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
+        }
+
+        $serviceItemsPayload = collect($validated['service_items'] ?? []);
+        if ($serviceItemsPayload->isNotEmpty()) {
+            $servicePayloadByCartId = $serviceItemsPayload
+                ->filter(fn (array $item) => !empty($item['cart_service_item_id']))
+                ->keyBy(fn (array $item) => (int) $item['cart_service_item_id']);
+
+            foreach ($cart->serviceItems as $serviceItem) {
+                $payloadItem = $servicePayloadByCartId->get((int) $serviceItem->id);
+                if (!$payloadItem) {
+                    continue;
+                }
+
+                if (!empty($payloadItem['booking_service_id']) && (int) $payloadItem['booking_service_id'] !== (int) $serviceItem->booking_service_id) {
+                    return $this->respondError(__('Service item mismatch in checkout payload.'), 422);
+                }
+
+                if (!empty($payloadItem['assigned_staff_id']) && (int) $payloadItem['assigned_staff_id'] !== (int) ($serviceItem->assigned_staff_id ?? 0)) {
+                    return $this->respondError(__('Assigned staff mismatch in checkout payload.'), 422);
+                }
+            }
         }
 
         [$order, $receiptUrl] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
@@ -771,6 +800,14 @@ class PosController extends Controller
             }
 
             foreach ($cart->serviceItems as $serviceItem) {
+                if (! $serviceItem->bookingService || ! $serviceItem->bookingService->is_active) {
+                    abort(422, __('Service is not available for checkout.'));
+                }
+
+                if ($serviceItem->assigned_staff_id && ! $serviceItem->assignedStaff) {
+                    abort(422, __('Assigned staff is invalid for service checkout.'));
+                }
+
                 $lineTotal = round(((float) $serviceItem->price_snapshot) * (int) $serviceItem->qty, 2);
                 $commissionRate = (float) ($serviceItem->commission_rate_used ?? 0);
                 OrderServiceItem::create([
