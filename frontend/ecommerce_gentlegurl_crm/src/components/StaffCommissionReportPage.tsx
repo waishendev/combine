@@ -48,11 +48,11 @@ const formatDateInput = (date: Date) => {
 
 const getDefaultRange = () => {
   const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), 1)
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const start = new Date(now)
+  start.setFullYear(now.getFullYear() - 1)
   return {
     from: formatDateInput(start),
-    to: formatDateInput(end),
+    to: formatDateInput(now),
   }
 }
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { checkoutCart, getBookingCart, getMe, removeCartItem } from "@/lib/apiClient";
+import { checkoutCart, getBookingCart, getMe, getServicePackageAvailableFor, redeemServicePackage, removeCartItem } from "@/lib/apiClient";
 import { BookingCart } from "@/lib/types";
 
 function secondsLeft(expiresAt: string) {
@@ -29,6 +29,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [guestName, setGuestName] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
+  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [availableMap, setAvailableMap] = useState<Record<number, number>>({});
 
   const loadCart = useCallback(async () => {
     try {
@@ -45,8 +47,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     if (isOpen) {
       loadCart();
       getMe()
-        .then(() => setIsLoggedIn(true))
-        .catch(() => setIsLoggedIn(false));
+        .then((me) => {
+          setIsLoggedIn(true);
+          setCustomerId(me.id);
+        })
+        .catch(() => {
+          setIsLoggedIn(false);
+          setCustomerId(null);
+        });
     }
   }, [isOpen, loadCart]);
 
@@ -72,6 +80,29 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     if (!cart?.next_expiry_at) return null;
     return formatDuration(secondsLeft(cart.next_expiry_at));
   }, [cart]);
+
+
+
+  useEffect(() => {
+    if (!isOpen || !isLoggedIn || !customerId || !cart?.items?.length) return;
+
+    const loadAvailability = async () => {
+      const next: Record<number, number> = {};
+      await Promise.all(
+        cart.items.map(async (item) => {
+          try {
+            const rows = await getServicePackageAvailableFor(customerId, item.service_id);
+            next[item.id] = rows.reduce((sum, row) => sum + Number(row.remaining_qty || 0), 0);
+          } catch {
+            next[item.id] = 0;
+          }
+        })
+      );
+      setAvailableMap(next);
+    };
+
+    void loadAvailability();
+  }, [cart?.items, customerId, isLoggedIn, isOpen]);
 
   const onCheckout = async () => {
     try {
@@ -161,17 +192,46 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       </p>
                       <p className="mt-1 text-sm text-red-600">Expires in {formatDuration(secondsLeft(item.expires_at))}</p>
                     </div>
-                    <button
-                      className="shrink-0 rounded-full border px-4 py-2 text-sm hover:bg-neutral-50 transition-colors"
-                      onClick={async () => {
-                        const updatedCart = await removeCartItem(item.id);
-                        setCart(updatedCart);
-                        // Notify header to update cart count
-                        window.dispatchEvent(new CustomEvent("cartUpdated", { detail: updatedCart?.items?.length || 0 }));
-                      }}
-                    >
-                      Remove
-                    </button>
+                    <div className="shrink-0 space-y-2 text-right">
+                      {isLoggedIn ? (
+                        <>
+                          <p className="text-xs text-emerald-700">Package sessions: {availableMap[item.id] ?? 0}</p>
+                          <button
+                            className="rounded-full border border-emerald-300 px-3 py-1 text-xs text-emerald-700 disabled:opacity-40"
+                            disabled={!customerId || (availableMap[item.id] ?? 0) <= 0}
+                            onClick={async () => {
+                              if (!customerId) return;
+                              try {
+                                await redeemServicePackage({
+                                  customer_id: customerId,
+                                  booking_service_id: item.service_id,
+                                  source: "BOOKING",
+                                  source_ref_id: item.id,
+                                  used_qty: 1,
+                                });
+                                setMessage(`Redeemed 1 package session for ${item.service_name}.`);
+                                setAvailableMap((prev) => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] ?? 0) - 1) }));
+                              } catch (err) {
+                                setMessage(err instanceof Error ? err.message : "Unable to redeem package.");
+                              }
+                            }}
+                          >
+                            Claim package session
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50 transition-colors"
+                        onClick={async () => {
+                          const updatedCart = await removeCartItem(item.id);
+                          setCart(updatedCart);
+                          // Notify header to update cart count
+                          window.dispatchEvent(new CustomEvent("cartUpdated", { detail: updatedCart?.items?.length || 0 }));
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

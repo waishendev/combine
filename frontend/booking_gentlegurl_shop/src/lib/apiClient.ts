@@ -1,5 +1,5 @@
 import { getOrCreateBookingGuestToken } from "./bookingGuestToken";
-import { AuthUser, BookingCart, BookingRecord, BookingSlot, Service, Staff } from "./types";
+import { AuthUser, BookingCart, BookingRecord, BookingSlot, MyServicePackage, PackageCart, Service, ServicePackage, ServicePackageAvailability, Staff } from "./types";
 
 const API_PREFIX = "/api/proxy";
 
@@ -140,3 +140,69 @@ export async function getMyBookings() {
 }
 
 export { ApiError };
+
+
+export async function getServicePackages() {
+  const response = await request<
+    { data?: ServicePackage[] | { data?: ServicePackage[] } } | ServicePackage[]
+  >("/service-packages");
+
+  const unwrapped = unwrapData<ServicePackage[] | { data?: ServicePackage[] }>(response);
+  if (Array.isArray(unwrapped)) return unwrapped;
+  if (unwrapped && typeof unwrapped === "object" && Array.isArray(unwrapped.data)) {
+    return unwrapped.data;
+  }
+  return [];
+}
+
+export async function getServicePackageAvailableFor(customerId: number, serviceId: number) {
+  const response = await request<{ data: ServicePackageAvailability[] } | ServicePackageAvailability[]>(`/customers/${customerId}/service-package-available-for/${serviceId}`);
+  return unwrapData<ServicePackageAvailability[]>(response);
+}
+
+export async function redeemServicePackage(payload: {
+  customer_id: number;
+  booking_service_id: number;
+  source: "BOOKING" | "POS" | "ADMIN";
+  source_ref_id?: number;
+  used_qty?: number;
+}) {
+  return request<{ success?: boolean; message?: string }>("/service-packages/redeem", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+
+export async function getPackageCart() {
+  const response = await request<{ data: PackageCart } | PackageCart>("/booking/package-cart");
+  return unwrapData<PackageCart>(response);
+}
+
+export async function addPackageCartItem(payload: { service_package_id: number; qty?: number }) {
+  const response = await request<{ data: PackageCart } | PackageCart>("/booking/package-cart/add", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return unwrapData<PackageCart>(response);
+}
+
+export async function removePackageCartItem(itemId: number) {
+  const response = await request<{ data: PackageCart } | PackageCart>(`/booking/package-cart/item/${itemId}`, {
+    method: "DELETE",
+    body: JSON.stringify({}),
+  });
+  return unwrapData<PackageCart>(response);
+}
+
+export async function checkoutPackageCart() {
+  return request<{ data?: { payment_url?: string; amount?: number; payment_id?: number } } | { payment_url?: string; amount?: number; payment_id?: number }>("/booking/package-cart/checkout", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function getMyServicePackages() {
+  const response = await request<{ data: MyServicePackage[] } | MyServicePackage[]>("/booking/my/service-packages");
+  return unwrapData<MyServicePackage[]>(response);
+}

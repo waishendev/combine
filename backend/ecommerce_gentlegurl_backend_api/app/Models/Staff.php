@@ -17,11 +17,13 @@ class Staff extends Model
         'phone',
         'email',
         'commission_rate',
+        'service_commission_rate',
         'is_active',
     ];
 
     protected $casts = [
         'commission_rate' => 'decimal:4',
+        'service_commission_rate' => 'decimal:4',
         'is_active' => 'boolean',
     ];
 

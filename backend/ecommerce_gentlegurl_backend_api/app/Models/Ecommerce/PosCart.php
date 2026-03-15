@@ -30,4 +30,9 @@ class PosCart extends Model
     {
         return $this->hasMany(PosCartItem::class);
     }
+
+    public function serviceItems()
+    {
+        return $this->hasMany(PosCartServiceItem::class);
+    }
 }
