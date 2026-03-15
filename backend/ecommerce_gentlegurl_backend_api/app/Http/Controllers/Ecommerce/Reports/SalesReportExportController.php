@@ -80,6 +80,8 @@ class SalesReportExportController extends Controller
             'orders_count',
             'items_count',
             'revenue',
+            'package_sales_amount',
+            'total_sales',
             'cogs',
             'gross_profit',
         ];
@@ -89,6 +91,8 @@ class SalesReportExportController extends Controller
             'orders_count' => $totals['orders_count'] ?? $this->sumFromRows($data['rows'] ?? [], 'orders_count'),
             'items_count' => $totals['items_count'] ?? $this->sumFromRows($data['rows'] ?? [], 'items_count'),
             'revenue' => $totals['revenue'] ?? $this->sumFromRows($data['rows'] ?? [], 'revenue'),
+            'package_sales_amount' => $totals['package_sales_amount'] ?? $this->sumFromRows($data['rows'] ?? [], 'package_sales_amount'),
+            'total_sales' => $totals['total_sales'] ?? $this->sumFromRows($data['rows'] ?? [], 'total_sales'),
             'cogs' => $totals['cogs'] ?? $this->sumFromRows($data['rows'] ?? [], 'cogs'),
             'gross_profit' => $totals['gross_profit'] ?? $this->sumFromRows($data['rows'] ?? [], 'gross_profit'),
         ];
@@ -103,6 +107,8 @@ class SalesReportExportController extends Controller
                         $row['orders_count'] ?? 0,
                         $row['items_count'] ?? 0,
                         $row['revenue'] ?? 0,
+                        $row['package_sales_amount'] ?? 0,
+                        $row['total_sales'] ?? (($row['net_revenue'] ?? $row['revenue'] ?? 0) + ($row['package_sales_amount'] ?? 0)),
                         $row['cogs'] ?? null,
                         $row['gross_profit'] ?? null,
                     ]);

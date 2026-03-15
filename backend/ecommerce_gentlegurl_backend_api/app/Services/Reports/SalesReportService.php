@@ -66,7 +66,8 @@ class SalesReportService
     {
         $groupBy = $groupBy === 'month' ? 'month' : 'day';
         $profitSupported = $this->profitSupported();
-        $rows = $this->buildDailyRowsQuery($start, $end, $groupBy, $profitSupported)
+
+        $orderRows = $this->buildDailyRowsQuery($start, $end, $groupBy, $profitSupported)
             ->get()
             ->map(function ($row) use ($profitSupported) {
                 $revenue = (float) $row->revenue;
@@ -86,6 +87,8 @@ class SalesReportService
                 ];
             })
             ->values();
+
+        $rows = $this->mergeDailyRowsWithPackageSales($orderRows, $start, $end, $groupBy, $profitSupported);
 
         return [
             'date_range' => [
@@ -107,28 +110,9 @@ class SalesReportService
     {
         $groupBy = $groupBy === 'month' ? 'month' : 'day';
         $profitSupported = $this->profitSupported();
-        $rowsQuery = $this->buildDailyRowsQuery($start, $end, $groupBy, $profitSupported);
 
-        if ($perPage <= 0) {
-            $rowsCollection = $rowsQuery->get();
-            $pagination = [
-                'total' => $rowsCollection->count(),
-                'per_page' => $rowsCollection->count(),
-                'current_page' => 1,
-                'last_page' => 1,
-            ];
-        } else {
-            $paginator = $rowsQuery->paginate($perPage, ['*'], 'page', $page);
-            $rowsCollection = collect($paginator->items());
-            $pagination = [
-                'total' => $paginator->total(),
-                'per_page' => $paginator->perPage(),
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-            ];
-        }
-
-        $rows = $rowsCollection
+        $orderRows = $this->buildDailyRowsQuery($start, $end, $groupBy, $profitSupported)
+            ->get()
             ->map(function ($row) use ($profitSupported) {
                 $revenue = (float) $row->revenue;
                 $cogs = (float) $row->cogs;
@@ -148,8 +132,26 @@ class SalesReportService
             })
             ->values();
 
+        $mergedRows = $this->mergeDailyRowsWithPackageSales($orderRows, $start, $end, $groupBy, $profitSupported);
+
+        $totalRows = $mergedRows->count();
+        $safePerPage = max(1, $perPage);
+        $lastPage = max(1, (int) ceil($totalRows / $safePerPage));
+        $currentPage = min(max(1, $page), $lastPage);
+
+        $rows = $perPage <= 0
+            ? $mergedRows->values()
+            : $mergedRows->slice(($currentPage - 1) * $safePerPage, $safePerPage)->values();
+
+        $pagination = [
+            'total' => $totalRows,
+            'per_page' => $perPage <= 0 ? $totalRows : $safePerPage,
+            'current_page' => $perPage <= 0 ? 1 : $currentPage,
+            'last_page' => $perPage <= 0 ? 1 : $lastPage,
+        ];
+
         $totalsPage = $this->buildTotalsFromRows($rows, $profitSupported);
-        $grandTotals = $this->buildDailyGrandTotals($start, $end, $profitSupported);
+        $grandTotals = $this->buildDailyGrandTotals($start, $end, $profitSupported, $groupBy);
 
         return [
             'date_range' => [
@@ -406,17 +408,22 @@ class SalesReportService
         $revenue = 0.0;
         $returnAmount = 0.0;
         $cogs = 0.0;
+        $packageSalesCount = 0;
+        $packageSalesAmount = 0.0;
 
         foreach ($rows as $row) {
             $ordersCount += $row['orders_count'] ?? 0;
             $itemsCount += $row['items_count'] ?? 0;
             $revenue += $row['revenue'] ?? 0;
             $returnAmount += $row['return_amount'] ?? 0;
+            $packageSalesCount += $row['package_sales_count'] ?? 0;
+            $packageSalesAmount += $row['package_sales_amount'] ?? 0;
             if ($profitSupported && $row['cogs'] !== null) {
                 $cogs += $row['cogs'];
             }
         }
         $netRevenue = $revenue - $returnAmount;
+        $totalSales = $netRevenue + $packageSalesAmount;
 
         return [
             'orders_count' => $ordersCount,
@@ -424,42 +431,26 @@ class SalesReportService
             'revenue' => $revenue,
             'return_amount' => $returnAmount,
             'net_revenue' => $netRevenue,
+            'package_sales_count' => $packageSalesCount,
+            'package_sales_amount' => $packageSalesAmount,
+            'total_sales' => $totalSales,
             'average_order_value' => $ordersCount > 0 ? $netRevenue / $ordersCount : 0.0,
             'cogs' => $profitSupported ? $cogs : null,
             'gross_profit' => $profitSupported ? $netRevenue - $cogs : null,
         ];
     }
 
-    private function buildDailyGrandTotals(Carbon $start, Carbon $end, bool $profitSupported): array
+    private function buildDailyGrandTotals(Carbon $start, Carbon $end, bool $profitSupported, string $groupBy = 'day'): array
     {
-        $baseQuery = $this->baseOrdersQuery($start, $end);
-        $ordersCount = (int) (clone $baseQuery)->count();
-        $revenue = (float) (clone $baseQuery)->sum('grand_total');
-        $returnAmount = $this->refundAmountForRange($start, $end);
-        $netRevenue = $revenue - $returnAmount;
-        $itemsCount = (int) DB::table('order_items')
-            ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
-            ->whereIn('orders.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
-            ->whereIn('orders.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
-            ->sum('order_items.quantity');
-        $cogs = $profitSupported ? $this->cogsForOrderItems($start, $end) : null;
-        $grossProfit = $profitSupported && $cogs !== null ? $netRevenue - $cogs : null;
-        if ($grossProfit !== null) {
-            $grossMargin = $netRevenue > 0 ? ($grossProfit / $netRevenue) * 100 : 0.0;
-        } else {
-            $grossMargin = null;
-        }
+        $rows = $this->getDaily($start, $end, $groupBy)['rows'] ?? collect();
+
+        $totals = $this->buildTotalsFromRows($rows, $profitSupported);
+        $netRevenue = (float) ($totals['net_revenue'] ?? 0);
+        $grossProfit = $totals['gross_profit'] ?? null;
+        $grossMargin = $grossProfit !== null && $netRevenue > 0 ? ($grossProfit / $netRevenue) * 100 : null;
 
         return [
-            'orders_count' => $ordersCount,
-            'items_count' => $itemsCount,
-            'revenue' => $revenue,
-            'return_amount' => $returnAmount,
-            'net_revenue' => $netRevenue,
-            'average_order_value' => $ordersCount > 0 ? $netRevenue / $ordersCount : 0.0,
-            'cogs' => $cogs,
-            'gross_profit' => $grossProfit,
+            ...$totals,
             'gross_margin' => $grossMargin,
         ];
     }
@@ -580,6 +571,73 @@ class SalesReportService
         return $rowsQuery
             ->groupBy('date_bucket')
             ->orderBy('date_bucket');
+    }
+
+
+    private function mergeDailyRowsWithPackageSales($orderRows, Carbon $start, Carbon $end, string $groupBy, bool $profitSupported)
+    {
+        $rowsByDate = collect($orderRows)
+            ->mapWithKeys(function (array $row) {
+                return [
+                    (string) $row['date'] => [
+                        ...$row,
+                        'package_sales_count' => 0,
+                        'package_sales_amount' => 0.0,
+                        'total_sales' => (float) ($row['net_revenue'] ?? $row['revenue'] ?? 0),
+                    ],
+                ];
+            });
+
+        $packageRows = $this->getServicePackageSalesByDate($start, $end, $groupBy);
+
+        foreach ($packageRows as $packageRow) {
+            $dateKey = (string) ($packageRow->date_bucket ?? '');
+            if ($dateKey === '') {
+                continue;
+            }
+
+            $current = $rowsByDate->get($dateKey, [
+                'date' => $dateKey,
+                'orders_count' => 0,
+                'items_count' => 0,
+                'revenue' => 0.0,
+                'return_amount' => 0.0,
+                'net_revenue' => 0.0,
+                'cogs' => $profitSupported ? 0.0 : null,
+                'gross_profit' => $profitSupported ? 0.0 : null,
+                'package_sales_count' => 0,
+                'package_sales_amount' => 0.0,
+                'total_sales' => 0.0,
+            ]);
+
+            $current['package_sales_count'] = (int) ($current['package_sales_count'] ?? 0) + (int) ($packageRow->package_sales_count ?? 0);
+            $current['package_sales_amount'] = (float) ($current['package_sales_amount'] ?? 0) + (float) ($packageRow->package_sales_amount ?? 0);
+            $current['total_sales'] = (float) ($current['net_revenue'] ?? 0) + (float) ($current['package_sales_amount'] ?? 0);
+
+            $rowsByDate->put($dateKey, $current);
+        }
+
+        return $rowsByDate
+            ->sortKeys()
+            ->values();
+    }
+
+    private function getServicePackageSalesByDate(Carbon $start, Carbon $end, string $groupBy)
+    {
+        $dateExpression = $groupBy === 'month'
+            ? "to_char(customer_service_packages.created_at, 'YYYY-MM')"
+            : "to_char(customer_service_packages.created_at, 'YYYY-MM-DD')";
+
+        return DB::table('customer_service_packages')
+            ->join('service_packages', 'service_packages.id', '=', 'customer_service_packages.service_package_id')
+            ->whereBetween('customer_service_packages.created_at', [$start, $end])
+            ->whereIn('customer_service_packages.purchased_from', ['POS', 'BOOKING'])
+            ->selectRaw("{$dateExpression} as date_bucket")
+            ->selectRaw('COUNT(customer_service_packages.id) as package_sales_count')
+            ->selectRaw('COALESCE(SUM(service_packages.selling_price), 0) as package_sales_amount')
+            ->groupBy('date_bucket')
+            ->orderBy('date_bucket')
+            ->get();
     }
 
     private function buildByProductsQuery(

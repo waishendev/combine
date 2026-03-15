@@ -27,6 +27,9 @@ type DailyTotals = {
   revenue?: number
   return_amount?: number
   net_revenue?: number
+  package_sales_count?: number
+  package_sales_amount?: number
+  total_sales?: number
   average_order_value?: number | null
   cogs?: number | null
   gross_profit?: number | null
@@ -40,6 +43,9 @@ type DailyRow = {
   revenue: number
   return_amount?: number
   net_revenue?: number
+  package_sales_count?: number
+  package_sales_amount?: number
+  total_sales?: number
   cogs?: number | null
   gross_profit?: number | null
 }
@@ -92,8 +98,6 @@ const formatAmount = (amount: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
-
-const formatMargin = (value: number) => `${value.toFixed(2)}%`
 
 export default function SalesDailyReportPage({ canExport = false }: { canExport?: boolean }) {
   const router = useRouter()
@@ -235,7 +239,7 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
             last_page: lastPage,
           })
         }
-      } catch (error) {
+      } catch {
         if (controller.signal.aborted) return
         setRows([])
         setTotalsPage(null)
@@ -315,15 +319,17 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
 
   const summaryCards = useMemo(() => {
     const revenue = grandTotals?.net_revenue ?? grandTotals?.revenue ?? null
+    const packageSales = grandTotals?.package_sales_amount ?? null
+    const totalSales = grandTotals?.total_sales ?? (revenue ?? 0) + (packageSales ?? 0)
     const cogs = grandTotals?.cogs ?? null
     const grossProfit = grandTotals?.gross_profit ?? null
-    const margin = grandTotals?.gross_margin ?? null
 
     return [
       { label: 'Net Revenue', value: revenue, isMoney: true },
-      { label: 'COGS', value: cogs, isMoney: true },
+      { label: 'Service Package Sales', value: packageSales, isMoney: true },
+      { label: 'Total Sales', value: totalSales, isMoney: true },
       { label: 'Gross Profit', value: grossProfit, isMoney: true },
-      { label: 'Gross Margin %', value: margin, isMoney: false },
+      { label: 'COGS', value: cogs, isMoney: true },
     ]
   }, [grandTotals])
 
@@ -347,6 +353,8 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         acc.revenue += row.revenue
         acc.return_amount += row.return_amount ?? 0
         acc.net_revenue += row.net_revenue ?? row.revenue
+        acc.package_sales_amount += row.package_sales_amount ?? 0
+        acc.total_sales += row.total_sales ?? ((row.net_revenue ?? row.revenue) + (row.package_sales_amount ?? 0))
         acc.cogs += row.cogs ?? 0
         acc.gross_profit += row.gross_profit ?? 0
         return acc
@@ -357,6 +365,8 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         revenue: 0,
         return_amount: 0,
         net_revenue: 0,
+        package_sales_amount: 0,
+        total_sales: 0,
         cogs: 0,
         gross_profit: 0,
       },
@@ -531,14 +541,12 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         <div className="flex items-center justify-between text-xs text-slate-400">
           <span className="font-semibold uppercase tracking-wide text-slate-500">Summary (Grand Total)</span>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {summaryCards.map((card) => {
             const value =
               card.value === null || card.value === undefined
                 ? '—'
-                : card.isMoney
-                ? `RM ${formatAmount(card.value)}`
-                : formatMargin(card.value)
+                : `RM ${formatAmount(card.value)}`
 
             return (
               <div key={card.label} className="rounded-lg border border-slate-200 px-4 py-3">
@@ -567,6 +575,12 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                 Net Revenue
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                Service Package Sales
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                Total Sales
+              </th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                 COGS
               </th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
@@ -576,9 +590,9 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={6} />
+              <TableLoadingRow colSpan={8} />
             ) : visibleRows.length === 0 ? (
-              <TableEmptyState colSpan={6} />
+              <TableEmptyState colSpan={8} />
             ) : (
               visibleRows.map((row) => (
                 <tr key={row.date}>
@@ -591,6 +605,12 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                   <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
                   <td className="px-4 py-2 border border-gray-200">
                     RM {formatAmount(row.net_revenue ?? row.revenue)}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    RM {formatAmount(row.package_sales_amount ?? 0)}
+                  </td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    RM {formatAmount(row.total_sales ?? ((row.net_revenue ?? row.revenue) + (row.package_sales_amount ?? 0)))}
                   </td>
                   <td className="px-4 py-2 border border-gray-200">
                     {row.cogs === null || row.cogs === undefined
@@ -619,6 +639,16 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                 {pageTotals?.net_revenue === undefined || pageTotals?.net_revenue === null
                   ? '—'
                   : `RM ${formatAmount(pageTotals.net_revenue)}`}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-left text-sm">
+                {pageTotals?.package_sales_amount === undefined || pageTotals?.package_sales_amount === null
+                  ? '—'
+                  : `RM ${formatAmount(pageTotals.package_sales_amount)}`}
+              </td>
+              <td className="border border-gray-300 px-4 py-2 text-left text-sm">
+                {pageTotals?.total_sales === undefined || pageTotals?.total_sales === null
+                  ? '—'
+                  : `RM ${formatAmount(pageTotals.total_sales)}`}
               </td>
               <td className="border border-gray-300 px-4 py-2 text-left text-sm">
                 {pageTotals?.cogs === undefined || pageTotals?.cogs === null
