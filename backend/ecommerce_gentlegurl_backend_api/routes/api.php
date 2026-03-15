@@ -929,6 +929,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->group($protectedRoutes);
 Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::get('/services', [\App\Http\Controllers\Booking\ServiceController::class, 'index']);
     Route::get('/services/{id}', [\App\Http\Controllers\Booking\ServiceController::class, 'show']);
+    Route::get('/service-packages', [\App\Http\Controllers\ServicePackageController::class, 'index']);
     Route::get('/customers/{id}/service-package-available-for/{serviceId}', [CustomerServicePackageController::class, 'availableFor']);
     Route::get('/availability', [\App\Http\Controllers\Booking\AvailabilityController::class, 'index']);
     Route::get('/availability/bulk', [\App\Http\Controllers\Booking\AvailabilityController::class, 'bulk']);

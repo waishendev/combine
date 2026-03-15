@@ -166,7 +166,7 @@ export { ApiError };
 export async function getServicePackages() {
   const response = await request<
     { data?: ServicePackage[] | { data?: ServicePackage[] } } | ServicePackage[]
-  >("/service-packages");
+  >("/booking/service-packages?is_active=1&per_page=100");
 
   const unwrapped = unwrapData<ServicePackage[] | { data?: ServicePackage[] }>(response);
   if (Array.isArray(unwrapped)) return unwrapped;
