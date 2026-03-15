@@ -95,6 +95,15 @@ type PackageCartItem = {
   qty: number
   unit_price: number
   line_total: number
+  customer_id?: number | null
+  customer_name?: string | null
+  staff_splits?: Array<{
+    staff_id: number
+    share_percent: number
+    split_sales_amount?: number
+    service_commission_rate_snapshot?: number
+    commission_amount_snapshot?: number
+  }>
 }
 
 type BookingServiceOption = {
@@ -182,7 +191,14 @@ type StaffOption = {
   phone?: string | null
   email?: string | null
   code?: string | null
+  service_commission_rate?: number
   is_active?: boolean | number | string | null
+}
+
+type PackageSplitDraft = {
+  id: string
+  staff_id: number | null
+  share_percent: number
 }
 
 type CheckoutItemAssignment = {
@@ -363,6 +379,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [servicePackages, setServicePackages] = useState<ServicePackageOption[]>([])
   const [servicePackagesLoading, setServicePackagesLoading] = useState(false)
   const [packageQuery, setPackageQuery] = useState('')
+  const [packageModalOpen, setPackageModalOpen] = useState(false)
+  const [packageDraft, setPackageDraft] = useState<ServicePackageOption | null>(null)
+  const [packageSelectedMember, setPackageSelectedMember] = useState<Member | null>(null)
+  const [packageMemberQuery, setPackageMemberQuery] = useState('')
+  const [packageMembers, setPackageMembers] = useState<Member[]>([])
+  const [packageMembersLoading, setPackageMembersLoading] = useState(false)
+  const [packageSplitRows, setPackageSplitRows] = useState<PackageSplitDraft[]>([])
+  const [packageModalError, setPackageModalError] = useState<string | null>(null)
+  const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
   const [bookingSubmitting, setBookingSubmitting] = useState(false)
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
@@ -661,6 +686,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         phone: staff.phone ?? null,
         email: staff.email ?? null,
         code: staff.code ?? null,
+        service_commission_rate: Number((staff as { service_commission_rate?: number }).service_commission_rate ?? 0),
         is_active: staff.is_active,
       }))
       .filter((staff) => staff.id > 0 && staff.name)
@@ -1351,27 +1377,137 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     void loadSlots()
   }, [bookingAssignedStaffId, bookingDate, bookingModalOpen, bookingServiceDraft?.id])
 
-  const addPackageToCart = useCallback(async (servicePackage: ServicePackageOption) => {
-    if (!selectedMember?.id) {
-      showMsg('Please assign member before adding package.', 'error')
+  const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
+    let staffs = activeStaffs
+    if (!staffs.length) {
+      staffs = await fetchStaffOptions('')
+      setActiveStaffs(staffs)
+    }
+
+    const defaultStaff = currentUser.staff_id ? staffs.find((staff) => staff.id === currentUser.staff_id) : null
+
+    setPackageDraft(servicePackage)
+    setPackageSelectedMember(selectedMember)
+    setPackageMemberQuery(selectedMember?.name ?? '')
+    setPackageMembers([])
+    setPackageMembersLoading(false)
+    setPackageModalError(null)
+    setPackageSplitRows([
+      {
+        id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        staff_id: defaultStaff?.id ?? null,
+        share_percent: 100,
+      },
+    ])
+    setPackageModalOpen(true)
+  }, [activeStaffs, currentUser.staff_id, fetchStaffOptions, selectedMember])
+
+  const addPackageSplitRow = useCallback(() => {
+    setPackageSplitRows((prev) => ([
+      ...prev,
+      {
+        id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        staff_id: null,
+        share_percent: 0,
+      },
+    ]))
+  }, [])
+
+  const removePackageSplitRow = useCallback((rowId: string) => {
+    setPackageSplitRows((prev) => prev.filter((row) => row.id !== rowId))
+  }, [])
+
+  const updatePackageSplitRow = useCallback((rowId: string, patch: Partial<PackageSplitDraft>) => {
+    setPackageSplitRows((prev) => prev.map((row) => row.id === rowId ? { ...row, ...patch } : row))
+  }, [])
+
+  const submitPackageToCart = useCallback(async () => {
+    if (!packageDraft?.id) return
+
+    const selectedModalMember = packageSelectedMember
+    if (!selectedModalMember?.id) {
+      setPackageModalError('Please select member.')
       return
     }
 
+    if (!packageSplitRows.length) {
+      setPackageModalError('Please add at least one staff split row.')
+      return
+    }
+
+    const staffIds = new Set<number>()
+    let totalPercent = 0
+    for (const row of packageSplitRows) {
+      if (!row.staff_id || row.staff_id <= 0) {
+        setPackageModalError('Please select staff for all split rows.')
+        return
+      }
+      if (staffIds.has(row.staff_id)) {
+        setPackageModalError('Duplicate staff in split rows is not allowed.')
+        return
+      }
+      staffIds.add(row.staff_id)
+      totalPercent += Number(row.share_percent || 0)
+    }
+
+    if (totalPercent !== 100) {
+      setPackageModalError('Total split percent must be 100%.')
+      return
+    }
+
+    setPackageSubmitting(true)
     const res = await fetch('/api/proxy/pos/cart/add-package', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ service_package_id: servicePackage.id, qty: 1 }),
+      body: JSON.stringify({
+        service_package_id: packageDraft.id,
+        customer_id: selectedModalMember.id,
+        staff_splits: packageSplitRows.map((row) => ({
+          staff_id: row.staff_id,
+          share_percent: Number(row.share_percent || 0),
+        })),
+        qty: 1,
+      }),
     })
     const json = await res.json().catch(() => null)
 
     if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to add package.', 'error')
+      setPackageModalError(json?.message ?? 'Unable to add package.')
+      setPackageSubmitting(false)
       return
     }
 
     setCart((json?.data?.cart ?? null) as Cart | null)
+    setSelectedMember(selectedModalMember)
+    setPackageModalOpen(false)
+    setPackageSubmitting(false)
+    setPackageModalError(null)
     showMsg('Package added to cart.', 'success')
-  }, [selectedMember?.id, showMsg])
+  }, [packageDraft?.id, packageSelectedMember, packageSplitRows, showMsg])
+
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!packageModalOpen) return
+      setPackageMembersLoading(true)
+      try {
+        const params = new URLSearchParams({ page: '1', per_page: '20' })
+        if (packageMemberQuery.trim()) params.set('q', packageMemberQuery.trim())
+        const res = await fetch(`/api/proxy/pos/members/search?${params.toString()}`)
+        const json = await res.json().catch(() => null)
+        const paged = extractPaged<Member>(json)
+        if (!cancelled) setPackageMembers(paged.data)
+      } finally {
+        if (!cancelled) setPackageMembersLoading(false)
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [packageMemberQuery, packageModalOpen])
 
   const removePackageCartItem = useCallback(async (itemId: number) => {
     const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, { method: 'DELETE' })
@@ -2068,6 +2204,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           quantity: item.qty,
           snapshot_name: item.package_name,
           snapshot_price: item.unit_price,
+          customer_id: item.customer_id ?? selectedMember?.id ?? null,
+          staff_splits: (item.staff_splits ?? []).map((split) => ({
+            staff_id: split.staff_id,
+            share_percent: split.share_percent,
+          })),
         })),
       }),
     })
@@ -2764,7 +2905,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           <span className="text-sm font-bold text-gray-900">RM {Number(servicePackage.selling_price ?? 0).toFixed(2)}</span>
                           <button
                             type="button"
-                            onClick={() => void addPackageToCart(servicePackage)}
+                            onClick={() => void openPackageModal(servicePackage)}
                             className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                           >
                             Add Package
@@ -2969,9 +3110,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <div key={`package-${packageItem.id}`} className="rounded-xl border border-purple-200 bg-purple-50 p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Package</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Service Package</p>
                         <h4 className="font-bold text-gray-900 text-sm mt-0.5">{packageItem.package_name}</h4>
                         <p className="mt-2 text-xs text-gray-600">Qty: {packageItem.qty}</p>
+                        <p className="text-xs text-gray-600">Member: {packageItem.customer_name ?? (packageItem.customer_id ? `Member #${packageItem.customer_id}` : 'Not assigned')}</p>
+                        <p className="text-xs text-gray-600">Split: {(packageItem.staff_splits?.length ?? 0) > 0 ? `${packageItem.staff_splits?.length} staff split` : 'No split'}</p>
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-gray-500">Unit</div>
@@ -3793,6 +3936,160 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
           </div>
         </div>
       ) : null}
+
+      {packageModalOpen && packageDraft && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900">Add Package to Cart</h3>
+            <p className="mt-1 text-sm text-gray-600">{packageDraft.name}</p>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+                <p className="font-semibold text-gray-900">Package Summary</p>
+                <p className="mt-1 text-xs text-gray-600">Selling Price: RM {Number(packageDraft.selling_price ?? 0).toFixed(2)}</p>
+                <p className="text-xs text-gray-600">Validity: {Number(packageDraft.valid_days ?? 0) > 0 ? `${packageDraft.valid_days} day(s)` : 'No expiry'}</p>
+                <p className="text-xs text-gray-600">Sessions: {packageDraft.total_sessions ?? 0}</p>
+                {(packageDraft.items_summary ?? []).length > 0 ? (
+                  <div className="mt-1 space-y-0.5">
+                    {(packageDraft.items_summary ?? []).map((summary, idx) => (
+                      <p key={`package-summary-${idx}`} className="text-xs text-gray-600">{summary}</p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-3">
+                <label className="block text-xs font-semibold text-gray-600">Member</label>
+                <input
+                  value={packageMemberQuery}
+                  onChange={(event) => setPackageMemberQuery(event.target.value)}
+                  placeholder="Search member by name / phone / email"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+                <div className="mt-2 max-h-28 overflow-y-auto rounded border border-gray-200">
+                  {packageMembersLoading ? (
+                    <p className="px-3 py-2 text-xs text-gray-500">Loading members...</p>
+                  ) : packageMembers.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-gray-500">No members found.</p>
+                  ) : (
+                    packageMembers.map((member) => (
+                      <button
+                        key={`package-member-${member.id}`}
+                        type="button"
+                        onClick={() => {
+                          setPackageSelectedMember(member)
+                          setPackageMemberQuery(member.name)
+                        }}
+                        className={`block w-full border-b border-gray-100 px-3 py-2 text-left text-xs last:border-b-0 ${packageSelectedMember?.id === member.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                      >
+                        {member.name}{member.phone ? ` (${member.phone})` : ''}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-600">Selected: {packageSelectedMember ? packageSelectedMember.name : 'None'}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-gray-200 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-900">Staff Split</p>
+                <button
+                  type="button"
+                  onClick={addPackageSplitRow}
+                  className="rounded border border-emerald-300 px-2 py-1 text-xs font-semibold text-emerald-700"
+                >
+                  Add Row
+                </button>
+              </div>
+              <div className="space-y-2">
+                {packageSplitRows.map((row) => (
+                  <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_90px_40px] gap-2">
+                    <select
+                      value={row.staff_id ?? ''}
+                      onChange={(event) => updatePackageSplitRow(row.id, { staff_id: event.target.value ? Number(event.target.value) : null })}
+                      className="rounded border border-gray-300 px-2 py-2 text-sm"
+                    >
+                      <option value="">Select staff</option>
+                      {activeStaffs.map((staff) => (
+                        <option key={`package-staff-${staff.id}`} value={staff.id}>{staff.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={row.share_percent}
+                      onChange={(event) => updatePackageSplitRow(row.id, { share_percent: Number(event.target.value || 0) })}
+                      className="rounded border border-gray-300 px-2 py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePackageSplitRow(row.id)}
+                      disabled={packageSplitRows.length <= 1}
+                      className="rounded border border-red-300 px-2 py-2 text-xs text-red-700 disabled:opacity-40"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-gray-700">Total split: {packageSplitRows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)}%</p>
+            </div>
+
+            <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full text-xs">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-2 text-left">Staff</th>
+                    <th className="px-2 py-2 text-left">Share %</th>
+                    <th className="px-2 py-2 text-left">Split Sales</th>
+                    <th className="px-2 py-2 text-left">Service Commission Rate</th>
+                    <th className="px-2 py-2 text-left">Commission Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {packageSplitRows.map((row) => {
+                    const staff = activeStaffs.find((item) => item.id === row.staff_id)
+                    const rate = Number(staff?.service_commission_rate ?? 0)
+                    const splitSales = Number(packageDraft.selling_price ?? 0) * (Number(row.share_percent || 0) / 100)
+                    const commission = splitSales * rate
+                    return (
+                      <tr key={`package-preview-${row.id}`} className="border-t border-gray-100">
+                        <td className="px-2 py-2">{staff?.name ?? '-'}</td>
+                        <td className="px-2 py-2">{Number(row.share_percent || 0)}%</td>
+                        <td className="px-2 py-2">RM {splitSales.toFixed(2)}</td>
+                        <td className="px-2 py-2">{(rate * 100).toFixed(2)}%</td>
+                        <td className="px-2 py-2">RM {commission.toFixed(2)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {packageModalError ? <p className="mt-3 text-sm font-medium text-red-600">{packageModalError}</p> : null}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPackageModalOpen(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitPackageToCart()}
+                disabled={packageSubmitting}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {packageSubmitting ? 'Adding...' : 'Add Package to Cart'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">

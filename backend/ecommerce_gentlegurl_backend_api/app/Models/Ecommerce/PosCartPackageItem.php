@@ -3,12 +3,13 @@
 namespace App\Models\Ecommerce;
 
 use App\Models\Booking\ServicePackage;
+use App\Models\Ecommerce\Customer;
 use Illuminate\Database\Eloquent\Model;
 
 class PosCartPackageItem extends Model
 {
     protected $fillable = [
-        'pos_cart_id', 'service_package_id', 'package_name_snapshot', 'price_snapshot', 'qty',
+        'pos_cart_id', 'service_package_id', 'customer_id', 'package_name_snapshot', 'price_snapshot', 'qty', 'staff_splits',
     ];
 
     protected function casts(): array
@@ -16,12 +17,20 @@ class PosCartPackageItem extends Model
         return [
             'price_snapshot' => 'decimal:2',
             'qty' => 'integer',
+            'customer_id' => 'integer',
+            'staff_splits' => 'array',
         ];
     }
 
     public function cart()
     {
         return $this->belongsTo(PosCart::class, 'pos_cart_id');
+    }
+
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class, 'customer_id');
     }
 
     public function servicePackage()
