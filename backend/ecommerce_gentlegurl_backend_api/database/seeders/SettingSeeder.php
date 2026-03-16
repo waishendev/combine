@@ -36,5 +36,20 @@ class SettingSeeder extends Seeder
                 );
             }
         }
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking_policy'],
+            ['value' => [
+                'reschedule' => [
+                    'enabled' => true,
+                    'max_changes' => 1,
+                    'cutoff_hours' => 72,
+                ],
+                'cancel' => [
+                    'customer_cancel_allowed' => false,
+                    'deposit_refundable' => false,
+                ],
+            ]]
+        );
     }
 }

@@ -43,6 +43,7 @@ class MyBookingController extends Controller
                 'start_at' => $booking->start_at?->toIso8601String(),
                 'starts_at' => $booking->start_at?->toIso8601String(),
                 'deposit_amount' => (float) $booking->deposit_amount,
+                'reschedule_count' => (int) ($booking->reschedule_count ?? 0),
                 'package_claim_status' => (function () use ($claimsByBooking, $booking) {
                     $claims = $claimsByBooking->get($booking->id) ?? collect();
                     if ($claims->contains(fn ($claim) => $claim->status === 'consumed')) return 'consumed';

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Services\Booking\BookingAvailabilityService;
+use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -23,12 +24,32 @@ class RescheduleController extends Controller
         ]);
 
         $booking = Booking::with('service')->findOrFail($id);
-        if (($booking->reschedule_count ?? 0) >= 1) {
-            return $this->respondError('Booking can only be rescheduled once.', 422);
+        if ($booking->status !== 'CONFIRMED') {
+            return $this->respondError('Only confirmed bookings can be rescheduled.', 422);
         }
 
-        if (now()->gt($booking->start_at->copy()->subHours(72))) {
-            return $this->respondError('Reschedule is locked within 72 hours before start time.', 422);
+        $policy = SettingService::get('booking_policy', [
+            'reschedule' => [
+                'enabled' => true,
+                'max_changes' => 1,
+                'cutoff_hours' => 72,
+            ],
+        ], 'booking');
+
+        $rescheduleEnabled = (bool) data_get($policy, 'reschedule.enabled', true);
+        $maxChanges = (int) data_get($policy, 'reschedule.max_changes', 1);
+        $cutoffHours = (int) data_get($policy, 'reschedule.cutoff_hours', 72);
+
+        if (! $rescheduleEnabled) {
+            return $this->respondError('Booking reschedule is disabled.', 422);
+        }
+
+        if (($booking->reschedule_count ?? 0) >= $maxChanges) {
+            return $this->respondError("Booking can only be rescheduled {$maxChanges} time(s).", 422);
+        }
+
+        if ($cutoffHours > 0 && now()->gt($booking->start_at->copy()->subHours($cutoffHours))) {
+            return $this->respondError("Booking time cannot be changed within {$cutoffHours} hours.", 422);
         }
 
         $newStart = Carbon::parse($validated['start_at']);
