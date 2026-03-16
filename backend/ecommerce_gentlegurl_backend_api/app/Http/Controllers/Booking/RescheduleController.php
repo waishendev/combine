@@ -23,9 +23,18 @@ class RescheduleController extends Controller
             'reason' => ['nullable', 'string'],
         ]);
 
-        $booking = Booking::with('service')->findOrFail($id);
+        $customer = $request->user('customer');
+
+        $booking = Booking::with('service')
+            ->where('id', $id)
+            ->where('customer_id', optional($customer)->id)
+            ->firstOrFail();
         if ($booking->status !== 'CONFIRMED') {
             return $this->respondError('Only confirmed bookings can be rescheduled.', 422);
+        }
+
+        if (! $booking->start_at || now()->greaterThanOrEqualTo($booking->start_at)) {
+            return $this->respondError('Past bookings cannot be rescheduled.', 422);
         }
 
         $policy = SettingService::get('booking_policy', [

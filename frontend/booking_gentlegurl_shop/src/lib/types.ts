@@ -5,7 +5,6 @@ export type Service = {
   service_type: "premium" | "standard";
   duration_minutes: number;
   deposit_amount: number;
-  reschedule_count?: number;
   price: number;
   category?: string;
 };
@@ -70,6 +69,11 @@ export type BookingRecord = {
   starts_at: string;
   deposit_amount: number;
   reschedule_count?: number;
+  cancellation_request?: {
+    id: number;
+    status: 'pending' | 'approved' | 'rejected';
+    requested_at?: string | null;
+  } | null;
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null;
   paid_via_order?: {
     order_id: number;
