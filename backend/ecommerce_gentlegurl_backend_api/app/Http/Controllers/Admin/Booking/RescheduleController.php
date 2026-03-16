@@ -35,7 +35,7 @@ class RescheduleController extends Controller
         $booking->update([
             'start_at' => $newStart,
             'end_at' => $newEnd,
-            'reschedule_count' => min(1, (int) ($booking->reschedule_count ?? 0) + 1),
+            'reschedule_count' => (int) ($booking->reschedule_count ?? 0) + 1,
             'rescheduled_at' => now(),
             'rescheduled_from_booking_id' => $booking->rescheduled_from_booking_id ?: $booking->id,
             'reschedule_reason' => $validated['reason'] ?? null,

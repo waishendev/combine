@@ -5,6 +5,7 @@ export type Service = {
   service_type: "premium" | "standard";
   duration_minutes: number;
   deposit_amount: number;
+  reschedule_count?: number;
   price: number;
   category?: string;
 };
@@ -68,6 +69,7 @@ export type BookingRecord = {
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;
+  reschedule_count?: number;
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null;
   paid_via_order?: {
     order_id: number;
@@ -176,4 +178,17 @@ export type MyServicePackage = {
     remaining_qty: number;
     booking_service?: { id: number; name: string };
   }>;
+};
+
+
+export type BookingPolicy = {
+  reschedule: {
+    enabled: boolean;
+    max_changes: number;
+    cutoff_hours: number;
+  };
+  cancel: {
+    customer_cancel_allowed: boolean;
+    deposit_refundable: boolean;
+  };
 };

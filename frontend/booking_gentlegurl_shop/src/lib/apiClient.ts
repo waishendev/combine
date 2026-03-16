@@ -3,6 +3,7 @@ import {
   AddressPayload, 
   AuthUser, 
   BookingCart, 
+  BookingPolicy,
   BookingRecord, 
   BookingSlot, 
   CustomerAddress, 
@@ -308,4 +309,26 @@ export async function makeDefaultCustomerAddress(id: number) {
     body: JSON.stringify({}),
   });
   return { data: unwrapData<CustomerAddress>(response) };
+}
+
+export async function getBookingPolicySettings() {
+  const response = await request<{ data?: { booking_policy?: BookingPolicy } }>("/ecommerce/shop-settings?type=booking");
+  return response?.data?.booking_policy ?? {
+    reschedule: { enabled: true, max_changes: 1, cutoff_hours: 72 },
+    cancel: { customer_cancel_allowed: false, deposit_refundable: false },
+  };
+}
+
+export async function rescheduleBooking(id: number, startAt: string, reason?: string) {
+  return request<{ success: boolean; message?: string }>(`/booking/${id}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify({ start_at: startAt, reason }),
+  });
+}
+
+export async function requestBookingCancellation(id: number, reason?: string) {
+  return request<{ success: boolean; message?: string }>(`/booking/${id}/cancellation-request`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
