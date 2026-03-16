@@ -28,11 +28,11 @@ export default function CheckoutPage() {
     setPaying(true);
     try {
       const response = await payBooking(bookingId);
-      if (response.checkout_url) {
-        window.location.href = response.checkout_url;
+      if (response?.data?.payment_url) {
+        window.location.href = response.data.payment_url;
         return;
       }
-      router.push(response.status === "success" ? "/booking/success" : "/booking/failed");
+      router.push("/booking/success");
     } finally {
       setPaying(false);
     }

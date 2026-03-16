@@ -14,7 +14,7 @@ export default async function BankAccountsPage() {
 
   // Check if user has permission to view bank accounts
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'ecommerce.bank-accounts.view'
+    (perm) => perm === 'ecommerce.bank-accounts.view' || perm === 'booking.bank-accounts.view'
   )
   
   if (!hasPermission) {

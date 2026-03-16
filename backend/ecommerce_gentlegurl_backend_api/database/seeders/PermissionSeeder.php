@@ -48,6 +48,8 @@ class PermissionSeeder extends Seeder
             'pos' => 'POS',
             'ecommerce.returns' => 'Ecommerce Returns',
             'booking' => 'Booking',
+            'booking.payment-gateways' => 'Booking Payment Gateways',
+            'booking.bank-accounts' => 'Booking Manual Bank Accounts',
         ];
 
         $groupModels = [];

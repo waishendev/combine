@@ -3,7 +3,20 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { checkoutCart, getBookingCart, getMe, getServicePackageAvailableFor, redeemServicePackage, removeCartItem, removePackageCartItem } from "@/lib/apiClient";
+import {
+  checkoutCart,
+  getBookingBankAccounts,
+  getBookingCart,
+  getBookingPaymentGateways,
+  getMe,
+  getServicePackageAvailableFor,
+  payBooking,
+  redeemServicePackage,
+  removeCartItem,
+  removePackageCartItem,
+  type PublicBookingBankAccount,
+  type PublicBookingPaymentGateway,
+} from "@/lib/apiClient";
 import { BookingCart } from "@/lib/types";
 
 function secondsLeft(expiresAt: string) {
@@ -31,12 +44,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [guestEmail, setGuestEmail] = useState("");
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [availableMap, setAvailableMap] = useState<Record<number, number>>({});
+  const [gateways, setGateways] = useState<PublicBookingPaymentGateway[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<PublicBookingBankAccount[]>([]);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
 
   const loadCart = useCallback(async () => {
     try {
       const data = await getBookingCart();
       setCart(data);
-      // Dispatch event to notify header to update cart count
       const itemCount = (data?.items?.length || 0) + (data?.package_items?.length || 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
     } catch {
@@ -57,6 +73,23 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         .catch(() => {
           setIsLoggedIn(false);
           setCustomerId(null);
+        });
+
+      Promise.all([getBookingPaymentGateways(), getBookingBankAccounts()])
+        .then(([gatewayData, bankData]) => {
+          const activeGateways = gatewayData.filter((g) => g.is_active !== false);
+          setGateways(activeGateways);
+          setBankAccounts(bankData || []);
+
+          const firstMethod = (activeGateways.find((g) => g.key === "manual_transfer")?.key || activeGateways[0]?.key || "manual_transfer") as "manual_transfer" | "billplz_fpx" | "billplz_card";
+          setSelectedPaymentMethod(firstMethod);
+
+          const defaultBank = (bankData || []).find((b) => b.is_default) || (bankData || [])[0] || null;
+          setSelectedBankAccountId(defaultBank?.id ?? null);
+        })
+        .catch(() => {
+          setGateways([]);
+          setBankAccounts([]);
         });
     }
   }, [isOpen, loadCart]);
@@ -86,7 +119,6 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   const hasPackageItems = (cart?.package_items?.length || 0) > 0;
 
-
   useEffect(() => {
     if (!isOpen || !isLoggedIn || !customerId || !cart?.items?.length) return;
 
@@ -115,7 +147,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         return;
       }
 
-      await checkoutCart(
+      if (selectedPaymentMethod === "manual_transfer" && !selectedBankAccountId) {
+        setMessage("Please select a bank account for manual transfer.");
+        return;
+      }
+
+      const checkoutResponse = await checkoutCart(
         isLoggedIn
           ? {}
           : {
@@ -124,6 +161,25 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               guest_email: guestEmail.trim() || undefined,
             },
       );
+
+      const bookingId = checkoutResponse?.booking_ids?.[0];
+      if (!bookingId) {
+        onClose();
+        router.push("/booking/success");
+        return;
+      }
+
+      const paymentResponse = await payBooking(bookingId, {
+        payment_method: selectedPaymentMethod,
+        bank_account_id: selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
+      });
+
+      const paymentData = paymentResponse?.data;
+      if (paymentData?.payment_url) {
+        window.location.href = paymentData.payment_url;
+        return;
+      }
+
       onClose();
       router.push("/booking/success");
     } catch (err) {
@@ -131,7 +187,6 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     }
   };
 
-  // Prevent body scroll when drawer is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -143,100 +198,71 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     };
   }, [isOpen]);
 
+  const paymentOptions = gateways
+    .filter((gateway) => ["manual_transfer", "billplz_fpx", "billplz_card"].includes(gateway.key))
+    .map((gateway) => ({ key: gateway.key as "manual_transfer" | "billplz_fpx" | "billplz_card", name: gateway.name }));
+
   return (
     <>
-      {/* Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 transition-opacity"
-          onClick={onClose}
-          aria-hidden="true"
-        />
-      )}
+      {isOpen && <div className="fixed inset-0 z-50 bg-black/50 transition-opacity" onClick={onClose} aria-hidden="true" />}
 
-      {/* Drawer */}
-      <div
-        className={`fixed right-0 top-0 z-50 h-full w-full max-w-md transform bg-[var(--card)] shadow-xl transition-transform duration-300 ease-in-out ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
+      <div className={`fixed right-0 top-0 z-50 h-full w-full max-w-md transform bg-[var(--card)] shadow-xl transition-transform duration-300 ease-in-out ${
+        isOpen ? "translate-x-0" : "translate-x-full"
+      }`}>
         <div className="flex h-full flex-col">
-          {/* Header */}
           <div className="flex items-center justify-between border-b border-[var(--card-border)] px-6 py-4">
             <h2 className="text-xl font-semibold">Booking Cart</h2>
-            <button
-              onClick={onClose}
-              className="rounded-full p-2 hover:bg-[var(--muted)] transition-colors"
-              aria-label="Close cart"
-            >
+            <button onClick={onClose} className="rounded-full p-2 hover:bg-[var(--muted)] transition-colors" aria-label="Close cart">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
-          {/* Content */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {message ? <p className="mb-4 text-sm text-[var(--status-warning)]">{message}</p> : null}
-            <p className="mb-4 text-sm text-[var(--text-muted)]">Deposit is charged per Premium service.</p>
-            <p className="mb-4 text-sm text-[var(--text-muted)]">Standard services do not add extra deposit if at least one Premium exists.</p>
-            <p className="mb-6 text-sm text-[var(--text-muted)]">If only Standard services selected, base deposit applies.</p>
+            <p className="mb-4 text-sm text-[var(--text-muted)]">Review your selected booking slot before checkout.</p>
 
             <div className="space-y-3">
               {cart?.items?.map((item) => (
                 <div key={item.id} className="rounded-xl border border-[var(--card-border)] p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <p className="font-medium">{item.service_name} ({item.service_type})</p>
-                      <p className="text-sm text-[var(--text-muted)]">{item.staff_name}</p>
-                      <p className="text-sm text-[var(--text-muted)]">
-                        {new Date(item.start_at).toLocaleString("en-MY", {
-                          timeZone: process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur",
-                        })}
-                      </p>
-                      <p className="text-sm text-[var(--text-muted)]">Item deposit: RM {Number(item.deposit_amount ?? 0).toFixed(2)}</p>
-                      {item.package_claim_status === "reserved" || item.package_claim_status === "consumed" ? (
-                        <p className="text-xs text-[var(--status-success)]">Claimed from package. Deposit waived for this item.</p>
-                      ) : null}
-                      <p className="mt-1 text-sm text-[var(--status-error)]">Expires in {formatDuration(secondsLeft(item.expires_at))}</p>
-                    </div>
-                    <div className="shrink-0 space-y-2 text-right">
-                      {isLoggedIn ? (
-                        <>
-                          <p className="text-xs text-[var(--status-success)]">Package sessions: {availableMap[item.id] ?? 0}</p>
-                          <button
-                            className="rounded-full border border-[var(--status-success-border)] px-3 py-1 text-xs text-[var(--status-success)] disabled:opacity-40"
-                            disabled={!customerId || (availableMap[item.id] ?? 0) <= 0 || item.package_claim_status === "reserved" || item.package_claim_status === "consumed"}
-                            onClick={async () => {
-                              if (!customerId) return;
-                              try {
-                                await redeemServicePackage({
-                                  customer_id: customerId,
-                                  booking_service_id: item.service_id,
-                                  source: "BOOKING",
-                                  source_ref_id: item.id,
-                                  used_qty: 1,
-                                });
-                                setMessage(`Package reserved for ${item.service_name}. Session will be consumed when booking is completed.`);
-                                setAvailableMap((prev) => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] ?? 0) - 1) }));
-                                await loadCart();
-                              } catch (err) {
-                                setMessage(err instanceof Error ? err.message : "Unable to reserve package.");
-                              }
-                            }}
-                          >
-                            {item.package_claim_status === "reserved" || item.package_claim_status === "consumed"
-                              ? "Package Claimed"
-                              : "Claim Package (Reserve)"}
-                          </button>
-                        </>
-                      ) : null}
+                  <p className="font-medium">{item.service_name}</p>
+                  <p className="text-sm text-[var(--text-muted)]">{item.staff_name}</p>
+                  <p className="text-sm text-[var(--text-muted)]">{new Date(item.start_at).toLocaleString()}</p>
+                  <p className="text-xs text-[var(--status-warning)] mt-2">Expires in {formatDuration(secondsLeft(item.expires_at))}</p>
+                  {isLoggedIn ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
+                        onClick={async () => {
+                          try {
+                            const customerPackages = availableMap[item.id] || 0;
+                            if (customerPackages <= 0) {
+                              setMessage("No available package balance for this service.");
+                              return;
+                            }
+                            await redeemServicePackage({
+                              customer_id: customerId || 0,
+                              booking_service_id: item.service_id,
+                              source: "BOOKING",
+                              source_ref_id: item.id,
+                              used_qty: 1,
+                            });
+                            await loadCart();
+                            setMessage("Package redeemed. This booking slot no longer requires deposit.");
+                          } catch (error) {
+                            setMessage(error instanceof Error ? error.message : "Unable to redeem package for this slot.");
+                          }
+                        }}
+                      >
+                        Use Package ({availableMap[item.id] || 0})
+                      </button>
+
                       <button
                         className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
                         onClick={async () => {
                           const updatedCart = await removeCartItem(item.id);
                           setCart(updatedCart);
-                          // Notify header to update cart count
                           const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
                           window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
                         }}
@@ -244,19 +270,33 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         Remove
                       </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="mt-3">
+                      <button
+                        className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
+                        onClick={async () => {
+                          const updatedCart = await removeCartItem(item.id);
+                          setCart(updatedCart);
+                          const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
+                          window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
-
               {cart?.package_items?.map((pkg) => (
                 <div key={`pkg-${pkg.id}`} className="rounded-xl border border-[var(--card-border)] p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
                       <p className="font-medium">{pkg.package_name}</p>
                       <p className="text-sm text-[var(--text-muted)]">Qty: {pkg.qty}</p>
-                      <p className="text-sm text-[var(--text-muted)]">Line total: RM {pkg.line_total}</p>
+                      <p className="text-sm text-[var(--text-muted)]">RM {pkg.unit_price.toFixed(2)} each</p>
                     </div>
-                    <div className="shrink-0 text-right">
+                    <div className="text-right">
+                      <p className="font-semibold">RM {pkg.line_total.toFixed(2)}</p>
                       <button
                         className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
                         onClick={async () => {
@@ -275,11 +315,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               {!(cart?.items?.length || cart?.package_items?.length) ? (
                 <div className="rounded-xl border border-dashed border-[var(--card-border)] p-6 text-center">
                   <p className="text-[var(--text-muted)]">Your cart is empty.</p>
-                  <Link
-                    href="/booking"
-                    onClick={onClose}
-                    className="mt-3 inline-flex rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
-                  >
+                  <Link href="/booking" onClick={onClose} className="mt-3 inline-flex rounded-full border border-[var(--card-border)] px-4 py-2 text-sm hover:bg-[var(--muted)] transition-colors">
                     Browse services
                   </Link>
                 </div>
@@ -287,42 +323,75 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             </div>
 
             {(cart?.items?.length || cart?.package_items?.length) ? (
-              <div className="mt-8 rounded-xl border border-[var(--card-border)] p-4">
-                {!isLoggedIn && hasPackageItems ? (
-                  <p className="mb-3 text-sm text-[var(--status-warning)]">Please login first to checkout package items.</p>
-                ) : null}
+              <div className="mt-8 rounded-xl border border-[var(--card-border)] p-4 space-y-4">
+                {!isLoggedIn && hasPackageItems ? <p className="text-sm text-[var(--status-warning)]">Please login first to checkout package items.</p> : null}
                 {!isLoggedIn ? (
-                  <div className="mb-4 grid gap-3">
-                    <input
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2"
-                      placeholder="Guest name *"
-                    />
-                    <input
-                      value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
-                      className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2"
-                      placeholder="Guest phone *"
-                    />
-                    <input
-                      value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
-                      className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2"
-                      placeholder="Guest email (optional)"
-                    />
+                  <div className="grid gap-3">
+                    <input value={guestName} onChange={(e) => setGuestName(e.target.value)} className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2" placeholder="Guest name *" />
+                    <input value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2" placeholder="Guest phone *" />
+                    <input value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} className="rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2" placeholder="Guest email (optional)" />
                   </div>
                 ) : null}
-                <p className="font-semibold">Deposit total: RM {cart?.deposit_total ?? 0}</p>
-                <p className="font-semibold">Package total: RM {cart?.package_total ?? 0}</p>
-                <p className="font-semibold">Cart total: RM {cart?.cart_total ?? cart?.deposit_total ?? 0}</p>
-                <p className="text-sm text-[var(--text-muted)]">Next expiry in: {nextExpiryIn ?? "-"}</p>
+
+                <div>
+                  <p className="text-sm font-semibold mb-2">Payment Method</p>
+                  <div className="space-y-2">
+                    {paymentOptions.map((option) => (
+                      <label key={option.key} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="booking_payment_method"
+                          checked={selectedPaymentMethod === option.key}
+                          onChange={() => setSelectedPaymentMethod(option.key)}
+                        />
+                        <span>{option.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedPaymentMethod === "manual_transfer" ? (
+                  <div>
+                    <p className="text-sm font-semibold mb-2">Select Bank Account</p>
+                    <div className="space-y-2">
+                      {bankAccounts.map((account) => (
+                        <label key={account.id} className="block rounded-lg border border-[var(--card-border)] p-3 text-sm cursor-pointer">
+                          <div className="flex gap-3">
+                            <input
+                              type="radio"
+                              name="booking_bank_account"
+                              className="mt-1"
+                              checked={selectedBankAccountId === account.id}
+                              onChange={() => setSelectedBankAccountId(account.id)}
+                            />
+                            <div className="flex-1">
+                              <p className="font-medium">{account.label || account.bank_name}</p>
+                              <p className="text-[var(--text-muted)]">{account.bank_name}</p>
+                              <p className="text-[var(--text-muted)]">{account.account_name} · {account.account_number}</p>
+                              {account.logo_url ? <img src={account.logo_url} alt={account.bank_name} className="mt-2 h-8 w-auto" /> : null}
+                              {account.qr_image_url ? <img src={account.qr_image_url} alt={`${account.bank_name} QR`} className="mt-2 h-28 w-28 object-cover rounded-md" /> : null}
+                              {account.instructions ? <p className="mt-2 text-xs text-[var(--text-muted)]">{account.instructions}</p> : null}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div>
+                  <p className="font-semibold">Deposit total: RM {cart?.deposit_total ?? 0}</p>
+                  <p className="font-semibold">Package total: RM {cart?.package_total ?? 0}</p>
+                  <p className="font-semibold">Cart total: RM {cart?.cart_total ?? cart?.deposit_total ?? 0}</p>
+                  <p className="text-sm text-[var(--text-muted)]">Next expiry in: {nextExpiryIn ?? "-"}</p>
+                </div>
+
                 <button
                   onClick={onCheckout}
                   disabled={!(cart?.items?.length || cart?.package_items?.length) || (!isLoggedIn && hasPackageItems)}
-                  className="mt-4 w-full rounded-full bg-[var(--accent-strong)] px-6 py-3 text-white disabled:opacity-40 hover:bg-[var(--accent-stronger)] transition-colors"
+                  className="w-full rounded-full bg-[var(--accent-strong)] px-6 py-3 text-white disabled:opacity-40 hover:bg-[var(--accent-stronger)] transition-colors"
                 >
-                  Proceed to Checkout
+                  Proceed Payment
                 </button>
               </div>
             ) : null}

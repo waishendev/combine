@@ -51,6 +51,8 @@ class LiveRbacPatchSeeder extends Seeder
             'ecommerce.orders' => 'Ecommerce Orders',
             'ecommerce.returns' => 'Ecommerce Returns',
             'booking' => 'Booking',
+            'booking.payment-gateways' => 'Booking Payment Gateways',
+            'booking.bank-accounts' => 'Booking Manual Bank Accounts',
 
             // POS / Staff / Reports (needed by StaffRbacSeeder + POS screens)
             'staff' => 'Staff',
@@ -287,6 +289,14 @@ class LiveRbacPatchSeeder extends Seeder
             'ecommerce.dashboard.update',
             'ecommerce.settings.view',
             'ecommerce.settings.update',
+            'booking.payment-gateways.view',
+            'booking.payment-gateways.create',
+            'booking.payment-gateways.update',
+            'booking.payment-gateways.delete',
+            'booking.bank-accounts.view',
+            'booking.bank-accounts.create',
+            'booking.bank-accounts.update',
+            'booking.bank-accounts.delete',
             'booking.settings.view',
             'booking.seo.view',
         ];

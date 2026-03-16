@@ -18,6 +18,29 @@ import {
 
 const API_PREFIX = "/api/proxy";
 
+
+export type PublicBookingBankAccount = {
+  id: number;
+  label?: string | null;
+  bank_name: string;
+  account_name: string;
+  account_number: string;
+  branch?: string | null;
+  swift_code?: string | null;
+  logo_url?: string | null;
+  qr_image_url?: string | null;
+  instructions?: string | null;
+  is_default?: boolean;
+};
+
+export type PublicBookingPaymentGateway = {
+  id: number;
+  key: string;
+  name: string;
+  is_active?: boolean;
+  is_default?: boolean;
+};
+
 class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -135,6 +158,27 @@ export async function checkoutCart(payload?: {
   guest_email?: string;
 }) {
   return request<{ status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number }>(`/booking/cart/checkout`, {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+
+export async function getBookingBankAccounts() {
+  const response = await request<{ data?: PublicBookingBankAccount[] } | PublicBookingBankAccount[]>("/public/shop/bank-accounts?type=booking");
+  return unwrapData<PublicBookingBankAccount[]>(response) ?? [];
+}
+
+export async function getBookingPaymentGateways() {
+  const response = await request<{ data?: { payment_gateways?: PublicBookingPaymentGateway[] } }>("/public/shop/homepage?type=booking");
+  return response?.data?.payment_gateways ?? [];
+}
+
+export async function payBooking(bookingId: string | number, payload?: {
+  payment_method?: "manual_transfer" | "billplz_fpx" | "billplz_card";
+  bank_account_id?: number;
+}) {
+  return request<{ data?: { payment_url?: string; status?: string; provider?: string; payment_method?: string; manual_bank_account?: PublicBookingBankAccount } }>(`/booking/${bookingId}/pay?type=booking`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
