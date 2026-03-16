@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import type { PaymentGatewayRowData } from './PaymentGatewayRow'
 import { mapPaymentGatewayApiItemToRow, type PaymentGatewayApiItem } from './paymentGatewayUtils'
 import { useI18n } from '@/lib/i18n'
+import { getWorkspace } from '@/lib/workspace'
 
 interface PaymentGatewayEditModalProps {
   paymentGatewayId: number
@@ -30,6 +31,7 @@ export default function PaymentGatewayEditModal({
   onSuccess,
 }: PaymentGatewayEditModalProps) {
   const { t } = useI18n()
+  const workspaceType = getWorkspace()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -43,7 +45,7 @@ export default function PaymentGatewayEditModal({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/ecommerce/payment-gateways/${paymentGatewayId}`, {
+        const res = await fetch(`/api/proxy/ecommerce/payment-gateways/${paymentGatewayId}?type=${workspaceType}`, {
           cache: 'no-store',
           signal: controller.signal,
           headers: {
@@ -125,7 +127,7 @@ export default function PaymentGatewayEditModal({
     setError(null)
 
     try {
-      const res = await fetch(`/api/proxy/ecommerce/payment-gateways/${paymentGatewayId}`, {
+      const res = await fetch(`/api/proxy/ecommerce/payment-gateways/${paymentGatewayId}?type=${workspaceType}`, {
         method: 'PUT',
         headers: {
           Accept: 'application/json',
@@ -135,6 +137,7 @@ export default function PaymentGatewayEditModal({
           name: trimmedName,
           is_active: form.isActive === 'active',
           is_default: form.isDefault === 'yes',
+          type: workspaceType,
         }),
       })
 

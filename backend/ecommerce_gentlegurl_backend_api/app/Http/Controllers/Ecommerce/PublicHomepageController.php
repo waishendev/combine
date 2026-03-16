@@ -174,6 +174,7 @@ class PublicHomepageController extends Controller
             ];
 
             $paymentGateways = PaymentGateway::query()
+                ->where('type', $type)
                 ->where('is_active', true)
                 ->orderBy('sort_order')
                 ->orderBy('id')

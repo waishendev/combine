@@ -884,7 +884,7 @@ export async function completeOrder(orderId: number): Promise<CompleteOrderRespo
 }
 
 export async function getBankAccounts(): Promise<PublicBankAccount[]> {
-  const response = await get<{ data: PublicBankAccount[] }>("/public/shop/bank-accounts", {
+  const response = await get<{ data: PublicBankAccount[] }>("/public/shop/bank-accounts?type=ecommerce", {
     headers: { Accept: "application/json" },
   });
 

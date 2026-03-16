@@ -23,6 +23,7 @@ use App\Services\Voucher\VoucherService;
 use App\Services\Ecommerce\OrderReserveService;
 use Carbon\Carbon;
 use App\Support\Pricing\ProductPricing;
+use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -106,6 +107,7 @@ class PublicCheckoutController extends Controller
         //     "shipping_postcode": "12345"
         // }
         $validated = $this->validateOrderRequest($request, true);
+        $type = WorkspaceType::fromRequest($request);
 
         $customer = $this->currentCustomer();
 
@@ -140,7 +142,8 @@ class PublicCheckoutController extends Controller
         }
 
         if (!empty($validated['bank_account_id'])) {
-            $bankAccount = BankAccount::where('is_active', true)
+            $bankAccount = BankAccount::where('type', $type)
+                ->where('is_active', true)
                 ->find($validated['bank_account_id']);
 
             if (!$bankAccount) {
@@ -311,7 +314,7 @@ class PublicCheckoutController extends Controller
                 $billplzId = null;
 
                 if ($paymentProvider === 'billplz') {
-                    $billResponse = $this->billplzService->createBill($order);
+                    $billResponse = $this->billplzService->createBill($order, $type);
                     $billplzId = data_get($billResponse, 'id');
                     $billplzUrl = data_get($billResponse, 'url');
 

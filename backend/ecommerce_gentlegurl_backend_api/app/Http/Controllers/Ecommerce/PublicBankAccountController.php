@@ -4,13 +4,18 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
+use App\Support\WorkspaceType;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PublicBankAccountController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $type = WorkspaceType::fromRequest($request);
+
         $bankAccounts = BankAccount::query()
+            ->where('type', $type)
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('id')

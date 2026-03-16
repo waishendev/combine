@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useState } from 'react'
 import type { PaymentGatewayRowData } from './PaymentGatewayRow'
 import { mapPaymentGatewayApiItemToRow, type PaymentGatewayApiItem } from './paymentGatewayUtils'
 import { useI18n } from '@/lib/i18n'
+import { getWorkspace } from '@/lib/workspace'
 
 interface PaymentGatewayCreateModalProps {
   onClose: () => void
@@ -30,6 +31,7 @@ export default function PaymentGatewayCreateModal({
   onSuccess,
 }: PaymentGatewayCreateModalProps) {
   const { t } = useI18n()
+  const workspaceType = getWorkspace()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +53,7 @@ export default function PaymentGatewayCreateModal({
     setError(null)
 
     try {
-      const res = await fetch('/api/proxy/ecommerce/payment-gateways', {
+      const res = await fetch(`/api/proxy/ecommerce/payment-gateways?type=${workspaceType}`, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
@@ -62,6 +64,7 @@ export default function PaymentGatewayCreateModal({
           name: trimmedName,
           is_active: form.isActive === 'active',
           is_default: form.isDefault === 'yes',
+          type: workspaceType,
         }),
       })
 

@@ -14,6 +14,7 @@ import {
   mapPaymentGatewayApiItemToRow,
 } from './paymentGatewayUtils'
 import { useI18n } from '@/lib/i18n'
+import { getWorkspace } from '@/lib/workspace'
 
 interface PaymentGatewayTableProps {
   permissions: string[]
@@ -46,6 +47,7 @@ export default function PaymentGatewayTable({
   permissions,
 }: PaymentGatewayTableProps) {
   const { t } = useI18n()
+  const workspaceType = getWorkspace()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [rows, setRows] = useState<PaymentGatewayRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
@@ -107,6 +109,7 @@ export default function PaymentGatewayTable({
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
+        qs.set('type', workspaceType)
 
         const res = await fetch(`/api/proxy/ecommerce/payment-gateways?${qs.toString()}`, {
           cache: 'no-store',
@@ -306,7 +309,7 @@ export default function PaymentGatewayTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/ecommerce/payment-gateways/${paymentGateway.id}/move-up`,
+        `/api/proxy/ecommerce/payment-gateways/${paymentGateway.id}/move-up?type=${workspaceType}`,
         {
           method: 'POST',
           headers: {
@@ -333,6 +336,7 @@ export default function PaymentGatewayTable({
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
+        qs.set('type', workspaceType)
 
       const refreshRes = await fetch(
         `/api/proxy/ecommerce/payment-gateways?${qs.toString()}`,
@@ -403,7 +407,7 @@ export default function PaymentGatewayTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/ecommerce/payment-gateways/${paymentGateway.id}/move-down`,
+        `/api/proxy/ecommerce/payment-gateways/${paymentGateway.id}/move-down?type=${workspaceType}`,
         {
           method: 'POST',
           headers: {
@@ -430,6 +434,7 @@ export default function PaymentGatewayTable({
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
+        qs.set('type', workspaceType)
 
       const refreshRes = await fetch(
         `/api/proxy/ecommerce/payment-gateways?${qs.toString()}`,
