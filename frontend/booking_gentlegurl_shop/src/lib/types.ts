@@ -68,6 +68,12 @@ export type BookingRecord = {
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;
+  reschedule_count?: number;
+  cancellation_request?: {
+    id: number;
+    status: 'pending' | 'approved' | 'rejected';
+    requested_at?: string | null;
+  } | null;
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null;
   paid_via_order?: {
     order_id: number;
@@ -176,4 +182,17 @@ export type MyServicePackage = {
     remaining_qty: number;
     booking_service?: { id: number; name: string };
   }>;
+};
+
+
+export type BookingPolicy = {
+  reschedule: {
+    enabled: boolean;
+    max_changes: number;
+    cutoff_hours: number;
+  };
+  cancel: {
+    customer_cancel_allowed: boolean;
+    deposit_refundable: boolean;
+  };
 };

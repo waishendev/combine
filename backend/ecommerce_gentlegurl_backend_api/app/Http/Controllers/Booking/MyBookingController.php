@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderItem;
 use Illuminate\Http\Request;
@@ -29,7 +30,14 @@ class MyBookingController extends Controller
             ->get()
             ->groupBy('booking_id');
 
-        $payload = $bookings->map(function (Booking $booking) use ($claimsByBooking) {
+        $latestCancellationRequests = BookingCancellationRequest::query()
+            ->whereIn('booking_id', $bookings->pluck('id')->all())
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('booking_id')
+            ->map(fn ($group) => $group->first());
+
+        $payload = $bookings->map(function (Booking $booking) use ($claimsByBooking, $latestCancellationRequests) {
             $depositOrderItem = OrderItem::query()
                 ->with('order:id,order_number')
                 ->where('line_type', 'booking_deposit')
@@ -43,6 +51,20 @@ class MyBookingController extends Controller
                 'start_at' => $booking->start_at?->toIso8601String(),
                 'starts_at' => $booking->start_at?->toIso8601String(),
                 'deposit_amount' => (float) $booking->deposit_amount,
+                'reschedule_count' => (int) ($booking->reschedule_count ?? 0),
+                'cancellation_request' => (function () use ($latestCancellationRequests, $booking) {
+                    $request = $latestCancellationRequests->get($booking->id);
+
+                    if (! $request) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => (int) $request->id,
+                        'status' => (string) $request->status,
+                        'requested_at' => $request->requested_at?->toIso8601String(),
+                    ];
+                })(),
                 'package_claim_status' => (function () use ($claimsByBooking, $booking) {
                     $claims = $claimsByBooking->get($booking->id) ?? collect();
                     if ($claims->contains(fn ($claim) => $claim->status === 'consumed')) return 'consumed';

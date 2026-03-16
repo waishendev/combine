@@ -946,13 +946,15 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::delete('/cart/item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removeItem']);
     Route::post('/cart/checkout', [\App\Http\Controllers\Booking\CartController::class, 'checkout']);
     Route::post('/{id}/pay', [\App\Http\Controllers\Booking\PaymentController::class, 'pay']);
-    Route::post('/{id}/reschedule', [\App\Http\Controllers\Booking\RescheduleController::class, 'store']);
     Route::post('/payment/callback', [\App\Http\Controllers\Booking\PaymentController::class, 'callback']);
 
     Route::middleware('auth:customer,sanctum')->group(function () {
         Route::post('/cart/add-package', [\App\Http\Controllers\Booking\CartController::class, 'addPackage']);
         Route::delete('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removePackageItem']);
         Route::get('/my', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
+        Route::post('/{id}/reschedule', [\App\Http\Controllers\Booking\RescheduleController::class, 'store']);
+        Route::post('/{id}/cancellation-request', [\App\Http\Controllers\Booking\CancellationRequestController::class, 'store']);
+        Route::get('/cancellation-requests/my', [\App\Http\Controllers\Booking\CancellationRequestController::class, 'my']);
         Route::get('/my/service-packages', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'index']);
         Route::post('/service-packages/purchase', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'purchase']);
     });
@@ -972,6 +974,12 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
 
     Route::get('/logs', [\App\Http\Controllers\Admin\Booking\LogController::class, 'index']);
     Route::get('/logs/export.csv', [\App\Http\Controllers\Admin\Booking\LogController::class, 'export']);
+
+
+    Route::get('/cancellation-requests', [\App\Http\Controllers\Admin\Booking\CancellationRequestController::class, 'index']);
+    Route::get('/cancellation-requests/{id}', [\App\Http\Controllers\Admin\Booking\CancellationRequestController::class, 'show']);
+    Route::post('/cancellation-requests/{id}/approve', [\App\Http\Controllers\Admin\Booking\CancellationRequestController::class, 'approve']);
+    Route::post('/cancellation-requests/{id}/reject', [\App\Http\Controllers\Admin\Booking\CancellationRequestController::class, 'reject']);
 
     Route::get('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'show']);
     Route::put('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'update']);

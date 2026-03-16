@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
 import ShopSettingsPageContent from '@/components/ShopSettingsPageContent'
+import BookingPolicySettingsCard from '@/components/BookingPolicySettingsCard'
 import { getCurrentUser } from '@/lib/auth'
 
 export default async function BookingShopSettingsPage() {
@@ -42,6 +43,9 @@ export default async function BookingShopSettingsPage() {
       </div>
 
       <ShopSettingsPageContent canEdit={canUpdate} forcedWorkspace="booking" />
+      <div className="mt-6">
+        <BookingPolicySettingsCard canEdit={canUpdate} />
+      </div>
     </div>
   )
 }

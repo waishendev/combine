@@ -30,6 +30,7 @@ class ShopSettingController extends Controller
                 ], $type),
                 'footer' => SettingService::get('footer', $this->defaultFooterSetting(), $type),
                 'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting(), $type),
+                'booking_policy' => SettingService::get('booking_policy', $this->defaultBookingPolicySetting(), $type),
             ];
 
             return response()->json([
@@ -117,6 +118,7 @@ class ShopSettingController extends Controller
             ],
             'ecommerce.return_window_days' => 7,
             'ecommerce.return_tracking_submit_days' => 7,
+            'booking_policy' => $this->defaultBookingPolicySetting(),
         ];
 
         $settingKey = $this->resolveSettingKey($key);
@@ -185,6 +187,9 @@ class ShopSettingController extends Controller
                 break;
             case 'ecommerce.return_tracking_submit_days':
                 $data = $this->validateReturnTrackingSubmitDays($request);
+                break;
+            case 'booking_policy':
+                $data = $this->validateBookingPolicy($request);
                 break;
 
             default:
@@ -431,6 +436,44 @@ class ShopSettingController extends Controller
         return (int) $validated['value'];
     }
 
+    protected function validateBookingPolicy(Request $request): array
+    {
+        $validated = $request->validate([
+            'reschedule.enabled' => ['required', 'boolean'],
+            'reschedule.max_changes' => ['required', 'integer', 'min:0', 'max:20'],
+            'reschedule.cutoff_hours' => ['required', 'integer', 'min:0', 'max:720'],
+            'cancel.customer_cancel_allowed' => ['required', 'boolean'],
+            'cancel.deposit_refundable' => ['required', 'boolean'],
+        ]);
+
+        return [
+            'reschedule' => [
+                'enabled' => (bool) data_get($validated, 'reschedule.enabled', true),
+                'max_changes' => (int) data_get($validated, 'reschedule.max_changes', 1),
+                'cutoff_hours' => (int) data_get($validated, 'reschedule.cutoff_hours', 72),
+            ],
+            'cancel' => [
+                'customer_cancel_allowed' => (bool) data_get($validated, 'cancel.customer_cancel_allowed', false),
+                'deposit_refundable' => (bool) data_get($validated, 'cancel.deposit_refundable', false),
+            ],
+        ];
+    }
+
+    protected function defaultBookingPolicySetting(): array
+    {
+        return [
+            'reschedule' => [
+                'enabled' => true,
+                'max_changes' => 1,
+                'cutoff_hours' => 72,
+            ],
+            'cancel' => [
+                'customer_cancel_allowed' => false,
+                'deposit_refundable' => false,
+            ],
+        ];
+    }
+
     protected function defaultFooterSetting(): array
     {
         return [
@@ -538,6 +581,7 @@ class ShopSettingController extends Controller
                 'shop_contact_widget',
                 'footer',
                 'invoice_profile',
+                'booking_policy',
             ];
         }
 
