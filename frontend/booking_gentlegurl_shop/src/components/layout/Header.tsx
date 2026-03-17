@@ -104,9 +104,9 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
               <Link href="/booking" className={isActive("/booking")}>
                 Book
               </Link>
-              <Link href="/booking/packages" className={isActive("/booking/packages")}>
+              {/* <Link href="/booking/packages" className={isActive("/booking/packages")}>
                 Packages
-              </Link>
+              </Link> */}
             </nav>
           </div>
 
@@ -231,13 +231,13 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                     >
                       My Bookings
                     </Link>
-                    <Link
+                    {/* <Link
                       href="/account/packages"
                       className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                       onClick={() => setUserMenuOpen(false)}
                     >
                       My Packages
-                    </Link>
+                    </Link> */}
                     <div className="my-1 border-t border-[var(--muted)]/50" />
                     <button
                       onClick={onLogout}
@@ -317,13 +317,13 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                 >
                   Book
                 </Link>
-                <Link
+                {/* <Link
                   href="/booking/packages"
                   className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Packages
-                </Link>
+                </Link> */}
               </nav>
             </div>
           </div>

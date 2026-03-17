@@ -5,6 +5,10 @@ import Image from "next/image";
 import { Service } from "@/lib/types";
 import { SectionTitle } from "./SectionTitle";
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
+import { addPackageCartItem, getServicePackages } from "@/lib/apiClient";
+import type { ServicePackage } from "@/lib/types";
 
 export function Hero() {
   return (
@@ -36,6 +40,10 @@ export function ServicesPreview({ services }: { services: Service[] }) {
 }
 
 export function StaticSections() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user } = useAuth();
+
   const gallery = Array.from({ length: 6 }).map((_, index) => ({
     src: "/images/dummy.webp",
     alt: `Service menu ${index + 1}`,
@@ -44,6 +52,10 @@ export function StaticSections() {
 
   const [galleryLightboxIndex, setGalleryLightboxIndex] = useState<number | null>(null);
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
+  const [packages, setPackages] = useState<ServicePackage[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(true);
+  const [packagesError, setPackagesError] = useState<string | null>(null);
+  const [packagesMessage, setPackagesMessage] = useState<string | null>(null);
 
   const getTextAlignClass = (align: "left" | "center" | "right" | undefined) => {
     if (align === "center") return "text-center";
@@ -93,6 +105,41 @@ export function StaticSections() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [galleryLightboxIndex]);
+
+  useEffect(() => {
+    const run = async () => {
+      setPackagesLoading(true);
+      setPackagesError(null);
+      try {
+        const rows = await getServicePackages();
+        const list = Array.isArray(rows) ? rows : [];
+        setPackages(list.filter((pkg) => pkg.is_active !== false));
+      } catch (err) {
+        setPackagesError(err instanceof Error ? err.message : "Unable to load service packages");
+      } finally {
+        setPackagesLoading(false);
+      }
+    };
+
+    void run();
+  }, []);
+
+  const onAddPackageToCart = async (pkg: ServicePackage) => {
+    if (!user) {
+      router.push(`/login?redirect=${encodeURIComponent(pathname || "/")}`);
+      return;
+    }
+
+    try {
+      const updatedCart = await addPackageCartItem({ service_package_id: pkg.id, qty: 1 });
+      const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
+      setPackagesMessage(`Added ${pkg.name} to cart.`);
+      router.push("/booking/cart");
+    } catch (err) {
+      setPackagesMessage(err instanceof Error ? err.message : "Unable to add package into cart.");
+    }
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-12 px-4 py-16 sm:px-6 lg:px-8">
@@ -196,6 +243,54 @@ export function StaticSections() {
           </div>
         </div>
       )}
+
+      {/* Packages (moved from /booking/packages) */}
+      <section className="space-y-6">
+        {renderSectionHeading({ label: "Packages", title: "Service Packages", align: "left" }, "accent")}
+        {packagesMessage ? <p className="text-sm text-[var(--accent)]">{packagesMessage}</p> : null}
+        {packagesLoading ? <p className="text-sm text-[var(--foreground)]/70">Loading packages...</p> : null}
+        {packagesError ? <p className="text-sm text-[var(--status-error)]">{packagesError}</p> : null}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {packages.slice(0, 4).map((pkg) => (
+            <article
+              key={pkg.id}
+              className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-semibold text-[var(--foreground)]">{pkg.name}</h3>
+                  <p className="mt-1 line-clamp-2 text-sm text-[var(--foreground)]/70">
+                    {pkg.description || "Service package"}
+                  </p>
+                </div>
+                <div className="shrink-0 rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
+                  RM {pkg.selling_price}
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--foreground)]/70">
+                <span className="rounded-full border border-[var(--card-border)] bg-[var(--card)]/60 px-3 py-1">
+                  Sessions: {pkg.total_sessions}
+                </span>
+                <span className="rounded-full border border-[var(--card-border)] bg-[var(--card)]/60 px-3 py-1">
+                  Valid: {pkg.valid_days ?? "-"} days
+                </span>
+              </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void onAddPackageToCart(pkg)}
+                  className="inline-flex rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
+                >
+                  Add to Cart
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
         <section className="space-y-6">
           {renderSectionHeading({ label: "FAQ", title: "You might be wondering", align: "left" }, "accent")}

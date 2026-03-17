@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getBookingServices, getServicePackages } from "@/lib/apiClient";
-import { Service, ServicePackage } from "@/lib/types";
+import { getBookingServices } from "@/lib/apiClient";
+import { Service } from "@/lib/types";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 
 export default function BookingPage() {
@@ -11,19 +11,14 @@ export default function BookingPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [packages, setPackages] = useState<ServicePackage[]>([]);
 
   useEffect(() => {
     const run = async () => {
       setLoading(true);
       setError(null);
       try {
-        const [serviceData, packageData] = await Promise.all([
-          getBookingServices(search),
-          getServicePackages().catch(() => []),
-        ]);
+        const serviceData = await getBookingServices(search);
         setServices(serviceData);
-        setPackages(packageData.filter((pkg) => pkg.is_active !== false));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load services");
       } finally {
@@ -56,25 +51,6 @@ export default function BookingPage() {
           </Link>
         ))}
       </div>
-
-      <section id="packages" className="mt-10">
-        <h2 className="text-2xl font-semibold">Service Packages</h2>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">You can buy these package plans at POS/CRM counter, then claim sessions in booking cart.</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {packages.length === 0 ? (
-            <p className="text-sm text-[var(--text-muted)]">No active package currently.</p>
-          ) : (
-            packages.map((pkg) => (
-              <article key={pkg.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-                <h3 className="font-semibold">{pkg.name}</h3>
-                <p className="mt-1 text-sm text-[var(--text-muted)]">{pkg.description || "Service membership package"}</p>
-                <p className="mt-2 text-sm text-[var(--text-muted)]">Sessions: {pkg.total_sessions} • Valid: {pkg.valid_days ?? "-"} days</p>
-                <p className="mt-2 text-lg font-semibold">RM {pkg.selling_price}</p>
-              </article>
-            ))
-          )}
-        </div>
-      </section>
     </main>
   );
 }
