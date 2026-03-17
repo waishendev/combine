@@ -186,6 +186,8 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/account/overview', [PublicAccountController::class, 'overview']);
 
         // Order History
+        Route::get('/bookings', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
+
         Route::get('/orders', [PublicOrderHistoryController::class, 'index']);
         Route::get('/orders/{id}', [PublicOrderHistoryController::class, 
         'showById']);
@@ -952,6 +954,8 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
         Route::post('/cart/add-package', [\App\Http\Controllers\Booking\CartController::class, 'addPackage']);
         Route::delete('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removePackageItem']);
         Route::get('/my', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
+        Route::get('/{id}/payment-detail', [\App\Http\Controllers\Booking\PaymentController::class, 'detail']);
+        Route::post('/{id}/upload-slip', [\App\Http\Controllers\Booking\PaymentController::class, 'uploadSlip']);
         Route::post('/{id}/reschedule', [\App\Http\Controllers\Booking\RescheduleController::class, 'store']);
         Route::post('/{id}/cancellation-request', [\App\Http\Controllers\Booking\CancellationRequestController::class, 'store']);
         Route::get('/cancellation-requests/my', [\App\Http\Controllers\Booking\CancellationRequestController::class, 'my']);

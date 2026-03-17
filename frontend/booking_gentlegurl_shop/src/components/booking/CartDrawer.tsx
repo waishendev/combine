@@ -181,7 +181,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       }
 
       onClose();
-      router.push("/booking/success");
+      router.push(`/booking/payment-result?booking_id=${bookingId}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Checkout failed. Please review your cart and try again.");
     }

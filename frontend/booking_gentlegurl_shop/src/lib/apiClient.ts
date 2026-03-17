@@ -214,8 +214,43 @@ export async function logoutCustomer() {
   return request<{ success: boolean }>("/public/auth/logout", { method: "POST", body: JSON.stringify({}) });
 }
 
+
+export async function getBookingPaymentDetail(bookingId: number | string) {
+  const response = await request<{ data?: {
+    booking_id: number;
+    booking_code?: string | null;
+    booking_status: string;
+    payment_status: string;
+    amount: number;
+    payment?: {
+      id: number;
+      status: string;
+      provider: string;
+      ref?: string | null;
+      payment_method?: string | null;
+      payment_url?: string | null;
+      manual_bank_account?: PublicBookingBankAccount | null;
+      slip_url?: string | null;
+      manual_status?: string | null;
+    } | null;
+  } }>(`/booking/${bookingId}/payment-detail?type=booking`);
+  return response.data;
+}
+
+export async function uploadBookingPaymentSlip(bookingId: number | string, file: File) {
+  const formData = new FormData();
+  formData.append("slip", file);
+
+  const response = await request<{ data?: { payment_id: number; slip_url: string; manual_status: string } }>(`/booking/${bookingId}/upload-slip?type=booking`, {
+    method: "POST",
+    body: formData,
+  });
+
+  return response.data;
+}
+
 export async function getMyBookings() {
-  const response = await request<{ data: BookingRecord[] } | BookingRecord[]>("/booking/my");
+  const response = await request<{ data: BookingRecord[] } | BookingRecord[]>("/public/shop/bookings");
   return unwrapData<BookingRecord[]>(response);
 }
 

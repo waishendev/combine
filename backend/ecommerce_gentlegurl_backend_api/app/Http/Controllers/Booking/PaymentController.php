@@ -11,6 +11,7 @@ use App\Models\Ecommerce\PaymentGateway;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 class PaymentController extends Controller
 {
@@ -23,9 +24,10 @@ class PaymentController extends Controller
         ]);
 
         $booking = Booking::with('customer')->findOrFail($id);
+        $this->authorizeBooking($request, $booking);
 
-        if ($booking->status !== 'HOLD') {
-            return $this->respondError('Only HOLD booking can be paid.', 422);
+        if (! in_array($booking->status, ['HOLD', 'CONFIRMED'], true)) {
+            return $this->respondError('Only HOLD/CONFIRMED booking can be paid.', 422);
         }
 
         $paymentMethod = $validated['payment_method'] ?? 'manual_transfer';
@@ -55,18 +57,8 @@ class PaymentController extends Controller
                     'type' => $type,
                     'payment_method' => $paymentMethod,
                     'bank_account_id' => $bankAccount->id,
-                    'bank_account' => [
-                        'id' => $bankAccount->id,
-                        'label' => $bankAccount->label,
-                        'bank_name' => $bankAccount->bank_name,
-                        'account_name' => $bankAccount->account_name,
-                        'account_number' => $bankAccount->account_number,
-                        'branch' => $bankAccount->branch,
-                        'swift_code' => $bankAccount->swift_code,
-                        'logo_url' => $bankAccount->logo_url,
-                        'qr_image_url' => $bankAccount->qr_image_url,
-                        'instructions' => $bankAccount->instructions,
-                    ],
+                    'bank_account' => $this->mapBankAccount($bankAccount),
+                    'payment_status' => 'pending_manual_review',
                 ],
             ]);
 
@@ -116,6 +108,63 @@ class PaymentController extends Controller
         ]);
     }
 
+    public function detail(Request $request, int $id)
+    {
+        $booking = Booking::findOrFail($id);
+        $this->authorizeBooking($request, $booking);
+
+        $payment = BookingPayment::query()->where('booking_id', $booking->id)->latest('id')->first();
+
+        return $this->respond([
+            'booking_id' => $booking->id,
+            'booking_code' => $booking->booking_code,
+            'booking_status' => $booking->status,
+            'payment_status' => $booking->payment_status,
+            'amount' => (float) $booking->deposit_amount,
+            'payment' => $payment ? [
+                'id' => $payment->id,
+                'status' => $payment->status,
+                'provider' => $payment->provider,
+                'ref' => $payment->ref,
+                'payment_method' => data_get($payment->raw_response, 'payment_method'),
+                'payment_url' => data_get($payment->raw_response, 'payment_url'),
+                'manual_bank_account' => data_get($payment->raw_response, 'bank_account'),
+                'slip_url' => data_get($payment->raw_response, 'manual_slip_url'),
+                'manual_status' => data_get($payment->raw_response, 'payment_status'),
+            ] : null,
+        ]);
+    }
+
+    public function uploadSlip(Request $request, int $id)
+    {
+        $booking = Booking::findOrFail($id);
+        $this->authorizeBooking($request, $booking);
+
+        $validated = $request->validate([
+            'slip' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+        ]);
+
+        $payment = BookingPayment::query()->where('booking_id', $booking->id)->latest('id')->first();
+        if (! $payment) {
+            return $this->respondError('Payment record not found.', 404);
+        }
+
+        $path = $validated['slip']->store('booking-payment-slips', 'public');
+
+        $raw = $payment->raw_response ?? [];
+        $raw['manual_slip_path'] = $path;
+        $raw['manual_slip_url'] = Storage::disk('public')->url($path);
+        $raw['payment_status'] = 'slip_uploaded_pending_review';
+        $payment->raw_response = $raw;
+        $payment->save();
+
+        return $this->respond([
+            'payment_id' => $payment->id,
+            'slip_url' => $raw['manual_slip_url'],
+            'manual_status' => $raw['payment_status'],
+        ], 'Payment slip uploaded.');
+    }
+
     public function callback(Request $request)
     {
         $validated = $request->validate([
@@ -137,7 +186,7 @@ class PaymentController extends Controller
             $payment->update([
                 'status' => 'PAID',
                 'ref' => $validated['ref'] ?? $payment->ref,
-                'raw_response' => $request->all(),
+                'raw_response' => array_merge($payment->raw_response ?? [], $request->all()),
             ]);
 
             $booking->update([
@@ -158,7 +207,7 @@ class PaymentController extends Controller
             $payment->update([
                 'status' => 'FAILED',
                 'ref' => $validated['ref'] ?? $payment->ref,
-                'raw_response' => $request->all(),
+                'raw_response' => array_merge($payment->raw_response ?? [], $request->all()),
             ]);
 
             $booking->update(['payment_status' => 'FAILED']);
@@ -194,7 +243,7 @@ class PaymentController extends Controller
         }
 
         $redirectUrl = $frontendUrl
-            ? $frontendUrl . '/booking/success?' . http_build_query([
+            ? $frontendUrl . '/booking/payment-result?' . http_build_query([
                 'booking_id' => $booking->id,
                 'provider' => 'billplz',
                 'payment_method' => $paymentMethod,
@@ -239,5 +288,30 @@ class PaymentController extends Controller
         }
 
         return (array) $response->json();
+    }
+
+    private function authorizeBooking(Request $request, Booking $booking): void
+    {
+        $customer = $request->user('customer');
+        abort_unless($customer && (int) $booking->customer_id === (int) $customer->id, 403, 'Forbidden booking access.');
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function mapBankAccount(BankAccount $bankAccount): array
+    {
+        return [
+            'id' => $bankAccount->id,
+            'label' => $bankAccount->label,
+            'bank_name' => $bankAccount->bank_name,
+            'account_name' => $bankAccount->account_name,
+            'account_number' => $bankAccount->account_number,
+            'branch' => $bankAccount->branch,
+            'swift_code' => $bankAccount->swift_code,
+            'logo_url' => $bankAccount->logo_url,
+            'qr_image_url' => $bankAccount->qr_image_url,
+            'instructions' => $bankAccount->instructions,
+        ];
     }
 }
