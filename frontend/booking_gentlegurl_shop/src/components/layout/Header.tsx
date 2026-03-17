@@ -15,6 +15,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const [cartOpen, setCartOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isActive = (path: string) => (pathname === path || pathname?.startsWith(`${path}/`) ? "text-[var(--foreground)]" : "text-[var(--text-muted)]");
@@ -38,6 +39,18 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
 
   // Load cart count
   useEffect(() => {
@@ -70,21 +83,103 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-[var(--muted)]/50 bg-[var(--background)]/80 backdrop-blur">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-            <Link href="/" className="hidden items-center md:flex h-8 w-[120px] shrink-0">
-                <Image
-                  src={resolvedLogoUrl}
-                  alt="Gentlegurl Shop"
-                  width={120}
-                  height={40}
-                  className="h-8 w-auto object-contain"
-                  priority
-                />
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
+          {/* Desktop: Logo + Navigation */}
+          <div className="hidden items-center gap-6 md:flex">
+            <Link href="/" className="flex h-8 w-[120px] shrink-0 items-center">
+              <Image
+                src={resolvedLogoUrl}
+                alt="Gentlegurl Shop"
+                width={120}
+                height={40}
+                className="h-8 w-auto object-contain"
+                priority
+              />
+            </Link>
+
+            <nav className="hidden gap-6 text-sm font-medium md:flex">
+              <Link href="/" className={isActive("/")}>
+                Home
               </Link>
-          <div className="flex items-center gap-4 text-sm font-medium">
-            <Link href="/" className={isActive("/")}>Home</Link>
-            <Link href="/booking" className={isActive("/booking")}>Book</Link>
-            <Link href="/booking/packages" className={isActive("/booking/packages")}>Packages</Link>
+              <Link href="/booking" className={isActive("/booking")}>
+                Book
+              </Link>
+              <Link href="/booking/packages" className={isActive("/booking/packages")}>
+                Packages
+              </Link>
+            </nav>
+          </div>
+
+          {/* Mobile: Hamburger + Logo + Actions */}
+          <div className="flex w-full items-center gap-4 md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="flex items-center text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+              aria-label="Toggle menu"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+
+            <Link href="/" className="flex h-7 w-[120px] shrink-0 items-center">
+              <Image
+                src={resolvedLogoUrl}
+                alt="Gentlegurl Shop"
+                width={120}
+                height={40}
+                className="h-7 w-auto object-contain"
+                priority
+              />
+            </Link>
+
+            <div className="ml-auto flex items-center gap-3">
+              {authLoading ? (
+                <div className="h-8 w-8 animate-pulse rounded-full bg-[var(--muted)]/50" />
+              ) : user ? (
+                <Link
+                  href="/account"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+                  aria-label="Account"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7Z" />
+                  </svg>
+                </Link>
+              ) : (
+                <Link
+                  href={`/login?redirect=${encodeURIComponent(pathname || "/booking")}`}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+                  aria-label="Login"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7Z" />
+                  </svg>
+                </Link>
+              )}
+
+              <button
+                onClick={() => setCartOpen(true)}
+                className="relative flex items-center text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+                aria-label="Open cart"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+                </svg>
+                {cartCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-semibold text-white shadow-sm">
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Desktop: Right Side Actions */}
+          <div className="hidden items-center gap-4 md:flex">
             {authLoading ? (
               <div className="h-8 w-24 animate-pulse rounded bg-[var(--muted)]/50" />
             ) : user ? (
@@ -103,7 +198,13 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                     />
                   </div>
                   <span className="text-sm font-medium text-[var(--foreground)]/80">{user?.name}</span>
-                  <svg className={`h-3 w-3 transition-transform ${userMenuOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    className={`h-3 w-3 transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
@@ -148,9 +249,18 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                 )}
               </div>
             ) : (
-              <Link href={`/login?redirect=${encodeURIComponent(pathname || "/booking")}`} className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-white hover:bg-[var(--accent-stronger)] transition-colors">Login</Link>
+              <Link
+                href={`/login?redirect=${encodeURIComponent(pathname || "/booking")}`}
+                className="relative flex items-center text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+                aria-label="Login"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21a8 8 0 0 0-16 0" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </Link>
             )}
-            {/* Cart Icon */}
+
             <button
               onClick={() => setCartOpen(true)}
               className="relative flex items-center text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
@@ -166,8 +276,59 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
               )}
             </button>
           </div>
-        </nav>
+        </div>
       </header>
+
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="fixed left-0 top-0 z-40 h-full w-80 max-w-[85vw] overflow-y-auto border-r border-[var(--card-border)]/50 bg-[var(--card)]/95 backdrop-blur-sm shadow-xl md:hidden">
+            <div className="flex h-16 items-center justify-between border-b border-[var(--muted)]/50 px-4">
+              <span className="text-sm font-semibold text-[var(--foreground)]">Menu</span>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+                aria-label="Close menu"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-4 py-4">
+              <nav className="space-y-1">
+                <Link
+                  href="/"
+                  className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Home
+                </Link>
+                <Link
+                  href="/booking"
+                  className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Book
+                </Link>
+                <Link
+                  href="/booking/packages"
+                  className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Packages
+                </Link>
+              </nav>
+            </div>
+          </div>
+        </>
+      )}
       <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />
     </>
   );

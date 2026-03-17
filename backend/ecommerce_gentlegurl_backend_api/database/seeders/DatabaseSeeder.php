@@ -38,7 +38,6 @@ class DatabaseSeeder extends Seeder
             // upper all should open , no command to avoid error seed
 
 
-            FooterWidgetSeederTesting::class,
             FrontendTestDataSeeder::class,
             LoyaltyRewardSeederTesting::class,
             LoyaltyDemoCustomerSeederTesting::class,
@@ -51,6 +50,7 @@ class DatabaseSeeder extends Seeder
             // SalesReportSeeder::class,
             //ReturnRequestSeeder::class,
 
+            // FooterWidgetSeederTesting::class, 没用了上面有了
             // 暂时没用到的
             // PaymentGatewaySeeder::class, 
         ]);
