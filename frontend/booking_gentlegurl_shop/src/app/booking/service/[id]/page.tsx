@@ -82,11 +82,19 @@ export default function ServiceDetailPage() {
                       href={`/booking/service/${id}/slots?staff_id=${staff.id}`}
                       className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow"
                     >
-                      <p className="font-semibold text-[var(--foreground)]">{staff.name}</p>
-                      <p className="mt-1 text-sm text-[var(--text-muted)]">Available stylist</p>
-                      <span className="mt-4 inline-flex rounded-full bg-[var(--accent-strong)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--accent-stronger)] transition-colors">
-                        Select
-                      </span>
+                      <div className="flex items-start gap-3">
+                        {(staff.avatar_url || staff.avatar_path || staff.avatar) ? (
+                          <img src={(staff.avatar_url || staff.avatar_path || staff.avatar) as string} alt={staff.name} className="h-14 w-14 rounded-full object-cover" />
+                        ) : (
+                          <div className="h-14 w-14 rounded-full bg-gray-200" />
+                        )}
+                        <div>
+                          <p className="font-semibold text-[var(--foreground)]">{staff.name}</p>
+                          <p className="text-sm text-[var(--text-muted)]">{staff.position || 'Staff'}</p>
+                          <p className="mt-1 text-xs text-[var(--text-muted)]">{staff.description || 'Available stylist'}</p>
+                        </div>
+                      </div>
+                      <span className="mt-4 inline-flex rounded-full bg-[var(--accent-strong)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--accent-stronger)] transition-colors">Select</span>
                     </Link>
                   ))}
                 </div>

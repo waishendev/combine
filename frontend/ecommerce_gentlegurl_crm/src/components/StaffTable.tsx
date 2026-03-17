@@ -15,6 +15,7 @@ import {
 import StaffCreateModal from './StaffCreateModal'
 import StaffEditModal from './StaffEditModal'
 import StaffDeleteModal from './StaffDeleteModal'
+import StaffViewModal from './StaffViewModal'
 import {
   type StaffApiItem,
   mapStaffApiItemToRow,
@@ -63,6 +64,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
   const [editingStaffId, setEditingStaffId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StaffRowData | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
+  const [viewingStaff, setViewingStaff] = useState<StaffRowData | null>(null)
 
   const canCreate = permissions.includes('staff.create')
   const canUpdate = permissions.includes('staff.update')
@@ -302,7 +304,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 7 : 6
+  const colCount = showActions ? 8 : 7
 
   const totalPages = meta.last_page || 1
 
@@ -454,6 +456,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
             <tr>
               {(
                 [
+                  { key: 'avatarUrl', label: 'Avatar' },
                   { key: 'name', label: 'Name' },
                   { key: 'email', label: 'Email' },
                   { key: 'phone', label: 'Phone' },
@@ -498,6 +501,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   canViewPosSummary={canViewPosSummary}
+                  onView={(staff) => setViewingStaff(staff)}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingStaffId(staff.id)
@@ -539,6 +543,13 @@ export default function StaffTable({ permissions }: StaffTableProps) {
         />
       )}
 
+
+      {viewingStaff && (
+        <StaffViewModal
+          staff={viewingStaff}
+          onClose={() => setViewingStaff(null)}
+        />
+      )}
       {deleteTarget && (
         <StaffDeleteModal
           staff={deleteTarget}

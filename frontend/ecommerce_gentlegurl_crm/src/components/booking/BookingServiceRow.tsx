@@ -12,6 +12,8 @@ export interface BookingServiceRowData {
   deposit_amount: string | number
   buffer_min: number
   isActive: boolean
+  imagePath?: string
+  imageUrl?: string
   createdAt?: string
 }
 
@@ -35,6 +37,7 @@ export default function BookingServiceRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      <td className="px-4 py-2 border border-gray-200">{service.imageUrl ? <img src={service.imageUrl} alt={service.name} className="h-10 w-10 rounded object-cover" /> : <div className="h-10 w-10 rounded bg-gray-200" />}</td>
       <td className="px-4 py-2 border border-gray-200">{service.name}</td>
       <td className="px-4 py-2 border border-gray-200">{service.description || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{service.duration_min}</td>

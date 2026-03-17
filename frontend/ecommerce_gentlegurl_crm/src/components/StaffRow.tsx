@@ -14,6 +14,7 @@ interface StaffRowProps {
   canViewPosSummary?: boolean
   onEdit?: (staff: StaffRowData) => void
   onDelete?: (staff: StaffRowData) => void
+  onView?: (staff: StaffRowData) => void
   onViewPosSummary?: (staff: StaffRowData) => void
 }
 
@@ -25,11 +26,15 @@ export default function StaffRow({
   canViewPosSummary = false,
   onEdit,
   onDelete,
+  onView,
   onViewPosSummary,
 }: StaffRowProps) {
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      <td className="px-4 py-2 border border-gray-200">
+        {staff.avatarUrl ? <img src={staff.avatarUrl} alt={staff.name} className="h-10 w-10 rounded-full object-cover" /> : <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center"><i className="fa-solid fa-user text-gray-500" /></div>}
+      </td>
       <td className="px-4 py-2 border border-gray-200">{staff.name}</td>
       <td className="px-4 py-2 border border-gray-200">{staff.email}</td>
       <td className="px-4 py-2 border border-gray-200">{staff.phone}</td>
@@ -48,6 +53,7 @@ export default function StaffRow({
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
+            <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-600 text-white hover:bg-gray-700" onClick={() => onView?.(staff)} title="View"><i className="fa-solid fa-eye" /></button>
             {canUpdate && (
               <button
                 type="button"

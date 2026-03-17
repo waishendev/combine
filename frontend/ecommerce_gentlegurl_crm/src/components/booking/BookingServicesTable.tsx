@@ -272,7 +272,7 @@ export default function BookingServicesTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 8 : 7
+  const colCount = showActions ? 9 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -443,6 +443,7 @@ export default function BookingServicesTable({
             <tr>
               {(
                 [
+                  { key: 'imageUrl', label: 'Image' },
                   { key: 'name', label: 'Name' },
                   { key: 'description', label: 'Description' },
                   { key: 'duration_min', label: 'Duration (min)' },

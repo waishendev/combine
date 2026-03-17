@@ -25,6 +25,7 @@ class ServiceController extends Controller
                 'deposit_amount',
                 'buffer_min',
                 'is_active',
+                'image_path',
             ]);
 
         $payload = $services->map(function (BookingService $service) {
@@ -53,11 +54,15 @@ class ServiceController extends Controller
             ->whereIn('id', $staffIds)
             ->where('is_active', true)
             ->orderBy('name')
-            ->get(['id', 'name'])
+            ->get(['id', 'name', 'position', 'description', 'avatar_path'])
             ->map(function (Staff $staff) {
                 return [
                     'id' => (int) $staff->id,
                     'name' => $staff->name,
+                    'position' => $staff->position,
+                    'description' => $staff->description,
+                    'avatar_path' => $staff->avatar_path,
+                    'avatar_url' => $staff->avatar_url,
                 ];
             })
             ->values()
@@ -75,6 +80,8 @@ class ServiceController extends Controller
             'deposit_amount' => (float) $service->deposit_amount,
             'buffer_min' => (int) $service->buffer_min,
             'is_active' => (bool) $service->is_active,
+            'image_path' => $service->image_path,
+            'image_url' => $service->image_url,
             'staffs' => $staffs,
         ];
 
