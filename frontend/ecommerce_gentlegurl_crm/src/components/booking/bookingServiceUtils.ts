@@ -4,7 +4,7 @@ export type BookingServiceApiItem = {
   id: number | string
   name?: string | null
   description?: string | null
-  service_type?: 'premium' | 'standard' | null
+  service_type?: 'premium' | 'standard' | string | null
   duration_min?: number | string | null
   service_price?: string | number | null
   deposit_amount?: string | number | null
@@ -44,6 +44,10 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
   return {
     id: normalizedId,
     name: item.name ?? '-',
+    serviceType:
+      item.service_type === 'premium' || item.service_type === 'standard'
+        ? item.service_type
+        : (item.service_type ? String(item.service_type) : ''),
     description: item.description ?? '',
     duration_min: durationMin,
     service_price: servicePrice,

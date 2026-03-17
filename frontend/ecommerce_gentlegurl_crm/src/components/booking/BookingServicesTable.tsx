@@ -272,7 +272,7 @@ export default function BookingServicesTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 9 : 8
+  const colCount = showActions ? 10 : 9
 
   const totalPages = meta.last_page || 1
 
@@ -445,6 +445,7 @@ export default function BookingServicesTable({
                 [
                   { key: 'imageUrl', label: 'Image' },
                   { key: 'name', label: 'Name' },
+                  { key: 'serviceType', label: 'Type' },
                   { key: 'description', label: 'Description' },
                   { key: 'duration_min', label: 'Duration (min)' },
                   { key: 'service_price', label: 'Service Price' },
