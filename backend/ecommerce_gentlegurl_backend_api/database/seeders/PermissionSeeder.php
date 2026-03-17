@@ -123,6 +123,15 @@ class PermissionSeeder extends Seeder
                 'commission-tiers.view',
                 'commissions.view' ,
                 'commissions.override',
+                'bank-accounts.view',
+                'bank-accounts.create',
+                'bank-accounts.update',
+                'bank-accounts.delete',
+                'payment-gateways.view',
+                'payment-gateways.create',
+                'payment-gateways.update',
+                'payment-gateways.delete',
+
             ],
         ];
 

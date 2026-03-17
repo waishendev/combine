@@ -62,6 +62,9 @@ return [
     */
 
     'frontend_url' => env('FRONTEND_URL'),
+    // Workspace-specific frontend base URLs (optional)
+    'frontend_url_ecommerce' => env('FRONTEND_URL_ECOMMERCE', env('FRONTEND_URL')),
+    'frontend_url_booking' => env('FRONTEND_URL_BOOKING', env('FRONTEND_URL')),
 
     'billplz' => [
         'api_key' => env('BILPLZ_API_KEY', env('BILLPLZ_API_KEY')),

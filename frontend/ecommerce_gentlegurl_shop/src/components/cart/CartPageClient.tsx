@@ -138,7 +138,7 @@ export default function CartPageClient() {
   // Calculate promotion discounts for selected items
   const promotionDiscount = useMemo(() => {
     if (selectedItems.length === 0 || promotions.length === 0) {
-      return { totalDiscount: 0, promotionResults: [] };
+      return { totalDiscount: 0, promotionResults: [], itemDiscounts: {} };
     }
 
     const cartItemsForPromotion = selectedItems.map((item) => ({
@@ -158,7 +158,11 @@ export default function CartPageClient() {
       console.log('Promotion discount result:', result);
     }
 
-    return result;
+    return {
+      totalDiscount: result.totalDiscount ?? 0,
+      promotionResults: result.promotionResults ?? [],
+      itemDiscounts: result.itemDiscounts ?? {},
+    };
   }, [selectedItems, promotions]);
 
   // ✅ 如果你的 totals 里面有 discount/shipping/grand_total 就用；没有就 fallback

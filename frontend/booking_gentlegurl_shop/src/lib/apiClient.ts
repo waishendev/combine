@@ -55,6 +55,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   headers.set("Accept", "application/json");
+  // Let backend generate correct email links (verify/reset) for this frontend.
+  if (!headers.has("X-Workspace")) {
+    headers.set("X-Workspace", "booking");
+  }
   if (path.startsWith("/booking/cart")) {
     const guestToken = getOrCreateBookingGuestToken();
     if (guestToken) {
@@ -86,6 +90,28 @@ const unwrapData = <T>(input: { data?: T } | T): T => {
   }
   return input as T;
 };
+
+export async function resendCustomerVerification(payload: { email: string }) {
+  return request<{ success?: boolean; message?: string }>("/public/shop/auth/email/resend-verification", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyCustomerEmail(payload: {
+  id: string;
+  hash: string;
+  expires?: string | null;
+  signature?: string | null;
+}) {
+  const query = new URLSearchParams();
+  if (payload.expires) query.set("expires", payload.expires);
+  if (payload.signature) query.set("signature", payload.signature);
+
+  const queryString = query.toString();
+  const url = `/public/shop/auth/email/verify/${payload.id}/${payload.hash}${queryString ? `?${queryString}` : ""}`;
+  return request<{ success?: boolean; message?: string }>(url);
+}
 
 export async function getBookingServices(search?: string) {
   const query = search ? `?search=${encodeURIComponent(search)}` : "";

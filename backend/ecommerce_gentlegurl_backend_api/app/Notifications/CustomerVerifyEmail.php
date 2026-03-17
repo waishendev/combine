@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Services\MailgunService;
+use App\Support\FrontendUrlResolver;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Log;
@@ -21,7 +22,7 @@ class CustomerVerifyEmail extends VerifyEmail
             ],
         );
 
-        $frontendBase = rtrim(config('services.frontend_url') ?? config('app.url'), '/');
+        $frontendBase = FrontendUrlResolver::resolveBaseUrl();
         $queryParams = [];
         $queryString = parse_url($backendUrl, PHP_URL_QUERY);
 
