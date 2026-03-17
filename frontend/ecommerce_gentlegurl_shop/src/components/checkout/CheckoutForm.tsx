@@ -182,7 +182,7 @@ export default function CheckoutForm() {
   // Calculate promotion discounts for selected items
   const promotionDiscount = useMemo(() => {
     if (selectedItems.length === 0 || promotions.length === 0) {
-      return { totalDiscount: 0, promotionResults: [] };
+      return { totalDiscount: 0, promotionResults: [], itemDiscounts: {} };
     }
 
     const cartItemsForPromotion = selectedItems.map((item) => ({
@@ -193,7 +193,13 @@ export default function CheckoutForm() {
       line_total: Number(item.unit_price ?? 0) * item.quantity,
     }));
 
-    return calculatePromotionDiscounts(cartItemsForPromotion, promotions);
+    const result = calculatePromotionDiscounts(cartItemsForPromotion, promotions);
+
+    return {
+      totalDiscount: result.totalDiscount ?? 0,
+      promotionResults: result.promotionResults ?? [],
+      itemDiscounts: result.itemDiscounts ?? {},
+    };
   }, [selectedItems, promotions]);
 
   const safeTotals = useMemo(() => {

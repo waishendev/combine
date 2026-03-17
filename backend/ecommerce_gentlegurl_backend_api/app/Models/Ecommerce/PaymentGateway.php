@@ -10,6 +10,7 @@ class PaymentGateway extends Model
     use HasFactory;
 
     protected $fillable = [
+        'type',
         'key',
         'name',
         'is_active',

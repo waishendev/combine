@@ -369,6 +369,9 @@ async function apiRequest<T>(path: string, method: HttpMethod, options: ApiReque
     ...(requestInit.headers as Record<string, string> || {}),
   };
 
+  // Let backend generate correct email links (verify/reset) for this frontend.
+  headers["X-Workspace"] = headers["X-Workspace"] ?? "ecommerce";
+
   const isGetRequest = method === "GET";
   let body: BodyInit | undefined = requestInit.body as BodyInit | undefined;
   let jsonBody = initialJsonBody;
@@ -884,7 +887,7 @@ export async function completeOrder(orderId: number): Promise<CompleteOrderRespo
 }
 
 export async function getBankAccounts(): Promise<PublicBankAccount[]> {
-  const response = await get<{ data: PublicBankAccount[] }>("/public/shop/bank-accounts", {
+  const response = await get<{ data: PublicBankAccount[] }>("/public/shop/bank-accounts?type=ecommerce", {
     headers: { Accept: "application/json" },
   });
 

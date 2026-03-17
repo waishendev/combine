@@ -5,6 +5,7 @@ export type Service = {
   service_type: "premium" | "standard";
   duration_minutes: number;
   deposit_amount: number;
+  payment_status?: string;
   price: number;
   category?: string;
 };
@@ -68,6 +69,7 @@ export type BookingRecord = {
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;
+  payment_status?: string;
   reschedule_count?: number;
   cancellation_request?: {
     id: number;
@@ -75,6 +77,15 @@ export type BookingRecord = {
     requested_at?: string | null;
   } | null;
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null;
+  latest_payment?: {
+    id: number;
+    status: string;
+    provider: string;
+    payment_method?: string | null;
+    payment_url?: string | null;
+    manual_status?: string | null;
+    manual_slip_url?: string | null;
+  } | null;
   paid_via_order?: {
     order_id: number;
     order_number: string;

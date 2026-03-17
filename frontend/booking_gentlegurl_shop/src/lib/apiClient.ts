@@ -18,6 +18,29 @@ import {
 
 const API_PREFIX = "/api/proxy";
 
+
+export type PublicBookingBankAccount = {
+  id: number;
+  label?: string | null;
+  bank_name: string;
+  account_name: string;
+  account_number: string;
+  branch?: string | null;
+  swift_code?: string | null;
+  logo_url?: string | null;
+  qr_image_url?: string | null;
+  instructions?: string | null;
+  is_default?: boolean;
+};
+
+export type PublicBookingPaymentGateway = {
+  id: number;
+  key: string;
+  name: string;
+  is_active?: boolean;
+  is_default?: boolean;
+};
+
 class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -32,6 +55,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   headers.set("Accept", "application/json");
+  // Let backend generate correct email links (verify/reset) for this frontend.
+  if (!headers.has("X-Workspace")) {
+    headers.set("X-Workspace", "booking");
+  }
   if (path.startsWith("/booking/cart")) {
     const guestToken = getOrCreateBookingGuestToken();
     if (guestToken) {
@@ -63,6 +90,28 @@ const unwrapData = <T>(input: { data?: T } | T): T => {
   }
   return input as T;
 };
+
+export async function resendCustomerVerification(payload: { email: string }) {
+  return request<{ success?: boolean; message?: string }>("/public/shop/auth/email/resend-verification", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyCustomerEmail(payload: {
+  id: string;
+  hash: string;
+  expires?: string | null;
+  signature?: string | null;
+}) {
+  const query = new URLSearchParams();
+  if (payload.expires) query.set("expires", payload.expires);
+  if (payload.signature) query.set("signature", payload.signature);
+
+  const queryString = query.toString();
+  const url = `/public/shop/auth/email/verify/${payload.id}/${payload.hash}${queryString ? `?${queryString}` : ""}`;
+  return request<{ success?: boolean; message?: string }>(url);
+}
 
 export async function getBookingServices(search?: string) {
   const query = search ? `?search=${encodeURIComponent(search)}` : "";
@@ -140,6 +189,27 @@ export async function checkoutCart(payload?: {
   });
 }
 
+
+export async function getBookingBankAccounts() {
+  const response = await request<{ data?: PublicBookingBankAccount[] } | PublicBookingBankAccount[]>("/public/shop/bank-accounts?type=booking");
+  return unwrapData<PublicBookingBankAccount[]>(response) ?? [];
+}
+
+export async function getBookingPaymentGateways() {
+  const response = await request<{ data?: { payment_gateways?: PublicBookingPaymentGateway[] } }>("/public/shop/homepage?type=booking");
+  return response?.data?.payment_gateways ?? [];
+}
+
+export async function payBooking(bookingId: string | number, payload?: {
+  payment_method?: "manual_transfer" | "billplz_fpx" | "billplz_card";
+  bank_account_id?: number;
+}) {
+  return request<{ data?: { payment_url?: string; status?: string; provider?: string; payment_method?: string; manual_bank_account?: PublicBookingBankAccount } }>(`/booking/${bookingId}/pay?type=booking`, {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
 export async function loginCustomer(payload: { email: string; password: string }) {
   return request<{ success: boolean }>("/public/auth/login", {
     method: "POST",
@@ -170,8 +240,43 @@ export async function logoutCustomer() {
   return request<{ success: boolean }>("/public/auth/logout", { method: "POST", body: JSON.stringify({}) });
 }
 
+
+export async function getBookingPaymentDetail(bookingId: number | string) {
+  const response = await request<{ data?: {
+    booking_id: number;
+    booking_code?: string | null;
+    booking_status: string;
+    payment_status: string;
+    amount: number;
+    payment?: {
+      id: number;
+      status: string;
+      provider: string;
+      ref?: string | null;
+      payment_method?: string | null;
+      payment_url?: string | null;
+      manual_bank_account?: PublicBookingBankAccount | null;
+      slip_url?: string | null;
+      manual_status?: string | null;
+    } | null;
+  } }>(`/booking/${bookingId}/payment-detail?type=booking`);
+  return response.data;
+}
+
+export async function uploadBookingPaymentSlip(bookingId: number | string, file: File) {
+  const formData = new FormData();
+  formData.append("slip", file);
+
+  const response = await request<{ data?: { payment_id: number; slip_url: string; manual_status: string } }>(`/booking/${bookingId}/upload-slip?type=booking`, {
+    method: "POST",
+    body: formData,
+  });
+
+  return response.data;
+}
+
 export async function getMyBookings() {
-  const response = await request<{ data: BookingRecord[] } | BookingRecord[]>("/booking/my");
+  const response = await request<{ data: BookingRecord[] } | BookingRecord[]>("/public/shop/bookings");
   return unwrapData<BookingRecord[]>(response);
 }
 
@@ -312,8 +417,11 @@ export async function makeDefaultCustomerAddress(id: number) {
 }
 
 export async function getBookingPolicySettings() {
-  const response = await request<{ data?: { booking_policy?: BookingPolicy } }>("/ecommerce/shop-settings?type=booking");
-  return response?.data?.booking_policy ?? {
+  // Use public homepage endpoint (admin shop-settings requires admin auth)
+  const response = await request<{ data?: { settings?: { booking_policy?: BookingPolicy } } }>(
+    "/public/shop/homepage?type=booking",
+  );
+  return response?.data?.settings?.booking_policy ?? {
     reschedule: { enabled: true, max_changes: 1, cutoff_hours: 72 },
     cancel: { customer_cancel_allowed: false, deposit_refundable: false },
   };

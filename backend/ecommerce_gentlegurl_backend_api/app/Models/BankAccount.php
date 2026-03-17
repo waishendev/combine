@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Storage;
 class BankAccount extends Model
 {
     protected $fillable = [
+        'type',
         'label',
         'bank_name',
         'account_name',

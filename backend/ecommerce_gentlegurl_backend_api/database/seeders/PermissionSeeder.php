@@ -48,6 +48,8 @@ class PermissionSeeder extends Seeder
             'pos' => 'POS',
             'ecommerce.returns' => 'Ecommerce Returns',
             'booking' => 'Booking',
+            'booking.payment-gateways' => 'Booking Payment Gateways',
+            'booking.bank-accounts' => 'Booking Manual Bank Accounts',
         ];
 
         $groupModels = [];
@@ -121,6 +123,15 @@ class PermissionSeeder extends Seeder
                 'commission-tiers.view',
                 'commissions.view' ,
                 'commissions.override',
+                'bank-accounts.view',
+                'bank-accounts.create',
+                'bank-accounts.update',
+                'bank-accounts.delete',
+                'payment-gateways.view',
+                'payment-gateways.create',
+                'payment-gateways.update',
+                'payment-gateways.delete',
+
             ],
         ];
 

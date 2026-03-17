@@ -17,7 +17,7 @@ export default async function PaymentGatewaysPage() {
 
   // Check if user has permission to view payment gateways
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'ecommerce.payment-gateways.view'
+    (perm) => perm === 'ecommerce.payment-gateways.view' || perm === 'booking.payment-gateways.view'
   )
   
   if (!hasPermission) {

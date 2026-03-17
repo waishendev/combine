@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\CustomerServicePackageUsage;
+use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\OrderItem;
 use Illuminate\Http\Request;
 
@@ -37,7 +38,14 @@ class MyBookingController extends Controller
             ->groupBy('booking_id')
             ->map(fn ($group) => $group->first());
 
-        $payload = $bookings->map(function (Booking $booking) use ($claimsByBooking, $latestCancellationRequests) {
+        $latestPaymentsByBooking = BookingPayment::query()
+            ->whereIn('booking_id', $bookings->pluck('id')->all())
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('booking_id')
+            ->map(fn ($group) => $group->first());
+
+        $payload = $bookings->map(function (Booking $booking) use ($claimsByBooking, $latestCancellationRequests, $latestPaymentsByBooking) {
             $depositOrderItem = OrderItem::query()
                 ->with('order:id,order_number')
                 ->where('line_type', 'booking_deposit')
@@ -51,6 +59,7 @@ class MyBookingController extends Controller
                 'start_at' => $booking->start_at?->toIso8601String(),
                 'starts_at' => $booking->start_at?->toIso8601String(),
                 'deposit_amount' => (float) $booking->deposit_amount,
+                'payment_status' => (string) $booking->payment_status,
                 'reschedule_count' => (int) ($booking->reschedule_count ?? 0),
                 'cancellation_request' => (function () use ($latestCancellationRequests, $booking) {
                     $request = $latestCancellationRequests->get($booking->id);
@@ -85,6 +94,22 @@ class MyBookingController extends Controller
                     'id' => (int) $booking->staff->id,
                     'name' => $booking->staff->name,
                 ] : null,
+                'latest_payment' => (function () use ($latestPaymentsByBooking, $booking) {
+                    $payment = $latestPaymentsByBooking->get($booking->id);
+                    if (! $payment) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => (int) $payment->id,
+                        'status' => (string) $payment->status,
+                        'provider' => (string) $payment->provider,
+                        'payment_method' => data_get($payment->raw_response, 'payment_method'),
+                        'payment_url' => data_get($payment->raw_response, 'payment_url'),
+                        'manual_status' => data_get($payment->raw_response, 'payment_status'),
+                        'manual_slip_url' => data_get($payment->raw_response, 'manual_slip_url'),
+                    ];
+                })(),
                 'paid_via_order' => $depositOrderItem?->order ? [
                     'order_id' => (int) $depositOrderItem->order->id,
                     'order_number' => (string) $depositOrderItem->order->order_number,

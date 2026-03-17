@@ -6,6 +6,7 @@ use App\Models\CustomerAddress;
 use App\Notifications\CustomerResetPassword;
 use App\Notifications\CustomerVerifyEmail;
 use App\Services\MailgunService;
+use App\Support\FrontendUrlResolver;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -77,7 +78,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
                     ],
                 );
 
-                $frontendBase = rtrim(config('services.frontend_url') ?? config('app.url'), '/');
+                $frontendBase = FrontendUrlResolver::resolveBaseUrl();
                 $queryParams = [];
                 $queryString = parse_url($backendUrl, PHP_URL_QUERY);
 

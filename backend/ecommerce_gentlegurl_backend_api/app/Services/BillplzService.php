@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\PaymentGateway;
+use App\Support\WorkspaceType;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -13,13 +15,19 @@ class BillplzService
      *
      * @return array<string, mixed>
      */
-    public function createBill(Order $order): array
+    public function createBill(Order $order, string $type = WorkspaceType::ECOMMERCE): array
     {
-        $apiKey = config('services.billplz.api_key');
-        $collectionId = config('services.billplz.collection_id');
-        $baseUrl = rtrim((string) (config('services.billplz.base_url') ?? 'https://www.billplz.com/api/v3'), '/');
-        $frontendUrl = rtrim((string) (config('services.billplz.frontend_url') ?? ''), '/');
-        $publicUrl = rtrim((string) (config('services.billplz.public_url') ?? config('app.url') ?? ''), '/');
+        $gatewayConfig = PaymentGateway::query()
+            ->where('type', $type)
+            ->where('key', 'billplz_fpx')
+            ->where('is_active', true)
+            ->value('config');
+
+        $apiKey = data_get($gatewayConfig, 'api_key') ?: config('services.billplz.api_key');
+        $collectionId = data_get($gatewayConfig, 'collection_id') ?: config('services.billplz.collection_id');
+        $baseUrl = rtrim((string) (data_get($gatewayConfig, 'base_url') ?: config('services.billplz.base_url') ?: 'https://www.billplz.com/api/v3'), '/');
+        $frontendUrl = rtrim((string) (data_get($gatewayConfig, 'frontend_url') ?: config('services.billplz.frontend_url') ?: ''), '/');
+        $publicUrl = rtrim((string) (data_get($gatewayConfig, 'public_url') ?: config('services.billplz.public_url') ?: config('app.url') ?: ''), '/');
 
         if (!$apiKey || !$collectionId) {
             throw new RuntimeException('Billplz is not configured.');

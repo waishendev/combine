@@ -476,6 +476,27 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
           },
         ],
       },
+
+      {
+        key: 'booking-payment-gateway',
+        label: 'Payment Gateway',
+        icon: 'fa-solid fa-credit-card',
+        children: [
+          {
+            key: 'booking-payment-gateways',
+            label: 'Payment Gateway',
+            href: '/payment-gateways',
+            requiredPermission: 'booking.payment-gateways.view',
+          },
+          {
+            key: 'booking-bank-accounts',
+            label: 'Bank (Manual Transfer)',
+            href: '/bank-accounts',
+            requiredPermission: 'booking.bank-accounts.view',
+          },
+        ],
+      },
+
       {
         key: 'booking-reports',
         label: 'Reports',

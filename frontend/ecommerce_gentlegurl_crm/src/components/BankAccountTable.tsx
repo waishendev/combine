@@ -14,6 +14,7 @@ import {
   mapBankAccountApiItemToRow,
 } from './bankAccountUtils'
 import { useI18n } from '@/lib/i18n'
+import { getWorkspace } from '@/lib/workspace'
 
 interface BankAccountTableProps {
   permissions: string[]
@@ -46,6 +47,7 @@ export default function BankAccountTable({
   permissions,
 }: BankAccountTableProps) {
   const { t } = useI18n()
+  const workspaceType = getWorkspace()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [rows, setRows] = useState<BankAccountRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
@@ -107,6 +109,7 @@ export default function BankAccountTable({
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
+        qs.set('type', workspaceType)
 
         const res = await fetch(`/api/proxy/ecommerce/bank-accounts?${qs.toString()}`, {
           cache: 'no-store',
@@ -306,7 +309,7 @@ export default function BankAccountTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/ecommerce/bank-accounts/${bankAccount.id}/move-up`,
+        `/api/proxy/ecommerce/bank-accounts/${bankAccount.id}/move-up?type=${workspaceType}`,
         {
           method: 'POST',
           headers: {
@@ -333,6 +336,7 @@ export default function BankAccountTable({
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
+        qs.set('type', workspaceType)
 
       const refreshRes = await fetch(
         `/api/proxy/ecommerce/bank-accounts?${qs.toString()}`,
@@ -403,7 +407,7 @@ export default function BankAccountTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/ecommerce/bank-accounts/${bankAccount.id}/move-down`,
+        `/api/proxy/ecommerce/bank-accounts/${bankAccount.id}/move-down?type=${workspaceType}`,
         {
           method: 'POST',
           headers: {
@@ -430,6 +434,7 @@ export default function BankAccountTable({
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
+        qs.set('type', workspaceType)
 
       const refreshRes = await fetch(
         `/api/proxy/ecommerce/bank-accounts?${qs.toString()}`,

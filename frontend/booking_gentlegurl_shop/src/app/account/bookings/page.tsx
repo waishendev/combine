@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   getBookingPolicySettings,
   getMyBookings,
+  payBooking,
   requestBookingCancellation,
   rescheduleBooking,
 } from "@/lib/apiClient";
@@ -145,7 +146,34 @@ export default function MyBookingsPage() {
               ) : null}
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <button className="rounded-full border px-4 py-2 text-sm">View</button>
+                <button onClick={() => router.push(`/booking/payment-result?booking_id=${booking.id}`)} className="rounded-full border px-4 py-2 text-sm">View</button>
+
+                {booking.payment_status !== "PAID" ? (
+                  <button
+                    onClick={async () => {
+                      const method = booking.latest_payment?.payment_method || "manual_transfer";
+                      if (method === "manual_transfer") {
+                        router.push(`/booking/payment-result?booking_id=${booking.id}`);
+                        return;
+                      }
+
+                      try {
+                        const resp = await payBooking(booking.id, { payment_method: method as "billplz_fpx" | "billplz_card" | "manual_transfer" });
+                        const redirectUrl = resp?.data?.payment_url || booking.latest_payment?.payment_url;
+                        if (redirectUrl) {
+                          window.location.href = redirectUrl;
+                        } else {
+                          router.push(`/booking/payment-result?booking_id=${booking.id}`);
+                        }
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : "Unable to continue payment.");
+                      }
+                    }}
+                    className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white"
+                  >
+                    Pay Now
+                  </button>
+                ) : null}
 
                 {state.canReschedule ? (
                   <button

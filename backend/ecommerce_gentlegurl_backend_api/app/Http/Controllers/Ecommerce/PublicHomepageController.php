@@ -173,7 +173,23 @@ class PublicHomepageController extends Controller
                 'page_reviews' => SettingService::get('page_reviews', ['enabled' => true], $type),
             ];
 
+            // Booking-only settings needed by booking frontend (public).
+            if ($type === 'booking') {
+                $settings['booking_policy'] = SettingService::get('booking_policy', [
+                    'reschedule' => [
+                        'enabled' => true,
+                        'max_changes' => 1,
+                        'cutoff_hours' => 72,
+                    ],
+                    'cancel' => [
+                        'customer_cancel_allowed' => false,
+                        'deposit_refundable' => false,
+                    ],
+                ], $type);
+            }
+
             $paymentGateways = PaymentGateway::query()
+                ->where('type', $type)
                 ->where('is_active', true)
                 ->orderBy('sort_order')
                 ->orderBy('id')

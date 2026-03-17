@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import type { BankAccountRowData } from './BankAccountRow'
 import { mapBankAccountApiItemToRow, type BankAccountApiItem } from './bankAccountUtils'
 import { useI18n } from '@/lib/i18n'
+import { getWorkspace } from '@/lib/workspace'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface BankAccountEditModalProps {
@@ -39,6 +40,7 @@ export default function BankAccountEditModal({
   onSuccess,
 }: BankAccountEditModalProps) {
   const { t } = useI18n()
+  const workspaceType = getWorkspace()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -60,7 +62,7 @@ export default function BankAccountEditModal({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/ecommerce/bank-accounts/${bankAccountId}`, {
+        const res = await fetch(`/api/proxy/ecommerce/bank-accounts/${bankAccountId}?type=${workspaceType}`, {
           cache: 'no-store',
           signal: controller.signal,
           headers: {
@@ -243,7 +245,7 @@ export default function BankAccountEditModal({
         formData.append('qr_image_path', '')
       }
 
-      const res = await fetch(`/api/proxy/ecommerce/bank-accounts/${bankAccountId}`, {
+      const res = await fetch(`/api/proxy/ecommerce/bank-accounts/${bankAccountId}?type=${workspaceType}`, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
