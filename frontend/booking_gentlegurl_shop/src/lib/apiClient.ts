@@ -417,8 +417,11 @@ export async function makeDefaultCustomerAddress(id: number) {
 }
 
 export async function getBookingPolicySettings() {
-  const response = await request<{ data?: { booking_policy?: BookingPolicy } }>("/ecommerce/shop-settings?type=booking");
-  return response?.data?.booking_policy ?? {
+  // Use public homepage endpoint (admin shop-settings requires admin auth)
+  const response = await request<{ data?: { settings?: { booking_policy?: BookingPolicy } } }>(
+    "/public/shop/homepage?type=booking",
+  );
+  return response?.data?.settings?.booking_policy ?? {
     reschedule: { enabled: true, max_changes: 1, cutoff_hours: 72 },
     cancel: { customer_cancel_allowed: false, deposit_refundable: false },
   };
