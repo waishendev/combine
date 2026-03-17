@@ -4,6 +4,7 @@ export type BookingServiceApiItem = {
   id: number | string
   name?: string | null
   description?: string | null
+  service_type?: 'premium' | 'standard' | null
   duration_min?: number | string | null
   service_price?: string | number | null
   deposit_amount?: string | number | null

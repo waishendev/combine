@@ -21,8 +21,8 @@ export default function StaffEditModal({ staffId, onClose, onSuccess }: StaffEdi
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setSubmitting(true); setError(null)
     try {
-      const fd = new FormData();       fd.append('name', form.name.trim()); fd.append('email', form.email.trim()); fd.append('phone', form.phone.trim()); fd.append('username', form.username.trim()); fd.append('code', form.code.trim()); fd.append('position', form.position.trim()); fd.append('description', form.description.trim()); fd.append('commission_rate', String((Number(form.commissionPercent || 0) / 100) || 0)); fd.append('service_commission_rate', String((Number(form.serviceCommissionPercent || 0) / 100) || 0)); fd.append('is_active', form.isActive === 'true' ? '1' : '0'); if (form.password.trim()) fd.append('password', form.password.trim()); if (form.avatarFile) fd.append('avatar', form.avatarFile)
-      const res = await fetch(`/api/proxy/staffs/${staffId}`, { method: 'PUT', body: fd })
+      const fd = new FormData(); fd.append('_method', 'PUT'); fd.append('name', form.name.trim()); fd.append('email', form.email.trim()); fd.append('phone', form.phone.trim()); fd.append('username', form.username.trim()); fd.append('code', form.code.trim()); fd.append('position', form.position.trim()); fd.append('description', form.description.trim()); fd.append('commission_rate', String((Number(form.commissionPercent || 0) / 100) || 0)); fd.append('service_commission_rate', String((Number(form.serviceCommissionPercent || 0) / 100) || 0)); fd.append('is_active', form.isActive === 'true' ? '1' : '0'); if (form.password.trim()) fd.append('password', form.password.trim()); if (form.avatarFile) fd.append('avatar', form.avatarFile)
+      const res = await fetch(`/api/proxy/staffs/${staffId}`, { method: 'POST', body: fd })
       const data = await res.json().catch(() => null)
       if (!res.ok) { setError((data as {message?:string})?.message ?? 'Failed to update staff.'); return }
       onSuccess(mapStaffApiItemToRow((data?.data ?? {}) as StaffApiItem))
