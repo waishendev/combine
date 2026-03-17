@@ -7,12 +7,6 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::table('booking_services', function (Blueprint $table) {
-            if (!Schema::hasColumn('booking_services', 'service_price')) {
-                $table->decimal('service_price', 12, 2)->default(0)->after('description');
-            }
-        });
-
         Schema::table('bookings', function (Blueprint $table) {
             if (!Schema::hasColumn('bookings', 'completed_at')) {
                 $table->dateTime('completed_at')->nullable()->after('hold_expires_at');
@@ -37,12 +31,6 @@ return new class extends Migration {
             if (Schema::hasColumn('bookings', 'completed_at')) {
                 $table->dropIndex(['completed_at']);
                 $table->dropColumn('completed_at');
-            }
-        });
-
-        Schema::table('booking_services', function (Blueprint $table) {
-            if (Schema::hasColumn('booking_services', 'service_price')) {
-                $table->dropColumn('service_price');
             }
         });
     }

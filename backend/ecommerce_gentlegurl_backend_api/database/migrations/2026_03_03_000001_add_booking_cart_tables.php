@@ -45,11 +45,6 @@ return new class extends Migration {
             $table->index('expires_at');
         });
 
-        Schema::table('booking_services', function (Blueprint $table) {
-            $table->enum('service_type', ['premium', 'standard'])->default('standard')->after('name');
-            $table->index('service_type');
-        });
-
         DB::table('booking_settings')->insert([
             'deposit_amount_per_premium' => 30,
             'deposit_base_amount_if_only_standard' => 30,
@@ -61,11 +56,6 @@ return new class extends Migration {
 
     public function down(): void
     {
-        Schema::table('booking_services', function (Blueprint $table) {
-            $table->dropIndex(['service_type']);
-            $table->dropColumn('service_type');
-        });
-
         Schema::dropIfExists('booking_cart_items');
         Schema::dropIfExists('booking_carts');
         Schema::dropIfExists('booking_settings');

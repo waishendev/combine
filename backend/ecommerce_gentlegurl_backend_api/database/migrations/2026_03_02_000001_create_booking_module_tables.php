@@ -10,15 +10,20 @@ return new class extends Migration {
         Schema::create('booking_services', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->enum('service_type', ['premium', 'standard'])->default('standard');
             $table->text('description')->nullable();
+            $table->decimal('service_price', 12, 2)->default(0);
+            $table->decimal('price', 10, 2)->nullable();
             $table->unsignedInteger('duration_min');
             $table->decimal('deposit_amount', 12, 2)->default(0);
             $table->unsignedInteger('buffer_min')->default(15);
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_package_eligible')->default(true);
             $table->json('rules_json')->nullable();
             $table->timestamps();
 
             $table->index('is_active');
+            $table->index('service_type');
         });
 
         Schema::create('booking_service_staff', function (Blueprint $table) {
