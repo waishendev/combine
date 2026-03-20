@@ -28,10 +28,19 @@ export default function CheckoutPage() {
     setPaying(true);
     try {
       const response = await payBooking(bookingId);
+      const paymentMethod = response?.data?.payment_method;
+      const isBillplzMethod = paymentMethod === "billplz_fpx" || paymentMethod === "billplz_card";
+
       if (response?.data?.payment_url) {
         window.location.href = response.data.payment_url;
         return;
       }
+
+      if (isBillplzMethod) {
+        router.push("/booking/failed");
+        return;
+      }
+
       router.push("/booking/success");
     } finally {
       setPaying(false);
