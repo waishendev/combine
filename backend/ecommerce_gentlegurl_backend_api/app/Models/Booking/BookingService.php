@@ -3,11 +3,16 @@
 namespace App\Models\Booking;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class BookingService extends Model
 {
     protected $fillable = [
-        'name', 'service_type', 'description', 'service_price', 'price', 'is_package_eligible', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
+        'name', 'service_type', 'description', 'image_path', 'service_price', 'price', 'is_package_eligible', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
+    ];
+
+    protected $appends = [
+        'image_url',
     ];
 
     protected $casts = [
@@ -18,4 +23,17 @@ class BookingService extends Model
         'service_price' => 'decimal:2',
         'price' => 'decimal:2',
     ];
+
+    public function getImageUrlAttribute(): ?string
+    {
+        if (! $this->image_path) {
+            return null;
+        }
+
+        if (filter_var($this->image_path, FILTER_VALIDATE_URL)) {
+            return $this->image_path;
+        }
+
+        return Storage::disk('public')->url(ltrim($this->image_path, '/'));
+    }
 }

@@ -4,11 +4,14 @@ export type BookingServiceApiItem = {
   id: number | string
   name?: string | null
   description?: string | null
+  service_type?: 'premium' | 'standard' | string | null
   duration_min?: number | string | null
   service_price?: string | number | null
   deposit_amount?: string | number | null
   buffer_min?: number | string | null
   is_active?: boolean | number | string | null
+  image_path?: string | null
+  image_url?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -41,12 +44,18 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
   return {
     id: normalizedId,
     name: item.name ?? '-',
+    serviceType:
+      item.service_type === 'premium' || item.service_type === 'standard'
+        ? item.service_type
+        : (item.service_type ? String(item.service_type) : ''),
     description: item.description ?? '',
     duration_min: durationMin,
     service_price: servicePrice,
     deposit_amount: depositAmount,
     buffer_min: bufferMin,
     isActive,
+    imagePath: item.image_path ?? '',
+    imageUrl: item.image_url ?? item.image_path ?? '',
     createdAt: item.created_at ?? undefined,
   }
 }

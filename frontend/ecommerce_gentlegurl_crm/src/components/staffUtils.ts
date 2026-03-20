@@ -4,6 +4,10 @@ export type StaffApiItem = {
   name?: string | null
   phone?: string | null
   email?: string | null
+  position?: string | null
+  description?: string | null
+  avatar_path?: string | null
+  avatar_url?: string | null
   commission_rate?: number | string | null
   service_commission_rate?: number | string | null
   is_active?: boolean | number | string | null
@@ -20,6 +24,10 @@ export type StaffRowData = {
   name: string
   phone: string
   email: string
+  position: string
+  description: string
+  avatarPath: string
+  avatarUrl: string
   loginUsername: string
   adminUserId: number | null
   commissionRate: number
@@ -39,6 +47,10 @@ export const mapStaffApiItemToRow = (item: StaffApiItem): StaffRowData => {
     name: item.name ?? '-',
     phone: item.phone ?? '-',
     email: item.email ?? '-',
+    position: item.position ?? '',
+    description: item.description ?? '',
+    avatarPath: item.avatar_path ?? '',
+    avatarUrl: item.avatar_url ?? item.avatar_path ?? '',
     loginUsername: item.admin?.username ?? '-',
     adminUserId: item.admin?.id != null ? Number(item.admin.id) : null,
     commissionRate: Number.isFinite(commissionRateRaw) ? commissionRateRaw : 0,

@@ -8,12 +8,18 @@ export type Service = {
   payment_status?: string;
   price: number;
   category?: string;
+  image_path?: string | null;
+  image_url?: string | null;
 };
 
 export type Staff = {
   id: number;
   name: string;
   avatar?: string | null;
+  avatar_path?: string | null;
+  avatar_url?: string | null;
+  position?: string | null;
+  description?: string | null;
   bio?: string;
 };
 

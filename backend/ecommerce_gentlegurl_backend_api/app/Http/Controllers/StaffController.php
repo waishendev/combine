@@ -9,6 +9,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class StaffController extends Controller
@@ -25,7 +27,9 @@ class StaffController extends Controller
                     $q->where('name', 'ilike', "%{$search}%")
                         ->orWhere('phone', 'ilike', "%{$search}%")
                         ->orWhere('email', 'ilike', "%{$search}%")
-                        ->orWhere('code', 'ilike', "%{$search}%");
+                        ->orWhere('code', 'ilike', "%{$search}%")
+                        ->orWhere('position', 'ilike', "%{$search}%")
+                        ->orWhere('description', 'ilike', "%{$search}%");
                 });
             })
             ->when($request->has('is_active'), function ($query) use ($request) {
@@ -48,6 +52,9 @@ class StaffController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
             'username' => ['nullable', 'string', 'max:100', 'unique:users,username'],
+            'position' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'avatar' => ['nullable', 'image', 'max:5120'],
             'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'is_active' => ['sometimes', 'boolean'],
@@ -58,14 +65,25 @@ class StaffController extends Controller
             $username = null;
         }
 
+        $avatarPath = $request->hasFile('avatar')
+            ? $request->file('avatar')->storeAs(
+                'booking/staff-avatars',
+                sprintf('%s-%s.%s', now()->format('YmdHis'), Str::uuid(), $request->file('avatar')->getClientOriginalExtension()),
+                'public'
+            )
+            : null;
+
         $staffRole = $this->ensureStaffRole();
 
-        $result = DB::transaction(function () use ($validated, $username, $staffRole) {
+        $result = DB::transaction(function () use ($validated, $username, $staffRole, $avatarPath) {
             $staff = Staff::create([
                 'code' => $validated['code'] ?? null,
                 'name' => $validated['name'],
                 'phone' => $validated['phone'] ?? null,
                 'email' => $validated['email'],
+                'position' => $validated['position'] ?? null,
+                'description' => $validated['description'] ?? null,
+                'avatar_path' => $avatarPath,
                 'commission_rate' => $validated['commission_rate'] ?? 0,
                 'service_commission_rate' => $validated['service_commission_rate'] ?? 0,
                 'is_active' => $validated['is_active'] ?? true,
@@ -110,13 +128,31 @@ class StaffController extends Controller
             'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($staff->admin?->id)],
             'username' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('users', 'username')->ignore($staff->admin?->id)],
             'password' => ['nullable', 'string', 'min:6'],
+            'position' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'avatar' => ['nullable', 'image', 'max:5120'],
             'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
-        $result = DB::transaction(function () use ($staff, $validated) {
-            $staff->fill($validated);
+        $newAvatarPath = $request->hasFile('avatar')
+            ? $request->file('avatar')->storeAs(
+                'booking/staff-avatars',
+                sprintf('%s-%s.%s', now()->format('YmdHis'), Str::uuid(), $request->file('avatar')->getClientOriginalExtension()),
+                'public'
+            )
+            : null;
+
+        $oldAvatarPath = $staff->avatar_path;
+
+        $result = DB::transaction(function () use ($staff, $validated, $newAvatarPath) {
+            $staffPayload = collect($validated)->except(['password', 'username'])->toArray();
+            if ($newAvatarPath) {
+                $staffPayload['avatar_path'] = $newAvatarPath;
+            }
+
+            $staff->fill($staffPayload);
             $staff->save();
 
             $user = $staff->admin;
@@ -147,6 +183,10 @@ class StaffController extends Controller
 
             return $staff->load('admin:id,staff_id,username,email');
         });
+
+        if ($newAvatarPath && $oldAvatarPath && $oldAvatarPath !== $newAvatarPath && Storage::disk('public')->exists($oldAvatarPath)) {
+            Storage::disk('public')->delete($oldAvatarPath);
+        }
 
         return $this->respond($result, __('Staff updated successfully.'));
     }

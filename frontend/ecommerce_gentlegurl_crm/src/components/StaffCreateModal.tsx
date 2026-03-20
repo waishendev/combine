@@ -1,10 +1,11 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useState } from 'react'
+import { ChangeEvent, FormEvent, useRef, useState } from 'react'
 
 import type { StaffRowData } from './staffUtils'
 import { mapStaffApiItemToRow, type StaffApiItem } from './staffUtils'
 import { useI18n } from '@/lib/i18n'
+import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface StaffCreateModalProps {
   onClose: () => void
@@ -17,7 +18,9 @@ interface FormState {
   phone: string
   email: string
   password: string
-  username: string
+  position: string
+  description: string
+  avatarFile: File | null
   commissionPercent: string
   serviceCommissionPercent: string
 }
@@ -28,7 +31,9 @@ const initialFormState: FormState = {
   phone: '',
   email: '',
   password: '',
-  username: '',
+  position: '',
+  description: '',
+  avatarFile: null,
   commissionPercent: '0',
   serviceCommissionPercent: '0',
 }
@@ -42,11 +47,37 @@ export default function StaffCreateModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
   const handleChange = (
-    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setForm((prev) => ({ ...prev, avatarFile: file }))
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleAvatarClick = () => {
+    avatarInputRef.current?.click()
+  }
+
+  const handleRemoveAvatar = () => {
+    setForm((prev) => ({ ...prev, avatarFile: null }))
+    setAvatarPreview(null)
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = ''
+    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -71,25 +102,45 @@ export default function StaffCreateModal({
     try {
       const commissionRate = Number(form.commissionPercent || 0) / 100
       const serviceCommissionRate = Number(form.serviceCommissionPercent || 0) / 100
-      const payload = {
+      const basePayload = {
         code: form.code.trim() || null,
         name: form.name.trim(),
         phone: form.phone.trim() || null,
         email: form.email.trim(),
         password: form.password.trim(),
-        username: form.username.trim() || null,
+        position: form.position.trim() || null,
+        description: form.description.trim() || null,
         commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
         service_commission_rate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
         is_active: true,
       }
 
+      const useMultipart = Boolean(form.avatarFile)
       const res = await fetch('/api/proxy/staffs', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(payload),
+        headers: useMultipart
+          ? { Accept: 'application/json' }
+          : {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+        body: useMultipart
+          ? (() => {
+              const fd = new FormData()
+              Object.entries(basePayload).forEach(([key, value]) => {
+                if (value === null || value === undefined) return
+                if (key === 'is_active') {
+                  fd.append(key, value === true ? '1' : '0')
+                  return
+                }
+                fd.append(key, String(value))
+              })
+              if (form.avatarFile) {
+                fd.append('avatar', form.avatarFile)
+              }
+              return fd
+            })()
+          : JSON.stringify(basePayload),
       })
 
       const data = await res.json().catch(() => null)
@@ -129,7 +180,11 @@ export default function StaffCreateModal({
             name: form.name.trim(),
             phone: form.phone.trim() || '-',
             email: form.email.trim(),
-            loginUsername: form.username.trim() || '-',
+            position: form.position.trim(),
+            description: form.description.trim(),
+            avatarPath: '',
+            avatarUrl: '',
+            loginUsername: '-',
             adminUserId: null,
             commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
             serviceCommissionRate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
@@ -138,6 +193,7 @@ export default function StaffCreateModal({
           }
 
       setForm({ ...initialFormState })
+      setAvatarPreview(null)
       onSuccess(staffRow)
     } catch (err) {
       console.error(err)
@@ -155,8 +211,8 @@ export default function StaffCreateModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+      <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">Create Staff</h2>
           <button
             onClick={() => {
@@ -170,141 +226,249 @@ export default function StaffCreateModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4">
-          <div className="space-y-4">
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label
-                  htmlFor="name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+        <form onSubmit={handleSubmit} className="p-5">
+          <div className="flex flex-col gap-6 lg:flex-row">
+            {/* Left Side - Avatar Upload */}
+            <div className="space-y-4 w-full lg:w-1/2">
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-1">Avatar</h3>
+                <div
+                  onClick={handleAvatarClick}
+                  className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                    avatarPreview ? 'border-gray-300' : 'border-gray-300 hover:border-blue-400'
+                  }`}
                 >
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  value={form.name}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Name *"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div className="flex-1">
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Email <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Email *"
-                  disabled={submitting}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Password <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Password *"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div className="flex-1">
-                <label
-                  htmlFor="phone"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Phone
-                </label>
-                <input
-                  id="phone"
-                  name="phone"
-                  type="text"
-                  value={form.phone}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Phone"
-                  disabled={submitting}
-                />
+                  <input
+                    ref={avatarInputRef}
+                    id="avatar"
+                    name="avatar"
+                    type="file"
+                    accept={IMAGE_ACCEPT}
+                    onChange={handleAvatarChange}
+                    className="hidden"
+                    disabled={submitting}
+                  />
+                  {avatarPreview ? (
+                    <div className="relative group">
+                      <img
+                        src={avatarPreview}
+                        alt="Avatar Preview"
+                        className="w-full h-48 object-contain rounded"
+                      />
+                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleAvatarClick()
+                          }}
+                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Replace avatar"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-image text-xs" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemoveAvatar()
+                          }}
+                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
+                          aria-label="Delete avatar"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-trash-can text-xs" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8">
+                      <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">Click to upload</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-4">
-              <div className="flex-1">
+            {/* Right Side - Form Fields */}
+            <div className="space-y-4 w-full lg:w-1/2">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label
+                    htmlFor="name"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="name"
+                    name="name"
+                    type="text"
+                    value={form.name}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Name *"
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="flex-1">
+                  <label
+                    htmlFor="email"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Email *"
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Password *"
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="flex-1">
+                  <label
+                    htmlFor="phone"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Phone
+                  </label>
+                  <input
+                    id="phone"
+                    name="phone"
+                    type="text"
+                    value={form.phone}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Phone"
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label
+                    htmlFor="position"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Position
+                  </label>
+                  <input
+                    id="position"
+                    name="position"
+                    type="text"
+                    value={form.position}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Position"
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="flex-1" />
+              </div>
+
+              <div>
                 <label
-                  htmlFor="commissionPercent"
+                  htmlFor="description"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-Product Commission Rate (%)
+                  Description
                 </label>
-                <input
-                  id="commissionPercent"
-                  name="commissionPercent"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.commissionPercent}
+                <textarea
+                  id="description"
+                  name="description"
+                  value={form.description}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Product Commission Rate (%)"
+                  placeholder="Description"
+                  rows={3}
                   disabled={submitting}
                 />
               </div>
-              <div className="flex-1">
-                <label
-                  htmlFor="serviceCommissionPercent"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Service Commission Rate (%)
-                </label>
-                <input
-                  id="serviceCommissionPercent"
-                  name="serviceCommissionPercent"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.serviceCommissionPercent}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Service Commission Rate (%)"
-                  disabled={submitting}
-                />
+
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label
+                    htmlFor="commissionPercent"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Product Commission Rate (%)
+                  </label>
+                  <input
+                    id="commissionPercent"
+                    name="commissionPercent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={form.commissionPercent}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Product Commission Rate (%)"
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label
+                    htmlFor="serviceCommissionPercent"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Service Commission Rate (%)
+                  </label>
+                  <input
+                    id="serviceCommissionPercent"
+                    name="serviceCommissionPercent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={form.serviceCommissionPercent}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Service Commission Rate (%)"
+                    disabled={submitting}
+                  />
+                </div>
               </div>
             </div>
           </div>
 
           {error && (
-            <div className="text-sm text-red-600" role="alert">
+            <div className="text-sm text-red-600 mt-4" role="alert">
               {error}
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-3 pt-4 mt-4 border-t border-gray-200">
             <button
               type="button"
               className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
