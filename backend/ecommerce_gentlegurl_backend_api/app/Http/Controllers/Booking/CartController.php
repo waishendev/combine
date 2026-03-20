@@ -247,6 +247,7 @@ class CartController extends Controller
                     'deposit_amount' => $depositTotal,
                     'payment_status' => 'UNPAID',
                     'hold_expires_at' => $item->expires_at,
+                    'notes' => $customer ? null : ('guest_token:' . (string) ($cart->guest_token ?? '')),
                 ]);
 
                 if ($customer) {

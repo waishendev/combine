@@ -294,7 +294,23 @@ class PaymentController extends Controller
     private function authorizeBooking(Request $request, Booking $booking): void
     {
         $customer = $request->user('customer');
-        abort_unless($customer && (int) $booking->customer_id === (int) $customer->id, 403, 'Forbidden booking access.');
+        if ($customer && (int) $booking->customer_id === (int) $customer->id) {
+            return;
+        }
+
+        if ($booking->source === 'GUEST' && empty($booking->customer_id)) {
+            $guestToken = (string) $request->header('X-Booking-Guest-Token', '');
+            $storedToken = '';
+
+            if (is_string($booking->notes) && str_starts_with($booking->notes, 'guest_token:')) {
+                $storedToken = substr($booking->notes, strlen('guest_token:'));
+            }
+
+            abort_unless($guestToken !== '' && hash_equals($storedToken, $guestToken), 403, 'Forbidden booking access.');
+            return;
+        }
+
+        abort(403, 'Forbidden booking access.');
     }
 
     /**

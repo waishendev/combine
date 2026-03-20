@@ -59,7 +59,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!headers.has("X-Workspace")) {
     headers.set("X-Workspace", "booking");
   }
-  if (path.startsWith("/booking/cart")) {
+  if (path.startsWith("/booking/")) {
     const guestToken = getOrCreateBookingGuestToken();
     if (guestToken) {
       headers.set("X-Booking-Guest-Token", guestToken);
