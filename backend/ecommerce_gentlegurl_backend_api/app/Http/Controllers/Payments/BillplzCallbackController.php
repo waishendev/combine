@@ -6,12 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\BillplzBill;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Cart;
+use App\Services\Payments\BillplzConfigResolver;
+use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class BillplzCallbackController extends Controller
 {
+    public function __construct(
+        protected BillplzConfigResolver $configResolver,
+    ) {
+    }
+
     public function callback(Request $request)
     {
         $payload = $request->all();
@@ -39,7 +46,8 @@ class BillplzCallbackController extends Controller
         }
 
         // Verify signature, but don't block processing if order exists and payment is confirmed
-        $signatureValid = $this->verifySignature($payload);
+        $workspaceType = $order->paymentGateway?->type ?? WorkspaceType::ECOMMERCE;
+        $signatureValid = $this->verifySignature($payload, $workspaceType);
         $paid = isset($billplzPayload['paid']) ? filter_var($billplzPayload['paid'], FILTER_VALIDATE_BOOLEAN) : false;
         $state = $billplzPayload['state'] ?? null;
         $transactionStatus = $billplzPayload['transaction_status'] ?? null;
@@ -128,7 +136,8 @@ class BillplzCallbackController extends Controller
                 $billplzPayload = $request->query('billplz') ?? [];
 
                 if (!empty($billplzPayload)) {
-                    $signatureValid = $this->verifySignature(['billplz' => $billplzPayload]);
+                    $workspaceType = $order->paymentGateway?->type ?? WorkspaceType::ECOMMERCE;
+                    $signatureValid = $this->verifySignature(['billplz' => $billplzPayload], $workspaceType);
                     $paid = isset($billplzPayload['paid']) ? filter_var($billplzPayload['paid'], FILTER_VALIDATE_BOOLEAN) : false;
                     $state = $billplzPayload['state'] ?? null;
                     $transactionStatus = $billplzPayload['transaction_status'] ?? null;
@@ -174,7 +183,9 @@ class BillplzCallbackController extends Controller
                     'payment_method' => $order->payment_method,
                 ]);
 
-                $frontendUrl = rtrim((string) config('services.billplz.frontend_url', ''), '/');
+                $workspaceType = $order->paymentGateway?->type ?? WorkspaceType::ECOMMERCE;
+                $resolvedConfig = $this->configResolver->resolve($workspaceType, $order->payment_method ?: 'billplz_fpx');
+                $frontendUrl = rtrim((string) ($resolvedConfig['frontend_url'] ?? ''), '/');
                 if ($frontendUrl) {
                     return redirect()->away($frontendUrl . '/payment-result?' . $query);
                 }
@@ -193,9 +204,10 @@ class BillplzCallbackController extends Controller
         ]);
     }
 
-    protected function verifySignature(array $payload): bool
+    protected function verifySignature(array $payload, string $type = WorkspaceType::ECOMMERCE): bool
     {
-        $xSignatureKey = config('services.billplz.x_signature');
+        $resolvedConfig = $this->configResolver->resolve($type);
+        $xSignatureKey = $resolvedConfig['x_signature'] ?: config('services.billplz.x_signature');
 
         $billplzPayload = $payload['billplz'] ?? $payload;
         $signature = $billplzPayload['x_signature'] ?? null;

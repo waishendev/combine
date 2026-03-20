@@ -164,8 +164,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
       const bookingId = checkoutResponse?.booking_ids?.[0];
       if (!bookingId) {
-        onClose();
-        router.push("/booking/success");
+        setMessage("Unable to create booking payment. Please try again.");
         return;
       }
 

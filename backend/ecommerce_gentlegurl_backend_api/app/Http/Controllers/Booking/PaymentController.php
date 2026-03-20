@@ -8,6 +8,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\PaymentGateway;
+use App\Services\Payments\BillplzConfigResolver;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -15,6 +16,11 @@ use Illuminate\Support\Facades\Storage;
 
 class PaymentController extends Controller
 {
+    public function __construct(
+        protected BillplzConfigResolver $configResolver,
+    ) {
+    }
+
     public function pay(Request $request, int $id)
     {
         $type = WorkspaceType::fromRequest($request, WorkspaceType::BOOKING);
@@ -226,17 +232,12 @@ class PaymentController extends Controller
      */
     private function createBillplzBill(Booking $booking, string $type, string $paymentMethod, array $gatewayConfig): array
     {
-        $fallbackConfig = PaymentGateway::query()
-            ->where('type', $type)
-            ->where('key', 'billplz_fpx')
-            ->where('is_active', true)
-            ->value('config');
-
-        $apiKey = data_get($gatewayConfig, 'api_key') ?: data_get($fallbackConfig, 'api_key') ?: config('services.billplz.api_key');
-        $collectionId = data_get($gatewayConfig, 'collection_id') ?: data_get($fallbackConfig, 'collection_id') ?: config('services.billplz.collection_id');
-        $baseUrl = rtrim((string) (data_get($gatewayConfig, 'base_url') ?: data_get($fallbackConfig, 'base_url') ?: config('services.billplz.base_url') ?: 'https://www.billplz.com/api/v3'), '/');
-        $frontendUrl = rtrim((string) (data_get($gatewayConfig, 'frontend_url') ?: data_get($fallbackConfig, 'frontend_url') ?: config('services.billplz.frontend_url') ?: ''), '/');
-        $publicUrl = rtrim((string) (data_get($gatewayConfig, 'public_url') ?: data_get($fallbackConfig, 'public_url') ?: config('services.billplz.public_url') ?: config('app.url') ?: ''), '/');
+        $resolvedConfig = $this->configResolver->resolve($type, $paymentMethod);
+        $apiKey = data_get($gatewayConfig, 'api_key') ?: $resolvedConfig['api_key'];
+        $collectionId = data_get($gatewayConfig, 'collection_id') ?: $resolvedConfig['collection_id'];
+        $baseUrl = rtrim((string) (data_get($gatewayConfig, 'base_url') ?: $resolvedConfig['base_url']), '/');
+        $frontendUrl = rtrim((string) (data_get($gatewayConfig, 'frontend_url') ?: $resolvedConfig['frontend_url']), '/');
+        $publicUrl = rtrim((string) (data_get($gatewayConfig, 'public_url') ?: $resolvedConfig['public_url']), '/');
 
         if (! $apiKey || ! $collectionId) {
             abort(response()->json(['success' => false, 'message' => 'Billplz is not configured for booking workspace.', 'data' => null], 422));

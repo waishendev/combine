@@ -17,12 +17,24 @@ interface FormState {
   name: string
   isActive: 'active' | 'inactive'
   isDefault: 'yes' | 'no'
+  apiKey: string
+  collectionId: string
+  xSignature: string
+  baseUrl: string
+  frontendUrl: string
+  publicUrl: string
 }
 
 const initialFormState: FormState = {
   name: '',
   isActive: 'active',
   isDefault: 'no',
+  apiKey: '',
+  collectionId: '',
+  xSignature: '',
+  baseUrl: 'https://www.billplz.com/api/v3',
+  frontendUrl: '',
+  publicUrl: '',
 }
 
 export default function PaymentGatewayEditModal({
@@ -80,6 +92,10 @@ export default function PaymentGatewayEditModal({
           return
         }
 
+        const config = (paymentGateway.config && typeof paymentGateway.config === 'object')
+          ? (paymentGateway.config as Record<string, unknown>)
+          : {}
+
         const mappedPaymentGateway = mapPaymentGatewayApiItemToRow(paymentGateway)
         setLoadedPaymentGateway(mappedPaymentGateway)
 
@@ -93,6 +109,12 @@ export default function PaymentGatewayEditModal({
             paymentGateway.is_default === true || paymentGateway.is_default === 'true' || paymentGateway.is_default === 1
               ? 'yes'
               : 'no',
+          apiKey: typeof config.api_key === 'string' ? config.api_key : '',
+          collectionId: typeof config.collection_id === 'string' ? config.collection_id : '',
+          xSignature: typeof config.x_signature === 'string' ? config.x_signature : '',
+          baseUrl: typeof config.base_url === 'string' && config.base_url ? config.base_url : 'https://www.billplz.com/api/v3',
+          frontendUrl: typeof config.frontend_url === 'string' ? config.frontend_url : '',
+          publicUrl: typeof config.public_url === 'string' ? config.public_url : '',
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -127,6 +149,15 @@ export default function PaymentGatewayEditModal({
     setError(null)
 
     try {
+      const config = {
+        api_key: form.apiKey.trim() || undefined,
+        collection_id: form.collectionId.trim() || undefined,
+        x_signature: form.xSignature.trim() || undefined,
+        base_url: form.baseUrl.trim() || undefined,
+        frontend_url: form.frontendUrl.trim() || undefined,
+        public_url: form.publicUrl.trim() || undefined,
+      }
+
       const res = await fetch(`/api/proxy/ecommerce/payment-gateways/${paymentGatewayId}?type=${workspaceType}`, {
         method: 'PUT',
         headers: {
@@ -137,6 +168,7 @@ export default function PaymentGatewayEditModal({
           name: trimmedName,
           is_active: form.isActive === 'active',
           is_default: form.isDefault === 'yes',
+          config,
           type: workspaceType,
         }),
       })
@@ -293,6 +325,18 @@ export default function PaymentGatewayEditModal({
                     <option value="yes">Yes</option>
                   </select>
                 </div>
+
+                <div className="rounded-md border border-gray-200 p-3">
+                  <p className="mb-3 text-sm font-semibold text-gray-800">Billplz Config</p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <input name="apiKey" value={form.apiKey} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="API Key" disabled={disableForm} />
+                    <input name="collectionId" value={form.collectionId} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="Collection ID" disabled={disableForm} />
+                    <input name="xSignature" value={form.xSignature} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="X Signature" disabled={disableForm} />
+                    <input name="baseUrl" value={form.baseUrl} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="Base URL" disabled={disableForm} />
+                    <input name="frontendUrl" value={form.frontendUrl} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm md:col-span-2" placeholder="Frontend URL (redirect URL base)" disabled={disableForm} />
+                    <input name="publicUrl" value={form.publicUrl} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm md:col-span-2" placeholder="Public API URL (callback URL base)" disabled={disableForm} />
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -327,4 +371,3 @@ export default function PaymentGatewayEditModal({
     </div>
   )
 }
-

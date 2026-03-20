@@ -32,7 +32,7 @@ export default function CheckoutPage() {
         window.location.href = response.data.payment_url;
         return;
       }
-      router.push("/booking/success");
+      router.push(`/booking/payment-result?booking_id=${bookingId}`);
     } finally {
       setPaying(false);
     }
