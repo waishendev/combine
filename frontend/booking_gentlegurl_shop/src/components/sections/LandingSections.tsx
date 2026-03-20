@@ -135,7 +135,7 @@ export function StaticSections() {
       const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
       setPackagesMessage(`Added ${pkg.name} to cart.`);
-      router.push("/booking/cart");
+      window.dispatchEvent(new CustomEvent("openCart"));
     } catch (err) {
       setPackagesMessage(err instanceof Error ? err.message : "Unable to add package into cart.");
     }
