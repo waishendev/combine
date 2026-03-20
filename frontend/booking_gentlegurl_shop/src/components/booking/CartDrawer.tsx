@@ -147,6 +147,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         return;
       }
 
+      if (!isLoggedIn) {
+        const normalizedGuestPhone = guestPhone.trim();
+        const guestPhonePattern = /^\+?[0-9]{8,15}$/;
+        if (!guestPhonePattern.test(normalizedGuestPhone)) {
+          setMessage("Please enter a valid phone number (8-15 digits, optional + prefix).");
+          return;
+        }
+      }
+
       if (selectedPaymentMethod === "manual_transfer" && !selectedBankAccountId) {
         setMessage("Please select a bank account for manual transfer.");
         return;

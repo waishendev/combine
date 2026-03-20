@@ -188,7 +188,7 @@ class CartController extends Controller
         $customer = $request->user('customer');
         $validated = $request->validate([
             'guest_name' => ['nullable', 'string', 'max:255'],
-            'guest_phone' => ['nullable', 'string', 'max:50'],
+            'guest_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
             'guest_email' => ['nullable', 'email', 'max:255'],
         ]);
 
