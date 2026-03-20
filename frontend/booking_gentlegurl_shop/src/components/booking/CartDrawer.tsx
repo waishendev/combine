@@ -48,6 +48,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [bankAccounts, setBankAccounts] = useState<PublicBookingBankAccount[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
+  const isBillplzMethod = selectedPaymentMethod === "billplz_fpx" || selectedPaymentMethod === "billplz_card";
 
   const loadCart = useCallback(async () => {
     try {
@@ -165,7 +166,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       const bookingId = checkoutResponse?.booking_ids?.[0];
       if (!bookingId) {
         onClose();
-        router.push("/booking/success");
+        router.push(isBillplzMethod ? "/booking/failed" : "/booking/success");
         return;
       }
 
@@ -175,13 +176,18 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       });
 
       const paymentData = paymentResponse?.data;
-      if (paymentData?.payment_url) {
+      if (isBillplzMethod && paymentData?.payment_url) {
         window.location.href = paymentData.payment_url;
         return;
       }
 
+      if (isBillplzMethod) {
+        setMessage("Unable to start Billplz payment. Please try again.");
+        return;
+      }
+
       onClose();
-      router.push(`/booking/payment-result?booking_id=${bookingId}`);
+      router.push("/booking/success");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Checkout failed. Please review your cart and try again.");
     }
