@@ -182,6 +182,10 @@ export async function checkoutCart(payload?: {
   guest_name?: string;
   guest_phone?: string;
   guest_email?: string;
+  billing_same_as_contact?: boolean;
+  billing_name?: string;
+  billing_phone?: string;
+  billing_email?: string;
 }) {
   const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number }>(`/booking/cart/checkout`, {
     method: "POST",

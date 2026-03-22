@@ -63,6 +63,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [guestName, setGuestName] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
+  const [billingSameAsContact, setBillingSameAsContact] = useState(true);
+  const [billingName, setBillingName] = useState("");
+  const [billingPhone, setBillingPhone] = useState("");
+  const [billingEmail, setBillingEmail] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [availableMap, setAvailableMap] = useState<Record<number, number>>({});
   const [gateways, setGateways] = useState<PublicBookingPaymentGateway[]>([]);
@@ -90,6 +95,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         .then((me) => {
           setIsLoggedIn(true);
           setCustomerId(me.id);
+          setGuestName((prev) => prev || me.name || "");
+          setGuestPhone((prev) => prev || me.phone || "");
+          setGuestEmail((prev) => prev || me.email || "");
         })
         .catch(() => {
           setIsLoggedIn(false);
@@ -163,18 +171,40 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   const onCheckout = async () => {
     try {
-      if (!isLoggedIn && (!guestName.trim() || !guestPhone.trim())) {
-        setMessage("Please fill in your name and phone to checkout as guest.");
-        return;
+      setFieldErrors({});
+      setMessage(null);
+
+      const nextErrors: Record<string, string> = {};
+      const normalizedGuestPhone = guestPhone.trim();
+      const normalizedBillingPhone = billingPhone.trim();
+      const phonePattern = /^\+?[0-9]{8,15}$/;
+
+      if (!guestName.trim()) {
+        nextErrors.guest_name = "Contact name is required.";
       }
 
-      if (!isLoggedIn) {
-        const normalizedGuestPhone = guestPhone.trim();
-        const guestPhonePattern = /^\+?[0-9]{8,15}$/;
-        if (!guestPhonePattern.test(normalizedGuestPhone)) {
-          setMessage("Please enter a valid phone number (8-15 digits, optional + prefix).");
-          return;
+      if (!normalizedGuestPhone) {
+        nextErrors.guest_phone = "Contact phone is required.";
+      } else if (!phonePattern.test(normalizedGuestPhone)) {
+        nextErrors.guest_phone = "Please enter a valid phone number (8-15 digits, optional + prefix).";
+      }
+
+      if (!billingSameAsContact) {
+        if (!billingName.trim()) {
+          nextErrors.billing_name = "Billing name is required.";
         }
+
+        if (!normalizedBillingPhone) {
+          nextErrors.billing_phone = "Billing phone is required.";
+        } else if (!phonePattern.test(normalizedBillingPhone)) {
+          nextErrors.billing_phone = "Please enter a valid phone number (8-15 digits, optional + prefix).";
+        }
+      }
+
+      if (Object.keys(nextErrors).length > 0) {
+        setFieldErrors(nextErrors);
+        setMessage("Please complete the required contact information before checkout.");
+        return;
       }
 
       if (selectedPaymentMethod === "manual_transfer" && !selectedBankAccountId) {
@@ -183,13 +213,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       }
 
       const checkoutResponse = await checkoutCart(
-        isLoggedIn
-          ? {}
-          : {
-              guest_name: guestName.trim(),
-              guest_phone: guestPhone.trim(),
-              guest_email: guestEmail.trim() || undefined,
-            },
+        {
+          guest_name: guestName.trim(),
+          guest_phone: guestPhone.trim(),
+          guest_email: guestEmail.trim() || undefined,
+          billing_same_as_contact: billingSameAsContact,
+          billing_name: billingSameAsContact ? guestName.trim() : billingName.trim(),
+          billing_phone: billingSameAsContact ? guestPhone.trim() : billingPhone.trim(),
+          billing_email: billingSameAsContact ? guestEmail.trim() || undefined : billingEmail.trim() || undefined,
+        },
       );
 
       const bookingId = checkoutResponse?.booking_ids?.[0];
@@ -538,31 +570,95 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   Please log in first to checkout package items.
                 </p>
               ) : null}
-              {!isLoggedIn ? (
-                <div>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Guest details</p>
-                  <div className="grid gap-3">
+              <div>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  {isLoggedIn ? "Contact details" : "Guest details"}
+                </p>
+                <div className="grid gap-3">
+                  <div>
                     <input
                       value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                      onChange={(e) => {
+                        setGuestName(e.target.value);
+                        setFieldErrors((prev) => ({ ...prev, guest_name: "" }));
+                      }}
+                      className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
                       placeholder="Name *"
                     />
+                    {fieldErrors.guest_name ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_name}</p> : null}
+                  </div>
+                  <div>
                     <input
                       value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
-                      className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                      onChange={(e) => {
+                        setGuestPhone(e.target.value);
+                        setFieldErrors((prev) => ({ ...prev, guest_phone: "" }));
+                      }}
+                      className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
                       placeholder="Phone *"
                     />
+                    {fieldErrors.guest_phone ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_phone}</p> : null}
+                  </div>
+                  <input
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                    placeholder="Email (optional)"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Billing contact</p>
+                <label className="mb-3 flex items-center gap-2 text-sm text-[var(--foreground)]">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-[var(--accent-strong)]"
+                    checked={billingSameAsContact}
+                    onChange={(e) => setBillingSameAsContact(e.target.checked)}
+                  />
+                  <span>Same as Shipping Address</span>
+                </label>
+
+                {billingSameAsContact ? (
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 text-sm text-[var(--text-muted)]">
+                    Billing contact will use your contact details above.
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    <div>
+                      <input
+                        value={billingName}
+                        onChange={(e) => {
+                          setBillingName(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, billing_name: "" }));
+                        }}
+                        className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                        placeholder="Billing Name *"
+                      />
+                      {fieldErrors.billing_name ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_name}</p> : null}
+                    </div>
+                    <div>
+                      <input
+                        value={billingPhone}
+                        onChange={(e) => {
+                          setBillingPhone(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, billing_phone: "" }));
+                        }}
+                        className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                        placeholder="Billing Phone *"
+                      />
+                      {fieldErrors.billing_phone ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_phone}</p> : null}
+                    </div>
                     <input
-                      value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
+                      value={billingEmail}
+                      onChange={(e) => setBillingEmail(e.target.value)}
                       className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
-                      placeholder="Email (optional)"
+                      placeholder="Billing Email (optional)"
                     />
                   </div>
-                </div>
-              ) : null}
+                )}
+              </div>
 
               <div>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Payment method</p>

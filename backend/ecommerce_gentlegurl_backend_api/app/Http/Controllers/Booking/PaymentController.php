@@ -127,6 +127,11 @@ class PaymentController extends Controller
             'booking_status' => $booking->status,
             'payment_status' => $booking->payment_status,
             'amount' => (float) $booking->deposit_amount,
+            'billing_contact' => [
+                'name' => $booking->billing_name ?: $booking->guest_name ?: $booking->customer?->name,
+                'phone' => $booking->billing_phone ?: $booking->guest_phone ?: $booking->customer?->phone,
+                'email' => $booking->billing_email ?: $booking->guest_email ?: $booking->customer?->email,
+            ],
             'payment' => $payment ? [
                 'id' => $payment->id,
                 'status' => $payment->status,
@@ -253,9 +258,9 @@ class PaymentController extends Controller
 
         $callbackUrl = $publicUrl ? "{$publicUrl}/api/booking/payment/callback?booking_id={$booking->id}" : null;
 
-        $contactName = $booking->customer?->name ?: $booking->guest_name ?: 'Booking Customer';
-        $contactPhone = $booking->customer?->phone ?: $booking->guest_phone;
-        $contactEmail = $booking->customer?->email ?: $booking->guest_email;
+        $contactName = $booking->billing_name ?: $booking->guest_name ?: $booking->customer?->name ?: 'Booking Customer';
+        $contactPhone = $booking->billing_phone ?: $booking->guest_phone ?: $booking->customer?->phone;
+        $contactEmail = $booking->billing_email ?: $booking->guest_email ?: $booking->customer?->email;
 
         if (! $contactPhone && ! $contactEmail) {
             abort(response()->json(['success' => false, 'message' => 'Please provide a contact phone or email for the payment.', 'data' => null], 422));
