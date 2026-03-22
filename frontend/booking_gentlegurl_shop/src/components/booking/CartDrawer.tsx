@@ -317,19 +317,6 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             <h2 className="font-[var(--font-heading)] text-xl font-semibold tracking-tight text-[var(--foreground)] sm:text-2xl">
               Booking cart
             </h2>
-            {hasItems ? (
-              <p className="mt-1 text-sm text-[var(--text-muted)]">
-                {itemCount} {itemCount === 1 ? "item" : "items"}
-                {nextExpiryIn ? (
-                  <span className="mt-1 block text-xs font-medium text-[var(--status-warning)]">
-                    <i className="fa-regular fa-hourglass-half mr-1.5" aria-hidden />
-                    Hold expires in {nextExpiryIn}
-                  </span>
-                ) : null}
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-[var(--text-muted)]">Add a service or package to get started.</p>
-            )}
           </div>
           <button
             type="button"
