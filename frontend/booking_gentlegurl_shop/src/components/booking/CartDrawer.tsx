@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   checkoutCart,
+  createBookingContact,
   getBookingBankAccounts,
+  getBookingContacts,
   getBookingCart,
   getBookingPaymentGateways,
   getMe,
   getServicePackageAvailableFor,
+  makeDefaultBookingContact,
   payBooking,
   redeemServicePackage,
   removeCartItem,
@@ -17,7 +20,7 @@ import {
   type PublicBookingBankAccount,
   type PublicBookingPaymentGateway,
 } from "@/lib/apiClient";
-import { BookingCart } from "@/lib/types";
+import { BookingCart, BookingContact } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
 
@@ -70,6 +73,17 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
 
+  const [bookingContacts, setBookingContacts] = useState<BookingContact[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [newContactName, setNewContactName] = useState("");
+  const [newContactPhone, setNewContactPhone] = useState("");
+  const [newContactEmail, setNewContactEmail] = useState("");
+  const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
+  const [billingName, setBillingName] = useState("");
+  const [billingPhone, setBillingPhone] = useState("");
+  const [billingEmail, setBillingEmail] = useState("");
+
   const loadCart = useCallback(async () => {
     try {
       const data = await getBookingCart();
@@ -87,13 +101,33 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         void loadCart();
       });
       getMe()
-        .then((me) => {
+        .then(async (me) => {
           setIsLoggedIn(true);
           setCustomerId(me.id);
+          setGuestName(me.name || "");
+          setGuestPhone(me.phone || "");
+          setGuestEmail(me.email || "");
+
+          try {
+            const contacts = await getBookingContacts();
+            setBookingContacts(contacts);
+            const initialContact = contacts.find((contact) => contact.is_default) || contacts[0] || null;
+            setSelectedContactId(initialContact?.id ?? null);
+            if (initialContact) {
+              setGuestName(initialContact.name);
+              setGuestPhone(initialContact.phone);
+              setGuestEmail(initialContact.email ?? "");
+            }
+          } catch {
+            setBookingContacts([]);
+            setSelectedContactId(null);
+          }
         })
         .catch(() => {
           setIsLoggedIn(false);
           setCustomerId(null);
+          setBookingContacts([]);
+          setSelectedContactId(null);
         });
 
       Promise.all([getBookingPaymentGateways(), getBookingBankAccounts()])
@@ -161,20 +195,34 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     void loadAvailability();
   }, [cart?.items, customerId, isLoggedIn, isOpen]);
 
+
+  const selectedContact = useMemo(
+    () => bookingContacts.find((contact) => contact.id === selectedContactId) || null,
+    [bookingContacts, selectedContactId],
+  );
+
   const onCheckout = async () => {
     try {
-      if (!isLoggedIn && (!guestName.trim() || !guestPhone.trim())) {
-        setMessage("Please fill in your name and phone to checkout as guest.");
+      const activeName = (billingSameAsShipping ? (isLoggedIn ? (selectedContact?.name || guestName) : guestName) : billingName).trim();
+      const activePhone = (billingSameAsShipping ? (isLoggedIn ? (selectedContact?.phone || guestPhone) : guestPhone) : billingPhone).trim();
+      const activeEmail = (billingSameAsShipping
+        ? (isLoggedIn ? (selectedContact?.email || guestEmail) : guestEmail)
+        : billingEmail).trim();
+
+      if (!activeName || !activePhone) {
+        setMessage("Please provide billing contact name and phone.");
         return;
       }
 
-      if (!isLoggedIn) {
-        const normalizedGuestPhone = guestPhone.trim();
-        const guestPhonePattern = /^\+?[0-9]{8,15}$/;
-        if (!guestPhonePattern.test(normalizedGuestPhone)) {
-          setMessage("Please enter a valid phone number (8-15 digits, optional + prefix).");
-          return;
-        }
+      const guestPhonePattern = /^\+?[0-9]{8,15}$/;
+      if (!guestPhonePattern.test(activePhone)) {
+        setMessage("Please enter a valid phone number (8-15 digits, optional + prefix).");
+        return;
+      }
+
+      if (activeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(activeEmail)) {
+        setMessage("Please enter a valid email address.");
+        return;
       }
 
       if (selectedPaymentMethod === "manual_transfer" && !selectedBankAccountId) {
@@ -182,13 +230,21 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         return;
       }
 
+      const billingPayload = {
+        billing_same_as_shipping: billingSameAsShipping,
+        billing_name: billingSameAsShipping ? undefined : activeName,
+        billing_phone: billingSameAsShipping ? undefined : activePhone,
+        billing_email: billingSameAsShipping ? undefined : activeEmail || undefined,
+      };
+
       const checkoutResponse = await checkoutCart(
         isLoggedIn
-          ? {}
+          ? billingPayload
           : {
               guest_name: guestName.trim(),
               guest_phone: guestPhone.trim(),
               guest_email: guestEmail.trim() || undefined,
+              ...billingPayload,
             },
       );
 
@@ -564,6 +620,65 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 </div>
               ) : null}
 
+
+              <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Contact</p>
+                    <p className="text-sm text-[var(--foreground)]">{selectedContact?.name || guestName || "No contact selected"}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{selectedContact?.phone || guestPhone || ""}</p>
+                    {selectedContact?.email || guestEmail ? (
+                      <p className="text-xs text-[var(--text-muted)]">{selectedContact?.email || guestEmail}</p>
+                    ) : null}
+                  </div>
+                  {isLoggedIn ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowContactModal(true)}
+                      className="rounded-full border border-[var(--card-border)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]"
+                    >
+                      Manage
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Billing contact</p>
+                <label className="flex items-center gap-2 text-sm text-[var(--foreground)]">
+                  <input
+                    type="checkbox"
+                    checked={billingSameAsShipping}
+                    onChange={(e) => setBillingSameAsShipping(e.target.checked)}
+                    className="h-4 w-4 rounded border-[var(--card-border)] accent-[var(--accent-strong)]"
+                  />
+                  Same as Shipping Address
+                </label>
+
+                {!billingSameAsShipping ? (
+                  <div className="grid gap-3">
+                    <input
+                      value={billingName}
+                      onChange={(e) => setBillingName(e.target.value)}
+                      className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                      placeholder="Billing Name *"
+                    />
+                    <input
+                      value={billingPhone}
+                      onChange={(e) => setBillingPhone(e.target.value)}
+                      className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                      placeholder="Billing Phone *"
+                    />
+                    <input
+                      value={billingEmail}
+                      onChange={(e) => setBillingEmail(e.target.value)}
+                      className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                      placeholder="Billing Email (optional)"
+                    />
+                  </div>
+                ) : null}
+              </div>
+
               <div>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Payment method</p>
                 <div className="space-y-2">
@@ -676,6 +791,83 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           ) : null}
         </div>
       </div>
+
+
+      {showContactModal ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal>
+          <div className="w-full max-w-md rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-[var(--font-heading)] text-lg font-semibold text-[var(--foreground)]">Manage Contact</h3>
+              <button type="button" onClick={() => setShowContactModal(false)} className="text-[var(--text-muted)]">
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="max-h-56 space-y-2 overflow-y-auto">
+              {bookingContacts.map((contact) => (
+                <button
+                  key={contact.id}
+                  type="button"
+                  onClick={async () => {
+                    setSelectedContactId(contact.id);
+                    setGuestName(contact.name);
+                    setGuestPhone(contact.phone);
+                    setGuestEmail(contact.email || "");
+                    try {
+                      await makeDefaultBookingContact(contact.id);
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  className={`w-full rounded-xl border p-3 text-left text-sm ${selectedContactId === contact.id ? "border-[var(--accent-strong)] bg-[var(--muted)]/40" : "border-[var(--card-border)]"}`}
+                >
+                  <p className="font-semibold text-[var(--foreground)]">{contact.name}</p>
+                  <p className="text-xs text-[var(--text-muted)]">{contact.phone}</p>
+                  {contact.email ? <p className="text-xs text-[var(--text-muted)]">{contact.email}</p> : null}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 space-y-2 border-t border-[var(--card-border)] pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Add new contact</p>
+              <input value={newContactName} onChange={(e) => setNewContactName(e.target.value)} className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm" placeholder="Name *" />
+              <input value={newContactPhone} onChange={(e) => setNewContactPhone(e.target.value)} className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm" placeholder="Phone *" />
+              <input value={newContactEmail} onChange={(e) => setNewContactEmail(e.target.value)} className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm" placeholder="Email (optional)" />
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!newContactName.trim() || !newContactPhone.trim()) {
+                    setMessage("Please fill in contact name and phone.");
+                    return;
+                  }
+                  try {
+                    const created = await createBookingContact({
+                      name: newContactName.trim(),
+                      phone: newContactPhone.trim(),
+                      email: newContactEmail.trim() || undefined,
+                    });
+                    const next = [...bookingContacts, created];
+                    setBookingContacts(next);
+                    setSelectedContactId(created.id);
+                    setGuestName(created.name);
+                    setGuestPhone(created.phone);
+                    setGuestEmail(created.email || "");
+                    setNewContactName("");
+                    setNewContactPhone("");
+                    setNewContactEmail("");
+                  } catch (error) {
+                    setMessage(error instanceof Error ? error.message : "Unable to add contact.");
+                  }
+                }}
+                className="w-full rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm font-semibold text-white"
+              >
+                Save Contact
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </>
   );
 }

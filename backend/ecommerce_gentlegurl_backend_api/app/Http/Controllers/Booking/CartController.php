@@ -17,6 +17,7 @@ use App\Services\Booking\CustomerServicePackageService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class CartController extends Controller
 {
@@ -190,13 +191,43 @@ class CartController extends Controller
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
             'guest_email' => ['nullable', 'email', 'max:255'],
+            'billing_same_as_shipping' => ['nullable', 'boolean'],
+            'billing_name' => [
+                Rule::requiredIf(fn () => ! $request->boolean('billing_same_as_shipping', true)),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'billing_phone' => [
+                Rule::requiredIf(fn () => ! $request->boolean('billing_same_as_shipping', true)),
+                'nullable',
+                'string',
+                'max:50',
+                'regex:/^\+?[0-9]{8,15}$/',
+            ],
+            'billing_email' => ['nullable', 'email', 'max:255'],
         ]);
 
         if (! $customer && (empty($validated['guest_name']) || empty($validated['guest_phone']))) {
             return $this->respondError('Guest name and phone are required for guest checkout.', 422);
         }
 
-        return DB::transaction(function () use ($request) {
+        $billingSameAsShipping = (bool) ($validated['billing_same_as_shipping'] ?? true);
+        $billingName = $billingSameAsShipping
+            ? ($customer?->name ?? ($validated['guest_name'] ?? null))
+            : ($validated['billing_name'] ?? null);
+        $billingPhone = $billingSameAsShipping
+            ? ($customer?->phone ?? ($validated['guest_phone'] ?? null))
+            : ($validated['billing_phone'] ?? null);
+        $billingEmail = $billingSameAsShipping
+            ? ($customer?->email ?? ($validated['guest_email'] ?? null))
+            : ($validated['billing_email'] ?? null);
+
+        if (empty($billingName) || empty($billingPhone)) {
+            return $this->respondError('Billing name and phone are required for checkout.', 422);
+        }
+
+        return DB::transaction(function () use ($request, $billingSameAsShipping, $billingName, $billingPhone, $billingEmail) {
             $cart = $this->resolveActiveCart($request);
             $this->cleanupExpiredItems($cart);
             $cart->load(['items.service', 'packageItems.servicePackage']);
@@ -238,6 +269,10 @@ class CartController extends Controller
                     'guest_name' => $customer ? null : ($request->input('guest_name') ?? null),
                     'guest_phone' => $customer ? null : ($request->input('guest_phone') ?? null),
                     'guest_email' => $customer ? null : ($request->input('guest_email') ?? null),
+                    'billing_same_as_shipping' => $billingSameAsShipping,
+                    'billing_name' => $billingName,
+                    'billing_phone' => $billingPhone,
+                    'billing_email' => $billingEmail,
                     'staff_id' => $item->staff_id,
                     'service_id' => $item->service_id,
                     'start_at' => $item->start_at,
