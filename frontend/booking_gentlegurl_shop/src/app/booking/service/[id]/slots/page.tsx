@@ -104,6 +104,15 @@ export default function SlotPage() {
     });
   }, [date]);
 
+  useEffect(() => {
+    if (!confirmModal) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [confirmModal]);
+
   const filteredSlots = useMemo(() => {
     if (timeFilter === "all") return slots;
     return slots.filter((slot) => {
@@ -225,39 +234,51 @@ export default function SlotPage() {
   const durationMin = service?.duration_minutes ?? 60;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10 pb-24">
+    <main className="mx-auto max-w-5xl px-4 py-8 pb-28 sm:py-10 sm:pb-32">
       <BookingProgress step={3} />
 
-      <div className="mb-8 text-center">
+      <div className="mb-6 sm:mb-8">
+        <Link
+          href={`/booking/service/${serviceId}`}
+          className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-medium shadow-[var(--shadow)] transition-all hover:border-[var(--accent)] hover:shadow-md sm:px-5 sm:py-2.5"
+        >
+          <i className="fa-solid fa-arrow-left text-xs" />
+          Back to stylist
+        </Link>
+      </div>
+
+      <div className="mb-8 text-center sm:mb-10">
         <h1 className="font-[var(--font-heading)] text-3xl font-medium tracking-tight sm:text-4xl">
-          Select <em className="text-[var(--accent-strong)]">date & time</em>
+          Select <em className="text-[var(--accent-strong)] not-italic">date & time</em>
         </h1>
-        <p className="mt-2 text-[var(--text-muted)]">
+        <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
           {service?.name ?? "Service"} · {durationMin} min
-          {selectedStaff ? ` with ${selectedStaff.name}` : ""}
+          {selectedStaff ? ` · ${selectedStaff.name}` : ""}
         </p>
       </div>
 
       {/* Date picker: strip + calendar toggle */}
-      <div className="mb-6">
-        <div className="mb-3 flex items-center justify-center gap-3">
-          <span className="font-[var(--font-heading)] min-w-[120px] text-center text-lg font-semibold">
+      <section className="mb-8 rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-[var(--shadow)] sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-center gap-3 sm:justify-between sm:gap-4">
+          <span className="font-[var(--font-heading)] text-center text-base font-semibold sm:text-left sm:text-lg">
             {calMonth.toLocaleDateString("en-MY", { month: "short", year: "numeric" })}
           </span>
           <button
             type="button"
             onClick={() => setShowCalendar((s) => !s)}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-              showCalendar ? "bg-[var(--accent-strong)] text-white" : "border border-[var(--card-border)] hover:border-[var(--accent)]"
+            className={`inline-flex items-center rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-all ${
+              showCalendar
+                ? "bg-[var(--accent-strong)] text-white shadow-sm"
+                : "border border-[var(--card-border)] bg-[var(--background)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--foreground)]"
             }`}
           >
-            <i className="fa-regular fa-calendar mr-1.5" />
+            <i className="fa-regular fa-calendar mr-2" />
             Calendar
           </button>
         </div>
 
         {showCalendar ? (
-          <div className="mx-auto mb-4 max-w-[340px] rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm">
+          <div className="mx-auto max-w-[340px] rounded-2xl border border-[var(--card-border)] bg-[var(--background)]/80 p-4">
             <div className="mb-4 flex items-center justify-between">
               <button
                 type="button"
@@ -309,45 +330,43 @@ export default function SlotPage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 pt-0.5 [scrollbar-width:thin] sm:flex-wrap sm:justify-center sm:overflow-visible">
             {dateStrip.map((d) => (
               <button
                 key={d.date}
                 type="button"
                 onClick={() => setDate(d.date)}
-                className={`min-w-[72px] rounded-xl border px-4 py-3 text-center shadow-sm transition-all ${
+                className={`shrink-0 snap-center rounded-2xl border px-3 py-3 text-center shadow-sm transition-all sm:min-w-[76px] sm:px-4 ${
                   date === d.date
-                    ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white"
-                    : "border-[var(--card-border)] bg-[var(--card)] hover:-translate-y-0.5 hover:border-[var(--accent)]"
+                    ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white shadow-md ring-2 ring-[var(--accent)]/30"
+                    : "border-[var(--card-border)] bg-[var(--background)] hover:-translate-y-0.5 hover:border-[var(--accent)]"
                 }`}
               >
-                <div className="text-[10px] font-medium uppercase tracking-wider opacity-80">{d.day}</div>
-                <div className="font-[var(--font-heading)] text-xl font-semibold">{d.num}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider opacity-80">{d.day}</div>
+                <div className="font-[var(--font-heading)] text-xl font-semibold leading-tight">{d.num}</div>
                 <div className="text-[10px] opacity-70">{d.month}</div>
               </button>
             ))}
           </div>
         )}
-      </div>
 
-      {/* Time filter */}
-      <div className="mb-6 flex justify-center gap-2">
-        {(["all", "morning", "afternoon"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setTimeFilter(f)}
-            className={`rounded-full px-4 py-2 text-xs font-medium uppercase tracking-wider transition-all ${
-              timeFilter === f
-                ? "bg-[var(--accent-strong)] text-white"
-                : "border border-[var(--card-border)] bg-[var(--card)] text-[var(--text-muted)] hover:border-[var(--accent)]"
-            }`}
-          >
-            {f === "all" ? "All" : f === "morning" ? "☀ Morning" : "☕ Afternoon"}
-          </button>
-        ))}
-      </div>
-
-      <div className="my-6 h-px bg-[var(--card-border)]" />
+        <div className="mt-6 flex flex-wrap justify-center gap-2 border-t border-[var(--card-border)] pt-6">
+          {(["all", "morning", "afternoon"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setTimeFilter(f)}
+              className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-all ${
+                timeFilter === f
+                  ? "bg-[var(--accent-strong)] text-white shadow-sm"
+                  : "border border-[var(--card-border)] bg-[var(--background)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {f === "all" ? "All" : f === "morning" ? "☀ Morning" : "☕ Afternoon"}
+            </button>
+          ))}
+        </div>
+      </section>
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -362,19 +381,19 @@ export default function SlotPage() {
           No slots available for selected date. Try another date.
         </div>
       ) : (
-        <div className="space-y-8">
+        <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-[var(--shadow)] sm:p-8">
           <div>
-            <h2 className="mb-4 font-[var(--font-heading)] text-lg font-semibold text-center">
+            <h2 className="mb-6 font-[var(--font-heading)] text-center text-lg font-semibold sm:text-xl">
               Available times
             </h2>
 
             {timeFilter !== "afternoon" && morning.length > 0 && (
-              <div className="mb-6">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                  <span>☀ Morning</span>
-                  <span className="h-px flex-1 bg-[var(--card-border)]" />
+              <div className="mb-8">
+                <div className="mb-3 flex items-center gap-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  <span className="shrink-0">☀ Morning</span>
+                  <span className="h-px flex-1 bg-gradient-to-r from-[var(--card-border)] to-transparent" />
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap justify-center gap-2.5 sm:justify-start">
                   {morning.map((slot, idx) => {
                     const startAt = slot.start_at ?? slot.start_time;
                     const endAt = slot.end_at ?? slot.end_time;
@@ -382,8 +401,9 @@ export default function SlotPage() {
                     return (
                       <button
                         key={startAt + idx}
+                        type="button"
                         onClick={() => handleSlotClick(slot)}
-                        className="min-w-[110px] rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow"
+                        className="min-w-[108px] rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-4 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md"
                       >
                         <div className="font-[var(--font-heading)] font-semibold">
                           {formatTime(startAt)} — {formatTime(endAt)}
@@ -400,11 +420,11 @@ export default function SlotPage() {
 
             {timeFilter !== "morning" && afternoon.length > 0 && (
               <div>
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                  <span>☕ Afternoon</span>
-                  <span className="h-px flex-1 bg-[var(--card-border)]" />
+                <div className="mb-3 flex items-center gap-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  <span className="shrink-0">☕ Afternoon</span>
+                  <span className="h-px flex-1 bg-gradient-to-r from-[var(--card-border)] to-transparent" />
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap justify-center gap-2.5 sm:justify-start">
                   {afternoon.map((slot, idx) => {
                     const startAt = slot.start_at ?? slot.start_time;
                     const endAt = slot.end_at ?? slot.end_time;
@@ -412,8 +432,9 @@ export default function SlotPage() {
                     return (
                       <button
                         key={startAt + idx}
+                        type="button"
                         onClick={() => handleSlotClick(slot)}
-                        className="min-w-[110px] rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow"
+                        className="min-w-[108px] rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-4 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md"
                       >
                         <div className="font-[var(--font-heading)] font-semibold">
                           {formatTime(startAt)} — {formatTime(endAt)}
@@ -428,91 +449,132 @@ export default function SlotPage() {
               </div>
             )}
           </div>
-        </div>
+        </section>
       )}
-
-      <div className="mt-10 flex justify-center gap-3">
-        <Link
-          href={`/booking/service/${serviceId}`}
-          className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-6 py-3 text-sm font-medium transition-all hover:border-[var(--accent)]"
-        >
-          <i className="fa-solid fa-arrow-left text-xs" />
-          Back
-        </Link>
-      </div>
 
       {/* Confirmation Modal */}
       {confirmModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--foreground)]/25 p-0 backdrop-blur-[6px] sm:items-center sm:p-4"
+          role="presentation"
           onClick={() => !adding && setConfirmModal(null)}
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-xl"
+            className="relative w-full max-w-md overflow-hidden rounded-t-[1.75rem] border border-[var(--card-border)] bg-[var(--card)] shadow-[0_-8px_40px_-12px_rgba(60,36,50,0.2)] ring-1 ring-black/[0.04] sm:rounded-3xl sm:shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="slot-confirm-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-[var(--font-heading)] text-xl font-semibold">Confirm booking</h3>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">
-              Add this slot to your cart?
-            </p>
-            <div className="mt-4 rounded-xl border border-[var(--card-border)] bg-[var(--background)] p-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-[var(--text-muted)]">Service</span>
-                <span className="font-medium">{service?.name ?? "—"}</span>
-              </div>
-              <div className="mt-2 flex justify-between text-sm">
-                <span className="text-[var(--text-muted)]">Staff</span>
-                <span className="font-medium">{selectedStaff?.name ?? "—"}</span>
-              </div>
-              <div className="mt-2 flex justify-between text-sm">
-                <span className="text-[var(--text-muted)]">Date</span>
-                <span className="font-medium">
-                  {new Date(date).toLocaleDateString("en-MY", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "short",
-                  })}
-                </span>
-              </div>
-              <div className="mt-2 flex justify-between text-sm">
-                <span className="text-[var(--text-muted)]">Time</span>
-                <span className="font-medium">
-                  {formatTime(confirmModal.start_at ?? confirmModal.start_time ?? "")} —{" "}
-                  {formatTime(confirmModal.end_at ?? confirmModal.end_time ?? "")}
-                </span>
-              </div>
-              {service && (
-                <div className="mt-2 flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Deposit</span>
-                  <span className="font-medium">RM {service.deposit_amount}</span>
+            <div className="h-1 bg-gradient-to-r from-[var(--accent)] via-[var(--accent-strong)] to-[var(--accent-stronger)]" />
+            <button
+              type="button"
+              onClick={() => !adding && setConfirmModal(null)}
+              disabled={adding}
+              className="absolute right-3 top-4 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-40 sm:right-4 sm:top-5"
+              aria-label="Close"
+            >
+              <i className="fa-solid fa-xmark text-sm" />
+            </button>
+
+            <div className="px-6 pb-6 pt-7 sm:px-8 sm:pb-8 sm:pt-8">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">
+                Almost there
+              </p>
+              <h3
+                id="slot-confirm-title"
+                className="font-[var(--font-heading)] pr-10 text-2xl font-semibold tracking-tight text-[var(--foreground)]"
+              >
+                Confirm your slot
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
+                Review the details below, then add this appointment to your cart.
+              </p>
+
+              <div className="mt-6 rounded-2xl bg-gradient-to-br from-[var(--muted)]/90 to-[var(--background-soft)]/50 p-5 ring-1 ring-[var(--card-border)]/80">
+                <div className="flex items-center justify-center gap-2 text-[var(--text-muted)]">
+                  <i className="fa-regular fa-clock text-sm" />
+                  <span className="text-xs font-semibold uppercase tracking-wider">Your time</span>
                 </div>
-              )}
-            </div>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => !adding && setConfirmModal(null)}
-                disabled={adding}
-                className="flex-1 rounded-full border border-[var(--card-border)] py-3 text-sm font-medium transition-all hover:border-[var(--accent)] disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmAdd}
-                disabled={adding}
-                className="flex-1 rounded-full bg-[var(--accent-strong)] py-3 text-sm font-medium text-white transition-all hover:bg-[var(--accent-stronger)] disabled:opacity-70"
-              >
-                {adding ? (
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Adding...
+                <p className="mt-2 text-center font-[var(--font-heading)] text-2xl font-semibold tabular-nums text-[var(--foreground)] sm:text-[1.65rem]">
+                  {formatTime(confirmModal.start_at ?? confirmModal.start_time ?? "")}
+                  <span className="mx-2 font-normal text-[var(--text-muted)]">–</span>
+                  {formatTime(confirmModal.end_at ?? confirmModal.end_time ?? "")}
+                </p>
+                <p className="mt-1 text-center text-xs text-[var(--text-muted)]">
+                  {new Date(date).toLocaleDateString("en-MY", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                  {" · "}
+                  {durationMin} min
+                </p>
+              </div>
+
+              <ul className="mt-5 space-y-0 divide-y divide-[var(--card-border)] rounded-2xl border border-[var(--card-border)] bg-[var(--background)]/60 px-1">
+                <li className="flex items-start justify-between gap-4 px-4 py-3.5 text-sm">
+                  <span className="flex shrink-0 items-center gap-2 text-[var(--text-muted)]">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
+                      <i className="fa-solid fa-spa text-xs" />
+                    </span>
+                    Service
                   </span>
-                ) : (
-                  <>
-                    <i className="fa-solid fa-cart-plus mr-2" />
-                    Add to Cart
-                  </>
+                  <span className="text-right font-medium leading-snug text-[var(--foreground)]">
+                    {service?.name ?? "—"}
+                  </span>
+                </li>
+                <li className="flex items-start justify-between gap-4 px-4 py-3.5 text-sm">
+                  <span className="flex shrink-0 items-center gap-2 text-[var(--text-muted)]">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
+                      <i className="fa-solid fa-user text-xs" />
+                    </span>
+                    Stylist
+                  </span>
+                  <span className="text-right font-medium text-[var(--foreground)]">{selectedStaff?.name ?? "—"}</span>
+                </li>
+                {service && (
+                  <li className="flex items-center justify-between gap-4 px-4 py-3.5 text-sm">
+                    <span className="flex items-center gap-2 text-[var(--text-muted)]">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
+                        <i className="fa-solid fa-receipt text-xs" />
+                      </span>
+                      Deposit
+                    </span>
+                    <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {service.deposit_amount}</span>
+                  </li>
                 )}
-              </button>
+              </ul>
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => !adding && setConfirmModal(null)}
+                  disabled={adding}
+                  className="w-full rounded-full border-2 border-[var(--card-border)] bg-transparent py-3.5 text-sm font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)] hover:bg-[var(--muted)]/40 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAdd}
+                  disabled={adding}
+                  className="w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg disabled:opacity-70"
+                >
+                  {adding ? (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Adding…
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <i className="fa-solid fa-cart-plus" />
+                      Add to cart
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

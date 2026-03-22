@@ -79,6 +79,16 @@ export default function ServiceDetailPage() {
       <div className="space-y-6">
         <BookingProgress step={2} />
 
+        <div>
+          <Link
+            href="/booking"
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-5 py-2.5 text-sm font-medium shadow-sm transition-all hover:border-[var(--accent)] hover:shadow"
+          >
+            <i className="fa-solid fa-arrow-left text-xs" />
+            Back to services
+          </Link>
+        </div>
+
         {error ? <p className="text-[var(--status-error)]">{error}</p> : null}
 
         {packageHint ? (

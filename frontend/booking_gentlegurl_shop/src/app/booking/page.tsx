@@ -66,9 +66,7 @@ export default function BookingPage() {
               )}
             </div>
             <div className="relative p-4">
-              <div className="absolute right-4 top-4 flex h-7 w-7 -translate-x-1 items-center justify-center rounded-full bg-[var(--background)] opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100">
-                <i className="fa-solid fa-arrow-right text-xs text-[var(--accent-strong)]" />
-              </div>
+
               <div className="flex items-center justify-between">
                 <h2 className="font-[var(--font-heading)] font-semibold">{service.name}</h2>
                 <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)]">
