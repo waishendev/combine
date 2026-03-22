@@ -190,13 +190,22 @@ class CartController extends Controller
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
             'guest_email' => ['nullable', 'email', 'max:255'],
+            'billing_same_as_contact' => ['nullable', 'boolean'],
+            'billing_name' => ['nullable', 'string', 'max:255'],
+            'billing_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
+            'billing_email' => ['nullable', 'email', 'max:255'],
         ]);
 
-        if (! $customer && (empty($validated['guest_name']) || empty($validated['guest_phone']))) {
-            return $this->respondError('Guest name and phone are required for guest checkout.', 422);
+        if (empty($validated['guest_name']) || empty($validated['guest_phone'])) {
+            return $this->respondError('Contact name and phone are required for booking checkout.', 422);
         }
 
-        return DB::transaction(function () use ($request) {
+        $billingSameAsContact = (bool) ($validated['billing_same_as_contact'] ?? true);
+        if (! $billingSameAsContact && (empty($validated['billing_name']) || empty($validated['billing_phone']))) {
+            return $this->respondError('Billing name and phone are required when billing contact is custom.', 422);
+        }
+
+        return DB::transaction(function () use ($request, $validated, $billingSameAsContact) {
             $cart = $this->resolveActiveCart($request);
             $this->cleanupExpiredItems($cart);
             $cart->load(['items.service', 'packageItems.servicePackage']);
@@ -231,13 +240,23 @@ class CartController extends Controller
                     return $this->respondError('One or more selected slots are no longer available.', 409);
                 }
 
+                $contactName = (string) ($validated['guest_name'] ?? '');
+                $contactPhone = (string) ($validated['guest_phone'] ?? '');
+                $contactEmail = (string) ($validated['guest_email'] ?? '');
+                $billingName = $billingSameAsContact ? $contactName : (string) ($validated['billing_name'] ?? '');
+                $billingPhone = $billingSameAsContact ? $contactPhone : (string) ($validated['billing_phone'] ?? '');
+                $billingEmail = $billingSameAsContact ? $contactEmail : (string) ($validated['billing_email'] ?? '');
+
                 $booking = Booking::create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => $customer ? 'CUSTOMER' : 'GUEST',
                     'customer_id' => $customer?->id,
-                    'guest_name' => $customer ? null : ($request->input('guest_name') ?? null),
-                    'guest_phone' => $customer ? null : ($request->input('guest_phone') ?? null),
-                    'guest_email' => $customer ? null : ($request->input('guest_email') ?? null),
+                    'guest_name' => $contactName ?: null,
+                    'guest_phone' => $contactPhone ?: null,
+                    'guest_email' => $contactEmail ?: null,
+                    'billing_name' => $billingName ?: null,
+                    'billing_phone' => $billingPhone ?: null,
+                    'billing_email' => $billingEmail ?: null,
                     'staff_id' => $item->staff_id,
                     'service_id' => $item->service_id,
                     'start_at' => $item->start_at,
