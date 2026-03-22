@@ -233,6 +233,65 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   const itemCount = (cart?.items?.length || 0) + (cart?.package_items?.length || 0);
   const hasItems = itemCount > 0;
+  const depositDisplay = useMemo(() => {
+    const bookingItems = cart?.items ?? [];
+
+    if (bookingItems.length === 0) {
+      return {
+        total: 0,
+        perItem: {} as Record<number, number>,
+      };
+    }
+
+    const payableItems = bookingItems.filter(
+      (item) => !["reserved", "consumed"].includes(item.package_claim_status ?? ""),
+    );
+    const premiumItems = payableItems.filter((item) => isPremiumService(item.service_type));
+    const standardItems = payableItems.filter((item) => item.service_type === "standard");
+    const premiumCount = premiumItems.length;
+    const standardCount = standardItems.length;
+
+    const premiumAmountFallback = premiumItems.find((item) => Number(item.deposit_amount ?? 0) > 0)?.deposit_amount ?? 0;
+    const standardBaseFallback = standardItems.find((item) => Number(item.deposit_amount ?? 0) > 0)?.deposit_amount ?? 0;
+
+    let calculatedTotal = 0;
+    if (premiumCount > 0) {
+      calculatedTotal = premiumCount * Number(premiumAmountFallback || 0);
+    } else if (standardCount > 0) {
+      calculatedTotal = Number(standardBaseFallback || 0);
+    }
+
+    const backendTotal = Number(cart?.deposit_total ?? 0);
+    const useBackendTotal =
+      Number.isFinite(backendTotal) && Math.abs(backendTotal - calculatedTotal) < 0.01;
+    const total = useBackendTotal ? backendTotal : calculatedTotal;
+
+    const perItem: Record<number, number> = {};
+    if (premiumCount > 0) {
+      const perPremiumAmount = premiumCount > 0 ? total / premiumCount : 0;
+      premiumItems.forEach((item) => {
+        perItem[item.id] = perPremiumAmount;
+      });
+      standardItems.forEach((item) => {
+        perItem[item.id] = 0;
+      });
+    } else if (standardCount > 0) {
+      const firstStandardId = standardItems[0]?.id;
+      standardItems.forEach((item) => {
+        perItem[item.id] = item.id === firstStandardId ? total : 0;
+      });
+    }
+
+    bookingItems.forEach((item) => {
+      if (["reserved", "consumed"].includes(item.package_claim_status ?? "")) {
+        perItem[item.id] = 0;
+      } else if (typeof perItem[item.id] !== "number") {
+        perItem[item.id] = Number(item.deposit_amount ?? 0);
+      }
+    });
+
+    return { total, perItem };
+  }, [cart?.deposit_total, cart?.items]);
 
   return (
     <>
@@ -350,7 +409,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     {typeof item.deposit_amount === "number" ? (
                       <div className="shrink-0 text-right">
                         <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--text-muted)]">Deposit</p>
-                        <p className="text-sm font-semibold tabular-nums text-[var(--accent-strong)]">RM {item.deposit_amount}</p>
+                        <p className="text-sm font-semibold tabular-nums text-[var(--accent-strong)]">
+                          RM {Number(depositDisplay.perItem[item.id] ?? item.deposit_amount ?? 0).toFixed(2)}
+                        </p>
                       </div>
                     ) : null}
                   </div>
@@ -594,7 +655,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-muted)]">Deposit</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {cart?.deposit_total ?? 0}</span>
+                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {depositDisplay.total.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-muted)]">Packages</span>
@@ -604,7 +665,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
                     <span className="font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
-                      RM {cart?.cart_total ?? cart?.deposit_total ?? 0}
+                      RM {(Number(cart?.package_total ?? 0) + depositDisplay.total).toFixed(2)}
                     </span>
                   </div>
                   {nextExpiryIn ? (
