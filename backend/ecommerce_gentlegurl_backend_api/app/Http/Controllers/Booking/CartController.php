@@ -188,7 +188,7 @@ class CartController extends Controller
         $customer = $request->user('customer');
         $validated = $request->validate([
             'guest_name' => ['nullable', 'string', 'max:255'],
-            'guest_phone' => ['nullable', 'string', 'max:50'],
+            'guest_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
             'guest_email' => ['nullable', 'email', 'max:255'],
         ]);
 
@@ -247,6 +247,7 @@ class CartController extends Controller
                     'deposit_amount' => $depositTotal,
                     'payment_status' => 'UNPAID',
                     'hold_expires_at' => $item->expires_at,
+                    'notes' => $customer ? null : ('guest_token:' . (string) ($cart->guest_token ?? '')),
                 ]);
 
                 if ($customer) {

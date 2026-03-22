@@ -73,10 +73,15 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
       setCartCount(event.detail);
     };
     window.addEventListener("cartUpdated", handleCartUpdate as EventListener);
-    
+
+    // Listen for open cart drawer (e.g. after adding from slots page)
+    const handleOpenCart = () => setCartOpen(true);
+    window.addEventListener("openCart", handleOpenCart);
+
     return () => {
       clearInterval(interval);
       window.removeEventListener("cartUpdated", handleCartUpdate as EventListener);
+      window.removeEventListener("openCart", handleOpenCart);
     };
   }, []);
 

@@ -17,6 +17,12 @@ interface FormState {
   name: string
   isActive: 'active' | 'inactive'
   isDefault: 'yes' | 'no'
+  apiKey: string
+  collectionId: string
+  xSignature: string
+  baseUrl: string
+  frontendUrl: string
+  publicUrl: string
 }
 
 const initialFormState: FormState = {
@@ -24,6 +30,12 @@ const initialFormState: FormState = {
   name: '',
   isActive: 'active',
   isDefault: 'no',
+  apiKey: '',
+  collectionId: '',
+  xSignature: '',
+  baseUrl: 'https://www.billplz.com/api/v3',
+  frontendUrl: '',
+  publicUrl: '',
 }
 
 export default function PaymentGatewayCreateModal({
@@ -53,6 +65,15 @@ export default function PaymentGatewayCreateModal({
     setError(null)
 
     try {
+      const config = {
+        api_key: form.apiKey.trim() || undefined,
+        collection_id: form.collectionId.trim() || undefined,
+        x_signature: form.xSignature.trim() || undefined,
+        base_url: form.baseUrl.trim() || undefined,
+        frontend_url: form.frontendUrl.trim() || undefined,
+        public_url: form.publicUrl.trim() || undefined,
+      }
+
       const res = await fetch(`/api/proxy/ecommerce/payment-gateways?type=${workspaceType}`, {
         method: 'POST',
         headers: {
@@ -64,6 +85,7 @@ export default function PaymentGatewayCreateModal({
           name: trimmedName,
           is_active: form.isActive === 'active',
           is_default: form.isDefault === 'yes',
+          config,
           type: workspaceType,
         }),
       })
@@ -224,6 +246,18 @@ export default function PaymentGatewayCreateModal({
                 <option value="yes">Yes</option>
               </select>
             </div>
+
+            <div className="rounded-md border border-gray-200 p-3">
+              <p className="mb-3 text-sm font-semibold text-gray-800">Billplz Config</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input name="apiKey" value={form.apiKey} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="API Key" disabled={submitting} />
+                <input name="collectionId" value={form.collectionId} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="Collection ID" disabled={submitting} />
+                <input name="xSignature" value={form.xSignature} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="X Signature" disabled={submitting} />
+                <input name="baseUrl" value={form.baseUrl} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="Base URL" disabled={submitting} />
+                <input name="frontendUrl" value={form.frontendUrl} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm md:col-span-2" placeholder="Frontend URL (redirect URL base)" disabled={submitting} />
+                <input name="publicUrl" value={form.publicUrl} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm md:col-span-2" placeholder="Public API URL (callback URL base)" disabled={submitting} />
+              </div>
+            </div>
           </div>
 
           {error && (
@@ -256,4 +290,3 @@ export default function PaymentGatewayCreateModal({
     </div>
   )
 }
-
