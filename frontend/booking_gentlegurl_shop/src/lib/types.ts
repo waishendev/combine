@@ -68,6 +68,23 @@ export type BookingCartPackageItem = {
   status: string;
 };
 
+
+export type BookingContact = {
+  id: number;
+  customer_id: number;
+  name: string;
+  phone: string;
+  email?: string | null;
+  is_default: boolean;
+};
+
+export type BookingContactPayload = {
+  name: string;
+  phone: string;
+  email?: string;
+  is_default?: boolean;
+};
+
 export type BookingRecord = {
   id: number;
   status: string;

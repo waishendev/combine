@@ -4,6 +4,8 @@ import {
   AuthUser, 
   BookingCart, 
   BookingPolicy,
+  BookingContact,
+  BookingContactPayload,
   BookingRecord, 
   BookingSlot, 
   CustomerAddress, 
@@ -182,6 +184,10 @@ export async function checkoutCart(payload?: {
   guest_name?: string;
   guest_phone?: string;
   guest_email?: string;
+  billing_same_as_shipping?: boolean;
+  billing_name?: string;
+  billing_phone?: string;
+  billing_email?: string;
 }) {
   const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number }>(`/booking/cart/checkout`, {
     method: "POST",
@@ -441,4 +447,28 @@ export async function requestBookingCancellation(id: number, reason?: string) {
     method: "POST",
     body: JSON.stringify({ reason }),
   });
+}
+
+
+export async function getBookingContacts() {
+  const response = await request<{ data: BookingContact[] } | BookingContact[]>("/booking/contacts");
+  return unwrapData<BookingContact[]>(response);
+}
+
+export async function createBookingContact(payload: BookingContactPayload) {
+  const response = await request<{ data: BookingContact } | BookingContact>("/booking/contacts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  return unwrapData<BookingContact>(response);
+}
+
+export async function makeDefaultBookingContact(contactId: number) {
+  const response = await request<{ data: BookingContact } | BookingContact>(`/booking/contacts/${contactId}/default`, {
+    method: "PUT",
+    body: JSON.stringify({}),
+  });
+
+  return unwrapData<BookingContact>(response);
 }

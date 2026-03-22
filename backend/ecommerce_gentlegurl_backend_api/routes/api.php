@@ -961,6 +961,11 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
         Route::get('/cancellation-requests/my', [\App\Http\Controllers\Booking\CancellationRequestController::class, 'my']);
         Route::get('/my/service-packages', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'index']);
         Route::post('/service-packages/purchase', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'purchase']);
+        Route::get('/contacts', [\App\Http\Controllers\Booking\CustomerBookingContactController::class, 'index']);
+        Route::post('/contacts', [\App\Http\Controllers\Booking\CustomerBookingContactController::class, 'store']);
+        Route::put('/contacts/{id}', [\App\Http\Controllers\Booking\CustomerBookingContactController::class, 'update']);
+        Route::delete('/contacts/{id}', [\App\Http\Controllers\Booking\CustomerBookingContactController::class, 'destroy']);
+        Route::put('/contacts/{id}/default', [\App\Http\Controllers\Booking\CustomerBookingContactController::class, 'makeDefault']);
     });
 });
 
