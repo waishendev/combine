@@ -120,6 +120,260 @@ class PosController extends Controller
         ]);
     }
 
+    public function appointmentSearch(Request $request)
+    {
+        $query = trim((string) $request->query('q', ''));
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
+
+        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,service_price,price', 'staff:id,name']);
+
+        if ($query !== '') {
+            $builder->where(function ($q) use ($query) {
+                $q->where('booking_code', 'like', "%{$query}%")
+                    ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$query}%"))
+                    ->orWhereHas('service', fn ($sq) => $sq->where('name', 'like', "%{$query}%"));
+            });
+        }
+
+        if ($request->filled('date')) {
+            $builder->whereDate('start_at', $request->string('date'));
+        }
+        if ($request->filled('customer_id')) {
+            $builder->where('customer_id', (int) $request->query('customer_id'));
+        }
+        if ($request->filled('staff_id')) {
+            $builder->where('staff_id', (int) $request->query('staff_id'));
+        }
+        if ($request->filled('status')) {
+            $builder->where('status', (string) $request->query('status'));
+        } else {
+            $builder->whereIn('status', ['CONFIRMED', 'PENDING', 'IN_PROGRESS']);
+        }
+
+        $paginator = $builder->orderBy('start_at')->paginate($perPage, ['*'], 'page', $page);
+
+        $rows = collect($paginator->items())->map(function (Booking $booking) {
+            $summary = $this->resolveAppointmentFinancialSummary($booking);
+            return [
+                'id' => (int) $booking->id,
+                'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+                'customer_name' => (string) ($booking->customer?->name ?? '-'),
+                'service_names' => [(string) ($booking->service?->name ?? '-')],
+                'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
+                'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+                'staff_name' => (string) ($booking->staff?->name ?? '-'),
+                'status' => (string) $booking->status,
+                'deposit_paid' => (float) $summary['deposit_paid'],
+                'balance_due' => (float) $summary['balance_due'],
+                'service_total' => (float) $summary['service_total'],
+                'package_status' => $summary['package_status'],
+            ];
+        })->values();
+
+        return $this->respond([
+            'data' => $rows,
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+        ]);
+    }
+
+    public function appointmentDetail(int $id)
+    {
+        $booking = Booking::query()
+            ->with(['customer:id,name,phone,email', 'service:id,name,service_price,price,service_type', 'staff:id,name'])
+            ->findOrFail($id);
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $history = $this->resolveAppointmentPaymentHistory((int) $booking->id);
+        $staffSplits = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->where('splits.booking_id', (int) $booking->id)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'staffs.name as staff_name',
+                'splits.split_percent',
+                'splits.service_commission_rate_snapshot',
+            ])
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'staff_name' => (string) ($row->staff_name ?? '-'),
+                'split_percent' => (int) ($row->split_percent ?? 0),
+                'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ])->values();
+
+        return $this->respond([
+            'id' => (int) $booking->id,
+            'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+            'status' => (string) $booking->status,
+            'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
+            'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+            'customer' => [
+                'id' => (int) ($booking->customer?->id ?? 0),
+                'name' => (string) ($booking->customer?->name ?? '-'),
+                'phone' => $booking->customer?->phone,
+                'email' => $booking->customer?->email,
+            ],
+            'service' => [
+                'id' => (int) ($booking->service?->id ?? 0),
+                'name' => (string) ($booking->service?->name ?? '-'),
+                'service_type' => (string) ($booking->service?->service_type ?? ''),
+            ],
+            'staff' => [
+                'id' => (int) ($booking->staff?->id ?? 0),
+                'name' => (string) ($booking->staff?->name ?? '-'),
+            ],
+            'staff_splits' => $staffSplits,
+            'service_total' => (float) $summary['service_total'],
+            'deposit_paid' => (float) $summary['deposit_paid'],
+            'settlement_paid' => (float) $summary['settlement_paid'],
+            'balance_due' => (float) $summary['balance_due'],
+            'package_status' => $summary['package_status'],
+            'payment_history' => $history,
+        ]);
+    }
+
+    public function applyPackageToAppointment(Request $request, int $id)
+    {
+        $booking = Booking::query()->with('service')->findOrFail($id);
+        if (! $booking->customer_id || ! $booking->service_id) {
+            return $this->respondError(__('Appointment must have customer and service to apply package.'), 422);
+        }
+
+        try {
+            $this->customerServicePackageService->reserve(
+                (int) $booking->customer_id,
+                (int) $booking->service_id,
+                'POS_APPOINTMENT',
+                (int) $booking->id,
+                1,
+                'Applied from POS appointment settlement',
+            );
+        } catch (\Throwable $e) {
+            return $this->respondError($e->getMessage() ?: __('Unable to apply package to this appointment.'), 422);
+        }
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Package reserved successfully for appointment.'));
+    }
+
+    public function collectAppointmentPayment(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'payment_method' => ['required', 'in:cash,qrpay'],
+            'mode' => ['nullable', 'in:balance,full'],
+            'amount' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        if (! $booking->customer_id || ! $booking->service_id) {
+            return $this->respondError(__('Appointment must have customer and service before settlement.'), 422);
+        }
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $balanceDue = (float) $summary['balance_due'];
+        if ($balanceDue <= 0) {
+            return $this->respondError(__('No balance due for this appointment.'), 422);
+        }
+
+        $mode = (string) ($validated['mode'] ?? 'balance');
+        $requestedAmount = isset($validated['amount']) ? (float) $validated['amount'] : null;
+        $amount = $mode === 'full'
+            ? (float) $balanceDue
+            : ($requestedAmount ?? (float) $balanceDue);
+        if ($amount <= 0) {
+            return $this->respondError(__('Payment amount must be greater than 0.'), 422);
+        }
+        if ($amount > $balanceDue + 0.0001) {
+            return $this->respondError(__('Payment amount exceeds current balance due.'), 422);
+        }
+
+        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated) {
+            $order = Order::query()->create([
+                'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                'customer_id' => (int) $booking->customer_id,
+                'status' => 'completed',
+                'payment_status' => 'paid',
+                'payment_method' => $validated['payment_method'],
+                'payment_provider' => 'manual',
+                'subtotal' => $amount,
+                'discount_total' => 0,
+                'shipping_fee' => 0,
+                'grand_total' => $amount,
+                'pickup_or_shipping' => 'pickup',
+                'placed_at' => now(),
+                'paid_at' => now(),
+                'completed_at' => now(),
+                'notes' => 'POS appointment settlement by staff #' . $request->user()->id . ' | booking_id=' . $booking->id,
+            ]);
+
+            OrderItem::query()->create([
+                'order_id' => (int) $order->id,
+                'line_type' => 'booking_settlement',
+                'product_name_snapshot' => 'Appointment Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                'display_name_snapshot' => 'Appointment Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                'quantity' => 1,
+                'price_snapshot' => $amount,
+                'unit_price_snapshot' => $amount,
+                'line_total' => $amount,
+                'line_total_snapshot' => $amount,
+                'effective_unit_price' => $amount,
+                'effective_line_total' => $amount,
+                'locked' => true,
+                'booking_id' => (int) $booking->id,
+                'booking_service_id' => (int) $booking->service_id,
+            ]);
+
+            $receipt = $this->buildReceiptUrl($order, $request);
+            return [$order, $receipt];
+        });
+
+        $freshSummary = $this->resolveAppointmentFinancialSummary($booking->fresh(['service', 'customer']));
+
+        return $this->respond([
+            'order_id' => (int) $order->id,
+            'order_number' => (string) $order->order_number,
+            'receipt_public_url' => $receiptUrl,
+            'paid_amount' => (float) $amount,
+            'balance_due' => (float) $freshSummary['balance_due'],
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Appointment payment collected.'));
+    }
+
+    public function markAppointmentCompleted(int $id)
+    {
+        $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        if ((float) $summary['balance_due'] > 0.0001) {
+            return $this->respondError(__('Please collect outstanding balance before marking completed.'), 422);
+        }
+
+        DB::transaction(function () use ($booking) {
+            $booking->status = 'COMPLETED';
+            $booking->completed_at = now();
+            $booking->payment_status = 'PAID';
+            $booking->save();
+
+            $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
+            $this->customerServicePackageService->attachReservedClaimsToBooking(
+                (int) ($booking->customer_id ?? 0),
+                (int) ($booking->service_id ?? 0),
+                'POS_APPOINTMENT',
+                (int) $booking->id,
+                (int) $booking->id,
+            );
+            $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
+        });
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Appointment marked as completed.'));
+    }
+
     public function addByBarcode(Request $request)
     {
         $validated = $request->validate([
@@ -1795,6 +2049,92 @@ class PosController extends Controller
         $cart->voucher_discount_amount = 0;
         $cart->voucher_snapshot = null;
         $cart->save();
+    }
+
+    protected function resolveAppointmentSnapshot(Booking $booking): array
+    {
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+
+        return [
+            'id' => (int) $booking->id,
+            'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+            'status' => (string) $booking->status,
+            'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
+            'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+            'customer_name' => (string) ($booking->customer?->name ?? '-'),
+            'service_name' => (string) ($booking->service?->name ?? '-'),
+            'staff_name' => (string) ($booking->staff?->name ?? '-'),
+            'service_total' => (float) $summary['service_total'],
+            'deposit_paid' => (float) $summary['deposit_paid'],
+            'settlement_paid' => (float) $summary['settlement_paid'],
+            'balance_due' => (float) $summary['balance_due'],
+            'package_status' => $summary['package_status'],
+        ];
+    }
+
+    protected function resolveAppointmentPaymentHistory(int $bookingId): array
+    {
+        return OrderItem::query()
+            ->with(['order:id,order_number,payment_method,paid_at,created_at'])
+            ->where('booking_id', $bookingId)
+            ->whereIn('line_type', ['booking_deposit', 'booking_settlement'])
+            ->orderBy('id')
+            ->get()
+            ->map(fn (OrderItem $item) => [
+                'order_id' => (int) ($item->order?->id ?? 0),
+                'order_number' => (string) ($item->order?->order_number ?? '-'),
+                'line_type' => (string) ($item->line_type ?? ''),
+                'amount' => (float) ($item->line_total ?? 0),
+                'payment_method' => (string) ($item->order?->payment_method ?? ''),
+                'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
+            ])->values()->all();
+    }
+
+    protected function resolveAppointmentFinancialSummary(Booking $booking): array
+    {
+        $serviceTotal = (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
+        $depositPaid = (float) OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_deposit')
+            ->sum('line_total');
+        $settlementPaid = (float) OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_settlement')
+            ->sum('line_total');
+
+        $packageUsage = CustomerServicePackageUsage::query()
+            ->where('booking_id', (int) $booking->id)
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->latest('id')
+            ->first();
+
+        if (! $packageUsage && $booking->customer_id && $booking->service_id) {
+            $packageUsage = CustomerServicePackageUsage::query()
+                ->where('customer_id', (int) $booking->customer_id)
+                ->where('booking_service_id', (int) $booking->service_id)
+                ->where('used_from', 'POS_APPOINTMENT')
+                ->where('used_ref_id', (int) $booking->id)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->latest('id')
+                ->first();
+        }
+
+        $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
+        $coveredTotal = $coveredByPackage ? $serviceTotal : 0.0;
+        $balanceDue = max(0, $serviceTotal - $coveredTotal - $depositPaid - $settlementPaid);
+
+        return [
+            'service_total' => round($serviceTotal, 2),
+            'deposit_paid' => round($depositPaid, 2),
+            'settlement_paid' => round($settlementPaid, 2),
+            'balance_due' => round($balanceDue, 2),
+            'package_status' => $packageUsage ? [
+                'status' => (string) $packageUsage->status,
+                'used_qty' => (int) ($packageUsage->used_qty ?? 1),
+                'reserved_at' => optional($packageUsage->reserved_at)?->toIso8601String(),
+                'consumed_at' => optional($packageUsage->consumed_at)?->toIso8601String(),
+            ] : null,
+        ];
     }
 
 
