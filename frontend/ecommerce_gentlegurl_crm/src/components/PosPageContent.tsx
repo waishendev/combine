@@ -137,7 +137,9 @@ type AppointmentListItem = {
   appointment_end_at?: string | null
   staff_name?: string | null
   status: string
+  deposit_contribution?: number
   deposit_paid: number
+  linked_booking_deposit?: number
   package_offset?: number
   balance_due: number
   amount_due_now?: number
@@ -155,7 +157,9 @@ type AppointmentDetail = {
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>
   service_total: number
+  deposit_contribution?: number
   deposit_paid: number
+  linked_booking_deposit?: number
   package_offset?: number
   settlement_paid: number
   balance_due: number
@@ -3170,7 +3174,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-xs text-gray-500">{appt.appointment_start_at ? new Date(appt.appointment_start_at).toLocaleString() : '-'}</p>
                             <p className="text-xs text-gray-500">Staff: {appt.staff_name ?? '-'}</p>
                             <p className="text-xs text-gray-500">Status: {appt.status}</p>
-                            <p className="text-xs text-gray-500">Deposit: RM {Number(appt.deposit_paid ?? 0).toFixed(2)} • Package: RM {Number(appt.package_offset ?? 0).toFixed(2)} • Due: RM {Number(appt.amount_due_now ?? appt.balance_due ?? 0).toFixed(2)}</p>
+                            <p className="text-xs text-gray-500">Deposit Contribution: RM {Number(appt.deposit_contribution ?? appt.deposit_paid ?? 0).toFixed(2)} • Linked Booking Deposit: RM {Number(appt.linked_booking_deposit ?? 0).toFixed(2)} • Package: RM {Number(appt.package_offset ?? 0).toFixed(2)} • Due: RM {Number(appt.amount_due_now ?? appt.balance_due ?? 0).toFixed(2)}</p>
                           </div>
                           <button
                             type="button"
@@ -3212,7 +3216,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     </div>
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
                       <p>Service Total: <span className="font-semibold">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</span></p>
-                      <p>Deposit Paid: <span className="font-semibold">RM {Number(appointmentDetail.deposit_paid ?? 0).toFixed(2)}</span></p>
+                      <p>Deposit Contribution: <span className="font-semibold">RM {Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_paid ?? 0).toFixed(2)}</span></p>
+                      <p>Linked Booking Deposit: <span className="font-semibold">RM {Number(appointmentDetail.linked_booking_deposit ?? 0).toFixed(2)}</span></p>
                       <p>Package Applied / Offset: <span className="font-semibold">RM {Number(appointmentDetail.package_offset ?? 0).toFixed(2)}</span></p>
                       <p>Settlement Paid: <span className="font-semibold">RM {Number(appointmentDetail.settlement_paid ?? 0).toFixed(2)}</span></p>
                       <p>Amount Due Now: <span className="font-semibold text-emerald-700">RM {Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0).toFixed(2)}</span></p>

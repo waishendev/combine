@@ -164,7 +164,9 @@ class PosController extends Controller
                 'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'status' => (string) $booking->status,
-                'deposit_paid' => (float) $summary['deposit_paid'],
+                'deposit_contribution' => (float) $summary['deposit_contribution'],
+                'deposit_paid' => (float) $summary['deposit_contribution'],
+                'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
                 'package_offset' => (float) $summary['package_offset'],
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['balance_due'],
@@ -230,7 +232,9 @@ class PosController extends Controller
             ],
             'staff_splits' => $staffSplits,
             'service_total' => (float) $summary['service_total'],
-            'deposit_paid' => (float) $summary['deposit_paid'],
+            'deposit_contribution' => (float) $summary['deposit_contribution'],
+            'deposit_paid' => (float) $summary['deposit_contribution'],
+            'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
             'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
@@ -2061,7 +2065,9 @@ class PosController extends Controller
             'service_name' => (string) ($booking->service?->name ?? '-'),
             'staff_name' => (string) ($booking->staff?->name ?? '-'),
             'service_total' => (float) $summary['service_total'],
-            'deposit_paid' => (float) $summary['deposit_paid'],
+            'deposit_contribution' => (float) $summary['deposit_contribution'],
+            'deposit_paid' => (float) $summary['deposit_contribution'],
+            'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
             'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
@@ -2090,14 +2096,24 @@ class PosController extends Controller
     protected function resolveAppointmentFinancialSummary(Booking $booking): array
     {
         $serviceTotal = (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
-        $depositPaidByOrder = (float) OrderItem::query()
+        $depositPaid = (float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_deposit')
             ->sum('line_total');
-        $depositPaidByBooking = strtoupper((string) ($booking->payment_status ?? '')) === 'PAID'
-            ? (float) ($booking->deposit_amount ?? 0)
+
+        $linkedOrderIds = OrderServiceItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->pluck('order_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $linkedBookingDeposit = $linkedOrderIds->isNotEmpty()
+            ? (float) OrderItem::query()
+                ->whereIn('order_id', $linkedOrderIds->all())
+                ->where('line_type', 'booking_deposit')
+                ->sum('line_total')
             : 0.0;
-        $depositPaid = max($depositPaidByOrder, $depositPaidByBooking);
         $settlementPaid = (float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_settlement')
@@ -2126,7 +2142,9 @@ class PosController extends Controller
 
         return [
             'service_total' => round($serviceTotal, 2),
+            'deposit_contribution' => round($depositPaid, 2),
             'deposit_paid' => round($depositPaid, 2),
+            'linked_booking_deposit' => round($linkedBookingDeposit, 2),
             'package_offset' => round($packageOffset, 2),
             'settlement_paid' => round($settlementPaid, 2),
             'balance_due' => round($balanceDue, 2),
