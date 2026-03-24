@@ -167,6 +167,7 @@ class PosController extends Controller
                 'deposit_contribution' => (float) $summary['deposit_contribution'],
                 'deposit_paid' => (float) $summary['deposit_contribution'],
                 'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
+                'linked_booking_deposit_total' => (float) $summary['linked_booking_deposit'],
                 'package_offset' => (float) $summary['package_offset'],
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['balance_due'],
@@ -235,6 +236,7 @@ class PosController extends Controller
             'deposit_contribution' => (float) $summary['deposit_contribution'],
             'deposit_paid' => (float) $summary['deposit_contribution'],
             'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
+            'linked_booking_deposit_total' => (float) $summary['linked_booking_deposit'],
             'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
@@ -2068,6 +2070,7 @@ class PosController extends Controller
             'deposit_contribution' => (float) $summary['deposit_contribution'],
             'deposit_paid' => (float) $summary['deposit_contribution'],
             'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
+            'linked_booking_deposit_total' => (float) $summary['linked_booking_deposit'],
             'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
@@ -2096,11 +2099,6 @@ class PosController extends Controller
     protected function resolveAppointmentFinancialSummary(Booking $booking): array
     {
         $serviceTotal = (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
-        $depositPaid = (float) OrderItem::query()
-            ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_deposit')
-            ->sum('line_total');
-
         $linkedOrderIds = OrderServiceItem::query()
             ->where('booking_id', (int) $booking->id)
             ->pluck('order_id')
@@ -2108,12 +2106,75 @@ class PosController extends Controller
             ->unique()
             ->values();
 
-        $linkedBookingDeposit = $linkedOrderIds->isNotEmpty()
+        $linkedBookingRows = $linkedOrderIds->isNotEmpty()
+            ? OrderServiceItem::query()
+                ->leftJoin('bookings', 'bookings.id', '=', 'order_service_items.booking_id')
+                ->leftJoin('booking_services', 'booking_services.id', '=', 'bookings.service_id')
+                ->whereIn('order_service_items.order_id', $linkedOrderIds->all())
+                ->whereNotNull('order_service_items.booking_id')
+                ->get([
+                    'order_service_items.booking_id',
+                    'booking_services.service_type',
+                ])
+                ->unique('booking_id')
+                ->values()
+            : collect();
+
+        $settings = BookingSetting::query()->first();
+        $premiumDeposit = (float) ($settings?->deposit_amount_per_premium ?? 0);
+        $standardDeposit = (float) ($settings?->deposit_base_amount_if_only_standard ?? 0);
+
+        $premiumBookings = $linkedBookingRows
+            ->filter(fn ($row) => strtoupper((string) ($row->service_type ?? 'STANDARD')) === 'PREMIUM')
+            ->values();
+        $standardBookings = $linkedBookingRows
+            ->filter(fn ($row) => strtoupper((string) ($row->service_type ?? 'STANDARD')) !== 'PREMIUM')
+            ->sortBy(fn ($row) => (int) ($row->booking_id ?? 0))
+            ->values();
+
+        $expectedDepositTotal = $premiumBookings->isNotEmpty()
+            ? (float) $premiumBookings->count() * $premiumDeposit
+            : ($standardBookings->isNotEmpty() ? $standardDeposit : 0.0);
+
+        $depositFromOrderItems = $linkedOrderIds->isNotEmpty()
             ? (float) OrderItem::query()
                 ->whereIn('order_id', $linkedOrderIds->all())
                 ->where('line_type', 'booking_deposit')
                 ->sum('line_total')
             : 0.0;
+
+        $depositFromOrderNotes = $linkedOrderIds->isNotEmpty()
+            ? (float) Order::query()
+                ->whereIn('id', $linkedOrderIds->all())
+                ->get(['notes'])
+                ->reduce(function (float $carry, Order $order) {
+                    $notes = (string) ($order->notes ?? '');
+                    if (preg_match('/booking_deposit=([0-9]+(?:\\.[0-9]+)?)/', $notes, $matches) === 1) {
+                        return $carry + (float) ($matches[1] ?? 0);
+                    }
+
+                    return $carry;
+                }, 0.0)
+            : 0.0;
+
+        $linkedBookingDeposit = $depositFromOrderNotes > 0
+            ? $depositFromOrderNotes
+            : ($depositFromOrderItems > 0
+                ? ($expectedDepositTotal > 0 ? min($depositFromOrderItems, $expectedDepositTotal) : $depositFromOrderItems)
+                : 0.0);
+
+        $depositPaid = 0.0;
+        $currentType = strtoupper((string) ($booking->service?->service_type ?? 'STANDARD'));
+        if ($premiumBookings->isNotEmpty()) {
+            $perPremiumContribution = $premiumBookings->count() > 0
+                ? round($linkedBookingDeposit / $premiumBookings->count(), 2)
+                : 0.0;
+            $depositPaid = $currentType === 'PREMIUM' ? $perPremiumContribution : 0.0;
+        } elseif ($standardBookings->isNotEmpty()) {
+            $firstStandardBookingId = (int) ($standardBookings->first()?->booking_id ?? 0);
+            $depositPaid = (int) $booking->id === $firstStandardBookingId ? $linkedBookingDeposit : 0.0;
+        }
+
         $settlementPaid = (float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_settlement')
@@ -2145,6 +2206,7 @@ class PosController extends Controller
             'deposit_contribution' => round($depositPaid, 2),
             'deposit_paid' => round($depositPaid, 2),
             'linked_booking_deposit' => round($linkedBookingDeposit, 2),
+            'linked_booking_deposit_total' => round($linkedBookingDeposit, 2),
             'package_offset' => round($packageOffset, 2),
             'settlement_paid' => round($settlementPaid, 2),
             'balance_due' => round($balanceDue, 2),
