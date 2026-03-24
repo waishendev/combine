@@ -141,6 +141,8 @@ type AppointmentListItem = {
   deposit_paid: number
   linked_booking_deposit?: number
   linked_booking_deposit_total?: number
+  deposit_previously_collected?: boolean
+  deposit_previously_collected_amount?: number
   package_offset?: number
   balance_due: number
   amount_due_now?: number
@@ -162,6 +164,8 @@ type AppointmentDetail = {
   deposit_paid: number
   linked_booking_deposit?: number
   linked_booking_deposit_total?: number
+  deposit_previously_collected?: boolean
+  deposit_previously_collected_amount?: number
   package_offset?: number
   settlement_paid: number
   balance_due: number
@@ -1438,6 +1442,28 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         return
       }
       showMsg('Appointment marked as completed.', 'success')
+      await fetchAppointments()
+      await refreshOpenedAppointmentDetail()
+    } finally {
+      setAppointmentActionLoading(false)
+    }
+  }, [appointmentDetail?.id, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+
+  const updateAppointmentStatus = useCallback(async (status: 'CANCELLED' | 'LATE_CANCELLATION' | 'NO_SHOW') => {
+    if (!appointmentDetail?.id) return
+    setAppointmentActionLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to update status.', 'error')
+        return
+      }
+      showMsg('Appointment status updated.', 'success')
       await fetchAppointments()
       await refreshOpenedAppointmentDetail()
     } finally {
@@ -2802,9 +2828,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [appointmentDetail?.deposit_contribution, appointmentDetail?.deposit_paid, appointmentIsFullyPackageCovered])
 
   const appointmentPreviouslyCollectedDeposit = useMemo(() => {
-    const contribution = Number(appointmentDetail?.deposit_contribution ?? appointmentDetail?.deposit_paid ?? 0)
-    return appointmentIsFullyPackageCovered ? contribution : 0
-  }, [appointmentDetail?.deposit_contribution, appointmentDetail?.deposit_paid, appointmentIsFullyPackageCovered])
+    const wasCollected = Boolean(appointmentDetail?.deposit_previously_collected)
+    const amount = Number(appointmentDetail?.deposit_previously_collected_amount ?? 0)
+    return appointmentIsFullyPackageCovered && wasCollected ? amount : 0
+  }, [appointmentDetail?.deposit_previously_collected, appointmentDetail?.deposit_previously_collected_amount, appointmentIsFullyPackageCovered])
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -3271,8 +3298,22 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         </select>
                         <div className="flex flex-wrap gap-2">
                           <button type="button" disabled={appointmentActionLoading || Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0) <= 0} onClick={() => void settleAppointmentPayment()} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Checkout</button>
-                          <button type="button" disabled={appointmentActionLoading} onClick={() => void applyAppointmentPackage()} className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">Apply Package</button>
-                          <button type="button" disabled={appointmentActionLoading} onClick={() => void markAppointmentCompleted()} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Mark Completed</button>
+                          <button
+                            type="button"
+                            disabled={appointmentActionLoading || ['reserved', 'consumed'].includes(String(appointmentDetail.package_status?.status ?? '').toLowerCase())}
+                            onClick={() => void applyAppointmentPackage()}
+                            className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                          >
+                            {['reserved', 'consumed'].includes(String(appointmentDetail.package_status?.status ?? '').toLowerCase()) ? 'Package Applied' : 'Apply Package'}
+                          </button>
+                          {appointmentDetail.status === 'CONFIRMED' ? (
+                            <>
+                              <button type="button" disabled={appointmentActionLoading} onClick={() => void markAppointmentCompleted()} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Mark Completed</button>
+                              <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('CANCELLED')} className="rounded-md bg-slate-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50">Mark Cancelled</button>
+                              <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')} className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 disabled:opacity-50">Late Cancellation</button>
+                              <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('NO_SHOW')} className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">Mark No-show</button>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                     </div>

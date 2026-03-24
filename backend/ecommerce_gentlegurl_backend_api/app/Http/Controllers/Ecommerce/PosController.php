@@ -168,6 +168,8 @@ class PosController extends Controller
                 'deposit_paid' => (float) $summary['deposit_contribution'],
                 'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
                 'linked_booking_deposit_total' => (float) $summary['linked_booking_deposit'],
+                'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
+                'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
                 'package_offset' => (float) $summary['package_offset'],
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['balance_due'],
@@ -237,6 +239,8 @@ class PosController extends Controller
             'deposit_paid' => (float) $summary['deposit_contribution'],
             'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
             'linked_booking_deposit_total' => (float) $summary['linked_booking_deposit'],
+            'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
+            'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
             'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
@@ -374,6 +378,40 @@ class PosController extends Controller
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
         ], __('Appointment marked as completed.'));
+    }
+
+    public function updateAppointmentStatus(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'status' => ['required', 'in:COMPLETED,CANCELLED,LATE_CANCELLATION,NO_SHOW,NOTIFIED_CANCELLATION'],
+        ]);
+
+        $booking = Booking::query()->with(['customer', 'service', 'staff'])->findOrFail($id);
+        $targetStatus = (string) $validated['status'];
+        if ((string) $booking->status !== 'CONFIRMED') {
+            return $this->respondError(__('Only CONFIRMED appointment can be updated from POS settlement.'), 422);
+        }
+
+        if ($targetStatus === 'COMPLETED') {
+            return $this->markAppointmentCompleted($id);
+        }
+
+        DB::transaction(function () use ($booking, $targetStatus) {
+            $booking->status = $targetStatus;
+            if (in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION'], true)) {
+                $booking->cancelled_at = now();
+                $booking->cancellation_type = in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION'], true) ? $targetStatus : 'CANCELLED';
+            }
+            $booking->save();
+
+            if (in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW', 'NOTIFIED_CANCELLATION'], true)) {
+                $this->customerServicePackageService->releaseReservedClaimsForBooking((int) $booking->id);
+            }
+        });
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Appointment status updated.'));
     }
 
     public function addByBarcode(Request $request)
@@ -2071,6 +2109,8 @@ class PosController extends Controller
             'deposit_paid' => (float) $summary['deposit_contribution'],
             'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
             'linked_booking_deposit_total' => (float) $summary['linked_booking_deposit'],
+            'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
+            'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
             'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
@@ -2099,6 +2139,10 @@ class PosController extends Controller
     protected function resolveAppointmentFinancialSummary(Booking $booking): array
     {
         $serviceTotal = (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
+        $actualAppointmentDepositCollected = (float) OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_deposit')
+            ->sum('line_total');
         $linkedOrderIds = OrderServiceItem::query()
             ->where('booking_id', (int) $booking->id)
             ->pluck('order_id')
@@ -2207,6 +2251,8 @@ class PosController extends Controller
             'deposit_paid' => round($depositPaid, 2),
             'linked_booking_deposit' => round($linkedBookingDeposit, 2),
             'linked_booking_deposit_total' => round($linkedBookingDeposit, 2),
+            'deposit_previously_collected' => $actualAppointmentDepositCollected > 0.0001,
+            'deposit_previously_collected_amount' => round($actualAppointmentDepositCollected, 2),
             'package_offset' => round($packageOffset, 2),
             'settlement_paid' => round($settlementPaid, 2),
             'balance_due' => round($balanceDue, 2),

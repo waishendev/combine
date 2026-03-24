@@ -386,6 +386,7 @@ $protectedRoutes = function () {
         Route::get('/service-packages/search', [PosController::class, 'packageSearch']);
         Route::get('/appointments', [PosController::class, 'appointmentSearch']);
         Route::get('/appointments/{id}', [PosController::class, 'appointmentDetail']);
+        Route::post('/appointments/{id}/status', [PosController::class, 'updateAppointmentStatus']);
         Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment']);
         Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment']);
         Route::post('/appointments/{id}/mark-completed', [PosController::class, 'markAppointmentCompleted']);
