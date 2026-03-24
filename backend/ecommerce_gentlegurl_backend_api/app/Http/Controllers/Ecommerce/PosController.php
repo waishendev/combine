@@ -165,7 +165,9 @@ class PosController extends Controller
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'status' => (string) $booking->status,
                 'deposit_paid' => (float) $summary['deposit_paid'],
+                'package_offset' => (float) $summary['package_offset'],
                 'balance_due' => (float) $summary['balance_due'],
+                'amount_due_now' => (float) $summary['balance_due'],
                 'service_total' => (float) $summary['service_total'],
                 'package_status' => $summary['package_status'],
             ];
@@ -229,8 +231,10 @@ class PosController extends Controller
             'staff_splits' => $staffSplits,
             'service_total' => (float) $summary['service_total'],
             'deposit_paid' => (float) $summary['deposit_paid'],
+            'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
+            'amount_due_now' => (float) $summary['balance_due'],
             'package_status' => $summary['package_status'],
             'payment_history' => $history,
         ]);
@@ -247,7 +251,7 @@ class PosController extends Controller
             $this->customerServicePackageService->reserve(
                 (int) $booking->customer_id,
                 (int) $booking->service_id,
-                'POS_APPOINTMENT',
+                'POS',
                 (int) $booking->id,
                 1,
                 'Applied from POS appointment settlement',
@@ -265,8 +269,6 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'payment_method' => ['required', 'in:cash,qrpay'],
-            'mode' => ['nullable', 'in:balance,full'],
-            'amount' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
@@ -280,16 +282,9 @@ class PosController extends Controller
             return $this->respondError(__('No balance due for this appointment.'), 422);
         }
 
-        $mode = (string) ($validated['mode'] ?? 'balance');
-        $requestedAmount = isset($validated['amount']) ? (float) $validated['amount'] : null;
-        $amount = $mode === 'full'
-            ? (float) $balanceDue
-            : ($requestedAmount ?? (float) $balanceDue);
+        $amount = (float) $balanceDue;
         if ($amount <= 0) {
             return $this->respondError(__('Payment amount must be greater than 0.'), 422);
-        }
-        if ($amount > $balanceDue + 0.0001) {
-            return $this->respondError(__('Payment amount exceeds current balance due.'), 422);
         }
 
         [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated) {
@@ -339,8 +334,9 @@ class PosController extends Controller
             'order_number' => (string) $order->order_number,
             'receipt_public_url' => $receiptUrl,
             'paid_amount' => (float) $amount,
-            'balance_due' => (float) $freshSummary['balance_due'],
-            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+                'balance_due' => (float) $freshSummary['balance_due'],
+                'amount_due_now' => (float) $freshSummary['balance_due'],
+                'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
         ], __('Appointment payment collected.'));
     }
 
@@ -362,7 +358,7 @@ class PosController extends Controller
             $this->customerServicePackageService->attachReservedClaimsToBooking(
                 (int) ($booking->customer_id ?? 0),
                 (int) ($booking->service_id ?? 0),
-                'POS_APPOINTMENT',
+                'POS',
                 (int) $booking->id,
                 (int) $booking->id,
             );
@@ -2066,6 +2062,7 @@ class PosController extends Controller
             'staff_name' => (string) ($booking->staff?->name ?? '-'),
             'service_total' => (float) $summary['service_total'],
             'deposit_paid' => (float) $summary['deposit_paid'],
+            'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
             'package_status' => $summary['package_status'],
@@ -2093,10 +2090,14 @@ class PosController extends Controller
     protected function resolveAppointmentFinancialSummary(Booking $booking): array
     {
         $serviceTotal = (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
-        $depositPaid = (float) OrderItem::query()
+        $depositPaidByOrder = (float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_deposit')
             ->sum('line_total');
+        $depositPaidByBooking = strtoupper((string) ($booking->payment_status ?? '')) === 'PAID'
+            ? (float) ($booking->deposit_amount ?? 0)
+            : 0.0;
+        $depositPaid = max($depositPaidByOrder, $depositPaidByBooking);
         $settlementPaid = (float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_settlement')
@@ -2112,7 +2113,7 @@ class PosController extends Controller
             $packageUsage = CustomerServicePackageUsage::query()
                 ->where('customer_id', (int) $booking->customer_id)
                 ->where('booking_service_id', (int) $booking->service_id)
-                ->where('used_from', 'POS_APPOINTMENT')
+                ->where('used_from', 'POS')
                 ->where('used_ref_id', (int) $booking->id)
                 ->whereIn('status', ['reserved', 'consumed'])
                 ->latest('id')
@@ -2120,12 +2121,13 @@ class PosController extends Controller
         }
 
         $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
-        $coveredTotal = $coveredByPackage ? $serviceTotal : 0.0;
-        $balanceDue = max(0, $serviceTotal - $coveredTotal - $depositPaid - $settlementPaid);
+        $packageOffset = $coveredByPackage ? $serviceTotal : 0.0;
+        $balanceDue = max(0, $serviceTotal - $depositPaid - $packageOffset - $settlementPaid);
 
         return [
             'service_total' => round($serviceTotal, 2),
             'deposit_paid' => round($depositPaid, 2),
+            'package_offset' => round($packageOffset, 2),
             'settlement_paid' => round($settlementPaid, 2),
             'balance_due' => round($balanceDue, 2),
             'package_status' => $packageUsage ? [

@@ -138,7 +138,9 @@ type AppointmentListItem = {
   staff_name?: string | null
   status: string
   deposit_paid: number
+  package_offset?: number
   balance_due: number
+  amount_due_now?: number
   service_total?: number
 }
 
@@ -154,8 +156,10 @@ type AppointmentDetail = {
   staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>
   service_total: number
   deposit_paid: number
+  package_offset?: number
   settlement_paid: number
   balance_due: number
+  amount_due_now?: number
   package_status?: { status?: string; used_qty?: number } | null
   payment_history?: Array<{ order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
 }
@@ -418,7 +422,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [appointmentDetail, setAppointmentDetail] = useState<AppointmentDetail | null>(null)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
-  const [appointmentAmountInput, setAppointmentAmountInput] = useState('')
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
   const [packageModalOpen, setPackageModalOpen] = useState(false)
   const [packageDraft, setPackageDraft] = useState<ServicePackageOption | null>(null)
@@ -1350,7 +1353,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const openAppointmentDetail = useCallback(async (appointmentId: number) => {
     setAppointmentDetailLoading(true)
     setAppointmentDetail(null)
-    setAppointmentAmountInput('')
     setAppointmentPaymentMethod('cash')
     try {
       const res = await fetch(`/api/proxy/pos/appointments/${appointmentId}`, { cache: 'no-store' })
@@ -1374,16 +1376,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
   }, [appointmentDetail?.id])
 
-  const collectAppointmentPayment = useCallback(async (mode: 'balance' | 'full') => {
+  const settleAppointmentPayment = useCallback(async () => {
     if (!appointmentDetail?.id) return
     setAppointmentActionLoading(true)
     try {
-      const payload: Record<string, unknown> = {
+      const payload = {
         payment_method: appointmentPaymentMethod,
-        mode,
-      }
-      if (mode === 'balance' && appointmentAmountInput.trim()) {
-        payload.amount = Number(appointmentAmountInput)
       }
 
       const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/collect-payment`, {
@@ -1403,7 +1401,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     } finally {
       setAppointmentActionLoading(false)
     }
-  }, [appointmentAmountInput, appointmentDetail?.id, appointmentPaymentMethod, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail?.id, appointmentPaymentMethod, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -3172,7 +3170,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-xs text-gray-500">{appt.appointment_start_at ? new Date(appt.appointment_start_at).toLocaleString() : '-'}</p>
                             <p className="text-xs text-gray-500">Staff: {appt.staff_name ?? '-'}</p>
                             <p className="text-xs text-gray-500">Status: {appt.status}</p>
-                            <p className="text-xs text-gray-500">Deposit: RM {Number(appt.deposit_paid ?? 0).toFixed(2)} • Balance: RM {Number(appt.balance_due ?? 0).toFixed(2)}</p>
+                            <p className="text-xs text-gray-500">Deposit: RM {Number(appt.deposit_paid ?? 0).toFixed(2)} • Package: RM {Number(appt.package_offset ?? 0).toFixed(2)} • Due: RM {Number(appt.amount_due_now ?? appt.balance_due ?? 0).toFixed(2)}</p>
                           </div>
                           <button
                             type="button"
@@ -3215,12 +3213,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
                       <p>Service Total: <span className="font-semibold">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</span></p>
                       <p>Deposit Paid: <span className="font-semibold">RM {Number(appointmentDetail.deposit_paid ?? 0).toFixed(2)}</span></p>
+                      <p>Package Applied / Offset: <span className="font-semibold">RM {Number(appointmentDetail.package_offset ?? 0).toFixed(2)}</span></p>
                       <p>Settlement Paid: <span className="font-semibold">RM {Number(appointmentDetail.settlement_paid ?? 0).toFixed(2)}</span></p>
-                      <p>Balance Due: <span className="font-semibold text-emerald-700">RM {Number(appointmentDetail.balance_due ?? 0).toFixed(2)}</span></p>
-                      <p>Package: <span className="font-semibold">{appointmentDetail.package_status?.status ?? 'Not applied'}</span></p>
+                      <p>Amount Due Now: <span className="font-semibold text-emerald-700">RM {Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0).toFixed(2)}</span></p>
+                      <p>Package Status: <span className="font-semibold">{appointmentDetail.package_status?.status ?? 'Not applied'}</span></p>
                     </div>
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
-                      <p className="mb-2 font-semibold text-gray-900">Collect Payment</p>
+                      <p className="mb-2 font-semibold text-gray-900">Settlement Payment</p>
                       <div className="grid gap-2">
                         <select
                           value={appointmentPaymentMethod}
@@ -3230,15 +3229,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           <option value="cash">Cash</option>
                           <option value="qrpay">QRPay</option>
                         </select>
-                        <input
-                          value={appointmentAmountInput}
-                          onChange={(e) => setAppointmentAmountInput(e.target.value)}
-                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          placeholder="Custom amount (optional)"
-                        />
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" disabled={appointmentActionLoading} onClick={() => void collectAppointmentPayment('balance')} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Collect Balance</button>
-                          <button type="button" disabled={appointmentActionLoading} onClick={() => void collectAppointmentPayment('full')} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Full Payment</button>
+                          <button type="button" disabled={appointmentActionLoading || Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0) <= 0} onClick={() => void settleAppointmentPayment()} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Checkout</button>
                           <button type="button" disabled={appointmentActionLoading} onClick={() => void applyAppointmentPackage()} className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">Apply Package</button>
                           <button type="button" disabled={appointmentActionLoading} onClick={() => void markAppointmentCompleted()} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Mark Completed</button>
                         </div>
