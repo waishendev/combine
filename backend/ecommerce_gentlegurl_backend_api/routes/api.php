@@ -390,6 +390,7 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment']);
         Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment']);
         Route::post('/appointments/{id}/mark-completed', [PosController::class, 'markAppointmentCompleted']);
+        Route::post('/appointments/{id}/reschedule', [PosController::class, 'rescheduleAppointment']);
         Route::get('/cart', [PosController::class, 'cart']);
         Route::post('/book-service', [PosController::class, 'bookService']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);

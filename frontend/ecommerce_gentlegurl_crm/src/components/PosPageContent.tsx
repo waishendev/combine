@@ -433,6 +433,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
+  const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
+  const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
+  const [appointmentRescheduleDate, setAppointmentRescheduleDate] = useState('')
+  const [appointmentRescheduleSlotValue, setAppointmentRescheduleSlotValue] = useState('')
+  const [appointmentRescheduleReason, setAppointmentRescheduleReason] = useState('')
+  const [appointmentRescheduleSlots, setAppointmentRescheduleSlots] = useState<Array<{ start_at: string; end_at: string }>>([])
+  const [appointmentRescheduleSlotsLoading, setAppointmentRescheduleSlotsLoading] = useState(false)
+  const [appointmentRescheduleSubmitting, setAppointmentRescheduleSubmitting] = useState(false)
+  const [appointmentReschedulePolicyWarnings, setAppointmentReschedulePolicyWarnings] = useState<string[]>([])
   const [packageModalOpen, setPackageModalOpen] = useState(false)
   const [packageDraft, setPackageDraft] = useState<ServicePackageOption | null>(null)
   const [packageSelectedMember, setPackageSelectedMember] = useState<Member | null>(null)
@@ -1364,6 +1373,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setAppointmentDetailLoading(true)
     setAppointmentDetail(null)
     setAppointmentPaymentMethod('cash')
+    setAppointmentReschedulePolicyWarnings([])
     try {
       const res = await fetch(`/api/proxy/pos/appointments/${appointmentId}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
@@ -1470,6 +1480,111 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       setAppointmentActionLoading(false)
     }
   }, [appointmentDetail?.id, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+
+  const openAppointmentRescheduleModal = useCallback(() => {
+    if (!appointmentDetail) return
+    setAppointmentReschedulePolicyWarnings([])
+    setAppointmentRescheduleStaffId(appointmentDetail.staff?.id ?? null)
+    const currentStartAt = appointmentDetail.appointment_start_at ? new Date(appointmentDetail.appointment_start_at) : null
+    setAppointmentRescheduleDate(currentStartAt ? currentStartAt.toISOString().slice(0, 10) : '')
+    setAppointmentRescheduleSlotValue('')
+    setAppointmentRescheduleReason('')
+    setAppointmentRescheduleSlots([])
+    setAppointmentRescheduleOpen(true)
+  }, [appointmentDetail])
+
+  const submitAppointmentReschedule = useCallback(async () => {
+    if (!appointmentDetail?.id) return
+    if (!appointmentRescheduleStaffId) {
+      showMsg('Please select assigned staff.', 'error')
+      return
+    }
+    if (!appointmentRescheduleDate) {
+      showMsg('Please select appointment date.', 'error')
+      return
+    }
+    if (!appointmentRescheduleSlotValue) {
+      showMsg('Please select appointment slot/time.', 'error')
+      return
+    }
+
+    setAppointmentRescheduleSubmitting(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/reschedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: appointmentRescheduleStaffId,
+          start_at: appointmentRescheduleSlotValue,
+          reason: appointmentRescheduleReason.trim() ? appointmentRescheduleReason.trim() : null,
+        }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to reschedule appointment.', 'error')
+        return
+      }
+
+      const warnings = Array.isArray(json?.data?.policy_warnings)
+        ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+        : []
+      setAppointmentReschedulePolicyWarnings(warnings)
+      showMsg(warnings.length ? 'Appointment rescheduled with override warning.' : 'Appointment rescheduled.', 'success')
+      setAppointmentRescheduleOpen(false)
+      await fetchAppointments()
+      await refreshOpenedAppointmentDetail()
+    } finally {
+      setAppointmentRescheduleSubmitting(false)
+    }
+  }, [
+    appointmentDetail?.id,
+    appointmentRescheduleDate,
+    appointmentRescheduleReason,
+    appointmentRescheduleSlotValue,
+    appointmentRescheduleStaffId,
+    fetchAppointments,
+    refreshOpenedAppointmentDetail,
+    showMsg,
+  ])
+
+  useEffect(() => {
+    const loadRescheduleSlots = async () => {
+      if (!appointmentRescheduleOpen || !appointmentDetail?.service?.id || !appointmentRescheduleStaffId || !appointmentRescheduleDate) {
+        setAppointmentRescheduleSlots([])
+        setAppointmentRescheduleSlotValue('')
+        return
+      }
+
+      setAppointmentRescheduleSlotsLoading(true)
+      try {
+        const params = new URLSearchParams({
+          service_id: String(appointmentDetail.service.id),
+          staff_id: String(appointmentRescheduleStaffId),
+          date: appointmentRescheduleDate,
+        })
+        const res = await fetch(`/api/proxy/booking/availability?${params.toString()}`, { cache: 'no-store' })
+        const json = await res.json().catch(() => null)
+        const rows = Array.isArray(json?.data?.slots) ? json.data.slots : []
+        const slots = rows
+          .map((row: unknown) => {
+            if (!row || typeof row !== 'object') return null
+            const maybe = row as Record<string, unknown>
+            const startAt = String(maybe.start_at ?? '')
+            const endAt = String(maybe.end_at ?? '')
+            if (!startAt || !endAt) return null
+            return { start_at: startAt, end_at: endAt }
+          })
+          .filter((row): row is { start_at: string; end_at: string } => Boolean(row))
+
+        setAppointmentRescheduleSlots(slots)
+        setAppointmentRescheduleSlotValue((prev) => slots.some((slot) => slot.start_at === prev) ? prev : '')
+      } finally {
+        setAppointmentRescheduleSlotsLoading(false)
+      }
+    }
+
+    void loadRescheduleSlots()
+  }, [appointmentDetail?.service?.id, appointmentRescheduleDate, appointmentRescheduleOpen, appointmentRescheduleStaffId])
 
   const openBookingModal = useCallback((service: BookingServiceOption) => {
     setBookingServiceDraft(service)
@@ -3286,6 +3401,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       ) : null}
                     </div>
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
+                      {appointmentReschedulePolicyWarnings.length ? (
+                        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          {appointmentReschedulePolicyWarnings.map((warning, idx) => (
+                            <p key={`${warning}-${idx}`}>{warning}</p>
+                          ))}
+                        </div>
+                      ) : null}
                       <p className="mb-2 font-semibold text-gray-900">Settlement Payment</p>
                       <div className="grid gap-2">
                         <select
@@ -3308,6 +3430,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           </button>
                           {appointmentDetail.status === 'CONFIRMED' ? (
                             <>
+                              <button type="button" disabled={appointmentActionLoading} onClick={openAppointmentRescheduleModal} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Reschedule</button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void markAppointmentCompleted()} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Mark Completed</button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('CANCELLED')} className="rounded-md bg-slate-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50">Mark Cancelled</button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')} className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 disabled:opacity-50">Late Cancellation</button>
@@ -4468,6 +4591,89 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {packageSubmitting ? 'Adding...' : 'Add Package to Cart'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {appointmentRescheduleOpen && appointmentDetail && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900">Reschedule Appointment</h3>
+            <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+              <p><span className="font-semibold">Booking:</span> {appointmentDetail.booking_code}</p>
+              <p><span className="font-semibold">Customer:</span> {appointmentDetail.customer?.name ?? '-'}</p>
+              <p><span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}</p>
+              <p><span className="font-semibold">Current Staff:</span> {appointmentDetail.staff?.name ?? '-'}</p>
+              <p><span className="font-semibold">Current Date/Time:</span> {appointmentDetail.appointment_start_at ? new Date(appointmentDetail.appointment_start_at).toLocaleString() : '-'}</p>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
+                <select
+                  value={appointmentRescheduleStaffId ?? ''}
+                  onChange={(e) => setAppointmentRescheduleStaffId(Number(e.target.value) || null)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Select staff</option>
+                  {activeStaffs.map((staff) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">New Appointment Date</label>
+                <input
+                  type="date"
+                  value={appointmentRescheduleDate}
+                  onChange={(e) => setAppointmentRescheduleDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Available Slot / Time</label>
+                <select
+                  value={appointmentRescheduleSlotValue}
+                  onChange={(e) => setAppointmentRescheduleSlotValue(e.target.value)}
+                  disabled={!appointmentRescheduleStaffId || !appointmentRescheduleDate || appointmentRescheduleSlotsLoading}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                >
+                  <option value="">{appointmentRescheduleSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
+                  {appointmentRescheduleSlots.map((slot) => (
+                    <option key={slot.start_at} value={slot.start_at}>
+                      {new Date(slot.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Reason (optional)</label>
+                <textarea
+                  rows={2}
+                  value={appointmentRescheduleReason}
+                  onChange={(e) => setAppointmentRescheduleReason(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAppointmentRescheduleOpen(false)}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={appointmentRescheduleSubmitting}
+                onClick={() => void submitAppointmentReschedule()}
+                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {appointmentRescheduleSubmitting ? 'Rescheduling...' : 'Confirm Reschedule'}
               </button>
             </div>
           </div>
