@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
@@ -44,6 +44,15 @@ type ProductApiResponse = {
   message?: string
 }
 
+
+type StockAdjustmentState = {
+  product: ProductRowData
+  adjustmentType: 'stock_in' | 'stock_out'
+  quantity: string
+  costPricePerUnit: string
+  remark: string
+}
+
 type ImportSummary = {
   totalRows: number
   created: number
@@ -80,6 +89,8 @@ export default function ProductTable({
   const [isImporting, setIsImporting] = useState(false)
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
   const [importFailedRows, setImportFailedRows] = useState<Array<{ row: number; reason: string }>>([])
+  const [stockAdjustment, setStockAdjustment] = useState<StockAdjustmentState | null>(null)
+  const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const router = useRouter()
@@ -429,6 +440,70 @@ export default function ProductTable({
     }
   }
 
+
+  const handleSubmitStockAdjustment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!stockAdjustment) return
+
+    const quantity = Number.parseInt(stockAdjustment.quantity, 10)
+    const costPrice = Number.parseFloat(stockAdjustment.costPricePerUnit || '0')
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      window.alert('Quantity must be greater than 0.')
+      return
+    }
+
+    if (stockAdjustment.adjustmentType === 'stock_out' && quantity > stockAdjustment.product.stock) {
+      window.alert('Reduce stock cannot make inventory negative.')
+      return
+    }
+
+    if (stockAdjustment.adjustmentType === 'stock_in' && (!Number.isFinite(costPrice) || costPrice < 0)) {
+      window.alert('Cost price per unit must be 0 or greater.')
+      return
+    }
+
+    setIsSubmittingAdjustment(true)
+    try {
+      const payload: Record<string, unknown> = {
+        adjustment_type: stockAdjustment.adjustmentType,
+        quantity,
+        remark: stockAdjustment.remark.trim() || null,
+      }
+
+      if (stockAdjustment.adjustmentType === 'stock_in') {
+        payload.cost_price_per_unit = costPrice
+      }
+
+      const res = await fetch(`/api/proxy/ecommerce/products/${stockAdjustment.product.id}/stock-adjustment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        const message =
+          json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
+            ? json.message
+            : 'Failed to adjust stock.'
+        throw new Error(message)
+      }
+
+      setStockAdjustment(null)
+      await fetchProducts()
+    } catch (error) {
+      console.error(error)
+      window.alert(error instanceof Error ? error.message : 'Failed to adjust stock.')
+    } finally {
+      setIsSubmittingAdjustment(false)
+    }
+  }
+
   function DualSortIcons({
     active,
     dir,
@@ -477,6 +552,102 @@ export default function ProductTable({
           onClose={() => setIsFilterModalOpen(false)}
           disabled={loading}
         />
+      )}
+      {stockAdjustment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Stock Adjustment</h2>
+              <button
+                type="button"
+                onClick={() => setStockAdjustment(null)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-gray-600">{stockAdjustment.product.name} (Current stock: {stockAdjustment.product.stock})</p>
+            <form className="space-y-4" onSubmit={handleSubmitStockAdjustment}>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Adjustment Type</label>
+                <select
+                  value={stockAdjustment.adjustmentType}
+                  onChange={(event) =>
+                    setStockAdjustment((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            adjustmentType: event.target.value as 'stock_in' | 'stock_out',
+                          }
+                        : prev,
+                    )
+                  }
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="stock_in">Add Stock</option>
+                  <option value="stock_out">Reduce Stock</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Quantity</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={stockAdjustment.quantity}
+                  onChange={(event) =>
+                    setStockAdjustment((prev) => (prev ? { ...prev, quantity: event.target.value } : prev))
+                  }
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+              {stockAdjustment.adjustmentType === 'stock_in' && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Cost Price Per Unit</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={stockAdjustment.costPricePerUnit}
+                    onChange={(event) =>
+                      setStockAdjustment((prev) => (prev ? { ...prev, costPricePerUnit: event.target.value } : prev))
+                    }
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    required
+                  />
+                </div>
+              )}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Remark (optional)</label>
+                <textarea
+                  value={stockAdjustment.remark}
+                  onChange={(event) =>
+                    setStockAdjustment((prev) => (prev ? { ...prev, remark: event.target.value } : prev))
+                  }
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  rows={3}
+                  placeholder="Reason for this adjustment"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStockAdjustment(null)}
+                  className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAdjustment}
+                  className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isSubmittingAdjustment ? 'Saving...' : 'Save Adjustment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
@@ -649,6 +820,15 @@ export default function ProductTable({
                       handleDelete(product)
                     }
                   }}
+                  onStockAdjustment={() =>
+                    setStockAdjustment({
+                      product,
+                      adjustmentType: 'stock_in',
+                      quantity: '',
+                      costPricePerUnit: '',
+                      remark: '',
+                    })
+                  }
                 />
               ))
             ) : (

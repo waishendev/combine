@@ -2104,8 +2104,10 @@ export default function ProductForm({
     )
     formData.append('sale_price_start_at', form.salePriceStartAt || '')
     formData.append('sale_price_end_at', form.salePriceEndAt || '')
-    formData.append('cost_price', form.costPrice || '0')
-    formData.append('stock', form.stock || '0')
+    if (mode === 'create') {
+      formData.append('cost_price', form.costPrice || '0')
+      formData.append('stock', form.stock || '0')
+    }
     formData.append('low_stock_threshold', form.lowStockThreshold || '0')
     formData.append('dummy_sold_count', rewardOnly ? '0' : form.dummySoldCount || '0')
     if (showFeatured) {
@@ -3376,9 +3378,13 @@ export default function ProductForm({
                     step="0.01"
                     value={form.costPrice}
                     onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    disabled={mode === 'edit'}
+                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
                     placeholder="0.00"
                   />
+                  {mode === 'edit' && (
+                    <p className="text-xs text-gray-500">Use Stock Adjustment to update stock/cost.</p>
+                  )}
                 </div>
               </div>
               <div className="space-y-2">
@@ -3391,9 +3397,13 @@ export default function ProductForm({
                   type="number"
                   value={form.stock}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  disabled={mode === 'edit'}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
                   placeholder="0"
                 />
+                {mode === 'edit' && (
+                  <p className="text-xs text-gray-500">Use Stock Adjustment to update stock/cost.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="lowStockThreshold">

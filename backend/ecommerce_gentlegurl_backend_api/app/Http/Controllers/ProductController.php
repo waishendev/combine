@@ -6,6 +6,7 @@ use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductMedia;
 use App\Models\Ecommerce\ProductVariant;
+use App\Models\Ecommerce\ProductStockMovement;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -83,8 +84,8 @@ class ProductController extends Controller
             'sale_price' => ['nullable', 'numeric', 'gte:0'],
             'sale_price_start_at' => ['nullable', 'date'],
             'sale_price_end_at' => ['nullable', 'date'],
-            'cost_price' => ['nullable', 'numeric'],
-            'stock' => ['sometimes', 'integer'],
+            'cost_price' => ['nullable', 'numeric', 'gte:0'],
+            'stock' => ['sometimes', 'integer', 'min:0'],
             'low_stock_threshold' => ['sometimes', 'integer'],
             'dummy_sold_count' => ['nullable', 'integer', 'min:0', 'max:999999'],
             'is_active' => ['sometimes', 'boolean'],
@@ -126,6 +127,10 @@ class ProductController extends Controller
         }
         $this->validateSalePrice($validated, $request);
 
+        $initialStock = max(0, (int) ($validated['stock'] ?? 0));
+        $initialCost = max(0, (float) ($validated['cost_price'] ?? 0));
+        $initialInventoryValue = round($initialStock * $initialCost, 2);
+
         $product = Product::create($validated + [
             'type' => $validated['type'] ?? 'single',
             'is_active' => $validated['is_active'] ?? true,
@@ -133,7 +138,10 @@ class ProductController extends Controller
             'is_hidden_in_shop' => $validated['is_hidden_in_shop'] ?? false,
             'is_staff_free' => $validated['is_staff_free'] ?? false,
             'is_reward_only' => $validated['is_reward_only'] ?? false,
-            'stock' => $validated['stock'] ?? 0,
+            'cost_price' => $initialCost,
+            'stock' => $initialStock,
+            'stock_quantity' => $initialStock,
+            'inventory_value' => $initialInventoryValue,
             'low_stock_threshold' => $validated['low_stock_threshold'] ?? 0,
             'dummy_sold_count' => $validated['dummy_sold_count'] ?? 0,
         ]);
@@ -179,8 +187,8 @@ class ProductController extends Controller
             'sale_price' => ['nullable', 'numeric', 'gte:0'],
             'sale_price_start_at' => ['nullable', 'date'],
             'sale_price_end_at' => ['nullable', 'date'],
-            'cost_price' => ['nullable', 'numeric'],
-            'stock' => ['sometimes', 'integer'],
+            'cost_price' => ['prohibited'],
+            'stock' => ['prohibited'],
             'low_stock_threshold' => ['sometimes', 'integer'],
             'dummy_sold_count' => ['nullable', 'integer', 'min:0', 'max:999999'],
             'is_active' => ['sometimes', 'boolean'],
@@ -225,6 +233,8 @@ class ProductController extends Controller
         }
         $this->validateSalePrice($validated, $request, $product);
 
+        unset($validated['cost_price'], $validated['stock'], $validated['stock_quantity'], $validated['inventory_value']);
+
         $product->fill($validated);
         $product->dummy_sold_count = $request->has('dummy_sold_count')
             ? ($validated['dummy_sold_count'] ?? 0)
@@ -253,6 +263,82 @@ class ProductController extends Controller
         return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Product updated successfully.'));
     }
 
+
+
+    public function adjustStock(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'adjustment_type' => ['required', Rule::in(['stock_in', 'stock_out'])],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'cost_price_per_unit' => ['nullable', 'numeric', 'gte:0'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        if ($validated['adjustment_type'] === 'stock_in' && !array_key_exists('cost_price_per_unit', $validated)) {
+            throw ValidationException::withMessages([
+                'cost_price_per_unit' => [__('Cost price per unit is required for Add Stock.')],
+            ]);
+        }
+
+        $updatedProduct = DB::transaction(function () use ($product, $validated, $request) {
+            $lockedProduct = Product::where('id', $product->id)->lockForUpdate()->firstOrFail();
+
+            $beforeQty = (int) ($lockedProduct->stock_quantity ?? $lockedProduct->stock ?? 0);
+            $beforeCost = (float) ($lockedProduct->cost_price ?? 0);
+            $beforeInventory = (float) ($lockedProduct->inventory_value ?? round($beforeQty * $beforeCost, 2));
+
+            $quantity = (int) $validated['quantity'];
+            $type = $validated['adjustment_type'];
+
+            if ($type === 'stock_out' && ($beforeQty - $quantity) < 0) {
+                throw ValidationException::withMessages([
+                    'quantity' => [__('Reduce stock exceeds available quantity.')],
+                ]);
+            }
+
+            $afterQty = $beforeQty;
+            $afterCost = $beforeCost;
+            $afterInventory = $beforeInventory;
+            $inputCost = null;
+
+            if ($type === 'stock_in') {
+                $inputCost = max(0, (float) ($validated['cost_price_per_unit'] ?? 0));
+                $batchTotalCost = round($quantity * $inputCost, 2);
+                $afterQty = $beforeQty + $quantity;
+                $afterInventory = round($beforeInventory + $batchTotalCost, 2);
+                $afterCost = $afterQty > 0 ? round($afterInventory / $afterQty, 2) : 0;
+            } else {
+                $reducedCost = round($quantity * $beforeCost, 2);
+                $afterQty = $beforeQty - $quantity;
+                $afterInventory = round(max(0, $beforeInventory - $reducedCost), 2);
+            }
+
+            $lockedProduct->cost_price = $afterCost;
+            $lockedProduct->stock = $afterQty;
+            $lockedProduct->stock_quantity = $afterQty;
+            $lockedProduct->inventory_value = $afterInventory;
+            $lockedProduct->save();
+
+            ProductStockMovement::create([
+                'product_id' => $lockedProduct->id,
+                'type' => $type,
+                'quantity_before' => $beforeQty,
+                'quantity_change' => $quantity,
+                'quantity_after' => $afterQty,
+                'cost_price_before' => $beforeCost,
+                'cost_price_after' => $afterCost,
+                'inventory_value_before' => $beforeInventory,
+                'inventory_value_after' => $afterInventory,
+                'input_cost_price_per_unit' => $inputCost,
+                'remark' => $validated['remark'] ?? null,
+                'created_by_user_id' => $request->user()?->id,
+            ]);
+
+            return $lockedProduct;
+        });
+
+        return $this->respond($updatedProduct->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Stock adjusted successfully.'));
+    }
 
     public function exportCsv(Request $request)
     {
