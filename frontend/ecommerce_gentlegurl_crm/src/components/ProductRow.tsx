@@ -39,6 +39,7 @@ export interface ProductVariant {
   imageUrl?: string | null
   isBundle?: boolean
   derivedAvailableQty?: number | null
+  derivedCostPrice?: number | null
   bundleItems?: Array<{
     componentVariantId: number
     componentVariantName?: string | null

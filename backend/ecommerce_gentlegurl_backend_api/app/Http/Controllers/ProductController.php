@@ -156,7 +156,7 @@ class ProductController extends Controller
         // 处理产品图片上传
         $this->handleImageUpload($product, $request);
 
-        $this->syncVariants($product, $request);
+        $this->syncVariants($product, $request, true);
 
         return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren']), __('Product created successfully.'));
     }
@@ -258,7 +258,7 @@ class ProductController extends Controller
             $this->handleImageUpload($product, $request);
         }
 
-        $this->syncVariants($product, $request);
+        $this->syncVariants($product, $request, false);
 
         return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Product updated successfully.'));
     }
@@ -915,7 +915,7 @@ class ProductController extends Controller
         }
     }
 
-    protected function syncVariants(Product $product, Request $request): void
+    protected function syncVariants(Product $product, Request $request, bool $isCreate = false): void
     {
         $variantsInput = $request->input('variants');
 
@@ -947,6 +947,9 @@ class ProductController extends Controller
                 continue;
             }
 
+            $isExistingVariant = (bool) $variant?->exists;
+            $isBundle = filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
             $payload = [
                 'sku' => $variantData['sku'] ?? $variant->sku,
                 'title' => $variantData['title'] ?? $variant->title,
@@ -958,15 +961,21 @@ class ProductController extends Controller
                 'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
                 'low_stock_threshold' => isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0,
                 'track_stock' => filter_var($variantData['track_stock'] ?? true, FILTER_VALIDATE_BOOLEAN),
-                'is_bundle' => filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'is_bundle' => $isBundle,
                 'is_active' => filter_var($variantData['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
                 'sort_order' => isset($variantData['sort_order']) ? (int) $variantData['sort_order'] : 0,
             ];
+
+            if ($isExistingVariant && ! $isCreate) {
+                $payload['stock'] = (int) ($variant->stock ?? 0);
+                $payload['cost_price'] = $variant->cost_price;
+            }
 
             if (!empty($payload['is_bundle'])) {
                 $payload['stock'] = 0;
                 $payload['low_stock_threshold'] = 0;
                 $payload['track_stock'] = true;
+                $payload['cost_price'] = $variant?->derivedCostPrice() ?? 0;
             }
 
             if (! empty($variantData['remove_image'])) {

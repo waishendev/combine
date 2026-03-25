@@ -251,6 +251,24 @@ const calculateBundleDerivedQty = (
   return Math.min(...limits)
 }
 
+const calculateBundleDerivedCost = (
+  bundle: VariantFormValue,
+  componentVariants: VariantFormValue[],
+) => {
+  let total = 0
+
+  bundle.bundleItems.forEach((item) => {
+    const component = resolveComponentVariant(item, componentVariants)
+    if (!component) return
+    const required = Math.max(1, Number.parseInt(item.quantity || '1', 10))
+    const componentCost = Number.parseFloat(component.costPrice || '0')
+    if (!Number.isFinite(componentCost)) return
+    total += componentCost * required
+  })
+
+  return total
+}
+
 interface ProductFormProps {
   mode: ProductFormMode
   product?: ProductRowData | null
@@ -346,8 +364,10 @@ export default function ProductForm({
           salePriceStartAt: formatDateTimeInput(variant.salePriceStartAt),
           salePriceEndAt: formatDateTimeInput(variant.salePriceEndAt),
           costPrice:
-            variant.costPrice !== null && variant.costPrice !== undefined
-              ? String(variant.costPrice)
+            variant.derivedCostPrice !== null && variant.derivedCostPrice !== undefined
+              ? String(variant.derivedCostPrice)
+              : variant.costPrice !== null && variant.costPrice !== undefined
+                ? String(variant.costPrice)
               : '',
           stock: variant.stock !== null && variant.stock !== undefined ? String(variant.stock) : '',
           lowStockThreshold:
@@ -3739,10 +3759,14 @@ export default function ProductForm({
                         step="0.01"
                         value={variant.costPrice}
                         onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        disabled={mode === 'edit'}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
                         placeholder="0.00"
                       />
                     </div>
+                    {mode === 'edit' && (
+                      <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">Apply Discount</label>
@@ -3814,9 +3838,13 @@ export default function ProductForm({
                           type="number"
                           value={variant.stock}
                           onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          disabled={mode === 'edit'}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
                           placeholder="0"
                         />
+                        {mode === 'edit' && (
+                          <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">Low Stock Threshold  <span className="text-red-500">*</span> </label>
@@ -4046,6 +4074,7 @@ export default function ProductForm({
               })
             }
             const derivedQty = calculateBundleDerivedQty(bundle, variants)
+            const derivedCost = calculateBundleDerivedCost(bundle, variants)
             const selectableVariants = variants.filter((variant) => getVariantKey(variant))
             const allBundleVariantsSelected =
               selectableVariants.length > 0 &&
@@ -4218,14 +4247,14 @@ export default function ProductForm({
                             <input
                               type="number"
                               step="0.01"
-                              value={bundle.costPrice}
-                              onChange={(event) =>
-                                handleBundleChange(index, 'costPrice', event.target.value)
-                              }
-                              className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              value={derivedCost.toFixed(2)}
+                              readOnly
+                              disabled
+                              className="w-full rounded-lg border border-gray-300 bg-gray-100 pl-10 pr-3 py-2 text-sm text-gray-600"
                               placeholder="0.00"
                             />
                           </div>
+                          <p className="text-xs text-gray-500">Bundle cost is derived from component variants</p>
                         </div>
                         <div className="space-y-2">
                           <label className="block text-sm font-medium text-gray-700">
@@ -4403,10 +4432,10 @@ export default function ProductForm({
                               key={`bundle-item-${index}-${itemIndex}`}
                               className="grid grid-cols-1 gap-3 md:grid-cols-3 md:items-end"
                             >
-                              <div className="space-y-1 md:col-span-2">
-                                <label className="block text-xs font-medium text-gray-600">
-                                  Component Variant <span className="text-red-500">*</span>
-                                </label>
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600">
+                          Component Variant <span className="text-red-500">*</span>
+                        </label>
                                 <select
                                   value={item.componentVariantId ?? item.componentSku ?? ''}
                                   onChange={(event) =>
@@ -4464,9 +4493,12 @@ export default function ProductForm({
                                   >
                                     <i className="fa-solid fa-trash" />
                                   </button>
-                                </div>
-                              </div>
-                            </div>
+                      </div>
+                    </div>
+                    <div className="rounded border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                      Bundle stock: <span className="font-semibold">{derivedQty ?? '∞'}</span>. Bundle stock is derived from component variants
+                    </div>
+                  </div>
                           )
                         })}
                       </div>

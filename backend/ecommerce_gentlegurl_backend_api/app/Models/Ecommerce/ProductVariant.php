@@ -31,6 +31,8 @@ class ProductVariant extends Model
 
     protected $appends = [
         'image_url',
+        'derived_available_qty',
+        'derived_cost_price',
     ];
 
     protected function casts(): array
@@ -94,6 +96,39 @@ class ProductVariant extends Model
         }
 
         return min($limits);
+    }
+
+    public function derivedCostPrice(): ?float
+    {
+        if (! $this->is_bundle) {
+            return $this->cost_price !== null ? (float) $this->cost_price : null;
+        }
+
+        $this->loadMissing('bundleItems.componentVariant');
+
+        $total = 0.0;
+        foreach ($this->bundleItems as $bundleItem) {
+            $component = $bundleItem->componentVariant;
+            if (! $component) {
+                continue;
+            }
+
+            $required = max(1, (int) ($bundleItem->quantity ?? 1));
+            $componentCost = (float) ($component->cost_price ?? 0);
+            $total += $componentCost * $required;
+        }
+
+        return round($total, 2);
+    }
+
+    public function getDerivedAvailableQtyAttribute(): ?int
+    {
+        return $this->derivedAvailableQty();
+    }
+
+    public function getDerivedCostPriceAttribute(): ?float
+    {
+        return $this->derivedCostPrice();
     }
 
     public function getImageUrlAttribute(): ?string

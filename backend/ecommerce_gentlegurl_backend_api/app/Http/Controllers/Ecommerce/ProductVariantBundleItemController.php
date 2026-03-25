@@ -102,6 +102,11 @@ class ProductVariantBundleItemController extends Controller
                         : $index,
                 ]);
             }
+
+            $variant->load('bundleItems.componentVariant');
+            $variant->cost_price = $variant->derivedCostPrice() ?? 0;
+            $variant->stock = 0;
+            $variant->save();
         });
 
         $variant->loadMissing('bundleItems.componentVariant');
