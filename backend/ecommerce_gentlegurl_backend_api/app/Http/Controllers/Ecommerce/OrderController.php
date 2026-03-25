@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
+use App\Services\Ecommerce\OrderInventoryService;
 use App\Services\Ecommerce\OrderPaymentService;
 // use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
@@ -19,6 +20,7 @@ class OrderController extends Controller
 {
     public function __construct(
         protected OrderPaymentService $paymentService,
+        protected OrderInventoryService $orderInventoryService,
         // protected OrderReserveService $orderReserveService,
         protected InvoiceService $invoiceService,
     )
@@ -346,6 +348,10 @@ class OrderController extends Controller
 
         $order->save();
 
+        if (($order->payment_status === 'paid' || $order->status === 'completed') && ! $order->inventory_deducted_at) {
+            $this->orderInventoryService->deductForOrder($order, $request->user()?->id);
+        }
+
         return $this->respond($order, __('Order status updated.'));
     }
 
@@ -370,6 +376,7 @@ class OrderController extends Controller
             $order->save();
 
             $this->paymentService->handlePaid($order);
+            $this->orderInventoryService->deductForOrder($order, $request->user()?->id);
         });
 
         return $this->respond($order->fresh(['items', 'customer']), __('Payment confirmed.'));
@@ -510,6 +517,10 @@ class OrderController extends Controller
             $lockedOrder->status = 'completed';
             $lockedOrder->completed_at = Carbon::now();
             $lockedOrder->save();
+
+            if (! $lockedOrder->inventory_deducted_at) {
+                $this->orderInventoryService->deductForOrder($lockedOrder, auth()->id());
+            }
         });
 
         $order->refresh();

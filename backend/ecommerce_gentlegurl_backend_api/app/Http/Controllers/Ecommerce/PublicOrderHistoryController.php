@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\ProductReviewService;
+use App\Services\Ecommerce\OrderInventoryService;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -21,6 +22,7 @@ class PublicOrderHistoryController extends Controller
 {
     public function __construct(
         protected OrderReserveService $orderReserveService,
+        protected OrderInventoryService $orderInventoryService,
         protected BillplzService $billplzService,
         protected InvoiceService $invoiceService,
         protected ProductReviewService $reviewService,
@@ -343,6 +345,10 @@ class PublicOrderHistoryController extends Controller
             $lockedOrder->status = 'completed';
             $lockedOrder->completed_at = Carbon::now();
             $lockedOrder->save();
+
+            if (! $lockedOrder->inventory_deducted_at) {
+                $this->orderInventoryService->deductForOrder($lockedOrder, null);
+            }
         });
 
         $order->refresh();

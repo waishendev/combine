@@ -113,7 +113,7 @@ class OrderReserveService
                 continue;
             }
 
-            $available = (int) ($product->stock ?? 0);
+            $available = (int) ($product->stock_quantity ?? $product->stock ?? 0);
 
             if ($requested > $available) {
                 $errors[] = sprintf(
@@ -215,7 +215,7 @@ class OrderReserveService
                 continue;
             }
 
-            $available = (int) ($product->stock ?? 0);
+            $available = (int) ($product->stock_quantity ?? $product->stock ?? 0);
             $requested = (int) ($item['quantity'] ?? 0);
 
             if ($requested > $available) {
@@ -232,12 +232,17 @@ class OrderReserveService
             }
 
             $product->stock = $available - $requested;
+            $product->stock_quantity = $available - $requested;
             $product->save();
         }
     }
 
     public function releaseStockForOrder(Order $order): void
     {
+        if (! $order->inventory_deducted_at) {
+            return;
+        }
+
         $order->loadMissing('items');
 
         foreach ($order->items as $item) {
@@ -283,7 +288,9 @@ class OrderReserveService
                 continue;
             }
 
-            $product->stock = (int) ($product->stock ?? 0) + (int) $item->quantity;
+            $next = (int) ($product->stock_quantity ?? $product->stock ?? 0) + (int) $item->quantity;
+            $product->stock = $next;
+            $product->stock_quantity = $next;
             $product->save();
         }
     }

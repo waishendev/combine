@@ -31,6 +31,7 @@ use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
 use App\Services\Ecommerce\InvoiceService;
+use App\Services\Ecommerce\OrderInventoryService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
@@ -48,6 +49,7 @@ class PosController extends Controller
         protected VoucherEligibilityService $voucherEligibilityService,
         protected VoucherService $voucherService,
         protected InvoiceService $invoiceService,
+        protected OrderInventoryService $orderInventoryService,
         protected CustomerServicePackageService $customerServicePackageService,
         protected BookingAvailabilityService $availabilityService,
     ) {}
@@ -1423,7 +1425,7 @@ class PosController extends Controller
                     abort(422, __('Insufficient stock for :sku', ['sku' => $variant->sku ?? $variant->id]));
                 }
 
-                if (! $variant && $product->track_stock && $item->qty > (int) $product->stock) {
+                if (! $variant && $product->track_stock && $item->qty > (int) ($product->stock_quantity ?? $product->stock ?? 0)) {
                     abort(422, __('Insufficient stock for :sku', ['sku' => $product->sku ?? $product->id]));
                 }
 
@@ -1443,8 +1445,8 @@ class PosController extends Controller
                     'unit_price_snapshot' => $pricing['unit_price_snapshot'],
                     'variant_price_snapshot' => $variant?->price,
                     'variant_cost_snapshot' => $variant?->cost_price,
-                    'cost_price_snapshot' => $product->cost_price,
-                    'cost_amount_snapshot' => round(((float) ($product->cost_price ?? 0)) * (int) $item->qty, 2),
+                    'cost_price_snapshot' => $variant?->cost_price ?? $product->cost_price,
+                    'cost_amount_snapshot' => round(((float) ($variant?->cost_price ?? $product->cost_price ?? 0)) * (int) $item->qty, 2),
                     'quantity' => $item->qty,
                     'line_total' => $pricing['effective_line_total'],
                     'line_total_snapshot' => $pricing['line_total_snapshot'],
@@ -1698,6 +1700,7 @@ class PosController extends Controller
                 }
             }
 
+            $this->orderInventoryService->deductForOrder($order, $request->user()?->id);
             $orderPaymentService->handlePaid($order);
 
             $receiptUrl = $this->buildReceiptUrl($order, $request);
