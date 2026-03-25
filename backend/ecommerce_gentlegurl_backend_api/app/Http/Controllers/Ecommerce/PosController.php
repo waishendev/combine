@@ -14,6 +14,7 @@ use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingSetting;
 use App\Models\Booking\CustomerServicePackageUsage;
@@ -25,6 +26,7 @@ use App\Models\Ecommerce\ServicePackageStaffSplit;
 use App\Models\Staff;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\SettingService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
@@ -412,6 +414,100 @@ class PosController extends Controller
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
         ], __('Appointment status updated.'));
+    }
+
+    public function rescheduleAppointment(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'start_at' => ['required', 'date'],
+            'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+            'reason' => ['nullable', 'string'],
+        ]);
+
+        $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+        if ((string) $booking->status !== 'CONFIRMED') {
+            return $this->respondError(__('Only CONFIRMED appointment can be rescheduled from POS.'), 422);
+        }
+
+        if (! $booking->start_at || now()->greaterThanOrEqualTo($booking->start_at)) {
+            return $this->respondError(__('Past bookings cannot be rescheduled.'), 422);
+        }
+
+        $targetStaffId = isset($validated['staff_id']) && $validated['staff_id']
+            ? (int) $validated['staff_id']
+            : (int) ($booking->staff_id ?? 0);
+        if ($targetStaffId <= 0) {
+            return $this->respondError(__('Assigned staff is required.'), 422);
+        }
+
+        $policy = SettingService::get('booking_policy', [
+            'reschedule' => [
+                'enabled' => true,
+                'max_changes' => 1,
+                'cutoff_hours' => 72,
+            ],
+        ], 'booking');
+        $rescheduleEnabled = (bool) data_get($policy, 'reschedule.enabled', true);
+        $maxChanges = (int) data_get($policy, 'reschedule.max_changes', 1);
+        $cutoffHours = (int) data_get($policy, 'reschedule.cutoff_hours', 72);
+
+        $policyWarnings = [];
+        if (! $rescheduleEnabled) {
+            $policyWarnings[] = 'Booking reschedule is disabled in normal customer policy. Admin/staff override is being used.';
+        }
+        if ($maxChanges >= 0 && (int) ($booking->reschedule_count ?? 0) >= $maxChanges) {
+            $policyWarnings[] = "This booking already reached {$maxChanges} normal reschedule change(s). Admin/staff override is being used.";
+        }
+        if ($cutoffHours > 0 && $booking->start_at && now()->gt($booking->start_at->copy()->subHours($cutoffHours))) {
+            $policyWarnings[] = 'This booking is within the normal reschedule cutoff window. Admin/staff override is being used.';
+        }
+
+        $newStart = Carbon::parse($validated['start_at']);
+        $newEnd = $newStart->copy()->addMinutes((int) $booking->service->duration_min);
+        if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min)) {
+            return $this->respondError(__('Selected slot is not available.'), 409);
+        }
+
+        $oldStart = $booking->start_at;
+        $oldEnd = $booking->end_at;
+        $oldStaffId = $booking->staff_id ? (int) $booking->staff_id : null;
+
+        $booking->update([
+            'staff_id' => $targetStaffId,
+            'start_at' => $newStart,
+            'end_at' => $newEnd,
+            'reschedule_count' => (int) ($booking->reschedule_count ?? 0) + 1,
+            'rescheduled_at' => now(),
+            'rescheduled_from_booking_id' => $booking->rescheduled_from_booking_id ?: $booking->id,
+            'reschedule_reason' => $validated['reason'] ?? null,
+        ]);
+
+        BookingLog::create([
+            'booking_id' => $booking->id,
+            'actor_type' => 'ADMIN',
+            'actor_id' => optional($request->user())->id,
+            'action' => 'RESCHEDULE_BOOKING',
+            'meta' => [
+                'source' => 'POS',
+                'old_start_at' => $oldStart?->toDateTimeString(),
+                'old_end_at' => $oldEnd?->toDateTimeString(),
+                'new_start_at' => $newStart->toDateTimeString(),
+                'new_end_at' => $newEnd->toDateTimeString(),
+                'old_staff_id' => $oldStaffId,
+                'new_staff_id' => $targetStaffId,
+                'reason' => $validated['reason'] ?? null,
+                'admin_override' => true,
+                'actor_admin_id' => optional($request->user())->id,
+                'actor_staff_id' => optional($request->user())->staff_id,
+            ],
+            'created_at' => now(),
+        ]);
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+            'override_applied' => ! empty($policyWarnings),
+            'policy_warnings' => $policyWarnings,
+        ], __('Appointment rescheduled.'));
     }
 
     public function addByBarcode(Request $request)
