@@ -515,6 +515,21 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
+  const formatTimeRange = useCallback((startAt?: string | null, endAt?: string | null) => {
+    if (!startAt) return '-'
+    const start = new Date(startAt)
+    if (!endAt) return start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const end = new Date(endAt)
+    return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  }, [])
+
+  const formatDateTimeRange = useCallback((startAt?: string | null, endAt?: string | null) => {
+    if (!startAt) return '-'
+    const start = new Date(startAt)
+    if (!endAt) return start.toLocaleString()
+    return `${start.toLocaleString()} - ${new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  }, [])
+
   const normalizedProductQuery = useMemo(() => {
     const source = productSearchMode === 'sku' ? debouncedSkuQuery : productQuery
     return source.trim().toLowerCase()
@@ -3331,7 +3346,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           <div className="space-y-0.5">
                             <p className="text-sm font-semibold text-gray-900">{appt.booking_code}</p>
                             <p className="text-xs text-gray-600">{appt.customer_name} • {(appt.service_names ?? []).join(', ')}</p>
-                            <p className="text-xs text-gray-500">{appt.appointment_start_at ? new Date(appt.appointment_start_at).toLocaleString() : '-'}</p>
+                            <p className="text-xs text-gray-500">{formatDateTimeRange(appt.appointment_start_at, appt.appointment_end_at)}</p>
                             <p className="text-xs text-gray-500">Staff: {appt.staff_name ?? '-'}</p>
                             <p className="text-xs text-gray-500">Status: {appt.status}</p>
                             <p className="text-xs text-gray-500">
@@ -3379,7 +3394,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       <p><span className="font-semibold">Customer:</span> {appointmentDetail.customer?.name ?? '-'}</p>
                       <p><span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}</p>
                       <p><span className="font-semibold">Staff:</span> {appointmentDetail.staff?.name ?? '-'}</p>
-                      <p><span className="font-semibold">Date/Time:</span> {appointmentDetail.appointment_start_at ? new Date(appointmentDetail.appointment_start_at).toLocaleString() : '-'}</p>
+                      <p><span className="font-semibold">Date/Time:</span> {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}</p>
                       <p><span className="font-semibold">Status:</span> {appointmentDetail.status}</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
@@ -3605,7 +3620,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <p className="text-xs text-gray-600 mt-1">Qty: {serviceItem.qty}</p>
                         <p className="text-xs text-emerald-700">Type: {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
                         {serviceItem.start_at ? (
-                          <p className="text-xs text-gray-700">Appointment: {new Date(serviceItem.start_at).toLocaleString()}</p>
+                          <p className="text-xs text-gray-700">Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
                         ) : null}
                         {serviceItem.customer_id ? (
                           <p className="text-xs text-gray-600">Member ID: {serviceItem.customer_id}</p>
@@ -4141,7 +4156,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           <td className="px-4 py-3">
                             <p className="font-semibold text-gray-900">{serviceItem.service_name}</p>
                             <p className="text-[11px] text-emerald-700 font-semibold">BOOKING SERVICE · {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
-                            {serviceItem.start_at ? <p className="text-xs text-gray-600 mt-0.5">{new Date(serviceItem.start_at).toLocaleString()}</p> : null}
+                            {serviceItem.start_at ? <p className="text-xs text-gray-600 mt-0.5">{formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p> : null}
                             <p className="text-xs text-gray-500 mt-0.5">Qty: {serviceItem.qty}</p>
                             <p className="text-[11px] text-gray-500 mt-0.5">Service price ref: RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</p>
                           </td>
@@ -4606,7 +4621,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               <p><span className="font-semibold">Customer:</span> {appointmentDetail.customer?.name ?? '-'}</p>
               <p><span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}</p>
               <p><span className="font-semibold">Current Staff:</span> {appointmentDetail.staff?.name ?? '-'}</p>
-              <p><span className="font-semibold">Current Date/Time:</span> {appointmentDetail.appointment_start_at ? new Date(appointmentDetail.appointment_start_at).toLocaleString() : '-'}</p>
+              <p><span className="font-semibold">Current Date/Time:</span> {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}</p>
             </div>
 
             <div className="mt-4 space-y-3">
@@ -4643,7 +4658,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <option value="">{appointmentRescheduleSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
                   {appointmentRescheduleSlots.map((slot) => (
                     <option key={slot.start_at} value={slot.start_at}>
-                      {new Date(slot.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTimeRange(slot.start_at, slot.end_at)}
                     </option>
                   ))}
                 </select>
@@ -4737,7 +4752,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <option value="">{bookingSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
                   {bookingSlots.map((slot) => (
                     <option key={slot.start_at} value={slot.start_at}>
-                      {new Date(slot.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTimeRange(slot.start_at, slot.end_at)}
                     </option>
                   ))}
                 </select>
