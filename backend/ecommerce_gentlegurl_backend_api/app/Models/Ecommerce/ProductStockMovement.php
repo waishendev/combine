@@ -3,6 +3,7 @@
 namespace App\Models\Ecommerce;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
 class ProductStockMovement extends Model
@@ -43,4 +44,10 @@ class ProductStockMovement extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
 }
+

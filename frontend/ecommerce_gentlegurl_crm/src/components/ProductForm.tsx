@@ -3383,7 +3383,7 @@ export default function ProductForm({
                     placeholder="0.00"
                   />
                   {mode === 'edit' && (
-                    <p className="text-xs text-gray-500">Use Stock Adjustment to update stock/cost.</p>
+                    <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
                   )}
                 </div>
               </div>
@@ -3402,7 +3402,7 @@ export default function ProductForm({
                   placeholder="0"
                 />
                 {mode === 'edit' && (
-                  <p className="text-xs text-gray-500">Use Stock Adjustment to update stock/cost.</p>
+                  <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
                 )}
               </div>
               <div className="space-y-2">

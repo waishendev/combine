@@ -172,6 +172,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             requiredPermission: 'ecommerce.products.view',
           },
           {
+            key: 'product-stock-movements',
+            label: 'Stock Movements',
+            href: '/products/stock-movements',
+            requiredPermission: 'ecommerce.products.view',
+          },
+          {
             key: 'store',
             label: 'Stores',
             href: '/store',
