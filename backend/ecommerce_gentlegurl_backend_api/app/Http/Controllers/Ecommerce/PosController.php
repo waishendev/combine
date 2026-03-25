@@ -420,7 +420,7 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'start_at' => ['required', 'date'],
-            'staff_id' => ['nullable', 'integer', 'exists:staff,id'],
+            'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
             'reason' => ['nullable', 'string'],
         ]);
 
