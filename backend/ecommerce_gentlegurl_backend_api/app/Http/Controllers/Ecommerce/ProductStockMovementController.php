@@ -25,6 +25,7 @@ class ProductStockMovementController extends Controller
         $query = ProductStockMovement::query()
             ->with([
                 'product:id,name,sku',
+                'variant:id,title,sku,is_bundle',
                 'createdBy:id,name,email',
             ])
             ->when(isset($validated['product_id']), function ($builder) use ($validated) {

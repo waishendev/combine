@@ -28,6 +28,12 @@ type MovementRow = {
     name: string
     sku?: string | null
   } | null
+  variant?: {
+    id: number
+    title?: string | null
+    sku?: string | null
+    is_bundle?: boolean
+  } | null
   created_by?: {
     id: number
     name?: string | null
@@ -213,9 +219,16 @@ export default function ProductStockMovementLogsPage() {
                 <td className="px-3 py-2 whitespace-nowrap">{new Date(row.created_at).toLocaleString()}</td>
                 <td className="px-3 py-2">
                   {row.product ? (
-                    <Link href={`/products/stock-movements?product_id=${row.product.id}`} className="text-blue-600 hover:underline">
-                      {row.product.name}
-                    </Link>
+                    <div>
+                      <Link href={`/products/stock-movements?product_id=${row.product.id}`} className="text-blue-600 hover:underline">
+                        {row.product.name}
+                      </Link>
+                      {row.variant && (
+                        <div className="text-xs text-gray-500">
+                          Variant: {row.variant.title ?? '—'}{row.variant.sku ? ` (${row.variant.sku})` : ''}
+                        </div>
+                      )}
+                    </div>
                   ) : '—'}
                 </td>
                 <td className="px-3 py-2">{row.type === 'stock_in' ? 'Add Stock' : 'Reduce Stock'}</td>

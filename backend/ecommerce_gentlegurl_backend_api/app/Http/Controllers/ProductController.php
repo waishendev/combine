@@ -268,6 +268,7 @@ class ProductController extends Controller
     public function adjustStock(Request $request, Product $product)
     {
         $validated = $request->validate([
+            'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'adjustment_type' => ['required', Rule::in(['stock_in', 'stock_out'])],
             'quantity' => ['required', 'integer', 'min:1'],
             'cost_price_per_unit' => ['nullable', 'numeric', 'gte:0'],
@@ -282,10 +283,35 @@ class ProductController extends Controller
 
         $updatedProduct = DB::transaction(function () use ($product, $validated, $request) {
             $lockedProduct = Product::where('id', $product->id)->lockForUpdate()->firstOrFail();
+            $variantId = isset($validated['product_variant_id']) ? (int) $validated['product_variant_id'] : null;
 
-            $beforeQty = (int) ($lockedProduct->stock_quantity ?? $lockedProduct->stock ?? 0);
-            $beforeCost = (float) ($lockedProduct->cost_price ?? 0);
-            $beforeInventory = (float) ($lockedProduct->inventory_value ?? round($beforeQty * $beforeCost, 2));
+            $lockedVariant = null;
+            if ($variantId) {
+                $lockedVariant = ProductVariant::where('id', $variantId)
+                    ->where('product_id', $lockedProduct->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $lockedVariant) {
+                    throw ValidationException::withMessages([
+                        'product_variant_id' => [__('Selected variant is invalid for this product.')],
+                    ])->status(422);
+                }
+
+                if ($lockedVariant->is_bundle) {
+                    throw ValidationException::withMessages([
+                        'product_variant_id' => [__('Bundle stock is derived from component variants and cannot be adjusted directly.')],
+                    ])->status(422);
+                }
+            }
+
+            $beforeQty = $lockedVariant
+                ? (int) ($lockedVariant->stock ?? 0)
+                : (int) ($lockedProduct->stock_quantity ?? $lockedProduct->stock ?? 0);
+            $beforeCost = $lockedVariant
+                ? (float) ($lockedVariant->cost_price ?? 0)
+                : (float) ($lockedProduct->cost_price ?? 0);
+            $beforeInventory = round($beforeQty * $beforeCost, 2);
 
             $quantity = (int) $validated['quantity'];
             $type = $validated['adjustment_type'];
@@ -313,14 +339,21 @@ class ProductController extends Controller
                 $afterInventory = round(max(0, $beforeInventory - $reducedCost), 2);
             }
 
-            $lockedProduct->cost_price = $afterCost;
-            $lockedProduct->stock = $afterQty;
-            $lockedProduct->stock_quantity = $afterQty;
-            $lockedProduct->inventory_value = $afterInventory;
-            $lockedProduct->save();
+            if ($lockedVariant) {
+                $lockedVariant->cost_price = $afterCost;
+                $lockedVariant->stock = $afterQty;
+                $lockedVariant->save();
+            } else {
+                $lockedProduct->cost_price = $afterCost;
+                $lockedProduct->stock = $afterQty;
+                $lockedProduct->stock_quantity = $afterQty;
+                $lockedProduct->inventory_value = $afterInventory;
+                $lockedProduct->save();
+            }
 
             ProductStockMovement::create([
                 'product_id' => $lockedProduct->id,
+                'product_variant_id' => $lockedVariant?->id,
                 'type' => $type,
                 'quantity_before' => $beforeQty,
                 'quantity_change' => $quantity,
