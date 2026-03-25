@@ -210,14 +210,55 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
           return
         }
         const data: DailyReportResponse = await response.json()
-        const responseRows = (data.rows ?? []).map((row) => ({
-          ...row,
-          net_revenue: row.net_revenue ?? row.revenue,
-          return_amount: row.return_amount ?? 0,
-        }))
+        const responseRows = (data.rows ?? []).map((row) => {
+          const revenue = row.revenue ?? row.net_revenue ?? 0
+          const packageSalesAmount = row.package_sales_amount ?? 0
+          const totalSales = row.total_sales ?? (revenue + packageSalesAmount)
+          const cogs = row.cogs ?? 0
+          return {
+            ...row,
+            revenue,
+            net_revenue: revenue,
+            return_amount: row.return_amount ?? 0,
+            package_sales_amount: packageSalesAmount,
+            total_sales: totalSales,
+            gross_profit: totalSales - cogs,
+          }
+        })
+        const sourceGrandTotals = data.grand_totals ?? data.totals ?? null
+        const normalizedTotalsPage = data.totals_page
+          ? {
+              ...data.totals_page,
+              revenue: data.totals_page.revenue ?? data.totals_page.net_revenue ?? 0,
+              net_revenue: data.totals_page.revenue ?? data.totals_page.net_revenue ?? 0,
+              total_sales:
+                data.totals_page.total_sales ??
+                (data.totals_page.revenue ?? data.totals_page.net_revenue ?? 0) +
+                  (data.totals_page.package_sales_amount ?? 0),
+              gross_profit:
+                (data.totals_page.total_sales ??
+                  (data.totals_page.revenue ?? data.totals_page.net_revenue ?? 0) +
+                    (data.totals_page.package_sales_amount ?? 0)) - (data.totals_page.cogs ?? 0),
+            }
+          : null
+        const normalizedGrandTotals = sourceGrandTotals
+          ? {
+              ...sourceGrandTotals,
+              revenue: sourceGrandTotals.revenue ?? sourceGrandTotals.net_revenue ?? 0,
+              net_revenue: sourceGrandTotals.revenue ?? sourceGrandTotals.net_revenue ?? 0,
+              total_sales:
+                sourceGrandTotals.total_sales ??
+                (sourceGrandTotals.revenue ?? sourceGrandTotals.net_revenue ?? 0) +
+                  (sourceGrandTotals.package_sales_amount ?? 0),
+              gross_profit:
+                (sourceGrandTotals.total_sales ??
+                  (sourceGrandTotals.revenue ?? sourceGrandTotals.net_revenue ?? 0) +
+                    (sourceGrandTotals.package_sales_amount ?? 0)) - (sourceGrandTotals.cogs ?? 0),
+            }
+          : null
         setRows(responseRows)
-        setTotalsPage(data.totals_page ?? null)
-        setGrandTotals(data.grand_totals ?? data.totals ?? null)
+        setTotalsPage(normalizedTotalsPage)
+        setGrandTotals(normalizedGrandTotals)
         setMeta(data.meta ?? null)
         const hasPagination = Boolean(data.pagination)
         setHasServerPagination(hasPagination)
@@ -318,11 +359,12 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
   }, [resolvedParams.hasDateFrom, resolvedParams.hasDateTo, showingRange])
 
   const summaryCards = useMemo(() => {
-    const revenue = grandTotals?.net_revenue ?? grandTotals?.revenue ?? null
+    const revenue = grandTotals?.revenue ?? grandTotals?.net_revenue ?? null
     const packageSales = grandTotals?.package_sales_amount ?? null
     const totalSales = grandTotals?.total_sales ?? (revenue ?? 0) + (packageSales ?? 0)
     const cogs = grandTotals?.cogs ?? null
-    const grossProfit = grandTotals?.gross_profit ?? null
+    const grossProfit =
+      totalSales !== null && cogs !== null ? totalSales - cogs : null
 
     return [
       { label: 'Net Revenue', value: revenue, isMoney: true },
@@ -342,7 +384,20 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
   }, [hasServerPagination, pagination.current_page, resolvedParams.page, resolvedParams.perPage, rows])
 
   const pageTotals = useMemo(() => {
-    if (totalsPage) return totalsPage
+    if (totalsPage) {
+      return {
+        ...totalsPage,
+        revenue: totalsPage.revenue ?? totalsPage.net_revenue ?? 0,
+        net_revenue: totalsPage.revenue ?? totalsPage.net_revenue ?? 0,
+        total_sales:
+          totalsPage.total_sales ??
+          (totalsPage.revenue ?? totalsPage.net_revenue ?? 0) + (totalsPage.package_sales_amount ?? 0),
+        gross_profit:
+          (totalsPage.total_sales ??
+            (totalsPage.revenue ?? totalsPage.net_revenue ?? 0) + (totalsPage.package_sales_amount ?? 0)) -
+          (totalsPage.cogs ?? 0),
+      }
+    }
     if (visibleRows.length === 0) {
       return null
     }
@@ -352,11 +407,11 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
         acc.items_count += row.items_count
         acc.revenue += row.revenue
         acc.return_amount += row.return_amount ?? 0
-        acc.net_revenue += row.net_revenue ?? row.revenue
+        acc.net_revenue += row.revenue ?? row.net_revenue ?? 0
         acc.package_sales_amount += row.package_sales_amount ?? 0
-        acc.total_sales += row.total_sales ?? ((row.net_revenue ?? row.revenue) + (row.package_sales_amount ?? 0))
+        acc.total_sales += row.total_sales ?? ((row.revenue ?? row.net_revenue ?? 0) + (row.package_sales_amount ?? 0))
         acc.cogs += row.cogs ?? 0
-        acc.gross_profit += row.gross_profit ?? 0
+        acc.gross_profit += (row.total_sales ?? ((row.revenue ?? row.net_revenue ?? 0) + (row.package_sales_amount ?? 0))) - (row.cogs ?? 0)
         return acc
       },
       {
@@ -604,13 +659,13 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                   <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
                   <td className="px-4 py-2 border border-gray-200">
-                    RM {formatAmount(row.net_revenue ?? row.revenue)}
+                    RM {formatAmount(row.revenue ?? row.net_revenue ?? 0)}
                   </td>
                   <td className="px-4 py-2 border border-gray-200">
                     RM {formatAmount(row.package_sales_amount ?? 0)}
                   </td>
                   <td className="px-4 py-2 border border-gray-200">
-                    RM {formatAmount(row.total_sales ?? ((row.net_revenue ?? row.revenue) + (row.package_sales_amount ?? 0)))}
+                    RM {formatAmount(row.total_sales ?? ((row.revenue ?? row.net_revenue ?? 0) + (row.package_sales_amount ?? 0)))}
                   </td>
                   <td className="px-4 py-2 border border-gray-200">
                     {row.cogs === null || row.cogs === undefined
@@ -618,9 +673,9 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                       : `RM ${formatAmount(row.cogs)}`}
                   </td>
                   <td className="px-4 py-2 border border-gray-200">
-                    {row.gross_profit === null || row.gross_profit === undefined
+                    {row.cogs === null || row.cogs === undefined
                       ? '—'
-                      : `RM ${formatAmount(row.gross_profit)}`}
+                      : `RM ${formatAmount((row.total_sales ?? ((row.revenue ?? row.net_revenue ?? 0) + (row.package_sales_amount ?? 0))) - (row.cogs ?? 0))}`}
                   </td>
                 </tr>
               ))
@@ -636,9 +691,9 @@ export default function SalesDailyReportPage({ canExport = false }: { canExport?
                 {pageTotals?.items_count ?? '—'}
               </td>
               <td className="border border-gray-300 px-4 py-2 text-left text-sm">
-                {pageTotals?.net_revenue === undefined || pageTotals?.net_revenue === null
+                {pageTotals?.revenue === undefined || pageTotals?.revenue === null
                   ? '—'
-                  : `RM ${formatAmount(pageTotals.net_revenue)}`}
+                  : `RM ${formatAmount(pageTotals.revenue)}`}
               </td>
               <td className="border border-gray-300 px-4 py-2 text-left text-sm">
                 {pageTotals?.package_sales_amount === undefined || pageTotals?.package_sales_amount === null
