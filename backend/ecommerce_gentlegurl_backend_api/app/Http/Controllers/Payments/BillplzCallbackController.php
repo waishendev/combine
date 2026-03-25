@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BillplzBill;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Cart;
+use App\Services\Ecommerce\OrderInventoryService;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ class BillplzCallbackController extends Controller
 {
     public function __construct(
         protected BillplzConfigResolver $configResolver,
+        protected OrderInventoryService $orderInventoryService,
     ) {
     }
 
@@ -111,6 +113,7 @@ class BillplzCallbackController extends Controller
             $order->payment_reference = $order->payment_reference ?: $billId;
             $order->payment_provider = $order->payment_provider ?: 'billplz';
             $order->save();
+            $this->orderInventoryService->deductForOrder($order);
 
             $this->clearOrderCart($order);
 
@@ -161,6 +164,7 @@ class BillplzCallbackController extends Controller
                                 $order->payment_reference = $order->payment_reference ?: $billId;
                                 $order->payment_provider = $order->payment_provider ?: 'billplz';
                                 $order->save();
+                                $this->orderInventoryService->deductForOrder($order);
 
                                 $this->clearOrderCart($order);
 

@@ -12,6 +12,8 @@ class ProductStockMovement extends Model
 
     protected $fillable = [
         'product_id',
+        'product_variant_id',
+        'order_id',
         'type',
         'quantity_before',
         'quantity_change',
@@ -28,6 +30,8 @@ class ProductStockMovement extends Model
     protected function casts(): array
     {
         return [
+            'product_variant_id' => 'integer',
+            'order_id' => 'integer',
             'quantity_before' => 'integer',
             'quantity_change' => 'integer',
             'quantity_after' => 'integer',
@@ -49,5 +53,14 @@ class ProductStockMovement extends Model
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
     }
-}
 
+    public function productVariant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class, 'order_id');
+    }
+}
