@@ -798,11 +798,16 @@ class PosController extends Controller
             return $this->respondError(__('Product is not sellable.'), 404);
         }
 
+
+        if (! $variant && $resolvedProduct->variants()->where('is_active', true)->exists()) {
+            return $this->respondError(__('Please select a product variant before adding to cart.'), 422);
+        }
+
         if ($variant && $variant->track_stock && (int) $variant->stock < $qty) {
             return $this->respondError(__('Insufficient stock.'), 422);
         }
 
-        if (! $variant && $resolvedProduct->track_stock && (int) $resolvedProduct->stock < $qty) {
+        if (! $variant && $resolvedProduct->track_stock && $qty > (int) ($resolvedProduct->stock_quantity ?? $resolvedProduct->stock ?? 0)) {
             return $this->respondError(__('Insufficient stock.'), 422);
         }
 
@@ -827,7 +832,7 @@ class PosController extends Controller
             return $this->respondError(__('Insufficient stock.'), 422);
         }
 
-        if (! $variant && $resolvedProduct->track_stock && $item->qty > (int) $resolvedProduct->stock) {
+        if (! $variant && $resolvedProduct->track_stock && $item->qty > (int) ($resolvedProduct->stock_quantity ?? $resolvedProduct->stock ?? 0)) {
             return $this->respondError(__('Insufficient stock.'), 422);
         }
 
@@ -961,7 +966,7 @@ class PosController extends Controller
             return $this->respondError(__('Insufficient stock.'), 422);
         }
 
-        if (! $item->variant && $item->product?->track_stock && $qty > (int) $item->product->stock) {
+        if (! $item->variant && $item->product?->track_stock && $qty > (int) ($item->product->stock_quantity ?? $item->product->stock ?? 0)) {
             return $this->respondError(__('Insufficient stock.'), 422);
         }
 
@@ -1423,7 +1428,11 @@ class PosController extends Controller
                     abort(422, __('Insufficient stock for :sku', ['sku' => $variant->sku ?? $variant->id]));
                 }
 
-                if (! $variant && $product->track_stock && $item->qty > (int) $product->stock) {
+                if (! $variant && $product->variants()->where('is_active', true)->exists()) {
+                    abort(422, __('Please select a product variant before checkout.'));
+                }
+
+                if (! $variant && $product->track_stock && $item->qty > (int) ($product->stock_quantity ?? $product->stock ?? 0)) {
                     abort(422, __('Insufficient stock for :sku', ['sku' => $product->sku ?? $product->id]));
                 }
 

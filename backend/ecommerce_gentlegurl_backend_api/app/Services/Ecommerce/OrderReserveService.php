@@ -109,6 +109,15 @@ class OrderReserveService
                 continue;
             }
 
+            if ($product->variants()->where('is_active', true)->exists()) {
+                $errors[] = sprintf(
+                    'Variant selection is required for %s (ID %d).',
+                    $product->name ?? 'product',
+                    $product->id,
+                );
+                continue;
+            }
+
             if (! $product->track_stock) {
                 continue;
             }
@@ -211,7 +220,23 @@ class OrderReserveService
             }
 
             $product = Product::where('id', $productId)->lockForUpdate()->first();
-            if (!$product || ! $product->track_stock) {
+            if (!$product) {
+                continue;
+            }
+
+            if ($product->variants()->where('is_active', true)->exists()) {
+                throw ValidationException::withMessages([
+                    'items' => [
+                        sprintf(
+                            'Variant selection is required for %s (ID %d).',
+                            $product->name ?? 'product',
+                            $product->id,
+                        ),
+                    ],
+                ])->status(422);
+            }
+
+            if (! $product->track_stock) {
                 continue;
             }
 

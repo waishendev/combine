@@ -106,6 +106,7 @@ class OrderInventoryService
             ProductStockMovement::create([
                 'product_id' => $component->product_id,
                 'product_variant_id' => $component->id,
+                'order_id' => $order->id,
                 'type' => 'sale_out',
                 'quantity_before' => $available,
                 'quantity_change' => $required,
@@ -151,6 +152,7 @@ class OrderInventoryService
         ProductStockMovement::create([
             'product_id' => $variant->product_id,
             'product_variant_id' => $variant->id,
+            'order_id' => $order->id,
             'type' => 'sale_out',
             'quantity_before' => $beforeQty,
             'quantity_change' => $requested,
@@ -168,7 +170,17 @@ class OrderInventoryService
     {
         $product = Product::whereKey($productId)->lockForUpdate()->first();
 
-        if (! $product || ! $product->track_stock) {
+        if (! $product) {
+            return;
+        }
+
+        if ($product->variants()->where('is_active', true)->exists()) {
+            throw ValidationException::withMessages([
+                'items' => [__('Variant selection is required for product :name.', ['name' => $product->name ?? 'product'])],
+            ])->status(422);
+        }
+
+        if (! $product->track_stock) {
             return;
         }
 
@@ -198,6 +210,7 @@ class OrderInventoryService
         ProductStockMovement::create([
             'product_id' => $product->id,
             'product_variant_id' => null,
+            'order_id' => $order->id,
             'type' => 'sale_out',
             'quantity_before' => $beforeQty,
             'quantity_change' => $requested,
