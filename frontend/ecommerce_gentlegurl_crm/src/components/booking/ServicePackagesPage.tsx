@@ -1,31 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+
 import PaginationControls from '../PaginationControls'
-import TableLoadingRow from '../TableLoadingRow'
 import TableEmptyState from '../TableEmptyState'
+import TableLoadingRow from '../TableLoadingRow'
+import ServicePackageDeleteModal from './ServicePackageDeleteModal'
+import ServicePackageFormModal from './ServicePackageFormModal'
+import type { ServicePackage } from './servicePackageTypes'
 import { useI18n } from '@/lib/i18n'
-
-type ServicePackageItem = {
-  id: number
-  booking_service_id: number
-  quantity: number
-  booking_service?: {
-    id: number
-    name: string
-  }
-}
-
-type ServicePackage = {
-  id: number
-  name: string
-  description?: string | null
-  selling_price: number
-  total_sessions: number
-  valid_days?: number | null
-  is_active: boolean
-  items?: ServicePackageItem[]
-}
 
 type Meta = {
   current_page: number
@@ -67,6 +50,10 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
     total: 0,
   })
 
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editingPackageId, setEditingPackageId] = useState<number | null>(null)
+  const [deletingPackage, setDeletingPackage] = useState<ServicePackage | null>(null)
+
   const canCreate = permissions.includes('service-packages.create')
   const canUpdate = permissions.includes('service-packages.update')
   const canDelete = permissions.includes('service-packages.delete')
@@ -93,7 +80,7 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
       const response: ServicePackageApiResponse = await res
         .json()
         .catch(() => ({} as ServicePackageApiResponse))
-      
+
       if (response?.success === false && response?.message === 'Unauthorized') {
         window.location.replace('/dashboard')
         return
@@ -160,20 +147,24 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
     setCurrentPage(1)
   }
 
+  const refreshAfterModalAction = async () => {
+    await fetchPackages()
+    setCreateOpen(false)
+    setEditingPackageId(null)
+    setDeletingPackage(null)
+  }
+
   const totalPages = meta.last_page || 1
   const colCount = showActions ? 6 : 5
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {canCreate && (
             <button
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-              onClick={() => {
-                // TODO: Open create modal
-                alert('Create modal - to be implemented')
-              }}
+              className="flex items-center gap-2 rounded bg-blue-500 px-4 py-2 text-sm text-white hover:bg-blue-600"
+              onClick={() => setCreateOpen(true)}
               type="button"
             >
               <i className="fa-solid fa-plus" />
@@ -190,7 +181,7 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
             id="pageSize"
             value={pageSize}
             onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
             disabled={loading}
           >
             {[50, 100, 150, 200].map((size) => (
@@ -202,27 +193,27 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-x-auto">
+      <div className="overflow-x-auto rounded-lg bg-white shadow">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
                 Name
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
                 Description
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
                 Price
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
                 Sessions
               </th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
                 Status
               </th>
               {showActions && (
-                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                <th className="px-4 py-2 text-left font-semibold tracking-wider text-gray-600">
                   {t('common.actions')}
                 </th>
               )}
@@ -248,9 +239,9 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
                     {pkg.valid_days && ` (${pkg.valid_days} days)`}
                   </td>
                   <td className="border border-gray-200 px-4 py-2">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      pkg.is_active 
-                        ? 'bg-green-100 text-green-800' 
+                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                      pkg.is_active
+                        ? 'bg-green-100 text-green-800'
                         : 'bg-gray-100 text-gray-800'
                     }`}>
                       {pkg.is_active ? t('common.active') : t('common.inactive')}
@@ -263,10 +254,7 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
                           <button
                             type="button"
                             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
-                            onClick={() => {
-                              // TODO: Open edit modal
-                              alert(`Edit package ${pkg.id} - to be implemented`)
-                            }}
+                            onClick={() => setEditingPackageId(pkg.id)}
                             aria-label="Edit"
                             title="Edit"
                           >
@@ -277,13 +265,7 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
                           <button
                             type="button"
                             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
-                            onClick={async () => {
-                              if (!window.confirm('Delete this service package?')) return
-                              const res = await fetch(`/api/proxy/service-packages/${pkg.id}`, { method: 'DELETE' })
-                              if (res.ok) {
-                                await fetchPackages()
-                              }
-                            }}
+                            onClick={() => setDeletingPackage(pkg)}
                             aria-label="Delete"
                             title="Delete"
                           >
@@ -309,6 +291,31 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
         onPageChange={handlePageChange}
         disabled={loading}
       />
+
+      {createOpen && (
+        <ServicePackageFormModal
+          mode="create"
+          onClose={() => setCreateOpen(false)}
+          onSuccess={refreshAfterModalAction}
+        />
+      )}
+
+      {editingPackageId && (
+        <ServicePackageFormModal
+          mode="edit"
+          packageId={editingPackageId}
+          onClose={() => setEditingPackageId(null)}
+          onSuccess={refreshAfterModalAction}
+        />
+      )}
+
+      {deletingPackage && (
+        <ServicePackageDeleteModal
+          servicePackage={deletingPackage}
+          onClose={() => setDeletingPackage(null)}
+          onDeleted={refreshAfterModalAction}
+        />
+      )}
     </div>
   )
 }
