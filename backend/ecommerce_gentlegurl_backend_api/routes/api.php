@@ -1003,6 +1003,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::put('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'update']);
 
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
+    Route::put('/staff-schedules/bulk', [\App\Http\Controllers\Admin\Booking\StaffScheduleController::class, 'bulkUpdate']);
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
     Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);
     Route::apiResource('/commission-tiers', \App\Http\Controllers\Admin\Booking\CommissionTierController::class)

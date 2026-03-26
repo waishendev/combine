@@ -19,6 +19,16 @@ const FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
   { key: 'break', label: 'Break' },
 ]
 
+const DAYS: Array<{ value: number; label: string }> = [
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+]
+
 export default function StaffScheduleBulkUpdateModal({
   show,
   selectedSchedules,
@@ -37,6 +47,8 @@ export default function StaffScheduleBulkUpdateModal({
     () => `${selectedSchedules.length} schedule${selectedSchedules.length > 1 ? 's' : ''} selected`,
     [selectedSchedules.length],
   )
+
+  const formatDay = (day: number): string => DAYS.find((item) => item.value === day)?.label ?? String(day)
 
   const toggleField = (field: FieldKey) => {
     setSelectedFields((prev) =>
@@ -60,30 +72,36 @@ export default function StaffScheduleBulkUpdateModal({
     setIsSubmitting(true)
     setError(null)
     try {
-      const requests = selectedSchedules.map((schedule) => {
-        const payload = {
-          staff_id: schedule.staff_id,
-          day_of_week: schedule.day_of_week,
-          start_time: selectedFields.includes('start') ? startTime : schedule.start_time,
-          end_time: selectedFields.includes('end') ? endTime : schedule.end_time,
-          break_start: selectedFields.includes('break') ? (breakStart || null) : schedule.break_start,
-          break_end: selectedFields.includes('break') ? (breakEnd || null) : schedule.break_end,
-        }
+      const payload: Record<string, unknown> = {
+        ids: selectedSchedules.map((schedule) => schedule.id),
+      }
+      if (selectedFields.includes('start')) {
+        payload.start_time = startTime
+      }
+      if (selectedFields.includes('end')) {
+        payload.end_time = endTime
+      }
+      if (selectedFields.includes('break')) {
+        payload.break_start = breakStart || null
+        payload.break_end = breakEnd || null
+      }
 
-        return fetch(`/api/proxy/admin/booking/staff-schedules/${schedule.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify(payload),
-        })
+      const res = await fetch('/api/proxy/admin/booking/staff-schedules/bulk', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
       })
 
-      const results = await Promise.all(requests)
-      const failed = results.find((result) => !result.ok)
-      if (failed) {
-        setError('Bulk update failed for one or more schedules.')
+      if (!res.ok) {
+        const response = await res.json().catch(() => null)
+        const message =
+          response && typeof response === 'object' && 'message' in response && typeof response.message === 'string'
+            ? response.message
+            : 'Bulk update failed. Please retry.'
+        setError(message)
         return
       }
 
@@ -120,6 +138,20 @@ export default function StaffScheduleBulkUpdateModal({
         {error && (
           <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}
+
+        <div className="border rounded p-2 bg-gray-50 max-h-[180px] overflow-y-auto text-sm text-gray-700">
+          {selectedSchedules.map((schedule) => (
+            <div key={schedule.id} className="mb-3 border-b border-gray-200 pb-2 last:border-none last:pb-0">
+              <div className="font-medium text-gray-800">{schedule.staff_name}</div>
+              <div className="text-xs text-gray-500">
+                {formatDay(schedule.day_of_week)} • {schedule.start_time} - {schedule.end_time}
+              </div>
+              <div className="text-xs text-gray-500">
+                Break: {schedule.break_start && schedule.break_end ? `${schedule.break_start} - ${schedule.break_end}` : '-'}
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div>
           <h3 className="text-md font-semibold text-gray-800 mb-3">
