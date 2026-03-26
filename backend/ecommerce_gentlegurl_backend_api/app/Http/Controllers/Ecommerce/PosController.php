@@ -1429,6 +1429,10 @@ class PosController extends Controller
 
                 $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);
                 $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
+                $resolvedUnitCost = (float) ($variant
+                    ? ($variant->is_bundle ? $variant->derivedCostPrice() : $variant->cost_price)
+                    : $product->cost_price
+                );
                 $orderItem = OrderItem::create([
                     'order_id' => $order->id,
                     'line_type' => 'product',
@@ -1443,8 +1447,8 @@ class PosController extends Controller
                     'unit_price_snapshot' => $pricing['unit_price_snapshot'],
                     'variant_price_snapshot' => $variant?->price,
                     'variant_cost_snapshot' => $variant?->is_bundle ? $variant?->derivedCostPrice() : $variant?->cost_price,
-                    'cost_price_snapshot' => $product->cost_price,
-                    'cost_amount_snapshot' => round(((float) ($product->cost_price ?? 0)) * (int) $item->qty, 2),
+                    'cost_price_snapshot' => $resolvedUnitCost,
+                    'cost_amount_snapshot' => round($resolvedUnitCost * (int) $item->qty, 2),
                     'quantity' => $item->qty,
                     'line_total' => $pricing['effective_line_total'],
                     'line_total_snapshot' => $pricing['line_total_snapshot'],
