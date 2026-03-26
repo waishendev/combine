@@ -232,6 +232,7 @@ class OrderReserveService
             }
 
             $product->stock = $available - $requested;
+            $product->stock_quantity = $product->stock;
             $product->save();
         }
     }
@@ -284,6 +285,7 @@ class OrderReserveService
             }
 
             $product->stock = (int) ($product->stock ?? 0) + (int) $item->quantity;
+            $product->stock_quantity = $product->stock;
             $product->save();
         }
     }
