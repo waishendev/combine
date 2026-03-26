@@ -378,10 +378,11 @@ class SalesReportService
         return (float) DB::table('order_items as oi')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
+            ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
-            ->sum(DB::raw('oi.quantity * COALESCE(p.cost_price, 0)'));
+            ->sum(DB::raw($this->cogsAmountExpression()));
     }
 
     public function missingCostProductsCount(Carbon $start, Carbon $end): int
@@ -521,7 +522,7 @@ class SalesReportService
             ->orderByDesc('revenue');
 
         if ($profitSupported) {
-            $rowsQuery = $rowsQuery->addSelect(DB::raw('SUM(oi.quantity * COALESCE(p.cost_price, 0)) as cogs'));
+            $rowsQuery = $rowsQuery->addSelect(DB::raw('SUM('.$this->cogsAmountExpression().') as cogs'));
         } else {
             $rowsQuery = $rowsQuery->addSelect(DB::raw('0 as cogs'));
         }
@@ -575,12 +576,13 @@ class SalesReportService
         if ($profitSupported) {
             $cogsSubquery = DB::table('order_items as oi')
                 ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
+                ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
                 ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
                 ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
                 ->groupBy('oi.order_id')
-                ->select('oi.order_id', DB::raw('SUM(oi.quantity * COALESCE(p.cost_price, 0)) as cogs'));
+                ->select('oi.order_id', DB::raw('SUM('.$this->cogsAmountExpression().') as cogs'));
 
             $rowsQuery = $rowsQuery
                 ->leftJoinSub($cogsSubquery, 'order_item_cogs', 'orders.id', '=', 'order_item_cogs.order_id')
@@ -719,7 +721,7 @@ class SalesReportService
         }
 
         if ($profitSupported) {
-            $rowsQuery = $rowsQuery->addSelect(DB::raw('SUM(oi.quantity * COALESCE(p.cost_price, 0)) as cogs'));
+            $rowsQuery = $rowsQuery->addSelect(DB::raw('SUM('.$this->cogsAmountExpression().') as cogs'));
         } else {
             $rowsQuery = $rowsQuery->addSelect(DB::raw('0 as cogs'));
         }
@@ -787,7 +789,8 @@ class SalesReportService
         if ($profitSupported) {
             $cogsSubquery = DB::table('order_items as oi')
                 ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
-                ->select('oi.order_id', DB::raw('SUM(oi.quantity * COALESCE(p.cost_price, 0)) as cogs'))
+                ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
+                ->select('oi.order_id', DB::raw('SUM('.$this->cogsAmountExpression().') as cogs'))
                 ->groupBy('oi.order_id');
 
             $rowsQuery = $rowsQuery
@@ -843,5 +846,10 @@ class SalesReportService
             ->whereIn('o.status', self::VALID_ORDER_STATUSES_FOR_REPORT)
             ->whereNotNull('return_requests.refunded_at')
             ->sum('return_requests.refund_amount');
+    }
+
+    private function cogsAmountExpression(): string
+    {
+        return 'COALESCE(oi.cost_amount_snapshot, oi.quantity * COALESCE(oi.variant_cost_snapshot, oi.cost_price_snapshot, pv.cost_price, p.cost_price, 0))';
     }
 }
