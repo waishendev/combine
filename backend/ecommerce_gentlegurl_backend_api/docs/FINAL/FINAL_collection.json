@@ -17,6 +17,18 @@
     {
       "key": "booking_cart_item_id",
       "value": "1"
+    },
+    {
+      "key": "booking_service_id",
+      "value": "1"
+    },
+    {
+      "key": "service_package_id",
+      "value": "1"
+    },
+    {
+      "key": "service_id",
+      "value": "1"
     }
   ],
   "auth": {
@@ -780,6 +792,267 @@
                       "path": [
                         "customers",
                         "{{customer_id}}"
+                      ]
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            }
+            ,
+            {
+              "name": "Service Packages",
+              "item": [
+                {
+                  "name": "List Service Packages",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/service-packages",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "service-packages"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Create Service Package",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"10x Haircut Package\",\n  \"description\": \"Package for 10 sessions\",\n  \"is_active\": true,\n  \"selling_price\": \"520.00\",\n  \"total_sessions\": 10,\n  \"items\": [\n    {\n      \"booking_service_id\": {{booking_service_id}},\n      \"quantity\": 10\n    }\n  ]\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{base_url}}/service-packages",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "service-packages"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Show Service Package",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/service-packages/{{service_package_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "service-packages",
+                        "{{service_package_id}}"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Update Service Package",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"10x Haircut Package (Updated)\",\n  \"description\": \"Updated package description\",\n  \"is_active\": true,\n  \"selling_price\": \"520.00\",\n  \"total_sessions\": 10,\n  \"items\": [\n    {\n      \"booking_service_id\": {{booking_service_id}},\n      \"quantity\": 10\n    }\n  ]\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{base_url}}/service-packages/{{service_package_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "service-packages",
+                        "{{service_package_id}}"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Delete Service Package",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "DELETE",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/service-packages/{{service_package_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "service-packages",
+                        "{{service_package_id}}"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Customer Service Packages (List)",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/customers/{{customer_id}}/service-packages",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "customers",
+                        "{{customer_id}}",
+                        "service-packages"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Customer Service Package Balances",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/customers/{{customer_id}}/service-package-balances",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "customers",
+                        "{{customer_id}}",
+                        "service-package-balances"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Customer Service Package Usages",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/customers/{{customer_id}}/service-package-usages",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "customers",
+                        "{{customer_id}}",
+                        "service-package-usages"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Customer Package Available For Service",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{base_url}}/customers/{{customer_id}}/service-package-available-for/{{service_id}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "customers",
+                        "{{customer_id}}",
+                        "service-package-available-for",
+                        "{{service_id}}"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Redeem Service Package",
+                  "request": {
+                    "auth": {
+                      "type": "inherit"
+                    },
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"customer_id\": {{customer_id}},\n  \"service_id\": {{service_id}},\n  \"quantity\": 1,\n  \"note\": \"Redeem from CRM\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{base_url}}/service-packages/redeem",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "service-packages",
+                        "redeem"
                       ]
                     }
                   },
