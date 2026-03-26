@@ -243,6 +243,7 @@ class PublicCheckoutController extends Controller
                 }
 
                 foreach ($calculation['items'] as $item) {
+                    $resolvedUnitCost = (float) ($item['variant_cost'] ?? $item['product_cost'] ?? 0);
                     $orderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $item['product_id'],
@@ -254,6 +255,8 @@ class PublicCheckoutController extends Controller
                         'price_snapshot' => $item['unit_price'],
                         'variant_price_snapshot' => $item['variant_price'] ?? null,
                         'variant_cost_snapshot' => $item['variant_cost'] ?? null,
+                        'cost_price_snapshot' => $resolvedUnitCost,
+                        'cost_amount_snapshot' => round($resolvedUnitCost * (int) ($item['quantity'] ?? 0), 2),
                         'quantity' => $item['quantity'],
                         'line_total' => $item['line_total'],
                         'is_reward' => $item['is_reward'] ?? false,
@@ -767,7 +770,8 @@ class PublicCheckoutController extends Controller
                     'variant_name' => $variant?->title,
                     'variant_sku' => $variant?->sku,
                     'variant_price' => $variant?->price,
-                    'variant_cost' => $variant?->cost_price,
+                    'variant_cost' => $variant?->is_bundle ? $variant?->derivedCostPrice() : $variant?->cost_price,
+                    'product_cost' => $product->cost_price,
                     'quantity' => (int) $cartItem->quantity,
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
@@ -875,7 +879,8 @@ class PublicCheckoutController extends Controller
                     'variant_name' => $variant?->title,
                     'variant_sku' => $variant?->sku,
                     'variant_price' => $variant?->price,
-                    'variant_cost' => $variant?->cost_price,
+                    'variant_cost' => $variant?->is_bundle ? $variant?->derivedCostPrice() : $variant?->cost_price,
+                    'product_cost' => $product->cost_price,
                     'quantity' => (int) ($input['quantity'] ?? 1),
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,

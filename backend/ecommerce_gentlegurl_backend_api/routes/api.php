@@ -36,6 +36,7 @@ use App\Http\Controllers\Ecommerce\PromotionController;
 use App\Http\Controllers\Ecommerce\PosController;
 use App\Http\Controllers\Ecommerce\PublicReceiptController;
 use App\Http\Controllers\Ecommerce\PublicVoucherController;
+use App\Http\Controllers\Ecommerce\ProductStockMovementController;
 use App\Http\Controllers\Ecommerce\ProductVariantBundleItemController;
 use App\Http\Controllers\Ecommerce\ReturnRequestController;
 use App\Http\Controllers\Ecommerce\PublicAccountController;
@@ -457,6 +458,12 @@ $protectedRoutes = function () {
 
         Route::put('/products/{product}', [ProductController::class, 'update'])
             ->middleware('permission:ecommerce.products.update');
+
+        Route::post('/products/{product}/stock-adjustment', [ProductController::class, 'adjustStock'])
+            ->middleware('permission:ecommerce.products.update');
+
+        Route::get('/product-stock-movements', [ProductStockMovementController::class, 'index'])
+            ->middleware('permission:ecommerce.products.view');
 
         Route::delete('/products/{product}', [ProductController::class, 'destroy'])
             ->middleware('permission:ecommerce.products.delete');

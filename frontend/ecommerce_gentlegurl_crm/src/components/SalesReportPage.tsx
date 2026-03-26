@@ -285,14 +285,40 @@ export default function SalesReportPage({
           return
         }
         const data: ReportResponse = await response.json()
-        const normalizedRows = (data.rows ?? []).map((row) => ({
-          ...row,
-          net_revenue: row.net_revenue ?? row.revenue,
-          return_amount: row.return_amount ?? 0,
-        })) as CategoryRow[] | ProductRow[] | CustomerRow[]
+        const normalizedRows = (data.rows ?? []).map((row) => {
+          const revenue = row.revenue ?? row.net_revenue ?? 0
+          const cogs = row.cogs ?? 0
+          return {
+            ...row,
+            revenue,
+            net_revenue: revenue,
+            return_amount: row.return_amount ?? 0,
+            gross_profit: revenue - cogs,
+          }
+        }) as CategoryRow[] | ProductRow[] | CustomerRow[]
         setRows(normalizedRows)
-        setTotalsPage(data.totals_page ?? null)
-        setGrandTotals(data.grand_totals ?? null)
+        const normalizedTotalsPage = data.totals_page
+          ? {
+              ...data.totals_page,
+              revenue: data.totals_page.revenue ?? data.totals_page.net_revenue ?? 0,
+              net_revenue: data.totals_page.revenue ?? data.totals_page.net_revenue ?? 0,
+              gross_profit:
+                (data.totals_page.revenue ?? data.totals_page.net_revenue ?? 0) -
+                (data.totals_page.cogs ?? 0),
+            }
+          : null
+        const normalizedGrandTotals = data.grand_totals
+          ? {
+              ...data.grand_totals,
+              revenue: data.grand_totals.revenue ?? data.grand_totals.net_revenue ?? 0,
+              net_revenue: data.grand_totals.revenue ?? data.grand_totals.net_revenue ?? 0,
+              gross_profit:
+                (data.grand_totals.revenue ?? data.grand_totals.net_revenue ?? 0) -
+                (data.grand_totals.cogs ?? 0),
+            }
+          : null
+        setTotalsPage(normalizedTotalsPage)
+        setGrandTotals(normalizedGrandTotals)
         setTops(data.tops ?? [])
         if (data.meta) {
           setMeta(data.meta)
@@ -419,7 +445,7 @@ export default function SalesReportPage({
             { label: 'Category', key: 'category_name' },
             { label: 'Orders', key: 'orders_count', sortable: true },
             { label: 'Items', key: 'items_count', sortable: true },
-            { label: 'Net Revenue', key: 'net_revenue', sortable: true },
+            { label: 'Revenue', key: 'revenue', sortable: true },
           ]
         : reportType === 'by-products'
         ? [
@@ -427,14 +453,14 @@ export default function SalesReportPage({
             { label: 'SKU', key: 'sku' },
             { label: 'Orders', key: 'orders_count', sortable: true },
             { label: 'Items', key: 'items_count', sortable: true },
-            { label: 'Net Revenue', key: 'net_revenue', sortable: true },
+            { label: 'Revenue', key: 'revenue', sortable: true },
           ]
         : [
             { label: 'Customer', key: 'customer_name' },
             { label: 'Email', key: 'customer_email' },
             { label: 'Orders', key: 'orders_count', sortable: true },
             { label: 'Items', key: 'items_count', sortable: true },
-            { label: 'Net Revenue', key: 'net_revenue', sortable: true },
+            { label: 'Revenue', key: 'revenue', sortable: true },
           ]
 
     if (!showProfit) {
@@ -466,15 +492,18 @@ export default function SalesReportPage({
       return {
         summary: {
           ...totalsPage,
-          net_revenue: totalsPage.net_revenue ?? totalsPage.revenue,
+          revenue: totalsPage.revenue ?? totalsPage.net_revenue ?? 0,
+          net_revenue: totalsPage.revenue ?? totalsPage.net_revenue ?? 0,
           return_amount: totalsPage.return_amount ?? 0,
+          gross_profit:
+            (totalsPage.revenue ?? totalsPage.net_revenue ?? 0) - (totalsPage.cogs ?? 0),
         },
         isFallback: false,
       }
     }
     const revenue = sortedRows.reduce((total, row) => total + (row.revenue ?? 0), 0)
     const returnAmount = sortedRows.reduce((total, row) => total + (row.return_amount ?? 0), 0)
-    const netRevenue = revenue - returnAmount
+    const netRevenue = revenue
     const cogsTotal = showProfit
       ? sortedRows.reduce((total, row) => total + (row.cogs ?? 0), 0)
       : null
@@ -498,7 +527,7 @@ export default function SalesReportPage({
   // Get amount columns for tfoot
   const amountColumns = useMemo(() => {
     const cols: Array<{ key: string; label: string }> = [
-      { key: 'net_revenue', label: 'Net Revenue' },
+      { key: 'revenue', label: 'Revenue' },
     ]
     if (showProfit) {
       cols.push({ key: 'cogs', label: 'COGS' })
@@ -766,9 +795,9 @@ export default function SalesReportPage({
                   {sku ? (
                     <p className="text-xs text-slate-500">SKU: {sku}</p>
                   ) : null}
-                  <p className="text-xs font-semibold uppercase text-slate-400 mt-2">Net Revenue</p>
+                  <p className="text-xs font-semibold uppercase text-slate-400 mt-2">Revenue</p>
                   <p className="text-lg font-semibold text-slate-700">
-                    RM {formatAmount(row.net_revenue ?? row.revenue)}
+                    RM {formatAmount(row.revenue ?? row.net_revenue ?? 0)}
                   </p>
 
                 </div>
@@ -850,7 +879,7 @@ export default function SalesReportPage({
                     <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
                     <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
                     <td className="px-4 py-2 border border-gray-200">
-                      RM {formatAmount(row.net_revenue ?? row.revenue)}
+                      RM {formatAmount(row.revenue ?? row.net_revenue ?? 0)}
                     </td>
                     {renderProfitCells(row)}
                   </tr>
@@ -881,7 +910,7 @@ export default function SalesReportPage({
                       <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
                       <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
                       <td className="px-4 py-2 border border-gray-200">
-                        RM {formatAmount(row.net_revenue ?? row.revenue)}
+                        RM {formatAmount(row.revenue ?? row.net_revenue ?? 0)}
                       </td>
                       {renderProfitCells(row)}
                     </tr>
@@ -897,7 +926,7 @@ export default function SalesReportPage({
                     <td className="px-4 py-2 border border-gray-200">{row.orders_count}</td>
                     <td className="px-4 py-2 border border-gray-200">{row.items_count}</td>
                     <td className="px-4 py-2 border border-gray-200">
-                      RM {formatAmount(row.net_revenue ?? row.revenue)}
+                      RM {formatAmount(row.revenue ?? row.net_revenue ?? 0)}
                     </td>
                     {renderProfitCells(row)}
                   </tr>

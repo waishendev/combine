@@ -30,7 +30,7 @@ export default async function StaffCommissionReport() {
       </div>
       <h2 className="text-3xl font-semibold mb-6">Staff Commission</h2>
       <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
-        Product and service package commissions are shown separately using each staff&apos;s <span className="font-semibold">product commission rate</span> and <span className="font-semibold">service commission rate</span> snapshots.
+        Product commission is calculated from final effective item value (<span className="font-semibold">effective line total × share % × commission rate snapshot</span>), while service package commissions continue to use stored package split snapshots.
       </p>
       <StaffCommissionReportPage />
     </div>

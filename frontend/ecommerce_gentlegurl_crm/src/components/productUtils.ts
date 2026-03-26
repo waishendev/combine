@@ -81,6 +81,7 @@ export type ProductApiItem = {
     image_url?: string | null
     is_bundle?: boolean | number | string | null
     derived_available_qty?: number | string | null
+    derived_cost_price?: number | string | null
     bundle_items?: Array<{
       id?: number | string | null
       component_variant_id?: number | string | null
@@ -217,6 +218,12 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
           ? variant.derived_available_qty
           : typeof variant.derived_available_qty === 'string'
             ? Number.parseInt(variant.derived_available_qty, 10)
+            : null,
+      derivedCostPrice:
+        typeof variant.derived_cost_price === 'number'
+          ? variant.derived_cost_price
+          : typeof variant.derived_cost_price === 'string'
+            ? Number.parseFloat(variant.derived_cost_price)
             : null,
       bundleItems: Array.isArray(variant.bundle_items)
         ? variant.bundle_items

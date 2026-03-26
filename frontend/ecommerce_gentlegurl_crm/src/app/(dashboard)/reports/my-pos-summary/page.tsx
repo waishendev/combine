@@ -30,7 +30,7 @@ export default async function MyPosSummaryReport() {
       </div>
       <h2 className="text-3xl font-semibold mb-6">My POS Summary</h2>
       <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700">
-        This report includes POS product, booking service, and service package sales with staff commission split details.
+        This report uses final charged item totals (effective line totals) and stored cost snapshots for POS product, booking service, and service package sales with staff split details.
       </p>
       <MyPosSummaryPage />
     </div>

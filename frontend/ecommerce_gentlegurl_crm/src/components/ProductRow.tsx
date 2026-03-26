@@ -39,6 +39,7 @@ export interface ProductVariant {
   imageUrl?: string | null
   isBundle?: boolean
   derivedAvailableQty?: number | null
+  derivedCostPrice?: number | null
   bundleItems?: Array<{
     componentVariantId: number
     componentVariantName?: string | null
@@ -95,6 +96,8 @@ interface ProductRowProps {
   onToggleSelect?: (product: ProductRowData, selected: boolean) => void
   onEdit?: (product: ProductRowData) => void
   onDelete?: (product: ProductRowData) => void
+  onStockAdjustment?: (product: ProductRowData) => void
+  onViewStockLogs?: (product: ProductRowData) => void
 }
 
 export default function ProductRow({
@@ -108,6 +111,8 @@ export default function ProductRow({
   onToggleSelect,
   onEdit,
   onDelete,
+  onStockAdjustment,
+  onViewStockLogs,
 }: ProductRowProps) {
   const { t } = useI18n()
   const mainImage = product.images.find((image) => image.isMain) ?? product.images[0]
@@ -188,6 +193,28 @@ export default function ProductRow({
                 title={t('common.edit')}
               >
                 <i className="fa-solid fa-pen-to-square" />
+              </button>
+            )}
+            {canUpdate && (
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() => onStockAdjustment?.(product)}
+                aria-label="Stock Adjustment"
+                title="Stock Adjustment"
+              >
+                <i className="fa-solid fa-boxes-stacked" />
+              </button>
+            )}
+            {canUpdate && (
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-600 text-white hover:bg-slate-700"
+                onClick={() => onViewStockLogs?.(product)}
+                aria-label="View Stock Logs"
+                title="View Stock Logs"
+              >
+                <i className="fa-solid fa-clock-rotate-left" />
               </button>
             )}
             {canDelete && (
