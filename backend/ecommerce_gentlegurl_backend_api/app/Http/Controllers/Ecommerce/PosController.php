@@ -12,6 +12,7 @@ use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
@@ -1702,6 +1703,7 @@ class PosController extends Controller
                 }
             }
 
+            $this->deductPosCheckoutStock($cart, (int) $request->user()->id);
             $orderPaymentService->handlePaid($order);
 
             $receiptUrl = $this->buildReceiptUrl($order, $request);
@@ -1726,6 +1728,111 @@ class PosController extends Controller
             'receipt_public_url' => $receiptUrl,
             'package_items' => $purchasedPackageLines,
         ]);
+    }
+
+    protected function deductPosCheckoutStock(PosCart $cart, ?int $actorUserId = null): void
+    {
+        foreach ($cart->items as $item) {
+            $qty = max(0, (int) $item->qty);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $variant = $item->variant;
+            $product = $variant?->product ?? $item->product;
+            if (! $product) {
+                continue;
+            }
+
+            if ($variant) {
+                if (! $variant->track_stock) {
+                    continue;
+                }
+
+                $lockedVariant = ProductVariant::query()
+                    ->where('id', (int) $variant->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $lockedVariant || $lockedVariant->is_bundle) {
+                    continue;
+                }
+
+                $beforeQty = (int) ($lockedVariant->stock ?? 0);
+                $afterQty = max(0, $beforeQty - $qty);
+                if ($afterQty === $beforeQty) {
+                    continue;
+                }
+
+                $unitCost = (float) ($lockedVariant->cost_price ?? 0);
+                $beforeInventory = round($beforeQty * $unitCost, 2);
+                $afterInventory = round($afterQty * $unitCost, 2);
+
+                $lockedVariant->stock = $afterQty;
+                $lockedVariant->save();
+
+                ProductStockMovement::create([
+                    'product_id' => (int) $product->id,
+                    'product_variant_id' => (int) $lockedVariant->id,
+                    'type' => 'stock_out',
+                    'quantity_before' => $beforeQty,
+                    'quantity_change' => $qty,
+                    'quantity_after' => $afterQty,
+                    'cost_price_before' => $unitCost,
+                    'cost_price_after' => $unitCost,
+                    'inventory_value_before' => $beforeInventory,
+                    'inventory_value_after' => $afterInventory,
+                    'input_cost_price_per_unit' => null,
+                    'remark' => 'POS checkout',
+                    'created_by_user_id' => $actorUserId,
+                ]);
+
+                continue;
+            }
+
+            if (! $product->track_stock) {
+                continue;
+            }
+
+            $lockedProduct = Product::query()
+                ->where('id', (int) $product->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $lockedProduct) {
+                continue;
+            }
+
+            $beforeQty = (int) ($lockedProduct->stock ?? 0);
+            $afterQty = max(0, $beforeQty - $qty);
+            if ($afterQty === $beforeQty) {
+                continue;
+            }
+
+            $unitCost = (float) ($lockedProduct->cost_price ?? 0);
+            $beforeInventory = round($beforeQty * $unitCost, 2);
+            $afterInventory = round($afterQty * $unitCost, 2);
+
+            $lockedProduct->stock = $afterQty;
+            $lockedProduct->stock_quantity = $afterQty;
+            $lockedProduct->inventory_value = $afterInventory;
+            $lockedProduct->save();
+
+            ProductStockMovement::create([
+                'product_id' => (int) $lockedProduct->id,
+                'product_variant_id' => null,
+                'type' => 'stock_out',
+                'quantity_before' => $beforeQty,
+                'quantity_change' => $qty,
+                'quantity_after' => $afterQty,
+                'cost_price_before' => $unitCost,
+                'cost_price_after' => $unitCost,
+                'inventory_value_before' => $beforeInventory,
+                'inventory_value_after' => $afterInventory,
+                'input_cost_price_per_unit' => null,
+                'remark' => 'POS checkout',
+                'created_by_user_id' => $actorUserId,
+            ]);
+        }
     }
 
     public function sendReceiptEmail(Request $request, int $orderId)
