@@ -28,6 +28,9 @@ interface StaffScheduleRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  showSelection?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (schedule: StaffScheduleRowData, checked: boolean) => void
   onEdit?: (schedule: StaffScheduleRowData) => void
   onDelete?: (schedule: StaffScheduleRowData) => void
 }
@@ -39,12 +42,26 @@ export default function StaffScheduleRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  showSelection = false,
+  isSelected = false,
+  onToggleSelect,
   onEdit,
   onDelete,
 }: StaffScheduleRowProps) {
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      {showSelection && (
+        <td className="px-4 py-2 border border-gray-200">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 text-blue-600"
+            checked={isSelected}
+            onChange={(event) => onToggleSelect?.(schedule, event.target.checked)}
+            aria-label={`Select schedule ${schedule.id}`}
+          />
+        </td>
+      )}
       <td className="px-4 py-2 border border-gray-200">{schedule.staff_name}</td>
       <td className="px-4 py-2 border border-gray-200">{formatDay(schedule.day_of_week)}</td>
       <td className="px-4 py-2 border border-gray-200">{schedule.start_time}</td>
