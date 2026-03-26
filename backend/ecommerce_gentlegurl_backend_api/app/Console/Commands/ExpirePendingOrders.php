@@ -12,7 +12,7 @@ class ExpirePendingOrders extends Command
 {
     protected $signature = 'ecommerce:expire-pending-orders';
 
-    protected $description = 'Cancel pending unpaid orders past the reserve window and release stock.';
+    protected $description = 'Cancel pending unpaid orders past the reserve window.';
 
     public function __construct(protected OrderReserveService $orderReserveService)
     {
@@ -50,7 +50,6 @@ class ExpirePendingOrders extends Command
                         $lockedOrder->status = 'cancelled';
                         $lockedOrder->save();
 
-                        $this->orderReserveService->releaseStockForOrder($lockedOrder);
                     });
                 }
             });

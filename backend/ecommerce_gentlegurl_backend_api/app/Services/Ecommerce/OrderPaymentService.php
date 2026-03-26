@@ -5,15 +5,17 @@ namespace App\Services\Ecommerce;
 use App\Models\Ecommerce\LoyaltySetting;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\Order;
-use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\Ecommerce\PointsTransaction;
-use App\Models\Ecommerce\StockMovement;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class OrderPaymentService
 {
+    public function __construct(protected OrderInventoryService $orderInventoryService)
+    {
+    }
+
     public function handlePaid(Order $order): void
     {
         DB::transaction(function () use ($order) {
@@ -24,25 +26,7 @@ class OrderPaymentService
 
     protected function deductStock(Order $order): void
     {
-        $items = $order->items()
-            ->whereNotNull('product_id')
-            ->where(function ($query) {
-                $query->whereNull('line_type')
-                    ->orWhere('line_type', 'product');
-            })
-            ->get();
-
-        foreach ($items as $item) {
-            /** @var OrderItem $item */
-            StockMovement::create([
-                'product_id' => $item->product_id,
-                'change' => -1 * (int) $item->quantity,
-                'reason' => 'order',
-                'reference_type' => Order::class,
-                'reference_id' => $order->id,
-                'created_by' => null,
-            ]);
-        }
+        $this->orderInventoryService->deductForOrder($order);
     }
 
     protected function issuePoints(Order $order): void

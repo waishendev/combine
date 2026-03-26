@@ -200,7 +200,7 @@ class PublicCheckoutController extends Controller
 
         try {
             [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry, $type) {
-                $this->orderReserveService->reserveStockForItems($calculation['items']);
+                $this->orderReserveService->validateStockForItems($calculation['items']);
 
                 $order = Order::create([
                     'order_number' => $this->generateOrderNumber(),
