@@ -243,25 +243,56 @@ class PublicCheckoutController extends Controller
                 }
 
                 foreach ($calculation['items'] as $item) {
+                    $productVariantId = isset($item['product_variant_id']) ? (int) $item['product_variant_id'] : null;
+                    $variantCostSnapshot = null;
+
+                    if ($productVariantId) {
+                        $freshVariant = ProductVariant::query()
+                            ->select(['id', 'cost_price'])
+                            ->find($productVariantId);
+
+                        if (! $freshVariant) {
+                            throw ValidationException::withMessages([
+                                'items' => __('Selected product variant is invalid.'),
+                            ])->status(422);
+                        }
+
+                        $variantCostSnapshot = (float) ($freshVariant->cost_price ?? 0);
+                    }
+
+                    $costPriceSnapshot = $productVariantId
+                        ? (float) ($variantCostSnapshot ?? 0)
+                        : (float) ($item['product_cost'] ?? 0);
+
                     $orderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $item['product_id'],
-                        'product_variant_id' => $item['product_variant_id'] ?? null,
+                        'product_variant_id' => $productVariantId,
                         'product_name_snapshot' => $item['name'],
                         'sku_snapshot' => $item['sku'] ?? null,
                         'variant_name_snapshot' => $item['variant_name'] ?? null,
                         'variant_sku_snapshot' => $item['variant_sku'] ?? null,
                         'price_snapshot' => $item['unit_price'],
                         'variant_price_snapshot' => $item['variant_price'] ?? null,
-                        'variant_cost_snapshot' => $item['variant_cost'] ?? null,
-                        'cost_price_snapshot' => $item['product_cost'] ?? 0,
-                        'cost_amount_snapshot' => round(((float) ($item['product_cost'] ?? 0)) * (int) ($item['quantity'] ?? 0), 2),
+                        'variant_cost_snapshot' => $variantCostSnapshot,
+                        'cost_price_snapshot' => $costPriceSnapshot,
+                        'cost_amount_snapshot' => round($costPriceSnapshot * (int) ($item['quantity'] ?? 0), 2),
                         'quantity' => $item['quantity'],
                         'line_total' => $item['line_total'],
                         'is_reward' => $item['is_reward'] ?? false,
                         'reward_redemption_id' => $item['reward_redemption_id'] ?? null,
                         'locked' => $item['locked'] ?? false,
                     ]);
+
+                    if ($productVariantId) {
+                        Log::info('Variant cost snapshot persisted during checkout', [
+                            'order_id' => $order->id,
+                            'order_item_id' => $orderItem->id,
+                            'product_variant_id' => $productVariantId,
+                            'current_db_cost' => number_format((float) ($variantCostSnapshot ?? 0), 2, '.', ''),
+                            'snapshot_written' => number_format((float) $costPriceSnapshot, 2, '.', ''),
+                        ]);
+                    }
 
                     if (!empty($item['reward_redemption_id'])) {
                         $redemption = $item['reward_redemption_id']

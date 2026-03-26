@@ -1429,6 +1429,20 @@ class PosController extends Controller
 
                 $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);
                 $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
+                $freshVariant = $variant
+                    ? ProductVariant::query()->select(['id', 'cost_price'])->find((int) $variant->id)
+                    : null;
+
+                if ($variant && ! $freshVariant) {
+                    abort(422, __('Selected product variant is invalid.'));
+                }
+
+                $variantCostSnapshot = $freshVariant
+                    ? (float) ($freshVariant->cost_price ?? 0)
+                    : null;
+                $costPriceSnapshot = $variant
+                    ? (float) ($variantCostSnapshot ?? 0)
+                    : (float) ($product->cost_price ?? 0);
                 $orderItem = OrderItem::create([
                     'order_id' => $order->id,
                     'line_type' => 'product',
@@ -1442,9 +1456,9 @@ class PosController extends Controller
                     'price_snapshot' => $pricing['unit_price_snapshot'],
                     'unit_price_snapshot' => $pricing['unit_price_snapshot'],
                     'variant_price_snapshot' => $variant?->price,
-                    'variant_cost_snapshot' => $variant?->is_bundle ? $variant?->derivedCostPrice() : $variant?->cost_price,
-                    'cost_price_snapshot' => $product->cost_price,
-                    'cost_amount_snapshot' => round(((float) ($product->cost_price ?? 0)) * (int) $item->qty, 2),
+                    'variant_cost_snapshot' => $variantCostSnapshot,
+                    'cost_price_snapshot' => $costPriceSnapshot,
+                    'cost_amount_snapshot' => round($costPriceSnapshot * (int) $item->qty, 2),
                     'quantity' => $item->qty,
                     'line_total' => $pricing['effective_line_total'],
                     'line_total_snapshot' => $pricing['line_total_snapshot'],
@@ -1464,6 +1478,16 @@ class PosController extends Controller
                     'staff_id' => $itemSplits->first()['staff_id'] ?? null,
                     'locked' => true,
                 ]);
+
+                if ($variant) {
+                    Log::info('Variant cost snapshot persisted during POS checkout', [
+                        'order_id' => $order->id,
+                        'order_item_id' => $orderItem->id,
+                        'product_variant_id' => (int) $variant->id,
+                        'current_db_cost' => number_format((float) ($variantCostSnapshot ?? 0), 2, '.', ''),
+                        'snapshot_written' => number_format((float) $costPriceSnapshot, 2, '.', ''),
+                    ]);
+                }
 
                 if ($itemSplits->isNotEmpty()) {
                     $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
