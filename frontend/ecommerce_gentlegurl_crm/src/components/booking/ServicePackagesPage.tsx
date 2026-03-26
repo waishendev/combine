@@ -197,19 +197,19 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
+              <th className="px-4 py-2 text-left font-semibold tracking-wider text-gray-600">
                 Name
               </th>
-              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
+              <th className="px-4 py-2 text-left font-semibold tracking-wider text-gray-600">
                 Description
               </th>
-              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
+              <th className="px-4 py-2 text-left font-semibold tracking-wider text-gray-600">
                 Price
               </th>
-              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
+              <th className="px-4 py-2 text-left font-semibold tracking-wider text-gray-600">
                 Valid Days
               </th>
-              <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
+              <th className="px-4 py-2 text-left font-semibold tracking-wider text-gray-600">
                 Status
               </th>
               {showActions && (

@@ -265,7 +265,7 @@ export default function ServicePackageFormModal({
         body: JSON.stringify({
           name,
           description: form.description.trim(),
-          is_active: form.is_active,
+          is_active: mode === 'create' ? true : form.is_active,
           selling_price: sellingPrice.toFixed(2),
           valid_days: validDays,
           items: parsedItems,
@@ -353,17 +353,6 @@ export default function ServicePackageFormModal({
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-              rows={3}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              disabled={disableForm}
-            />
-          </div>
-
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -380,15 +369,35 @@ export default function ServicePackageFormModal({
               />
             </div>
 
-            <label className="mt-6 inline-flex items-center gap-2 text-sm text-gray-700 md:mt-8">
-              <input
-                type="checkbox"
-                checked={form.is_active}
-                onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.checked }))}
-                disabled={disableForm}
-              />
-              Active
-            </label>
+            {mode === 'edit' ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Active Status
+                </label>
+                <select
+                  value={form.is_active ? 'active' : 'inactive'}
+                  onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.value === 'active' }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  disabled={disableForm}
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            ) : (
+              <div />
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+              rows={3}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              disabled={disableForm}
+            />
           </div>
 
           <div className="space-y-3">
@@ -396,11 +405,13 @@ export default function ServicePackageFormModal({
               <h3 className="text-sm font-semibold text-gray-800">Package Items</h3>
               <button
                 type="button"
-                className="rounded-md border border-gray-300 px-3 py-1 text-xs hover:bg-gray-100"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 text-sm hover:bg-gray-100"
                 onClick={addItem}
                 disabled={disableForm}
+                aria-label="Add item"
+                title="Add item"
               >
-                Add Item
+                <i className="fa-solid fa-plus" />
               </button>
             </div>
 
@@ -432,11 +443,13 @@ export default function ServicePackageFormModal({
 
                 <button
                   type="button"
-                  className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-red-300 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60"
                   onClick={() => removeItem(index)}
                   disabled={disableForm || form.items.length === 1}
+                  aria-label="Remove item"
+                  title="Remove item"
                 >
-                  Remove
+                  <i className="fa-solid fa-trash" />
                 </button>
               </div>
             ))}
