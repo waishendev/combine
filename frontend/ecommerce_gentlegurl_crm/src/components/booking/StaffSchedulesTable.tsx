@@ -14,6 +14,7 @@ import {
 import StaffScheduleCreateModal from './StaffScheduleCreateModal'
 import StaffScheduleEditModal from './StaffScheduleEditModal'
 import StaffScheduleDeleteModal from './StaffScheduleDeleteModal'
+import StaffScheduleBulkUpdateModal from './StaffScheduleBulkUpdateModal'
 import {
   type StaffScheduleApiItem,
   mapStaffScheduleApiItemToRow,
@@ -62,6 +63,8 @@ export default function StaffSchedulesTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [sortColumn, setSortColumn] = useState<keyof StaffScheduleRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false)
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StaffScheduleRowData | null>(null)
 
@@ -69,6 +72,7 @@ export default function StaffSchedulesTable({
   const canUpdate = permissions.includes('booking.schedules.update')
   const canDelete = permissions.includes('booking.schedules.delete')
   const showActions = canUpdate || canDelete
+  const showSelection = canUpdate
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -222,6 +226,18 @@ export default function StaffSchedulesTable({
     return () => controller.abort()
   }, [fetchSchedules])
 
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set<number>()
+      rows.forEach((row) => {
+        if (prev.has(row.id)) {
+          next.add(row.id)
+        }
+      })
+      return next
+    })
+  }, [rows])
+
   const handleSort = (column: keyof StaffScheduleRowData) => {
     if (sortColumn === column) {
       if (sortDirection === 'asc') {
@@ -300,7 +316,11 @@ export default function StaffSchedulesTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 6 : 5
+  const visibleRowIds = useMemo(() => sortedRows.map((row) => row.id), [sortedRows])
+  const allVisibleSelected =
+    visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedIds.has(id))
+  const hasSelection = selectedIds.size > 0
+  const colCount = (showSelection ? 1 : 0) + (showActions ? 6 : 5)
 
   const totalPages = meta.last_page || 1
 
@@ -391,8 +411,48 @@ export default function StaffSchedulesTable({
     })
   }
 
+  const handleToggleSelectAll = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        visibleRowIds.forEach((id) => next.add(id))
+      } else {
+        visibleRowIds.forEach((id) => next.delete(id))
+      }
+      return next
+    })
+  }
+
+  const handleToggleSelect = (schedule: StaffScheduleRowData, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        next.add(schedule.id)
+      } else {
+        next.delete(schedule.id)
+      }
+      return next
+    })
+  }
+
+  const selectedSchedules = useMemo(() => {
+    const selectedMap = new Set(selectedIds)
+    return rows.filter((row) => selectedMap.has(row.id))
+  }, [rows, selectedIds])
+
   return (
     <div>
+      {isBulkUpdateOpen && (
+        <StaffScheduleBulkUpdateModal
+          show={isBulkUpdateOpen}
+          selectedSchedules={selectedSchedules}
+          onClose={() => setIsBulkUpdateOpen(false)}
+          onSuccess={async () => {
+            await fetchSchedules()
+            setSelectedIds(new Set())
+          }}
+        />
+      )}
       {isFilterModalOpen && (
         <StaffScheduleFiltersWrapper
           inputs={inputs}
@@ -437,6 +497,18 @@ export default function StaffSchedulesTable({
             <i className="fa-solid fa-filter" />
             {t('common.filter')}
           </button>
+
+          {showSelection && (
+            <button
+              className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+              onClick={() => setIsBulkUpdateOpen(true)}
+              disabled={!hasSelection}
+              type="button"
+            >
+              <i className="fa-solid fa-pen-to-square" />
+              Bulk Update
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -485,6 +557,17 @@ export default function StaffSchedulesTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {showSelection && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                    checked={allVisibleSelected}
+                    onChange={(event) => handleToggleSelectAll(event.target.checked)}
+                    aria-label="Select all schedules on this page"
+                  />
+                </th>
+              )}
               {(
                 [
                   { key: 'staff_name', label: 'Staff' },
@@ -529,6 +612,9 @@ export default function StaffSchedulesTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  showSelection={showSelection}
+                  isSelected={selectedIds.has(schedule.id)}
+                  onToggleSelect={handleToggleSelect}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingScheduleId(schedule.id)
