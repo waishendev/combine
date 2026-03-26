@@ -155,7 +155,6 @@ class ServicePackageTestingSeeder extends Seeder
             'Seed Hair Wash 10x' => [
                 'description' => 'Auto seed package for QA: 10 sessions of hair wash.',
                 'selling_price' => 350,
-                'total_sessions' => 10,
                 'valid_days' => 180,
                 'is_active' => true,
                 'items' => [
@@ -165,7 +164,6 @@ class ServicePackageTestingSeeder extends Seeder
             'Seed Premium Care Combo' => [
                 'description' => 'Auto seed package for QA: combo package with 2 services.',
                 'selling_price' => 899,
-                'total_sessions' => 15,
                 'valid_days' => 365,
                 'is_active' => true,
                 'items' => [
@@ -183,7 +181,6 @@ class ServicePackageTestingSeeder extends Seeder
                 [
                     'description' => $package['description'],
                     'selling_price' => $package['selling_price'],
-                    'total_sessions' => $package['total_sessions'],
                     'valid_days' => $package['valid_days'],
                     'is_active' => $package['is_active'],
                     'updated_at' => $now,

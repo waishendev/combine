@@ -64,7 +64,6 @@ class ServicePackageController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'selling_price' => ['required', 'numeric', 'min:0'],
-            'total_sessions' => ['required', 'integer', 'min:1'],
             'valid_days' => ['nullable', 'integer', 'min:1'],
             'is_active' => ['sometimes', 'boolean'],
             'items' => ['required', 'array', 'min:1'],

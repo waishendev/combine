@@ -12,7 +12,6 @@ return new class extends Migration {
             $table->string('name');
             $table->text('description')->nullable();
             $table->decimal('selling_price', 10, 2);
-            $table->unsignedInteger('total_sessions');
             $table->unsignedInteger('valid_days')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();

@@ -271,9 +271,6 @@ export function StaticSections() {
 
               <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--foreground)]/70">
                 <span className="rounded-full border border-[var(--card-border)] bg-[var(--card)]/60 px-3 py-1">
-                  Sessions: {pkg.total_sessions}
-                </span>
-                <span className="rounded-full border border-[var(--card-border)] bg-[var(--card)]/60 px-3 py-1">
                   Valid: {pkg.valid_days ?? "-"} days
                 </span>
               </div>

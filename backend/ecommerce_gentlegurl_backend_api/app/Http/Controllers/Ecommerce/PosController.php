@@ -119,7 +119,7 @@ class PosController extends Controller
         }
 
         return $this->respond([
-            'data' => $builder->get(['id', 'name', 'description', 'selling_price', 'total_sessions', 'valid_days']),
+            'data' => $builder->get(['id', 'name', 'description', 'selling_price', 'valid_days']),
         ]);
     }
 
