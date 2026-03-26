@@ -12,6 +12,7 @@ import {
   emptyBookingAppointmentFilters,
 } from './BookingAppointmentFilters'
 import { useI18n } from '@/lib/i18n'
+import StatusBadge from '@/components/StatusBadge'
 
 type BookingRow = {
   id: number
@@ -20,6 +21,7 @@ type BookingRow = {
   service: { id: number; name: string } | null
   staff: { id: number; name: string } | null
   start_at: string
+  end_at?: string | null
   status: string
   deposit_amount: string | number
   created_at: string
@@ -394,47 +396,51 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
 
         {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 mb-4">{error}</div>}
 
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+        <div className="bg-white shadow rounded-lg overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-slate-300/70">
               <tr>
-                <th className="px-4 py-3">Booking</th>
-                <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3">Service</th>
-                <th className="px-4 py-3">Staff</th>
-                <th className="px-4 py-3">Start</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Deposit</th>
-                <th className="px-4 py-3">Created</th>
-                <th className="px-4 py-3">Actions</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Booking</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Customer</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Service</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Staff</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Time</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Status</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Deposit</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Created</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">{t('common.actions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {loading ? (
                 <TableLoadingRow colSpan={9} />
               ) : rows.length > 0 ? (
                 rows.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3">{row.booking_code || `#${row.id}`}</td>
-                    <td className="px-4 py-3">
+                  <tr key={row.id} className="text-sm">
+                    <td className="px-4 py-2 border border-gray-200">{row.booking_code || `#${row.id}`}</td>
+                    <td className="px-4 py-2 border border-gray-200">
                       {row.customer?.name || '-'}
                       <div className="text-xs text-slate-500">{row.customer?.phone || '-'}</div>
                     </td>
-                    <td className="px-4 py-3">{row.service?.name || '-'}</td>
-                    <td className="px-4 py-3">{row.staff?.name || '-'}</td>
-                    <td className="px-4 py-3">{formatDateTime(row.start_at)}</td>
-                    <td className="px-4 py-3">{row.status}</td>
-                    <td className="px-4 py-3">{row.deposit_amount}</td>
-                    <td className="px-4 py-3">{formatDateTime(row.created_at)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
+                    <td className="px-4 py-2 border border-gray-200">{row.service?.name || '-'}</td>
+                    <td className="px-4 py-2 border border-gray-200">{row.staff?.name || '-'}</td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      {formatDateTime(row.start_at)} - {formatDateTime(row.end_at)}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      <StatusBadge status={row.status} label={row.status} />
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">{row.deposit_amount}</td>
+                    <td className="px-4 py-2 border border-gray-200">{formatDateTime(row.created_at)}</td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => {
                             setSelectedBookingId(row.id)
                             setDrawerOpen(true)
                           }}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 text-slate-700"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-700 text-white hover:bg-slate-800"
                           aria-label="View details"
                           title="View details"
                         >
@@ -443,10 +449,12 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
                         {canUpdateStatus && (
                           <button
                             type="button"
-                            className="rounded bg-slate-800 px-2 py-1 text-xs text-white"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
                             onClick={() => openStatusModal(row)}
+                            aria-label="Update status"
+                            title="Update status"
                           >
-                            Update Status
+                            <i className="fa-solid fa-arrows-rotate" />
                           </button>
                         )}
                       </div>

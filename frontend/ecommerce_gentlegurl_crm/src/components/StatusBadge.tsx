@@ -27,6 +27,11 @@ export default function StatusBadge({
       bgColor: 'bg-yellow-100',
       dotColor: 'bg-yellow-500',
     },
+    pending: {
+      textColor: 'text-yellow-700',
+      bgColor: 'bg-yellow-100',
+      dotColor: 'bg-yellow-500',
+    },
     'waiting for verification': {
       textColor: 'text-yellow-700',
       bgColor: 'bg-yellow-100',
@@ -46,6 +51,11 @@ export default function StatusBadge({
       textColor: 'text-red-700',
       bgColor: 'bg-red-100',
       dotColor: 'bg-red-500',
+    },
+    confirmed: {
+      textColor: 'text-blue-700',
+      bgColor: 'bg-blue-100',
+      dotColor: 'bg-blue-500',
     },
     refunded: {
       textColor: 'text-orange-700',
@@ -96,6 +106,21 @@ export default function StatusBadge({
       textColor: 'text-green-700',
       bgColor: 'bg-green-100',
       dotColor: 'bg-green-500',
+    },
+    late_cancellation: {
+      textColor: 'text-orange-700',
+      bgColor: 'bg-orange-100',
+      dotColor: 'bg-orange-500',
+    },
+    no_show: {
+      textColor: 'text-slate-700',
+      bgColor: 'bg-slate-100',
+      dotColor: 'bg-slate-500',
+    },
+    notified_cancellation: {
+      textColor: 'text-indigo-700',
+      bgColor: 'bg-indigo-100',
+      dotColor: 'bg-indigo-500',
     },
   }
 

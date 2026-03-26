@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+import StatusBadge from '@/components/StatusBadge'
+import TableEmptyState from '@/components/TableEmptyState'
+import TableLoadingRow from '@/components/TableLoadingRow'
+
 type Props = { permissions: string[] }
 
 type RequestRow = {
@@ -16,6 +20,7 @@ type RequestRow = {
     booking_code?: string | null
     status?: string
     start_at?: string
+    end_at?: string | null
     customer?: { id: number; name: string } | null
     service?: { id: number; name: string } | null
     staff?: { id: number; name: string } | null
@@ -79,53 +84,83 @@ export default function BookingCancellationRequestsPage({ permissions }: Props) 
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="overflow-y-auto py-6 px-10 space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Cancellation Requests</h1>
+        <h1 className="text-3xl font-semibold text-slate-900">Cancellation Requests</h1>
         <p className="mt-1 text-sm text-slate-500">Review customer booking cancellation requests.</p>
       </div>
 
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-3">Booking</th>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Service</th>
-              <th className="px-4 py-3">Staff</th>
-              <th className="px-4 py-3">Booking Time</th>
-              <th className="px-4 py-3">Reason</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Requested At</th>
-              <th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Booking</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Customer</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Service</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Staff</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Time</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Reason</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Status</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Requested at</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td className="px-4 py-4 text-slate-500" colSpan={9}>Loading...</td></tr>
+              <TableLoadingRow colSpan={9} />
             ) : rows.length === 0 ? (
-              <tr><td className="px-4 py-4 text-slate-500" colSpan={9}>No cancellation requests.</td></tr>
+              <TableEmptyState colSpan={9} />
             ) : rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-100">
-                <td className="px-4 py-3">#{row.booking?.booking_code || row.booking_id}</td>
-                <td className="px-4 py-3">{row.booking?.customer?.name || '-'}</td>
-                <td className="px-4 py-3">{row.booking?.service?.name || '-'}</td>
-                <td className="px-4 py-3">{row.booking?.staff?.name || '-'}</td>
-                <td className="px-4 py-3">{row.booking?.start_at ? new Date(row.booking.start_at).toLocaleString() : '-'}</td>
-                <td className="max-w-[220px] truncate px-4 py-3" title={row.reason || ''}>{row.reason || '-'}</td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold uppercase text-slate-700">{row.status}</span>
+              <tr key={row.id} className="text-sm">
+                <td className="px-4 py-2 border border-gray-200">#{row.booking?.booking_code || row.booking_id}</td>
+                <td className="px-4 py-2 border border-gray-200">{row.booking?.customer?.name || '-'}</td>
+                <td className="px-4 py-2 border border-gray-200">{row.booking?.service?.name || '-'}</td>
+                <td className="px-4 py-2 border border-gray-200">{row.booking?.staff?.name || '-'}</td>
+                <td className="px-4 py-2 border border-gray-200">
+                  {row.booking?.start_at ? new Date(row.booking.start_at).toLocaleString() : '-'}
+                  {' - '}
+                  {row.booking?.end_at ? new Date(row.booking.end_at).toLocaleString() : '-'}
                 </td>
-                <td className="px-4 py-3">{row.requested_at ? new Date(row.requested_at).toLocaleString() : '-'}</td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <button onClick={() => { setSelected(row); setAdminNote(row.admin_note || '') }} className="rounded border px-2 py-1">View</button>
+                <td className="max-w-[220px] truncate px-4 py-2 border border-gray-200" title={row.reason || ''}>{row.reason || '-'}</td>
+                <td className="px-4 py-2 border border-gray-200">
+                  <StatusBadge status={row.status} label={row.status} />
+                </td>
+                <td className="px-4 py-2 border border-gray-200">{row.requested_at ? new Date(row.requested_at).toLocaleString() : '-'}</td>
+                <td className="px-4 py-2 border border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setSelected(row); setAdminNote(row.admin_note || '') }}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-700 text-white hover:bg-slate-800"
+                      aria-label="View"
+                      title="View"
+                    >
+                      <i className="fa-solid fa-eye" />
+                    </button>
                     {canReview && row.status === 'pending' ? (
                       <>
-                        <button onClick={() => submitReview(row.id, 'approve')} className="rounded border px-2 py-1 text-emerald-700">Approve</button>
-                        <button onClick={() => submitReview(row.id, 'reject')} className="rounded border px-2 py-1 text-rose-700">Reject</button>
+                        <button
+                          type="button"
+                          onClick={() => submitReview(row.id, 'approve')}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                          aria-label="Approve"
+                          title="Approve"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-check" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => submitReview(row.id, 'reject')}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-rose-600 text-white hover:bg-rose-700"
+                          aria-label="Reject"
+                          title="Reject"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-xmark" />
+                        </button>
                       </>
                     ) : null}
                   </div>
@@ -142,7 +177,10 @@ export default function BookingCancellationRequestsPage({ permissions }: Props) 
             <h2 className="text-lg font-semibold">Cancellation Request #{selected.id}</h2>
             <p className="mt-2 text-sm text-slate-600">Booking #{selected.booking?.booking_code || selected.booking_id}</p>
             <p className="mt-1 text-sm text-slate-600">Reason: {selected.reason || '-'}</p>
-            <p className="mt-1 text-sm text-slate-600">Status: {selected.status}</p>
+            <div className="mt-1 flex items-center gap-2 text-sm text-slate-600">
+              <span>Status:</span>
+              <StatusBadge status={selected.status} label={selected.status} />
+            </div>
 
             <label className="mt-4 block text-sm font-medium text-slate-700">Admin Note</label>
             <textarea
@@ -155,8 +193,22 @@ export default function BookingCancellationRequestsPage({ permissions }: Props) 
             <div className="mt-5 flex gap-2">
               {canReview && selected.status === 'pending' ? (
                 <>
-                  <button disabled={submitting} onClick={() => submitReview(selected.id, 'approve')} className="rounded border px-3 py-2 text-emerald-700">Approve</button>
-                  <button disabled={submitting} onClick={() => submitReview(selected.id, 'reject')} className="rounded border px-3 py-2 text-rose-700">Reject</button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => submitReview(selected.id, 'approve')}
+                    className="rounded bg-emerald-600 px-3 py-2 text-white hover:bg-emerald-700 disabled:opacity-60"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => submitReview(selected.id, 'reject')}
+                    className="rounded bg-rose-600 px-3 py-2 text-white hover:bg-rose-700 disabled:opacity-60"
+                  >
+                    Reject
+                  </button>
                 </>
               ) : null}
               <button onClick={() => setSelected(null)} className="ml-auto rounded border px-3 py-2">Close</button>
