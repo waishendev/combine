@@ -7,6 +7,7 @@ use App\Models\BillplzBill;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Cart;
 use App\Services\Payments\BillplzConfigResolver;
+use App\Services\Ecommerce\OrderPaymentService;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,7 @@ class BillplzCallbackController extends Controller
 {
     public function __construct(
         protected BillplzConfigResolver $configResolver,
+        protected OrderPaymentService $orderPaymentService,
     ) {
     }
 
@@ -112,6 +114,7 @@ class BillplzCallbackController extends Controller
             $order->payment_provider = $order->payment_provider ?: 'billplz';
             $order->save();
 
+            $this->orderPaymentService->handlePaid($order);
             $this->clearOrderCart($order);
 
             Log::info('Billplz callback processed successfully', [
@@ -162,6 +165,7 @@ class BillplzCallbackController extends Controller
                                 $order->payment_provider = $order->payment_provider ?: 'billplz';
                                 $order->save();
 
+                                $this->orderPaymentService->handlePaid($order);
                                 $this->clearOrderCart($order);
 
                                 if (!$signatureValid) {

@@ -113,7 +113,7 @@ class OrderReserveService
                 continue;
             }
 
-            $available = (int) ($product->stock ?? 0);
+            $available = (int) ($product->stock_quantity ?? $product->stock ?? 0);
 
             if ($requested > $available) {
                 $errors[] = sprintf(
@@ -215,7 +215,7 @@ class OrderReserveService
                 continue;
             }
 
-            $available = (int) ($product->stock ?? 0);
+            $available = (int) ($product->stock_quantity ?? $product->stock ?? 0);
             $requested = (int) ($item['quantity'] ?? 0);
 
             if ($requested > $available) {
@@ -231,7 +231,9 @@ class OrderReserveService
                 ])->status(422);
             }
 
-            $product->stock = $available - $requested;
+            $after = $available - $requested;
+            $product->stock = $after;
+            $product->stock_quantity = $after;
             $product->save();
         }
     }
@@ -283,7 +285,9 @@ class OrderReserveService
                 continue;
             }
 
-            $product->stock = (int) ($product->stock ?? 0) + (int) $item->quantity;
+            $restocked = (int) ($product->stock_quantity ?? $product->stock ?? 0) + (int) $item->quantity;
+            $product->stock = $restocked;
+            $product->stock_quantity = $restocked;
             $product->save();
         }
     }
