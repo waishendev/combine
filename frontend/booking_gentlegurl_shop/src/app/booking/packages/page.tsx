@@ -88,7 +88,7 @@ export default function BookingPackagesPage() {
           <article key={pkg.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
             <h2 className="font-semibold">{pkg.name}</h2>
             <p className="mt-1 text-sm text-[var(--text-muted)]">{pkg.description || "Service package"}</p>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">Sessions: {pkg.total_sessions} • Valid: {pkg.valid_days ?? "-"} days</p>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">Valid: {pkg.valid_days ?? "-"} days</p>
             <p className="mt-2 text-lg font-semibold">RM {pkg.selling_price}</p>
             <button
               type="button"

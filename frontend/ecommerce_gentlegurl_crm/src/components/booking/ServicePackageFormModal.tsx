@@ -21,7 +21,7 @@ interface FormState {
   name: string
   description: string
   selling_price: string
-  total_sessions: string
+  valid_days: string
   is_active: boolean
   items: FormItem[]
 }
@@ -30,7 +30,7 @@ const initialForm: FormState = {
   name: '',
   description: '',
   selling_price: '0.00',
-  total_sessions: '1',
+  valid_days: '',
   is_active: true,
   items: [{ booking_service_id: '', quantity: '1' }],
 }
@@ -157,7 +157,7 @@ export default function ServicePackageFormModal({
           name: pkg.name ?? '',
           description: pkg.description ?? '',
           selling_price: String(pkg.selling_price ?? '0.00'),
-          total_sessions: String(pkg.total_sessions ?? 1),
+          valid_days: pkg.valid_days ? String(pkg.valid_days) : '',
           is_active: Boolean(pkg.is_active),
           items: Array.isArray(pkg.items) && pkg.items.length > 0
             ? pkg.items.map((item) => ({
@@ -217,14 +217,14 @@ export default function ServicePackageFormModal({
     }
 
     const sellingPrice = Number(form.selling_price)
-    const totalSessions = Number(form.total_sessions)
+    const validDays = form.valid_days.trim() === '' ? null : Number(form.valid_days)
     if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
       setError('Selling price must be 0 or greater')
       return
     }
 
-    if (!Number.isFinite(totalSessions) || totalSessions <= 0) {
-      setError('Total sessions must be greater than 0')
+    if (validDays !== null && (!Number.isFinite(validDays) || validDays <= 0)) {
+      setError('Valid days must be greater than 0')
       return
     }
 
@@ -267,7 +267,7 @@ export default function ServicePackageFormModal({
           description: form.description.trim(),
           is_active: form.is_active,
           selling_price: sellingPrice.toFixed(2),
-          total_sessions: totalSessions,
+          valid_days: validDays,
           items: parsedItems,
         }),
       })
@@ -367,15 +367,16 @@ export default function ServicePackageFormModal({
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
-                Total Sessions <span className="text-red-500">*</span>
+                Valid Days
               </label>
               <input
                 type="number"
                 min={1}
-                value={form.total_sessions}
-                onChange={(e) => setForm((prev) => ({ ...prev, total_sessions: e.target.value }))}
+                value={form.valid_days}
+                onChange={(e) => setForm((prev) => ({ ...prev, valid_days: e.target.value }))}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 disabled={disableForm}
+                placeholder="Leave empty for no expiry"
               />
             </div>
 

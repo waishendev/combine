@@ -122,7 +122,6 @@ type ServicePackageOption = {
   name: string
   description?: string | null
   selling_price?: number
-  total_sessions?: number
   valid_days?: number
   items_summary?: string[]
   is_active?: boolean
@@ -1342,7 +1341,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             name: String(maybe.name ?? '').trim(),
             description: String(maybe.description ?? '').trim() || null,
             selling_price: Number(maybe.selling_price ?? 0),
-            total_sessions: Number(maybe.total_sessions ?? 0),
             valid_days: Number(maybe.valid_days ?? 0),
             items_summary: itemsSummary,
             is_active: Boolean(maybe.is_active ?? true),
@@ -3270,7 +3268,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           {servicePackage.description ? (
                             <p className="mt-1 text-xs text-gray-600 line-clamp-2">{servicePackage.description}</p>
                           ) : null}
-                          <p className="text-xs text-gray-500">Sessions: {servicePackage.total_sessions ?? 0}</p>
                           <p className="text-xs text-gray-500">Validity: {Number(servicePackage.valid_days ?? 0) > 0 ? `${servicePackage.valid_days} day(s)` : 'No expiry'}</p>
                           {servicePackage.items_summary && servicePackage.items_summary.length > 0 ? (
                             <div className="mt-1 space-y-0.5">
@@ -4542,7 +4539,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <p className="font-semibold text-gray-900">Package Summary</p>
                 <p className="mt-1 text-xs text-gray-600">Selling Price: RM {Number(packageDraft.selling_price ?? 0).toFixed(2)}</p>
                 <p className="text-xs text-gray-600">Validity: {Number(packageDraft.valid_days ?? 0) > 0 ? `${packageDraft.valid_days} day(s)` : 'No expiry'}</p>
-                <p className="text-xs text-gray-600">Sessions: {packageDraft.total_sessions ?? 0}</p>
                 {(packageDraft.items_summary ?? []).length > 0 ? (
                   <div className="mt-1 space-y-0.5">
                     {(packageDraft.items_summary ?? []).map((summary, idx) => (

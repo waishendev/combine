@@ -164,7 +164,6 @@ export type ServicePackage = {
   name: string;
   description?: string | null;
   selling_price: number;
-  total_sessions: number;
   valid_days?: number | null;
   is_active?: boolean;
   items?: Array<{

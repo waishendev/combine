@@ -207,7 +207,7 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
                 Price
               </th>
               <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
-                Sessions
+                Valid Days
               </th>
               <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">
                 Status
@@ -235,8 +235,7 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
                     RM {Number(pkg.selling_price).toFixed(2)}
                   </td>
                   <td className="border border-gray-200 px-4 py-2 text-gray-700">
-                    {pkg.total_sessions}
-                    {pkg.valid_days && ` (${pkg.valid_days} days)`}
+                    {pkg.valid_days ? `${pkg.valid_days} days` : '-'}
                   </td>
                   <td className="border border-gray-200 px-4 py-2">
                     <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
