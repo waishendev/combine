@@ -1442,7 +1442,7 @@ class PosController extends Controller
                     'price_snapshot' => $pricing['unit_price_snapshot'],
                     'unit_price_snapshot' => $pricing['unit_price_snapshot'],
                     'variant_price_snapshot' => $variant?->price,
-                    'variant_cost_snapshot' => $variant?->cost_price,
+                    'variant_cost_snapshot' => $variant?->is_bundle ? $variant?->derivedCostPrice() : $variant?->cost_price,
                     'cost_price_snapshot' => $product->cost_price,
                     'cost_amount_snapshot' => round(((float) ($product->cost_price ?? 0)) * (int) $item->qty, 2),
                     'quantity' => $item->qty,

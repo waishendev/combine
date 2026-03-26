@@ -47,6 +47,7 @@ type ProductApiResponse = {
 
 type StockAdjustmentState = {
   product: ProductRowData
+  selectedVariantId: string
   adjustmentType: 'stock_in' | 'stock_out'
   quantity: string
   costPricePerUnit: string
@@ -441,10 +442,31 @@ export default function ProductTable({
   }
 
 
+  const getSelectedVariant = (state: StockAdjustmentState) => {
+    if (!state.selectedVariantId) return null
+    const variantId = Number.parseInt(state.selectedVariantId, 10)
+    if (!Number.isFinite(variantId)) return null
+    return state.product.variants?.find((variant) => variant.id === variantId) ?? null
+  }
+
   const handleSubmitStockAdjustment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     if (!stockAdjustment) return
+
+    const selectedVariant = getSelectedVariant(stockAdjustment)
+    const hasVariants = (stockAdjustment.product.variants?.length ?? 0) > 0
+    const targetStock = hasVariants ? (selectedVariant?.stock ?? 0) : stockAdjustment.product.stock
+
+    if (hasVariants && !selectedVariant) {
+      window.alert('Please select a variant.')
+      return
+    }
+
+    if (selectedVariant?.isBundle) {
+      window.alert('Bundle stock is derived from component variants and cannot be adjusted directly.')
+      return
+    }
 
     const quantity = Number.parseInt(stockAdjustment.quantity, 10)
     const costPrice = Number.parseFloat(stockAdjustment.costPricePerUnit || '0')
@@ -454,7 +476,7 @@ export default function ProductTable({
       return
     }
 
-    if (stockAdjustment.adjustmentType === 'stock_out' && quantity > stockAdjustment.product.stock) {
+    if (stockAdjustment.adjustmentType === 'stock_out' && quantity > targetStock) {
       window.alert('Reduce stock cannot make inventory negative.')
       return
     }
@@ -470,6 +492,9 @@ export default function ProductTable({
         adjustment_type: stockAdjustment.adjustmentType,
         quantity,
         remark: stockAdjustment.remark.trim() || null,
+      }
+      if (selectedVariant) {
+        payload.product_variant_id = selectedVariant.id
       }
 
       if (stockAdjustment.adjustmentType === 'stock_in') {
@@ -566,7 +591,44 @@ export default function ProductTable({
                 Close
               </button>
             </div>
-            <p className="mb-4 text-sm text-gray-600">{stockAdjustment.product.name} (Current stock: {stockAdjustment.product.stock})</p>
+            {(() => {
+              const hasVariants = (stockAdjustment.product.variants?.length ?? 0) > 0
+              const selectedVariant = getSelectedVariant(stockAdjustment)
+              const currentStock = hasVariants ? (selectedVariant?.stock ?? 0) : stockAdjustment.product.stock
+              const isBundleSelected = selectedVariant?.isBundle === true
+
+              return (
+                <>
+                  <p className="mb-3 text-sm text-gray-600">Product: {stockAdjustment.product.name}</p>
+                  {hasVariants && (
+                    <div className="mb-4">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Variant <span className="text-red-500">*</span></label>
+                      <select
+                        value={stockAdjustment.selectedVariantId}
+                        onChange={(event) =>
+                          setStockAdjustment((prev) => (prev ? { ...prev, selectedVariantId: event.target.value } : prev))
+                        }
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                        required
+                      >
+                        <option value="">Select variant</option>
+                        {(stockAdjustment.product.variants ?? []).map((variant) => (
+                          <option key={variant.id} value={variant.id}>
+                            {variant.name}{variant.sku ? ` (${variant.sku})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <p className="mb-4 text-sm text-gray-600">Current stock: {currentStock}</p>
+                  {isBundleSelected && (
+                    <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                      Bundle stock is derived from component variants and cannot be adjusted directly.
+                    </div>
+                  )}
+                </>
+              )
+            })()}
             <form className="space-y-4" onSubmit={handleSubmitStockAdjustment}>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Adjustment Type</label>
@@ -583,6 +645,7 @@ export default function ProductTable({
                     )
                   }
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  disabled={!!getSelectedVariant(stockAdjustment)?.isBundle}
                 >
                   <option value="stock_in">Add Stock</option>
                   <option value="stock_out">Reduce Stock</option>
@@ -598,6 +661,7 @@ export default function ProductTable({
                     setStockAdjustment((prev) => (prev ? { ...prev, quantity: event.target.value } : prev))
                   }
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  disabled={!!getSelectedVariant(stockAdjustment)?.isBundle}
                   required
                 />
               </div>
@@ -613,6 +677,7 @@ export default function ProductTable({
                       setStockAdjustment((prev) => (prev ? { ...prev, costPricePerUnit: event.target.value } : prev))
                     }
                     className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    disabled={!!getSelectedVariant(stockAdjustment)?.isBundle}
                     required
                   />
                 </div>
@@ -627,6 +692,7 @@ export default function ProductTable({
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
                   rows={3}
                   placeholder="Reason for this adjustment"
+                  disabled={!!getSelectedVariant(stockAdjustment)?.isBundle}
                 />
               </div>
               <div className="flex justify-end gap-2">
@@ -639,7 +705,7 @@ export default function ProductTable({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmittingAdjustment}
+                  disabled={isSubmittingAdjustment || !!getSelectedVariant(stockAdjustment)?.isBundle}
                   className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {isSubmittingAdjustment ? 'Saving...' : 'Save Adjustment'}
@@ -831,6 +897,7 @@ export default function ProductTable({
                   onStockAdjustment={() =>
                     setStockAdjustment({
                       product,
+                      selectedVariantId: '',
                       adjustmentType: 'stock_in',
                       quantity: '',
                       costPricePerUnit: '',
