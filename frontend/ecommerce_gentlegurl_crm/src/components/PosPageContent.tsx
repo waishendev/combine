@@ -1490,13 +1490,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const settleAppointmentPayment = useCallback(async () => {
     if (!appointmentDetail?.id) return
     const dueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
+    const cashReceivedAmount = Number(appointmentCashReceived || 0)
     if (dueAmount <= 0) {
       showMsg('No balance due for this appointment.', 'warning')
       return
     }
 
     if (appointmentPaymentMethod === 'cash') {
-      if (!Number.isFinite(appointmentCashReceivedAmount) || appointmentCashReceivedAmount < dueAmount) {
+      if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < dueAmount) {
         showMsg('Cash received must be equal or greater than settlement amount.', 'error')
         return
       }
@@ -1532,8 +1533,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         receipt_public_url: json?.data?.receipt_public_url ?? null,
         payment_method: appointmentPaymentMethod,
         paid_amount: dueAmount,
-        cash_received: appointmentPaymentMethod === 'cash' ? appointmentCashReceivedAmount : dueAmount,
-        change_amount: appointmentPaymentMethod === 'cash' ? Math.max(0, appointmentCashReceivedAmount - dueAmount) : 0,
+        cash_received: appointmentPaymentMethod === 'cash' ? cashReceivedAmount : dueAmount,
+        change_amount: appointmentPaymentMethod === 'cash' ? Math.max(0, cashReceivedAmount - dueAmount) : 0,
       })
       setAppointmentCashReceived('')
       if (appointmentQrProofPreviewUrl) {
@@ -1547,7 +1548,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       setAppointmentActionLoading(false)
     }
   }, [
-    appointmentCashReceivedAmount,
+    appointmentCashReceived,
     appointmentDetail,
     appointmentPaymentMethod,
     appointmentQrProofFileName,
