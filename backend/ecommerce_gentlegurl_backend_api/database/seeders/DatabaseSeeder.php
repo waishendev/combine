@@ -41,8 +41,8 @@ class DatabaseSeeder extends Seeder
             FrontendTestDataSeeder::class,
             LoyaltyRewardSeederTesting::class,
             LoyaltyDemoCustomerSeederTesting::class,
-            SelfPickupCompletedOrderSeeder::class,
-            GuestCompletedOrderSeeder::class,
+            // SelfPickupCompletedOrderSeeder::class,
+            // GuestCompletedOrderSeeder::class,
             BookingTestingSeeder::class,
             ServicePackageTestingSeeder::class,
 

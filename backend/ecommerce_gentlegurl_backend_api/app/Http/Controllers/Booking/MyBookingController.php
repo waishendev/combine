@@ -59,6 +59,7 @@ class MyBookingController extends Controller
 
             return [
                 'id' => (int) $booking->id,
+                'booking_code' => (string) $booking->booking_code,
                 'status' => $booking->status,
                 'start_at' => $booking->start_at?->toIso8601String(),
                 'starts_at' => $booking->start_at?->toIso8601String(),

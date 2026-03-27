@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 import StaffFiltersWrapper from './StaffFiltersWrapper'
 import TableEmptyState from './TableEmptyState'
@@ -51,7 +50,6 @@ type StaffApiResponse = {
 
 export default function StaffTable({ permissions }: StaffTableProps) {
   const { t } = useI18n()
-  const router = useRouter()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<StaffFilterValues>({ ...emptyStaffFilters })
@@ -69,8 +67,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
   const canCreate = permissions.includes('staff.create')
   const canUpdate = permissions.includes('staff.update')
   const canDelete = permissions.includes('staff.delete')
-  const canViewPosSummary = permissions.includes('reports.pos-summary.view')
-  const showActions = canUpdate || canDelete || canViewPosSummary
+  const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -500,7 +497,6 @@ export default function StaffTable({ permissions }: StaffTableProps) {
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
-                  canViewPosSummary={canViewPosSummary}
                   onView={(staff) => setViewingStaff(staff)}
                   onEdit={() => {
                     if (canUpdate) {
@@ -511,17 +507,6 @@ export default function StaffTable({ permissions }: StaffTableProps) {
                     if (canDelete) {
                       setDeleteTarget(staff)
                     }
-                  }}
-                  onViewPosSummary={() => {
-                    if (!canViewPosSummary || !staff.adminUserId) {
-                      return
-                    }
-
-                    const qs = new URLSearchParams({
-                      created_by_user_id: String(staff.adminUserId),
-                      staff_name: staff.name,
-                    })
-                    router.push(`/reports/pos-summary?${qs.toString()}`)
                   }}
                 />
               ))

@@ -162,6 +162,8 @@ Route::prefix('/public/shop')->group(function () {
         
     Route::get('/orders/lookup', [PublicCheckoutController::class, 'lookup']);
     Route::post('/orders/{order}/upload-slip', [PublicCheckoutController::class, 'uploadSlip']);
+    Route::get('/bookings/lookup', [\App\Http\Controllers\Booking\PaymentController::class, 'publicLookup']);
+    Route::post('/bookings/{id}/upload-slip', [\App\Http\Controllers\Booking\PaymentController::class, 'publicUploadSlip']);
 
     // Cart routes - support both authenticated and guest users via session_token
     Route::middleware('api.session')->group(function () {

@@ -210,7 +210,7 @@ export async function payBooking(bookingId: string | number, payload?: {
   payment_method?: "manual_transfer" | "billplz_fpx" | "billplz_card";
   bank_account_id?: number;
 }) {
-  return request<{ data?: { payment_url?: string; status?: string; provider?: string; payment_method?: string; manual_bank_account?: PublicBookingBankAccount } }>(`/booking/${bookingId}/pay?type=booking`, {
+  return request<{ data?: { payment_url?: string; status?: string; provider?: string; payment_method?: string; manual_bank_account?: PublicBookingBankAccount; payment_result_url?: string; order_id?: number; order_no?: string } }>(`/booking/${bookingId}/pay?type=booking`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
@@ -279,6 +279,61 @@ export async function uploadBookingPaymentSlip(bookingId: number | string, file:
   });
 
   return response.data;
+}
+
+export type BookingOrderLookupResponse = {
+  order_id: number;
+  order_no: string;
+  grand_total: number;
+  payment_method?: string | null;
+  payment_provider?: string | null;
+  payment_reference?: string | null;
+  payment_url?: string | null;
+  payment_status: string;
+  status: string;
+  bank_account?: {
+    bank_name?: string | null;
+    account_name?: string | null;
+    account_number?: string | null;
+    account_no?: string | null;
+    qr_image_url?: string | null;
+    instructions?: string | null;
+  } | null;
+  uploads?: Array<{
+    id: number;
+    file_url: string;
+    note?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+  }>;
+};
+
+export async function lookupBookingOrder(orderNo?: string | null, orderId?: number | null) {
+  const query = new URLSearchParams();
+  if (orderNo) {
+    query.set("order_no", orderNo);
+  }
+  if (typeof orderId === "number" && Number.isFinite(orderId)) {
+    query.set("order_id", String(orderId));
+  }
+  const response = await request<{ data?: BookingOrderLookupResponse } | BookingOrderLookupResponse>(`/public/shop/bookings/lookup?${query.toString()}`);
+  return unwrapData<BookingOrderLookupResponse>(response);
+}
+
+export async function uploadBookingOrderSlip(orderId: number, orderNo: string, file: File, note?: string) {
+  const formData = new FormData();
+  formData.append("order_no", orderNo);
+  formData.append("slip", file);
+  if (note && note.trim()) {
+    formData.append("note", note.trim());
+  }
+
+  const response = await request<{ data?: { upload?: { id: number; file_url: string; status?: string | null; created_at?: string | null } } }>(`/public/shop/bookings/${orderId}/upload-slip`, {
+    method: "POST",
+    body: formData,
+  });
+
+  return response.data?.upload ?? null;
 }
 
 export async function getMyBookings() {
