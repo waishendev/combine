@@ -7,12 +7,12 @@ import TableLoadingRow from '@/components/TableLoadingRow'
 import PaginationControls from '@/components/PaginationControls'
 import BookingAppointmentFiltersWrapper from './BookingAppointmentFiltersWrapper'
 import BookingAppointmentDrawer from './BookingAppointmentDrawer'
+import BookingStatusBadge from './BookingStatusBadge'
 import {
   BookingAppointmentFilterValues,
   emptyBookingAppointmentFilters,
 } from './BookingAppointmentFilters'
 import { useI18n } from '@/lib/i18n'
-import StatusBadge from '@/components/StatusBadge'
 
 type BookingRow = {
   id: number
@@ -428,7 +428,7 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
                       {formatDateTime(row.start_at)} - {formatDateTime(row.end_at)}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <StatusBadge status={row.status} label={row.status} />
+                      <BookingStatusBadge status={row.status} label={row.status} />
                     </td>
                     <td className="px-4 py-2 border border-gray-200">{row.deposit_amount}</td>
                     <td className="px-4 py-2 border border-gray-200">{formatDateTime(row.created_at)}</td>

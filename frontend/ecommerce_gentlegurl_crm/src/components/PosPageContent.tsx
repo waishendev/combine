@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import BookingStatusBadge from './booking/BookingStatusBadge'
 
 type CartItem = {
   id: number
@@ -386,6 +387,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
+  const appointmentQrUploadInputRef = useRef<HTMLInputElement | null>(null)
+  const appointmentQrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
+  const appointmentQrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
   const scanBufferRef = useRef('')
   const lastKeyTimeRef = useRef(0)
   const scanModeRef = useRef<'idle' | 'possible' | 'confirmed'>('idle')
@@ -423,15 +427,36 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [servicePackagesLoading, setServicePackagesLoading] = useState(false)
   const [packageQuery, setPackageQuery] = useState('')
   const [appointmentQuery, setAppointmentQuery] = useState('')
-  const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
+  const [appointmentDateFilter, setAppointmentDateFilter] = useState(() => {
+    const now = new Date()
+    const timezoneOffsetMs = now.getTimezoneOffset() * 60 * 1000
+    return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 10)
+  })
   const [appointmentCustomerFilter, setAppointmentCustomerFilter] = useState('')
+  const [appointmentCustomerOptions, setAppointmentCustomerOptions] = useState<Array<{ id: number; name: string; phone?: string | null; email?: string | null }>>([])
+  const [appointmentCustomerLoading, setAppointmentCustomerLoading] = useState(false)
   const [appointmentStaffFilter, setAppointmentStaffFilter] = useState('')
+  const [appointmentStaffOptions, setAppointmentStaffOptions] = useState<StaffOption[]>([])
+  const [appointmentStaffLoading, setAppointmentStaffLoading] = useState(false)
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('')
   const [appointments, setAppointments] = useState<AppointmentListItem[]>([])
   const [appointmentsLoading, setAppointmentsLoading] = useState(false)
   const [appointmentDetail, setAppointmentDetail] = useState<AppointmentDetail | null>(null)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
+  const [appointmentCheckoutConfirmationOpen, setAppointmentCheckoutConfirmationOpen] = useState(false)
+  const [appointmentCashReceived, setAppointmentCashReceived] = useState('')
+  const [appointmentQrProofFileName, setAppointmentQrProofFileName] = useState<string | null>(null)
+  const [appointmentQrProofPreviewUrl, setAppointmentQrProofPreviewUrl] = useState<string | null>(null)
+  const [appointmentSettlementResult, setAppointmentSettlementResult] = useState<null | {
+    order_id: number
+    order_number: string
+    receipt_public_url: string | null
+    payment_method: 'cash' | 'qrpay'
+    paid_amount: number
+    cash_received: number
+    change_amount: number
+  }>(null)
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
   const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
@@ -459,6 +484,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [bookingSlotValue, setBookingSlotValue] = useState('')
   const [bookingNotes, setBookingNotes] = useState('')
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
+  const [bookingModalError, setBookingModalError] = useState<string | null>(null)
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
   const [serviceRedeemingIds, setServiceRedeemingIds] = useState<Record<number, boolean>>({})
 
@@ -787,6 +813,49 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     const json = await res.json().catch(() => null)
     return mapStaffOptions(json)
   }, [mapStaffOptions])
+
+  const fetchAppointmentCustomers = useCallback(async (search: string) => {
+    setAppointmentCustomerLoading(true)
+    try {
+      const params = new URLSearchParams({ page: '1', per_page: '20' })
+      if (search.trim()) params.set('name', search.trim())
+      const res = await fetch(`/api/proxy/customers?${params.toString()}`, { cache: 'no-store' })
+      if (!res.ok) {
+        setAppointmentCustomerOptions([])
+        return
+      }
+      const json = await res.json().catch(() => null)
+      const paged = extractPaged<Record<string, unknown>>(json)
+      const mapped = paged.data
+        .map((row) => {
+          const id = Number(row?.id ?? 0)
+          const name = String(row?.name ?? '').trim()
+          if (!id || !name) return null
+          return {
+            id,
+            name,
+            phone: typeof row?.phone === 'string' ? row.phone : null,
+            email: typeof row?.email === 'string' ? row.email : null,
+          }
+        })
+        .filter((row): row is { id: number; name: string; phone?: string | null; email?: string | null } => Boolean(row))
+      setAppointmentCustomerOptions(mapped)
+    } catch {
+      setAppointmentCustomerOptions([])
+    } finally {
+      setAppointmentCustomerLoading(false)
+    }
+  }, [])
+
+  const fetchAppointmentStaffs = useCallback(async (search: string) => {
+    setAppointmentStaffLoading(true)
+    try {
+      const rows = await fetchStaffOptions(search)
+      setAppointmentStaffOptions(rows)
+    } finally {
+      setAppointmentStaffLoading(false)
+    }
+  }, [fetchStaffOptions])
 
   const fetchVouchers = useCallback(async (memberId?: number | null) => {
     setVoucherLoading(true)
@@ -1386,7 +1455,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const openAppointmentDetail = useCallback(async (appointmentId: number) => {
     setAppointmentDetailLoading(true)
     setAppointmentDetail(null)
+    setAppointmentSettlementResult(null)
+    setAppointmentCheckoutConfirmationOpen(false)
     setAppointmentPaymentMethod('cash')
+    setAppointmentCashReceived('')
+    if (appointmentQrProofPreviewUrl) {
+      URL.revokeObjectURL(appointmentQrProofPreviewUrl)
+    }
+    setAppointmentQrProofPreviewUrl(null)
+    setAppointmentQrProofFileName(null)
     setAppointmentReschedulePolicyWarnings([])
     try {
       const res = await fetch(`/api/proxy/pos/appointments/${appointmentId}`, { cache: 'no-store' })
@@ -1399,7 +1476,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     } finally {
       setAppointmentDetailLoading(false)
     }
-  }, [showMsg])
+  }, [appointmentQrProofPreviewUrl, showMsg])
 
   const refreshOpenedAppointmentDetail = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -1412,6 +1489,25 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const settleAppointmentPayment = useCallback(async () => {
     if (!appointmentDetail?.id) return
+    const dueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
+    const cashReceivedAmount = Number(appointmentCashReceived || 0)
+    if (dueAmount <= 0) {
+      showMsg('No balance due for this appointment.', 'warning')
+      return
+    }
+
+    if (appointmentPaymentMethod === 'cash') {
+      if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < dueAmount) {
+        showMsg('Cash received must be equal or greater than settlement amount.', 'error')
+        return
+      }
+    }
+
+    if (appointmentPaymentMethod === 'qrpay' && !appointmentQrProofFileName) {
+      showMsg('Please upload QR payment proof before checkout.', 'error')
+      return
+    }
+
     setAppointmentActionLoading(true)
     try {
       const payload = {
@@ -1430,12 +1526,37 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       }
 
       showMsg('Appointment payment collected.', 'success')
+      setAppointmentCheckoutConfirmationOpen(false)
+      setAppointmentSettlementResult({
+        order_id: Number(json?.data?.order_id ?? 0),
+        order_number: String(json?.data?.order_number ?? '-'),
+        receipt_public_url: json?.data?.receipt_public_url ?? null,
+        payment_method: appointmentPaymentMethod,
+        paid_amount: dueAmount,
+        cash_received: appointmentPaymentMethod === 'cash' ? cashReceivedAmount : dueAmount,
+        change_amount: appointmentPaymentMethod === 'cash' ? Math.max(0, cashReceivedAmount - dueAmount) : 0,
+      })
+      setAppointmentCashReceived('')
+      if (appointmentQrProofPreviewUrl) {
+        URL.revokeObjectURL(appointmentQrProofPreviewUrl)
+      }
+      setAppointmentQrProofPreviewUrl(null)
+      setAppointmentQrProofFileName(null)
       await fetchAppointments()
       await refreshOpenedAppointmentDetail()
     } finally {
       setAppointmentActionLoading(false)
     }
-  }, [appointmentDetail?.id, appointmentPaymentMethod, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [
+    appointmentCashReceived,
+    appointmentDetail,
+    appointmentPaymentMethod,
+    appointmentQrProofFileName,
+    appointmentQrProofPreviewUrl,
+    fetchAppointments,
+    refreshOpenedAppointmentDetail,
+    showMsg,
+  ])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -1607,25 +1728,27 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setBookingSlots([])
     setBookingSlotValue('')
     setBookingNotes('')
+    setBookingModalError(null)
     setBookingModalOpen(true)
   }, [currentUser.staff_id])
 
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
+    setBookingModalError(null)
     if (!selectedMember?.id) {
-      showMsg('Please assign member.', 'error')
+      setBookingModalError('Please assign member.')
       return
     }
     if (!bookingAssignedStaffId) {
-      showMsg('Please select assigned staff.', 'error')
+      setBookingModalError('Please select assigned staff.')
       return
     }
     if (!bookingDate) {
-      showMsg('Please select appointment date.', 'error')
+      setBookingModalError('Please select appointment date.')
       return
     }
     if (!bookingSlotValue) {
-      showMsg('Please select appointment slot/time.', 'error')
+      setBookingModalError('Please select appointment slot/time.')
       return
     }
 
@@ -1646,7 +1769,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     const json = await res.json().catch(() => null)
 
     if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to add service to cart.', 'error')
+      setBookingModalError(json?.message ?? 'Unable to add service to cart.')
       setBookingSubmitting(false)
       return
     }
@@ -1654,6 +1777,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCart((json?.data?.cart ?? null) as Cart | null)
     showMsg('Service added to cart. Continue with checkout to collect payment.', 'success')
     setBookingModalOpen(false)
+    setBookingModalError(null)
     setBookingSubmitting(false)
   }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingServiceDraft, bookingSlotValue, selectedMember?.id, showMsg])
 
@@ -1943,6 +2067,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     if (catalogTab !== 'appointments') return
     void fetchAppointments()
   }, [appointmentCustomerFilter, appointmentDateFilter, appointmentQuery, appointmentStaffFilter, appointmentStatusFilter, catalogTab, fetchAppointments])
+
+  useEffect(() => {
+    if (catalogTab !== 'appointments') return
+    void fetchAppointmentCustomers('')
+    void fetchAppointmentStaffs('')
+  }, [catalogTab, fetchAppointmentCustomers, fetchAppointmentStaffs])
 
 
   const filteredServices = useMemo(() => {
@@ -2428,6 +2558,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
+  const appointmentDueAmount = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
+  const appointmentCashReceivedAmount = Number(appointmentCashReceived || 0)
+  const appointmentCashChange = Math.max(0, appointmentCashReceivedAmount - appointmentDueAmount)
 
   const canCheckout = hasCartItems && !checkingOut
 
@@ -2661,18 +2794,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     showMsg('Member assigned.', 'success')
   }
 
-  const onClearMember = async () => {
-    setReceiptEmail(selectedMember?.email?.trim() ?? '')
-    setReceiptEmailError(null)
-    setReceiptCooldownUntil(0)
-    setSelectedMember(null)
-    setVoucherModalOpen(false)
-    setSelectedVoucherKey('')
-    if (appliedVoucher?.customer_voucher_id) {
-      await removeVoucher(true)
-    }
-  }
-
   useEffect(() => {
     if (!voucherModalOpen) return
     void fetchVouchers(selectedMember?.id ?? null)
@@ -2715,6 +2836,27 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     }
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
+  }
+
+  const onSelectAppointmentQrProof: ChangeEventHandler<HTMLInputElement> = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (appointmentQrProofPreviewUrl) {
+      URL.revokeObjectURL(appointmentQrProofPreviewUrl)
+    }
+    const url = URL.createObjectURL(file)
+    setAppointmentQrProofFileName(file.name)
+    setAppointmentQrProofPreviewUrl(url)
+    event.currentTarget.value = ''
+  }
+
+  const clearAppointmentQrProof = () => {
+    if (appointmentQrProofPreviewUrl) {
+      URL.revokeObjectURL(appointmentQrProofPreviewUrl)
+    }
+    setAppointmentQrProofPreviewUrl(null)
+    setAppointmentQrProofFileName(null)
   }
 
   const getStaffInputLabel = (staff: StaffOption) => {
@@ -2961,6 +3103,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     const amount = Number(appointmentDetail?.deposit_previously_collected_amount ?? 0)
     return appointmentIsFullyPackageCovered && wasCollected ? amount : 0
   }, [appointmentDetail?.deposit_previously_collected, appointmentDetail?.deposit_previously_collected_amount, appointmentIsFullyPackageCovered])
+
+  const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
+  const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
+  const appointmentPackageApplied = ['reserved', 'consumed'].includes(
+    String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
+  )
+  const appointmentCheckoutCompleted = appointmentSettlementPaid > 0
+  const canMarkAppointmentCompleted = !appointmentActionLoading && (
+    appointmentDueAmountNow <= 0 || appointmentPackageApplied
+  )
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -3229,7 +3381,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-sm font-semibold text-gray-900">{service.name}</p>
                             <p className="text-xs text-gray-500">Type: {(service.service_type ?? 'standard').toUpperCase()}</p>
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-col items-end gap-2">
                             <span className="text-sm font-bold text-gray-900">RM {displayPrice.toFixed(2)}</span>
                             <button
                               type="button"
@@ -3278,7 +3430,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             </div>
                           ) : null}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-col items-end gap-2">
                           <span className="text-sm font-bold text-gray-900">RM {Number(servicePackage.selling_price ?? 0).toFixed(2)}</span>
                           <button
                             type="button"
@@ -3300,7 +3452,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     value={appointmentQuery}
                     onChange={(e) => setAppointmentQuery(e.target.value)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="Search booking no / customer / service"
+                    placeholder="Search booking no (e.g. BK-20260327233637-15FFBC)"
                   />
                   <input
                     type="date"
@@ -3308,18 +3460,30 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     onChange={(e) => setAppointmentDateFilter(e.target.value)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                   />
-                  <input
+                  <select
                     value={appointmentCustomerFilter}
                     onChange={(e) => setAppointmentCustomerFilter(e.target.value)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="Customer ID"
-                  />
-                  <input
+                  >
+                    <option value="">{appointmentCustomerLoading ? 'Loading customers...' : 'All Customers'}</option>
+                    {appointmentCustomerOptions.map((customer) => (
+                      <option key={`appointment-customer-${customer.id}`} value={String(customer.id)}>
+                        {customer.name}{customer.phone ? ` · ${customer.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <select
                     value={appointmentStaffFilter}
                     onChange={(e) => setAppointmentStaffFilter(e.target.value)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="Staff ID"
-                  />
+                  >
+                    <option value="">{appointmentStaffLoading ? 'Loading staffs...' : 'All Staffs'}</option>
+                    {appointmentStaffOptions.map((staff) => (
+                      <option key={`appointment-staff-${staff.id}`} value={String(staff.id)}>
+                        {staff.name}{staff.code ? ` · ${staff.code}` : ''}
+                      </option>
+                    ))}
+                  </select>
                   <select
                     value={appointmentStatusFilter}
                     onChange={(e) => setAppointmentStatusFilter(e.target.value)}
@@ -3346,8 +3510,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-xs text-gray-600">{appt.customer_name} • {(appt.service_names ?? []).join(', ')}</p>
                             <p className="text-xs text-gray-500">{formatDateTimeRange(appt.appointment_start_at, appt.appointment_end_at)}</p>
                             <p className="text-xs text-gray-500">Staff: {appt.staff_name ?? '-'}</p>
-                            <p className="text-xs text-gray-500">Status: {appt.status}</p>
-                            <p className="text-xs text-gray-500">
+                            <div className="flex items-center gap-2 pt-0.5 text-xs text-gray-500">
+                              <span>Status:</span>
+                              <BookingStatusBadge status={appt.status} label={appt.status} showDot={false} />
+                            </div>
+                            {/* <p className="text-xs text-gray-500">
                               Deposit Contribution: RM {((Number(appt.package_offset ?? 0) >= Number(appt.service_total ?? 0) - 0.0001) ? 0 : Number(appt.deposit_contribution ?? appt.deposit_paid ?? 0)).toFixed(2)}
                               {' • '}
                               Linked Booking Deposit: RM {Number(appt.linked_booking_deposit_total ?? appt.linked_booking_deposit ?? 0).toFixed(2)}
@@ -3355,7 +3522,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                               Package: RM {Number(appt.package_offset ?? 0).toFixed(2)}
                               {' • '}
                               Due: RM {Number(appt.amount_due_now ?? appt.balance_due ?? 0).toFixed(2)}
-                            </p>
+                            </p> */}
                           </div>
                           <button
                             type="button"
@@ -3393,7 +3560,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       <p><span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}</p>
                       <p><span className="font-semibold">Staff:</span> {appointmentDetail.staff?.name ?? '-'}</p>
                       <p><span className="font-semibold">Date/Time:</span> {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}</p>
-                      <p><span className="font-semibold">Status:</span> {appointmentDetail.status}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">Status:</span>
+                        <BookingStatusBadge
+                          status={appointmentDetail.status}
+                          label={appointmentDetail.status}
+                          showDot={false}
+                        />
+                      </div>
                     </div>
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
                       <p>Service Total: <span className="font-semibold">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</span></p>
@@ -3423,16 +3597,31 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       ) : null}
                       <p className="mb-2 font-semibold text-gray-900">Settlement Payment</p>
                       <div className="grid gap-2">
-                        <select
-                          value={appointmentPaymentMethod}
-                          onChange={(e) => setAppointmentPaymentMethod(e.target.value as 'cash' | 'qrpay')}
-                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        >
-                          <option value="cash">Cash</option>
-                          <option value="qrpay">QRPay</option>
-                        </select>
+                        <p className="text-xs text-gray-500">Payment method is selected during checkout confirmation.</p>
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" disabled={appointmentActionLoading || Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0) <= 0} onClick={() => void settleAppointmentPayment()} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Checkout</button>
+                          <button
+                            type="button"
+                            disabled={appointmentActionLoading || appointmentDueAmountNow <= 0}
+                            onClick={() => {
+                              const due = appointmentDueAmountNow
+                              setAppointmentPaymentMethod('cash')
+                              setAppointmentCashReceived(due > 0 ? due.toFixed(2) : '')
+                              setAppointmentCheckoutConfirmationOpen(true)
+                            }}
+                            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Checkout
+                          </button>
+                          <button
+                            type="button"
+                            disabled={appointmentActionLoading || appointmentPackageApplied || appointmentCheckoutCompleted}
+                            onClick={() => void applyAppointmentPackage()}
+                            title={appointmentCheckoutCompleted ? 'Checkout already completed' : undefined}
+                            className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                          >
+                            {appointmentPackageApplied ? 'Package Applied' : 'Apply Package'}
+                          </button>
+
                           <button
                             type="button"
                             disabled={appointmentActionLoading || ['reserved', 'consumed'].includes(String(appointmentDetail.package_status?.status ?? '').toLowerCase())}
@@ -3441,10 +3630,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           >
                             {['reserved', 'consumed'].includes(String(appointmentDetail.package_status?.status ?? '').toLowerCase()) ? 'Package Applied' : 'Apply Package'}
                           </button>
+                          
                           {appointmentDetail.status === 'CONFIRMED' ? (
                             <>
                               <button type="button" disabled={appointmentActionLoading} onClick={openAppointmentRescheduleModal} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Reschedule</button>
-                              <button type="button" disabled={appointmentActionLoading} onClick={() => void markAppointmentCompleted()} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Mark Completed</button>
+                              <button
+                                type="button"
+                                disabled={!canMarkAppointmentCompleted}
+                                onClick={() => void markAppointmentCompleted()}
+                                title={canMarkAppointmentCompleted ? 'Mark Completed' : 'Complete payment or apply package first'}
+                                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                              >
+                                Mark Completed
+                              </button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('CANCELLED')} className="rounded-md bg-slate-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50">Mark Cancelled</button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')} className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 disabled:opacity-50">Late Cancellation</button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('NO_SHOW')} className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">Mark No-show</button>
@@ -4064,7 +4262,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <thead className="bg-gradient-to-r from-slate-50 to-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Item</th>
-                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Staff Assignment</th>
+                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Details</th>
                       <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Unit Price</th>
                       <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Total Price</th>
                     </tr>
@@ -4269,58 +4467,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     <p className="text-base font-semibold text-gray-700">Net Amount</p>
                     <p className="text-2xl font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
                   </div>
-                </div>
-              </div>
-
-              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <p className="text-sm font-bold text-gray-800">Member</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void toggleMemberDropdown()}
-                      className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50 active:scale-95"
-                    >
-                      {selectedMember ? 'Change' : 'Assign'}
-                    </button>
-                  </div>
-                  {selectedMember ? (
-                    <div className="space-y-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
-                      <p className="text-xs font-semibold text-blue-800">{selectedMember.name}</p>
-                      <p className="text-xs text-blue-700">{selectedMember.phone || selectedMember.email || `Member #${selectedMember.id}`}</p>
-                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={() => void onClearMember()}>Clear member</button>
-                    </div>
-                  ) : <p className="text-xs text-gray-500 italic">No member assigned</p>}
-                </div>
-
-                <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-sm font-bold text-gray-800">Voucher</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setVoucherModalOpen(true)}
-                      className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50 active:scale-95"
-                    >
-                      {appliedVoucher ? 'Change' : 'Apply'}
-                    </button>
-                  </div>
-                  {appliedVoucher ? (
-                    <div className="space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
-                      <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
-                      {!!appliedVoucher.discount_amount && <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>}
-                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={() => void removeVoucher()}>Remove voucher</button>
-                    </div>
-                  ) : <p className="text-xs text-gray-500 italic">No voucher applied</p>}
                 </div>
               </div>
 
@@ -4716,10 +4862,26 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900">Add Service to Cart</h3>
-            <p className="mt-1 text-sm text-gray-600">{bookingServiceDraft.name}</p>
-            <div className="mt-4 space-y-3">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+            <div className="border-b border-gray-200 bg-white px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Add Service to Cart</h3>
+                </div>
+
+              </div>
+              <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Selected Service</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">{bookingServiceDraft.name} ({bookingServiceDraft.service_type})</p>
+              </div>
+            </div>
+            <div className="p-5">
+            {bookingModalError ? (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {bookingModalError}
+              </div>
+            ) : null}
+            <div className="space-y-3">
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-xs font-semibold text-gray-600">Member</label>
@@ -4789,7 +4951,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setBookingModalOpen(false)}
+                onClick={() => {
+                  setBookingModalOpen(false)
+                  setBookingModalError(null)
+                }}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
               >
                 Cancel
@@ -4802,6 +4967,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               >
                 {bookingSubmitting ? 'Creating...' : 'Add Service to Cart'}
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -4994,6 +5160,152 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               >
                 {voucherApplying ? 'Applying...' : 'Apply Voucher'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {appointmentCheckoutConfirmationOpen && appointmentDetail && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+              <div>
+                <h4 className="text-lg font-bold text-gray-900">Checkout Confirmation</h4>
+                <p className="text-xs text-gray-500">Select payment method before collecting settlement.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAppointmentCheckoutConfirmationOpen(false)}
+                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                <p className="font-semibold text-gray-900">{appointmentDetail.booking_code}</p>
+                <p className="text-xs text-gray-600">{appointmentDetail.customer?.name ?? '-'}</p>
+                <p className="text-xs text-gray-600">Amount Due: <span className="font-semibold text-emerald-700">RM {appointmentDueAmount.toFixed(2)}</span></p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <p className="mb-3 text-sm font-bold text-gray-900">Payment Method</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-all ${appointmentPaymentMethod === 'cash' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'}`}>
+                    <span>Cash</span>
+                    <input
+                      type="radio"
+                      checked={appointmentPaymentMethod === 'cash'}
+                      onChange={() => setAppointmentPaymentMethod('cash')}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                  <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-all ${appointmentPaymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'}`}>
+                    <span>QRPay</span>
+                    <input
+                      type="radio"
+                      checked={appointmentPaymentMethod === 'qrpay'}
+                      onChange={() => setAppointmentPaymentMethod('qrpay')}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                </div>
+              </div>
+              {appointmentPaymentMethod === 'cash' ? (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <label className="mb-2 block text-sm font-bold text-gray-900">Cash Received</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={appointmentCashReceived}
+                    onChange={(e) => setAppointmentCashReceived(e.target.value)}
+                    className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-3 font-semibold text-gray-900 focus:border-blue-500 focus:outline-none"
+                    placeholder={appointmentDueAmount.toFixed(2)}
+                  />
+                  {appointmentCashChange > 0 ? (
+                    <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+                      <span className="font-semibold text-emerald-800">Change:</span>
+                      <span className="font-bold text-emerald-700">RM {appointmentCashChange.toFixed(2)}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof</label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrUploadInputRef.current?.click()}>Upload</button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraBackInputRef.current?.click()}>Back Camera</button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraFrontInputRef.current?.click()}>Front Camera</button>
+                  </div>
+                  <input ref={appointmentQrUploadInputRef} type="file" accept="image/*" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                  <input ref={appointmentQrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                  <input ref={appointmentQrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                  {appointmentQrProofFileName ? (
+                    <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
+                      <p className="truncate pr-2 font-semibold text-emerald-800">{appointmentQrProofFileName}</p>
+                      <button type="button" className="font-semibold text-red-600 hover:text-red-700" onClick={clearAppointmentQrProof}>Clear</button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAppointmentCheckoutConfirmationOpen(false)}
+                  className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={appointmentActionLoading || appointmentDueAmount <= 0}
+                  onClick={() => void settleAppointmentPayment()}
+                  className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Confirm Checkout
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {appointmentSettlementResult && (
+        <div className="fixed inset-0 z-[56] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4">
+              <h4 className="text-xl font-bold text-white">Settlement Completed</h4>
+            </div>
+            <div className="space-y-3 px-6 py-5 text-sm">
+              <p className="text-gray-700">Order Number</p>
+              <p className="text-2xl font-bold text-gray-900">{appointmentSettlementResult.order_number}</p>
+              <p className="text-lg font-semibold text-gray-800">RM {appointmentSettlementResult.paid_amount.toFixed(2)}</p>
+              <p className="text-xs text-gray-600">Payment Method: {appointmentSettlementResult.payment_method.toUpperCase()}</p>
+              {appointmentSettlementResult.payment_method === 'cash' ? (
+                <p className="text-xs text-gray-600">
+                  Cash Received: RM {appointmentSettlementResult.cash_received.toFixed(2)} • Change: RM {appointmentSettlementResult.change_amount.toFixed(2)}
+                </p>
+              ) : null}
+              <div className="flex justify-end gap-2 pt-2">
+                {appointmentSettlementResult.receipt_public_url ? (
+                  <button
+                    type="button"
+                    onClick={() => window.open(appointmentSettlementResult.receipt_public_url!, '_blank')}
+                    className="rounded-md border border-blue-500 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                  >
+                    Open Receipt
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setAppointmentSettlementResult(null)}
+                  className="rounded-md bg-gray-800 px-3 py-2 text-xs font-semibold text-white hover:bg-black"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
