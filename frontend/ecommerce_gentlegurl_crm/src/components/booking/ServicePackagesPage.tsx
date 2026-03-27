@@ -235,7 +235,7 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
                     RM {Number(pkg.selling_price).toFixed(2)}
                   </td>
                   <td className="border border-gray-200 px-4 py-2 text-gray-700">
-                    {pkg.valid_days ? `${pkg.valid_days} days` : '-'}
+                    {pkg.valid_days ? `${pkg.valid_days}` : '-'}
                   </td>
                   <td className="border border-gray-200 px-4 py-2">
                     <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
