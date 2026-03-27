@@ -3325,7 +3325,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     onChange={(e) => setAppointmentStatusFilter(e.target.value)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                   >
-                    <option value="">Active statuses</option>
+                    <option value="">ALL</option>
                     <option value="CONFIRMED">CONFIRMED</option>
                     <option value="COMPLETED">COMPLETED</option>
                     <option value="CANCELLED">CANCELLED</option>
