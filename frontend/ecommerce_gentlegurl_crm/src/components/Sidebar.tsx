@@ -132,6 +132,38 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
           },
         ],
       },
+
+      {
+        key: 'ecommerce-orders',
+        label: 'ECOMMERCE ORDERS',
+        icon: 'fa-solid fa-cart-shopping',
+        children: [
+          {
+            key: 'ecommerce-orders-new',
+            label: 'New Orders',
+            href: '/ecommerce-orders/new',
+            requiredPermission: 'ecommerce.orders.view',
+          },
+          {
+            key: 'ecommerce-orders-completed',
+            label: 'Completed Orders',
+            href: '/ecommerce-orders/completed',
+            requiredPermission: 'ecommerce.orders.view',
+          },
+          {
+            key: 'ecommerce-orders-all',
+            label: 'All Orders',
+            href: '/ecommerce-orders/all',
+            requiredPermission: 'ecommerce.orders.view',
+          },
+          {
+            key: 'ecommerce-orders-returns',
+            label: 'Returns',
+            href: '/ecommerce-orders/returns',
+            requiredPermission: 'ecommerce.returns.view',
+          },
+        ],
+      },
   
       // ======================
       // Catalog

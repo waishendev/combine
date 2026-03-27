@@ -7,6 +7,7 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\Ecommerce\AnnouncementController;
 use App\Http\Controllers\Ecommerce\BankAccountController;
 use App\Http\Controllers\Ecommerce\CustomerController as EcommerceCustomerController;
+use App\Http\Controllers\Ecommerce\CrmEcommerceOrderController;
 use App\Http\Controllers\Ecommerce\OrderController;
 use App\Http\Controllers\Ecommerce\PaymentGatewayController;
 use App\Http\Controllers\Ecommerce\PublicCustomerAddressController;
@@ -663,6 +664,21 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.orders.update');
         Route::post('/orders/{order}/complete', [OrderController::class, 'complete'])
             ->middleware('permission:ecommerce.orders.update');
+
+        Route::prefix('/crm/ecommerce-orders')->group(function () {
+            Route::get('/new', [CrmEcommerceOrderController::class, 'new'])
+                ->middleware('permission:ecommerce.orders.view');
+
+            Route::get('/completed', [CrmEcommerceOrderController::class, 'completed'])
+                ->middleware('permission:ecommerce.orders.view');
+
+            Route::get('/all', [CrmEcommerceOrderController::class, 'all'])
+                ->middleware('permission:ecommerce.orders.view');
+
+            Route::get('/returns', [CrmEcommerceOrderController::class, 'returns'])
+                ->middleware('permission:ecommerce.returns.view');
+        });
+
 
         Route::get('/returns', [ReturnRequestController::class, 'index'])
             ->middleware('permission:ecommerce.returns.view');
