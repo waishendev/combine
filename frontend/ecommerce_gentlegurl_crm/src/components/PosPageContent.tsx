@@ -171,6 +171,7 @@ type AppointmentDetail = {
   amount_due_now?: number
   package_status?: { status?: string; used_qty?: number } | null
   payment_history?: Array<{ order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
+  receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
 }
 
 type PosCatalogTab = 'products' | 'book-service' | 'service-packages' | 'appointments'
@@ -3465,6 +3466,28 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       ) : (
                         <p className="text-xs text-gray-500">No payment history yet.</p>
                       )}
+                      {appointmentDetail.receipts?.length ? (
+                        <div className="mt-3 border-t border-gray-100 pt-3">
+                          <p className="mb-2 font-semibold text-gray-900">Receipts</p>
+                          <div className="space-y-1">
+                            {appointmentDetail.receipts.map((item, idx) => (
+                              <div key={`${item.order_id ?? 'receipt'}-${idx}`} className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                                <span>{item.stage_label ?? 'Receipt'} • {item.order_number ?? '-'} • RM {Number(item.amount ?? 0).toFixed(2)}</span>
+                                {item.receipt_public_url ? (
+                                  <a
+                                    href={item.receipt_public_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="rounded border border-gray-300 px-2 py-0.5 font-medium text-blue-700 hover:bg-blue-50"
+                                  >
+                                    Open
+                                  </a>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}

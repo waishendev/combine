@@ -324,6 +324,14 @@
   // $docTitle = $isPaid ? 'RECEIPT' : 'TAX INVOICE';
 
   $footerNote = $profile['footer_note'] ?? null;
+  $receiptStageLabel = $receiptLabel ?? null;
+  $coveredByPackage = (bool) data_get($packageCoverage ?? [], 'covered', false);
+  $packageAppliedNames = data_get($packageCoverage ?? [], 'package_names', []);
+  $packageOffsetDisplay = (float) data_get($packageCoverage ?? [], 'offset', 0);
+  $subtotalDisplay = isset($displaySubtotal) ? (float) $displaySubtotal : (float) $order->subtotal;
+  $discountDisplay = isset($displayDiscount) ? (float) $displayDiscount : (float) $order->discount_total;
+  $shippingDisplay = isset($displayShipping) ? (float) $displayShipping : (float) $order->shipping_fee;
+  $grandTotalDisplay = isset($displayGrandTotal) ? (float) $displayGrandTotal : (float) $order->grand_total;
 
   // Support lines (fallback to profile fields)
   $supportEmail = $profile['company_email'] ?? null;
@@ -375,6 +383,9 @@
 
           <td style="width:40%; text-align:right;">
             <div class="doc-title">{{ $docTitle }}</div>
+            @if($receiptStageLabel)
+              <div class="doc-subtitle" style="color:#4338ca; font-weight:700;">{{ $receiptStageLabel }}</div>
+            @endif
             <!-- <div class="status-badge {{ $isPaid ? 'status-paid' : 'status-unpaid' }}">
               {{ $isPaid ? 'PAID' : 'UNPAID' }}
             </div> -->
@@ -525,24 +536,41 @@
       </table>
     </div>
 
+    @if($coveredByPackage)
+      <div class="section" style="margin-top:-4px;">
+        <div style="border:1px solid #a7f3d0; background:#ecfdf5; color:#065f46; border-radius:8px; padding:8px 10px; font-size:11px;">
+          <div style="font-weight:700;">Covered by Package</div>
+          @if(!empty($packageAppliedNames))
+            <div style="margin-top:2px;">Package Applied: {{ implode(', ', $packageAppliedNames) }}</div>
+          @endif
+        </div>
+      </div>
+    @endif
+
     <!-- Totals -->
     <div class="section totals-wrap">
       <table class="totals-table">
         <tr>
           <td>Subtotal</td>
-          <td>{{ $currency }} {{ number_format((float) $order->subtotal, 2) }}</td>
+          <td>{{ $currency }} {{ number_format($subtotalDisplay, 2) }}</td>
         </tr>
         <tr>
           <td>Discount</td>
-          <td>{{ $currency }} {{ number_format((float) $order->discount_total, 2) }}</td>
+          <td>{{ $currency }} {{ number_format($discountDisplay, 2) }}</td>
         </tr>
         <tr>
           <td>Shipping</td>
-          <td>{{ $currency }} {{ number_format((float) $order->shipping_fee, 2) }}</td>
+          <td>{{ $currency }} {{ number_format($shippingDisplay, 2) }}</td>
         </tr>
+        @if($coveredByPackage && $packageOffsetDisplay > 0)
+          <tr>
+            <td>Package Offset</td>
+            <td>- {{ $currency }} {{ number_format($packageOffsetDisplay, 2) }}</td>
+          </tr>
+        @endif
         <tr class="grand">
           <td>Grand Total</td>
-          <td>{{ $currency }} {{ number_format((float) $order->grand_total, 2) }}</td>
+          <td>{{ $currency }} {{ number_format($grandTotalDisplay, 2) }}</td>
         </tr>
       </table>
     </div>
