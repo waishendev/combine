@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const navItems = [
   { label: "My Account", href: "/account" },
   { label: "My Bookings", href: "/account/bookings" },
+  { label: "My Orders", href: "/account/orders" },
   { label: "My Packages", href: "/account/packages" },
 ];
 
@@ -22,8 +23,6 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
   const pathname = usePathname();
   const router = useRouter();
   const { logout } = useAuth();
-
-  const initial = user?.name ? user.name.trim().charAt(0).toUpperCase() : "?";
 
   const handleLogout = async () => {
     await logout();

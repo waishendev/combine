@@ -11,6 +11,7 @@ import {
   getMe,
   getServicePackageAvailableFor,
   payBooking,
+  payPublicOrder,
   redeemServicePackage,
   removeCartItem,
   removePackageCartItem,
@@ -221,11 +222,44 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           billing_name: billingSameAsContact ? guestName.trim() : billingName.trim(),
           billing_phone: billingSameAsContact ? guestPhone.trim() : billingPhone.trim(),
           billing_email: billingSameAsContact ? guestEmail.trim() || undefined : billingEmail.trim() || undefined,
+          payment_method: selectedPaymentMethod,
+          bank_account_id: selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
         },
       );
 
+      const orderId = checkoutResponse?.order_id;
+      const orderNo = checkoutResponse?.order_no;
+      if (orderId) {
+        if (selectedPaymentMethod !== "manual_transfer") {
+          const payResponse = await payPublicOrder(orderId, { payment_method: selectedPaymentMethod });
+          const redirectUrl = payResponse?.data?.redirect_url;
+          if (redirectUrl) {
+            window.location.href = redirectUrl;
+            return;
+          }
+        }
+
+        onClose();
+        const nextParams = new URLSearchParams({
+          order_id: String(orderId),
+          payment_method: selectedPaymentMethod,
+          provider: selectedPaymentMethod === "manual_transfer" ? "manual" : "billplz",
+        });
+        if (orderNo) {
+          nextParams.set("order_no", orderNo);
+        }
+        router.push(`/payment-result?${nextParams.toString()}`);
+        return;
+      }
+
       const bookingId = checkoutResponse?.booking_ids?.[0];
       if (!bookingId) {
+        const hasPackageOnlyCheckout = (checkoutResponse?.owned_package_ids?.length ?? 0) > 0;
+        if (hasPackageOnlyCheckout) {
+          onClose();
+          router.push("/account/orders");
+          return;
+        }
         setMessage("Unable to create booking payment. Please try again.");
         return;
       }
@@ -242,14 +276,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       }
 
       onClose();
-      const orderNo = paymentData?.order_no;
+      const bookingOrderNo = paymentData?.order_no;
       const nextParams = new URLSearchParams({
         order_id: String(paymentData?.order_id ?? bookingId),
         payment_method: String(paymentData?.payment_method ?? selectedPaymentMethod),
         provider: String(paymentData?.provider ?? "manual"),
       });
-      if (orderNo) {
-        nextParams.set("order_no", orderNo);
+      if (bookingOrderNo) {
+        nextParams.set("order_no", bookingOrderNo);
       }
       router.push(`/payment-result?${nextParams.toString()}`);
     } catch (err) {

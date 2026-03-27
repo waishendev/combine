@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { lookupBookingOrder, uploadBookingOrderSlip, type BookingOrderLookupResponse } from "@/lib/apiClient";
+import { lookupBookingOrder, lookupPublicOrder, uploadBookingOrderSlip, uploadPublicOrderSlip, type BookingOrderLookupResponse } from "@/lib/apiClient";
 
 type Props = {
   orderNo?: string | null;
@@ -13,6 +13,7 @@ type Props = {
 
 export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Props) {
   const [order, setOrder] = useState<BookingOrderLookupResponse | null>(null);
+  const [lookupSource, setLookupSource] = useState<"booking" | "order">("booking");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -27,10 +28,17 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     setIsLoading(true);
     setError(null);
     try {
-      const data = await lookupBookingOrder(orderNo, orderId ?? undefined);
+      let data: BookingOrderLookupResponse;
+      try {
+        data = await lookupBookingOrder(orderNo, orderId ?? undefined);
+        setLookupSource("booking");
+      } catch {
+        data = await lookupPublicOrder(orderNo, orderId ?? undefined);
+        setLookupSource("order");
+      }
       setOrder(data);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unable to load booking details.";
+      const message = err instanceof Error ? err.message : "Unable to load order details.";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -87,7 +95,11 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     setUploadError(null);
 
     try {
-      await uploadBookingOrderSlip(order.order_id, order.order_no, selectedFile, note.trim() || undefined);
+      if (lookupSource === "booking") {
+        await uploadBookingOrderSlip(order.order_id, order.order_no, selectedFile, note.trim() || undefined);
+      } else {
+        await uploadPublicOrderSlip(order.order_id, selectedFile, note.trim() || undefined);
+      }
       setUploadMessage("Slip submitted • Pending verification");
       closeModal();
       void loadOrder();
@@ -103,19 +115,19 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
 
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-center text-[var(--foreground)]">
-      <h1 className="text-3xl font-semibold">Thank you for your booking!</h1>
+      <h1 className="text-3xl font-semibold">Thank you for your order!</h1>
 
       <p className="mt-4 text-sm text-[var(--foreground)]/80">
-        Your booking number is <span className="font-mono font-semibold">{orderNo || (orderId ? `#${orderId}` : "-")}</span>.
+        Your order number is <span className="font-mono font-semibold">{orderNo || (orderId ? `#${orderId}` : "-")}</span>.
       </p>
 
-      {isLoading && <p className="mt-4 text-sm text-[var(--foreground)]/70">Loading booking details...</p>}
+      {isLoading && <p className="mt-4 text-sm text-[var(--foreground)]/70">Loading order details...</p>}
       {error && <p className="mt-4 text-sm text-[color:var(--status-error)]">{error}</p>}
 
       {order && (
         <div className="mt-6 space-y-4 text-left text-sm text-[var(--foreground)]">
           <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
-            <p className="font-medium">Booking Summary</p>
+            <p className="font-medium">Order Summary</p>
             <div className="mt-2 space-y-2 text-[var(--foreground)]/80">
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Amount</span>

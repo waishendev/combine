@@ -186,13 +186,40 @@ export async function checkoutCart(payload?: {
   billing_name?: string;
   billing_phone?: string;
   billing_email?: string;
+  payment_method?: "manual_transfer" | "billplz_fpx" | "billplz_card";
+  bank_account_id?: number;
 }) {
-  const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number }>(`/booking/cart/checkout`, {
+  const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string }>(`/booking/cart/checkout`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
 
-  return unwrapData<{ status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number }>(response);
+  return unwrapData<{ status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string }>(response);
+}
+
+export async function payPublicOrder(orderId: number, payload?: { payment_method?: "billplz_fpx" | "billplz_card" }) {
+  return request<{ data?: { redirect_url?: string } }>(`/public/shop/orders/${orderId}/pay`, {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export type PublicAccountOrder = {
+  id: number;
+  order_no: string;
+  status: string;
+  payment_status: string;
+  payment_method?: string | null;
+  grand_total: number;
+  created_at?: string | null;
+  items?: Array<{ id: number; line_type?: string | null; name?: string | null; line_total?: number | null }>;
+};
+
+export async function getMyOrders() {
+  const response = await request<{ data?: { orders?: PublicAccountOrder[] } | PublicAccountOrder[] }>("/public/shop/orders");
+  const unwrapped = unwrapData<{ orders?: PublicAccountOrder[] } | PublicAccountOrder[]>(response);
+  if (Array.isArray(unwrapped)) return unwrapped;
+  return unwrapped?.orders ?? [];
 }
 
 
@@ -329,6 +356,29 @@ export async function uploadBookingOrderSlip(orderId: number, orderNo: string, f
   }
 
   const response = await request<{ data?: { upload?: { id: number; file_url: string; status?: string | null; created_at?: string | null } } }>(`/public/shop/bookings/${orderId}/upload-slip`, {
+    method: "POST",
+    body: formData,
+  });
+
+  return response.data?.upload ?? null;
+}
+
+export async function lookupPublicOrder(orderNo?: string | null, orderId?: number | null) {
+  const query = new URLSearchParams();
+  if (orderNo) query.set("order_no", orderNo);
+  if (typeof orderId === "number" && Number.isFinite(orderId)) query.set("order_id", String(orderId));
+  const response = await request<{ data?: BookingOrderLookupResponse } | BookingOrderLookupResponse>(`/public/shop/orders/lookup?${query.toString()}`);
+  return unwrapData<BookingOrderLookupResponse>(response);
+}
+
+export async function uploadPublicOrderSlip(orderId: number, file: File, note?: string) {
+  const formData = new FormData();
+  formData.append("slip", file);
+  if (note && note.trim()) {
+    formData.append("note", note.trim());
+  }
+
+  const response = await request<{ data?: { upload?: { id: number; file_url: string; status?: string | null; created_at?: string | null } } }>(`/public/shop/orders/${orderId}/upload-slip`, {
     method: "POST",
     body: formData,
   });
