@@ -32,6 +32,18 @@ class PublicReceiptController extends Controller
         $order = $receiptToken->order;
 
         $mixedItems = $order->items->values();
+        $hasBookingSettlement = $mixedItems->contains(fn ($item) => (string) ($item->line_type ?? '') === 'booking_settlement');
+        $hasBookingDeposit = $mixedItems->contains(fn ($item) => (string) ($item->line_type ?? '') === 'booking_deposit');
+
+        if ($hasBookingSettlement) {
+            $mixedItems = $mixedItems
+                ->filter(fn ($item) => (string) ($item->line_type ?? '') === 'booking_settlement')
+                ->values();
+        } elseif ($hasBookingDeposit) {
+            $mixedItems = $mixedItems
+                ->filter(fn ($item) => (string) ($item->line_type ?? '') === 'booking_deposit')
+                ->values();
+        }
 
         return $this->respond([
             'order_number' => $order->order_number,

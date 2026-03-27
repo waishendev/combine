@@ -7,6 +7,8 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPhoto;
 use App\Models\Ecommerce\CustomerVoucher;
+use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\Voucher;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\Booking\CustomerServicePackageService;
@@ -44,7 +46,46 @@ class AppointmentController extends Controller
     public function show(int $id)
     {
         $booking = Booking::with(['service', 'staff', 'customer'])->findOrFail($id);
-        return $this->respond($booking);
+        $receiptRows = OrderItem::query()
+            ->with('order:id,order_number,payment_method,paid_at,created_at')
+            ->where('booking_id', (int) $booking->id)
+            ->whereIn('line_type', ['booking_deposit', 'booking_settlement'])
+            ->orderBy('id')
+            ->get();
+
+        $orderIds = $receiptRows
+            ->pluck('order.id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $tokensByOrderId = $orderIds->isNotEmpty()
+            ? OrderReceiptToken::query()
+                ->whereIn('order_id', $orderIds->all())
+                ->orderByDesc('id')
+                ->get()
+                ->unique('order_id')
+                ->keyBy('order_id')
+            : collect();
+
+        $payload = $booking->toArray();
+        $payload['receipt_history'] = $receiptRows->map(function (OrderItem $item) use ($tokensByOrderId) {
+            $orderId = (int) ($item->order?->id ?? 0);
+            $token = $orderId > 0 ? ($tokensByOrderId->get($orderId)?->token ?? null) : null;
+
+            return [
+                'order_id' => $orderId,
+                'order_number' => (string) ($item->order?->order_number ?? '-'),
+                'line_type' => (string) ($item->line_type ?? ''),
+                'amount' => (float) ($item->line_total ?? 0),
+                'payment_method' => (string) ($item->order?->payment_method ?? ''),
+                'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
+                'receipt_token' => $token,
+                'receipt_invoice_url' => $token ? '/api/proxy/public/receipt/' . $token . '/invoice' : null,
+            ];
+        })->values()->all();
+
+        return $this->respond($payload);
     }
 
     public function updateStatus(Request $request, int $id)

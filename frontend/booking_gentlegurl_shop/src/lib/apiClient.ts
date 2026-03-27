@@ -254,6 +254,7 @@ export async function getBookingPaymentDetail(bookingId: number | string) {
     booking_status: string;
     payment_status: string;
     amount: number;
+    package_claim_status?: "reserved" | "consumed" | "released" | null;
     payment?: {
       id: number;
       status: string;
@@ -265,6 +266,16 @@ export async function getBookingPaymentDetail(bookingId: number | string) {
       slip_url?: string | null;
       manual_status?: string | null;
     } | null;
+    receipt_history?: Array<{
+      order_id: number;
+      order_number: string;
+      line_type: "booking_deposit" | "booking_settlement" | string;
+      amount: number;
+      payment_method?: string | null;
+      paid_at?: string | null;
+      receipt_token?: string | null;
+      receipt_invoice_url?: string | null;
+    }>;
   } }>(`/booking/${bookingId}/payment-detail?type=booking`);
   return response.data;
 }
