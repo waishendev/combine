@@ -11,6 +11,8 @@ use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingSetting;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\ServicePackage;
+use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\OrderItem;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
 use App\Services\Booking\CustomerServicePackageService;
@@ -194,6 +196,8 @@ class CartController extends Controller
             'billing_name' => ['nullable', 'string', 'max:255'],
             'billing_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
             'billing_email' => ['nullable', 'email', 'max:255'],
+            'payment_method' => ['nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card'],
+            'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
         ]);
 
         if (empty($validated['guest_name']) || empty($validated['guest_phone'])) {
@@ -230,8 +234,37 @@ class CartController extends Controller
             $ownedPackageIds = [];
             $claimStatusesByItem = $this->claimStatusesByCartItem($customer?->id, $activeItems->pluck('id')->all());
             $depositTotal = $this->calculateDepositTotal($activeItems->all(), $claimStatusesByItem);
+            $depositByCartItemId = $this->resolveDepositByCartItem($activeItems->all(), $claimStatusesByItem);
             $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $activeItemIds = $activeItems->pluck('id')->all();
+            $paymentMethod = (string) ($validated['payment_method'] ?? 'manual_transfer');
+            $order = null;
+
+            if ($customer) {
+                $order = Order::query()->create([
+                    'order_number' => $this->generateOrderNumber(),
+                    'customer_id' => (int) $customer->id,
+                    'status' => 'pending',
+                    'payment_status' => 'unpaid',
+                    'payment_method' => $paymentMethod,
+                    'payment_provider' => str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual',
+                    'bank_account_id' => $paymentMethod === 'manual_transfer'
+                        ? (int) ($validated['bank_account_id'] ?? 0) ?: null
+                        : null,
+                    'pickup_or_shipping' => 'pickup',
+                    'subtotal' => round($depositTotal + $packageTotal, 2),
+                    'discount_total' => 0,
+                    'shipping_fee' => 0,
+                    'grand_total' => round($depositTotal + $packageTotal, 2),
+                    'placed_at' => now(),
+                    'shipping_name' => (string) ($validated['guest_name'] ?? ''),
+                    'shipping_phone' => (string) ($validated['guest_phone'] ?? ''),
+                    'billing_same_as_shipping' => $billingSameAsContact,
+                    'billing_name' => $billingSameAsContact ? (string) ($validated['guest_name'] ?? '') : (string) ($validated['billing_name'] ?? ''),
+                    'billing_phone' => $billingSameAsContact ? (string) ($validated['guest_phone'] ?? '') : (string) ($validated['billing_phone'] ?? ''),
+                    'notes' => 'Booking cart checkout',
+                ]);
+            }
 
             foreach ($activeItems as $item) {
                 $service = $item->service;
@@ -263,7 +296,7 @@ class CartController extends Controller
                     'end_at' => $item->end_at,
                     'buffer_min' => (int) $service->buffer_min,
                     'status' => 'HOLD',
-                    'deposit_amount' => $depositTotal,
+                    'deposit_amount' => (float) ($depositByCartItemId[(int) $item->id] ?? 0),
                     'payment_status' => 'UNPAID',
                     'hold_expires_at' => $item->expires_at,
                     'notes' => $customer ? null : ('guest_token:' . (string) ($cart->guest_token ?? '')),
@@ -281,6 +314,26 @@ class CartController extends Controller
 
                 $item->update(['status' => 'converted']);
                 $bookingIds[] = $booking->id;
+
+                $bookingDepositAmount = (float) ($depositByCartItemId[(int) $item->id] ?? 0);
+                if ($order && $bookingDepositAmount > 0) {
+                    OrderItem::query()->create([
+                        'order_id' => (int) $order->id,
+                        'line_type' => 'booking_deposit',
+                        'product_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?? 'Service'),
+                        'display_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?? 'Service'),
+                        'quantity' => 1,
+                        'price_snapshot' => $bookingDepositAmount,
+                        'unit_price_snapshot' => $bookingDepositAmount,
+                        'line_total' => $bookingDepositAmount,
+                        'line_total_snapshot' => $bookingDepositAmount,
+                        'effective_unit_price' => $bookingDepositAmount,
+                        'effective_line_total' => $bookingDepositAmount,
+                        'locked' => true,
+                        'booking_id' => (int) $booking->id,
+                        'booking_service_id' => (int) $item->service_id,
+                    ]);
+                }
             }
 
             if ($customer && $activePackageItems->isNotEmpty()) {
@@ -299,6 +352,26 @@ class CartController extends Controller
                         );
 
                         $ownedPackageIds[] = (int) $owned->id;
+
+                        if ($order) {
+                            $unitPrice = (float) ($packageItem->price_snapshot ?? 0);
+                            OrderItem::query()->create([
+                                'order_id' => (int) $order->id,
+                                'line_type' => 'service_package',
+                                'product_name_snapshot' => (string) ($packageItem->package_name_snapshot ?: $servicePackage->name),
+                                'display_name_snapshot' => (string) ($packageItem->package_name_snapshot ?: $servicePackage->name),
+                                'quantity' => 1,
+                                'price_snapshot' => $unitPrice,
+                                'unit_price_snapshot' => $unitPrice,
+                                'line_total' => $unitPrice,
+                                'line_total_snapshot' => $unitPrice,
+                                'effective_unit_price' => $unitPrice,
+                                'effective_line_total' => $unitPrice,
+                                'locked' => true,
+                                'service_package_id' => (int) $packageItem->service_package_id,
+                                'customer_service_package_id' => (int) $owned->id,
+                            ]);
+                        }
                     }
 
                     $packageItem->update(['status' => 'converted']);
@@ -314,10 +387,18 @@ class CartController extends Controller
                 'deposit_total' => $depositTotal,
                 'package_total' => round($packageTotal, 2),
                 'cart_total' => round($depositTotal + $packageTotal, 2),
+                'order_id' => $order?->id,
+                'order_no' => $order?->order_number,
+                'payment_method' => $order?->payment_method,
                 'payment_expires_at' => $activeItems->min('expires_at')?->toIso8601String(),
                 'payment_instruction' => 'Complete payment before hold expires to confirm booking.',
             ]);
         });
+    }
+
+    private function generateOrderNumber(): string
+    {
+        return 'ORD' . now()->format('YmdHis') . rand(100, 999);
     }
 
     private function resolveActiveCart(Request $request, bool $createIfMissing = true): ?BookingCart
@@ -529,6 +610,31 @@ class CartController extends Controller
         }
 
         return $payableItems->count() > 0 ? (float) $settings->deposit_base_amount_if_only_standard : 0.0;
+    }
+
+    private function resolveDepositByCartItem(array $items, array $claimStatusesByItem = []): array
+    {
+        $settings = $this->getSettings();
+        $payableItems = collect($items)->filter(function (BookingCartItem $item) use ($claimStatusesByItem) {
+            return ! in_array($claimStatusesByItem[(int) $item->id] ?? null, ['reserved', 'consumed'], true);
+        })->values();
+
+        $result = [];
+        $premiumItems = $payableItems->where('service_type', 'premium')->values();
+        if ($premiumItems->isNotEmpty()) {
+            foreach ($premiumItems as $item) {
+                $result[(int) $item->id] = (float) $settings->deposit_amount_per_premium;
+            }
+
+            return $result;
+        }
+
+        $firstStandard = $payableItems->first();
+        if ($firstStandard) {
+            $result[(int) $firstStandard->id] = (float) $settings->deposit_base_amount_if_only_standard;
+        }
+
+        return $result;
     }
 
     private function claimStatusesByCartItem(?int $customerId, array $cartItemIds): array
