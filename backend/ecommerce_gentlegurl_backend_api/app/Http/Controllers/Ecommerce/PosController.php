@@ -322,8 +322,8 @@ class PosController extends Controller
             OrderItem::query()->create([
                 'order_id' => (int) $order->id,
                 'line_type' => 'booking_settlement',
-                'product_name_snapshot' => 'Appointment Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
-                'display_name_snapshot' => 'Appointment Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                'product_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                'display_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
                 'quantity' => 1,
                 'price_snapshot' => $amount,
                 'unit_price_snapshot' => $amount,
@@ -2303,6 +2303,7 @@ class PosController extends Controller
     protected function resolveAppointmentSnapshot(Booking $booking): array
     {
         $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $receiptHistory = $this->resolveAppointmentPaymentHistory((int) $booking->id);
 
         return [
             'id' => (int) $booking->id,
@@ -2324,6 +2325,7 @@ class PosController extends Controller
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
             'package_status' => $summary['package_status'],
+            'receipts' => $receiptHistory,
         ];
     }
 
@@ -2339,10 +2341,31 @@ class PosController extends Controller
                 'order_id' => (int) ($item->order?->id ?? 0),
                 'order_number' => (string) ($item->order?->order_number ?? '-'),
                 'line_type' => (string) ($item->line_type ?? ''),
+                'stage_label' => match ((string) ($item->line_type ?? '')) {
+                    'booking_deposit' => 'Booking Deposit Receipt',
+                    'booking_settlement' => 'Final Settlement Receipt',
+                    default => 'Receipt',
+                },
                 'amount' => (float) ($item->line_total ?? 0),
                 'payment_method' => (string) ($item->order?->payment_method ?? ''),
                 'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
+                'receipt_public_url' => $item->order ? $this->buildReceiptUrlForOrder((int) $item->order->id) : null,
             ])->values()->all();
+    }
+
+    protected function buildReceiptUrlForOrder(int $orderId): ?string
+    {
+        $receiptToken = OrderReceiptToken::query()
+            ->where('order_id', $orderId)
+            ->latest('id')
+            ->first();
+
+        if (! $receiptToken) {
+            return null;
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+        return $frontendUrl . '/api/proxy/public/receipt/' . $receiptToken->token . '/invoice';
     }
 
     protected function resolveAppointmentFinancialSummary(Booking $booking): array

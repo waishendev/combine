@@ -7,7 +7,9 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\BookingPayment;
+use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\OrderServiceItem;
 use Illuminate\Http\Request;
 
 class MyBookingController extends Controller
@@ -52,6 +54,8 @@ class MyBookingController extends Controller
                 ->where('booking_id', (int) $booking->id)
                 ->latest('id')
                 ->first();
+
+            $receiptRows = $this->resolveBookingReceipts((int) $booking->id);
 
             return [
                 'id' => (int) $booking->id,
@@ -115,9 +119,78 @@ class MyBookingController extends Controller
                     'order_number' => (string) $depositOrderItem->order->order_number,
                     'deposit_order_item_id' => (int) $depositOrderItem->id,
                 ] : null,
+                'receipts' => $receiptRows,
             ];
         })->values();
 
         return $this->respond($payload);
+    }
+
+    private function resolveBookingReceipts(int $bookingId): array
+    {
+        $depositAndSettlementItems = OrderItem::query()
+            ->with('order:id,order_number,payment_method,paid_at,created_at')
+            ->where('booking_id', $bookingId)
+            ->whereIn('line_type', ['booking_deposit', 'booking_settlement'])
+            ->orderBy('id')
+            ->get();
+
+        $serviceOrderRows = OrderServiceItem::query()
+            ->with('order:id,order_number,payment_method,paid_at,created_at,grand_total')
+            ->where('booking_id', $bookingId)
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (OrderServiceItem $item) => (float) ($item->order?->grand_total ?? 0) <= 0.0001)
+            ->map(function (OrderServiceItem $item) {
+                return [
+                    'order_id' => (int) ($item->order?->id ?? 0),
+                    'order_number' => (string) ($item->order?->order_number ?? '-'),
+                    'line_type' => 'package_covered_booking',
+                    'stage_label' => 'Package-Covered Booking Receipt',
+                    'amount' => 0.0,
+                    'payment_method' => (string) ($item->order?->payment_method ?? ''),
+                    'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
+                    'receipt_public_url' => $item->order ? $this->resolveReceiptUrl((int) $item->order->id) : null,
+                ];
+            });
+
+        $orderItemRows = $depositAndSettlementItems->map(function (OrderItem $item) {
+            return [
+                'order_id' => (int) ($item->order?->id ?? 0),
+                'order_number' => (string) ($item->order?->order_number ?? '-'),
+                'line_type' => (string) ($item->line_type ?? ''),
+                'stage_label' => match ((string) ($item->line_type ?? '')) {
+                    'booking_deposit' => 'Booking Deposit Receipt',
+                    'booking_settlement' => 'Final Settlement Receipt',
+                    default => 'Receipt',
+                },
+                'amount' => (float) ($item->line_total ?? 0),
+                'payment_method' => (string) ($item->order?->payment_method ?? ''),
+                'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
+                'receipt_public_url' => $item->order ? $this->resolveReceiptUrl((int) $item->order->id) : null,
+            ];
+        });
+
+        return $orderItemRows
+            ->concat($serviceOrderRows)
+            ->unique(fn (array $row) => ($row['order_id'] ?? 0) . ':' . ($row['line_type'] ?? ''))
+            ->sortBy('paid_at')
+            ->values()
+            ->all();
+    }
+
+    private function resolveReceiptUrl(int $orderId): ?string
+    {
+        $token = OrderReceiptToken::query()
+            ->where('order_id', $orderId)
+            ->latest('id')
+            ->first();
+
+        if (! $token) {
+            return null;
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+        return $frontendUrl . '/api/proxy/public/receipt/' . $token->token . '/invoice';
     }
 }

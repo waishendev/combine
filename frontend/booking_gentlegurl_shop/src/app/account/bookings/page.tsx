@@ -138,6 +138,31 @@ export default function MyBookingsPage() {
               </p>
               <p className="mt-1 text-sm">Status: {booking.status}</p>
               <p className="mt-1 text-sm">Rescheduled: {state.currentCount} / {policy.reschedule.max_changes}</p>
+              {(booking.receipts?.length ?? 0) > 0 ? (
+                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
+                  <p className="text-sm font-semibold">Receipts</p>
+                  <div className="mt-2 space-y-2">
+                    {booking.receipts?.map((receipt, index) => (
+                      <div key={`${receipt.order_id}-${receipt.line_type}-${index}`} className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
+                        <div>
+                          <p className="font-medium text-[var(--foreground)]">{receipt.stage_label || "Receipt"}</p>
+                          <p>Order: {receipt.order_number} · Amount: RM {Number(receipt.amount ?? 0).toFixed(2)}</p>
+                        </div>
+                        {receipt.receipt_public_url ? (
+                          <a
+                            href={receipt.receipt_public_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border px-3 py-1 text-[11px] font-medium text-[var(--foreground)]"
+                          >
+                            Open Receipt
+                          </a>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {state.hasPendingCancellation ? (
                 <span className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">

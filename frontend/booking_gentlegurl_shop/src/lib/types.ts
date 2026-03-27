@@ -97,6 +97,16 @@ export type BookingRecord = {
     order_number: string;
     deposit_order_item_id: number;
   } | null;
+  receipts?: Array<{
+    order_id: number;
+    order_number: string;
+    line_type: string;
+    stage_label: string;
+    amount: number;
+    payment_method?: string | null;
+    paid_at?: string | null;
+    receipt_public_url?: string | null;
+  }>;
 };
 
 export type AuthUser = {
