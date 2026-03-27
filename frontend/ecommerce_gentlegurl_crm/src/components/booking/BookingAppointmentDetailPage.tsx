@@ -20,6 +20,16 @@ type BookingDetail = {
   payment_status: string
   notes: string | null
   created_at: string
+  receipt_history?: Array<{
+    order_id: number
+    order_number: string
+    line_type: 'booking_deposit' | 'booking_settlement' | string
+    amount: number
+    payment_method?: string | null
+    paid_at?: string | null
+    receipt_token?: string | null
+    receipt_invoice_url?: string | null
+  }>
 }
 
 type Props = {
@@ -225,6 +235,35 @@ export default function BookingAppointmentDetailPage({ bookingId, permissions }:
           </dl>
         )}
       </div>
+
+      {!loading && data && (data.receipt_history?.length ?? 0) > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold">Receipts</h3>
+          <div className="mt-3 space-y-3 text-sm">
+            {data.receipt_history?.map((receipt) => (
+              <div key={`${receipt.order_id}-${receipt.line_type}`} className="rounded-md border border-slate-200 p-3">
+                <p className="font-medium">
+                  {receipt.order_number} · {receipt.line_type === 'booking_settlement' ? 'Remaining Balance' : 'Booking Deposit'}
+                </p>
+                <p>Amount: RM {Number(receipt.amount ?? 0).toFixed(2)}</p>
+                <p>Paid At: {formatDateTime(receipt.paid_at)}</p>
+                <div className="mt-2 flex gap-2">
+                  {receipt.receipt_token ? (
+                    <a href={`/receipt/${receipt.receipt_token}`} target="_blank" rel="noreferrer" className="rounded-md border border-slate-300 px-3 py-1 text-xs">
+                      Open Page
+                    </a>
+                  ) : null}
+                  {receipt.receipt_invoice_url ? (
+                    <a href={receipt.receipt_invoice_url} target="_blank" rel="noreferrer" className="rounded-md border border-slate-300 px-3 py-1 text-xs">
+                      PDF
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {statusOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

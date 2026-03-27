@@ -147,6 +147,14 @@ export default function MyBookingsPage() {
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <button onClick={() => router.push(`/booking/payment-result?booking_id=${booking.id}`)} className="rounded-full border px-4 py-2 text-sm">View</button>
+                {(booking.receipt_history?.length ?? 0) > 0 ? (
+                  <button
+                    onClick={() => router.push(`/booking/payment-result?booking_id=${booking.id}`)}
+                    className="rounded-full border px-4 py-2 text-sm"
+                  >
+                    Receipts ({booking.receipt_history?.length ?? 0})
+                  </button>
+                ) : null}
 
                 {booking.payment_status !== "PAID" ? (
                   <button
@@ -205,6 +213,43 @@ export default function MyBookingsPage() {
                   </button>
                 ) : null}
               </div>
+
+              {(booking.receipt_history?.length ?? 0) > 0 ? (
+                <div className="mt-3 rounded-lg border border-[var(--card-border)] p-3 text-xs">
+                  <p className="font-semibold">Receipt History</p>
+                  <div className="mt-2 space-y-2">
+                    {booking.receipt_history?.map((receipt) => (
+                      <div key={`${receipt.order_id}-${receipt.line_type}`} className="flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          {receipt.order_number} · {receipt.line_type === "booking_settlement" ? "Remaining Balance" : "Booking Deposit"} · RM {Number(receipt.amount ?? 0).toFixed(2)}
+                        </span>
+                        <div className="flex gap-2">
+                          {receipt.receipt_token ? (
+                            <a
+                              href={`/receipt/${receipt.receipt_token}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-full border px-3 py-1"
+                            >
+                              Open
+                            </a>
+                          ) : null}
+                          {receipt.receipt_invoice_url ? (
+                            <a
+                              href={receipt.receipt_invoice_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-full border px-3 py-1"
+                            >
+                              PDF
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}

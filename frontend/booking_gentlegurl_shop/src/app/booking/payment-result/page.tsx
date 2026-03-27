@@ -11,10 +11,11 @@ export default function BookingPaymentResultPage() {
   const [data, setData] = useState<{
     booking_id: number;
     booking_code?: string | null;
-    booking_status: string;
-    payment_status: string;
-    amount: number;
-    payment?: {
+      booking_status: string;
+      payment_status: string;
+      amount: number;
+      package_claim_status?: "reserved" | "consumed" | "released" | null;
+      payment?: {
       id: number;
       status: string;
       provider: string;
@@ -22,9 +23,19 @@ export default function BookingPaymentResultPage() {
       payment_url?: string | null;
       manual_bank_account?: { label?: string | null; bank_name: string; account_name: string; account_number: string; qr_image_url?: string | null; instructions?: string | null; } | null;
       slip_url?: string | null;
-      manual_status?: string | null;
-    } | null;
-  } | null>(null);
+        manual_status?: string | null;
+      } | null;
+      receipt_history?: Array<{
+        order_id: number;
+        order_number: string;
+        line_type: "booking_deposit" | "booking_settlement" | string;
+        amount: number;
+        payment_method?: string | null;
+        paid_at?: string | null;
+        receipt_token?: string | null;
+        receipt_invoice_url?: string | null;
+      }>;
+    } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -64,6 +75,9 @@ export default function BookingPaymentResultPage() {
           <p><strong>Booking Status:</strong> {data.booking_status}</p>
           <p><strong>Payment Status:</strong> {data.payment_status}</p>
           <p><strong>Payment Method:</strong> {payment?.payment_method || "-"}</p>
+          {data.package_claim_status ? (
+            <p><strong>Package Claim:</strong> {data.package_claim_status.toUpperCase()} (covered by package)</p>
+          ) : null}
 
           {isManual && payment?.manual_bank_account ? (
             <div className="mt-4 rounded-lg border p-3 text-sm space-y-1">
@@ -114,6 +128,45 @@ export default function BookingPaymentResultPage() {
               Pay Now
             </button>
           ) : null}
+
+          <div className="mt-4 rounded-lg border p-3 text-sm space-y-2">
+            <p className="font-semibold">Receipts</p>
+            {(data.receipt_history?.length ?? 0) === 0 ? (
+              <p className="text-[var(--text-muted)]">No receipt available yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {data.receipt_history?.map((receipt) => (
+                  <div key={`${receipt.order_id}-${receipt.line_type}`} className="rounded-md border border-[var(--card-border)] p-3">
+                    <p><strong>{receipt.order_number}</strong> · {receipt.line_type === "booking_settlement" ? "Remaining Balance" : "Booking Deposit"}</p>
+                    <p>Amount: RM {Number(receipt.amount ?? 0).toFixed(2)}</p>
+                    <p>Method: {receipt.payment_method || "-"}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {receipt.receipt_token ? (
+                        <a
+                          href={`/receipt/${receipt.receipt_token}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-full border px-3 py-1 text-xs"
+                        >
+                          Open Page
+                        </a>
+                      ) : null}
+                      {receipt.receipt_invoice_url ? (
+                        <a
+                          href={receipt.receipt_invoice_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-full border px-3 py-1 text-xs"
+                        >
+                          Download PDF
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       ) : null}
 
