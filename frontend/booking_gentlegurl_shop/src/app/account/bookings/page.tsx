@@ -171,14 +171,37 @@ export default function MyBookingsPage() {
               ) : null}
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <button onClick={() => router.push(`/booking/payment-result?booking_id=${booking.id}`)} className="rounded-full border px-4 py-2 text-sm">View</button>
+                <button
+                  onClick={() => {
+                    const nextParams = new URLSearchParams({
+                      order_id: String(booking.id),
+                      payment_method: String(booking.latest_payment?.payment_method || "manual_transfer"),
+                      provider: String(booking.latest_payment?.provider || "manual"),
+                    });
+                    if (booking.booking_code) {
+                      nextParams.set("order_no", booking.booking_code);
+                    }
+                    router.push(`/payment-result?${nextParams.toString()}`);
+                  }}
+                  className="rounded-full border px-4 py-2 text-sm"
+                >
+                  View
+                </button>
 
                 {booking.payment_status !== "PAID" ? (
                   <button
                     onClick={async () => {
                       const method = booking.latest_payment?.payment_method || "manual_transfer";
                       if (method === "manual_transfer") {
-                        router.push(`/booking/payment-result?booking_id=${booking.id}`);
+                        const nextParams = new URLSearchParams({
+                          order_id: String(booking.id),
+                          payment_method: method,
+                          provider: String(booking.latest_payment?.provider || "manual"),
+                        });
+                        if (booking.booking_code) {
+                          nextParams.set("order_no", booking.booking_code);
+                        }
+                        router.push(`/payment-result?${nextParams.toString()}`);
                         return;
                       }
 
@@ -188,7 +211,15 @@ export default function MyBookingsPage() {
                         if (redirectUrl) {
                           window.location.href = redirectUrl;
                         } else {
-                          router.push(`/booking/payment-result?booking_id=${booking.id}`);
+                          const nextParams = new URLSearchParams({
+                            order_id: String(resp?.data?.order_id ?? booking.id),
+                            payment_method: String(resp?.data?.payment_method ?? method),
+                            provider: String(resp?.data?.provider ?? booking.latest_payment?.provider ?? "billplz"),
+                          });
+                          if (resp?.data?.order_no || booking.booking_code) {
+                            nextParams.set("order_no", String(resp?.data?.order_no || booking.booking_code));
+                          }
+                          router.push(`/payment-result?${nextParams.toString()}`);
                         }
                       } catch (err) {
                         setError(err instanceof Error ? err.message : "Unable to continue payment.");

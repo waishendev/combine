@@ -32,7 +32,16 @@ export default function CheckoutPage() {
         window.location.href = response.data.payment_url;
         return;
       }
-      router.push(`/booking/payment-result?booking_id=${bookingId}`);
+      const payload = response?.data;
+      const nextParams = new URLSearchParams({
+        order_id: String(payload?.order_id ?? bookingId),
+        payment_method: String(payload?.payment_method ?? "manual_transfer"),
+        provider: String(payload?.provider ?? "manual"),
+      });
+      if (payload?.order_no) {
+        nextParams.set("order_no", payload.order_no);
+      }
+      router.push(`/payment-result?${nextParams.toString()}`);
     } finally {
       setPaying(false);
     }

@@ -242,7 +242,16 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       }
 
       onClose();
-      router.push(`/booking/payment-result?booking_id=${bookingId}`);
+      const orderNo = paymentData?.order_no;
+      const nextParams = new URLSearchParams({
+        order_id: String(paymentData?.order_id ?? bookingId),
+        payment_method: String(paymentData?.payment_method ?? selectedPaymentMethod),
+        provider: String(paymentData?.provider ?? "manual"),
+      });
+      if (orderNo) {
+        nextParams.set("order_no", orderNo);
+      }
+      router.push(`/payment-result?${nextParams.toString()}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Checkout failed. Please review your cart and try again.");
     }

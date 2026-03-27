@@ -69,11 +69,19 @@ class PaymentController extends Controller
             ]);
 
             return $this->respond([
+                'order_id' => $booking->id,
+                'order_no' => $booking->booking_code,
                 'booking_id' => $booking->id,
                 'payment_id' => $payment->id,
                 'status' => $payment->status,
                 'provider' => $payment->provider,
                 'payment_method' => $paymentMethod,
+                'payment_result_url' => '/payment-result?' . http_build_query([
+                    'order_id' => $booking->id,
+                    'order_no' => $booking->booking_code,
+                    'payment_method' => $paymentMethod,
+                    'provider' => 'manual',
+                ]),
                 'manual_bank_account' => $payment->raw_response['bank_account'] ?? null,
             ]);
         }
@@ -105,13 +113,109 @@ class PaymentController extends Controller
         ]);
 
         return $this->respond([
+            'order_id' => $booking->id,
+            'order_no' => $booking->booking_code,
             'booking_id' => $booking->id,
             'payment_id' => $payment->id,
             'status' => $payment->status,
             'provider' => $payment->provider,
             'payment_method' => $paymentMethod,
+            'payment_result_url' => '/payment-result?' . http_build_query([
+                'order_id' => $booking->id,
+                'order_no' => $booking->booking_code,
+                'payment_method' => $paymentMethod,
+                'provider' => 'billplz',
+            ]),
             'payment_url' => $payment->raw_response['payment_url'] ?? null,
         ]);
+    }
+
+    public function publicLookup(Request $request)
+    {
+        $validated = $request->validate([
+            'order_no' => ['required', 'string'],
+            'order_id' => ['nullable', 'integer'],
+        ]);
+
+        $query = Booking::query()->where('booking_code', $validated['order_no']);
+
+        if (! empty($validated['order_id'])) {
+            $query->where('id', (int) $validated['order_id']);
+        }
+
+        $booking = $query->first();
+
+        if (! $booking) {
+            return $this->respondError('Booking not found.', 404);
+        }
+
+        $payment = BookingPayment::query()
+            ->where('booking_id', $booking->id)
+            ->latest('id')
+            ->first();
+
+        return $this->respond([
+            'order_id' => (int) $booking->id,
+            'order_no' => (string) $booking->booking_code,
+            'grand_total' => (float) $booking->deposit_amount,
+            'payment_method' => (string) data_get($payment?->raw_response, 'payment_method', 'manual_transfer'),
+            'payment_provider' => strtolower((string) ($payment?->provider ?? 'manual')),
+            'payment_reference' => (string) ($payment?->ref ?? ''),
+            'payment_url' => data_get($payment?->raw_response, 'payment_url'),
+            'payment_status' => strtolower((string) ($booking->payment_status ?? 'UNPAID')),
+            'status' => strtolower((string) ($booking->status ?? 'HOLD')),
+            'bank_account' => data_get($payment?->raw_response, 'bank_account'),
+            'uploads' => array_values(array_filter([
+                data_get($payment?->raw_response, 'manual_slip_url') ? [
+                    'id' => (int) ($payment?->id ?? 0),
+                    'file_url' => (string) data_get($payment?->raw_response, 'manual_slip_url'),
+                    'note' => null,
+                    'status' => (string) data_get($payment?->raw_response, 'payment_status', 'pending_manual_review'),
+                    'created_at' => optional($payment?->updated_at)->toDateTimeString(),
+                ] : null,
+            ])),
+        ]);
+    }
+
+    public function publicUploadSlip(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'order_no' => ['required', 'string'],
+            'slip' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf,webp', 'max:5120'],
+        ]);
+
+        $booking = Booking::query()
+            ->where('id', $id)
+            ->where('booking_code', $validated['order_no'])
+            ->first();
+
+        if (! $booking) {
+            return $this->respondError('Booking not found.', 404);
+        }
+
+        $payment = BookingPayment::query()->where('booking_id', $booking->id)->latest('id')->first();
+        if (! $payment) {
+            return $this->respondError('Payment record not found.', 404);
+        }
+
+        $path = $validated['slip']->store('booking-payment-slips', 'public');
+
+        $raw = $payment->raw_response ?? [];
+        $raw['manual_slip_path'] = $path;
+        $raw['manual_slip_url'] = Storage::disk('public')->url($path);
+        $raw['payment_status'] = 'slip_uploaded_pending_review';
+        $payment->raw_response = $raw;
+        $payment->save();
+
+        return $this->respond([
+            'upload' => [
+                'id' => (int) $payment->id,
+                'file_url' => (string) $raw['manual_slip_url'],
+                'note' => null,
+                'status' => (string) $raw['payment_status'],
+                'created_at' => optional($payment->updated_at)->toDateTimeString(),
+            ],
+        ], 'Payment slip uploaded.');
     }
 
     public function detail(Request $request, int $id)
@@ -249,8 +353,9 @@ class PaymentController extends Controller
         }
 
         $redirectUrl = $frontendUrl
-            ? $frontendUrl . '/booking/payment-result?' . http_build_query([
-                'booking_id' => $booking->id,
+            ? $frontendUrl . '/payment-result?' . http_build_query([
+                'order_id' => $booking->id,
+                'order_no' => $booking->booking_code,
                 'provider' => 'billplz',
                 'payment_method' => $paymentMethod,
             ])

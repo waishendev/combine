@@ -70,6 +70,7 @@ export type BookingCartPackageItem = {
 
 export type BookingRecord = {
   id: number;
+  booking_code?: string | null;
   status: string;
   service_name: string;
   staff_name?: string | null;
