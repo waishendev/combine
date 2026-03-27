@@ -432,11 +432,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 10)
   })
   const [appointmentCustomerFilter, setAppointmentCustomerFilter] = useState('')
-  const [appointmentCustomerSearch, setAppointmentCustomerSearch] = useState('')
   const [appointmentCustomerOptions, setAppointmentCustomerOptions] = useState<Array<{ id: number; name: string; phone?: string | null; email?: string | null }>>([])
   const [appointmentCustomerLoading, setAppointmentCustomerLoading] = useState(false)
   const [appointmentStaffFilter, setAppointmentStaffFilter] = useState('')
-  const [appointmentStaffSearch, setAppointmentStaffSearch] = useState('')
   const [appointmentStaffOptions, setAppointmentStaffOptions] = useState<StaffOption[]>([])
   const [appointmentStaffLoading, setAppointmentStaffLoading] = useState(false)
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('')
@@ -2067,19 +2065,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   useEffect(() => {
     if (catalogTab !== 'appointments') return
-    const timer = window.setTimeout(() => {
-      void fetchAppointmentCustomers(appointmentCustomerSearch)
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [appointmentCustomerSearch, catalogTab, fetchAppointmentCustomers])
-
-  useEffect(() => {
-    if (catalogTab !== 'appointments') return
-    const timer = window.setTimeout(() => {
-      void fetchAppointmentStaffs(appointmentStaffSearch)
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [appointmentStaffSearch, catalogTab, fetchAppointmentStaffs])
+    void fetchAppointmentCustomers('')
+    void fetchAppointmentStaffs('')
+  }, [catalogTab, fetchAppointmentCustomers, fetchAppointmentStaffs])
 
 
   const filteredServices = useMemo(() => {
@@ -3457,46 +3445,30 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     onChange={(e) => setAppointmentDateFilter(e.target.value)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                   />
-                  <div className="space-y-1">
-                    <input
-                      value={appointmentCustomerSearch}
-                      onChange={(e) => setAppointmentCustomerSearch(e.target.value)}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-xs focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="Search customer by name"
-                    />
-                    <select
-                      value={appointmentCustomerFilter}
-                      onChange={(e) => setAppointmentCustomerFilter(e.target.value)}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    >
-                      <option value="">{appointmentCustomerLoading ? 'Loading customers...' : 'All Customers'}</option>
-                      {appointmentCustomerOptions.map((customer) => (
-                        <option key={`appointment-customer-${customer.id}`} value={String(customer.id)}>
-                          {customer.name}{customer.phone ? ` · ${customer.phone}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <input
-                      value={appointmentStaffSearch}
-                      onChange={(e) => setAppointmentStaffSearch(e.target.value)}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-xs focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      placeholder="Search staff by name / code"
-                    />
-                    <select
-                      value={appointmentStaffFilter}
-                      onChange={(e) => setAppointmentStaffFilter(e.target.value)}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    >
-                      <option value="">{appointmentStaffLoading ? 'Loading staffs...' : 'All Staffs'}</option>
-                      {appointmentStaffOptions.map((staff) => (
-                        <option key={`appointment-staff-${staff.id}`} value={String(staff.id)}>
-                          {staff.name}{staff.code ? ` · ${staff.code}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <select
+                    value={appointmentCustomerFilter}
+                    onChange={(e) => setAppointmentCustomerFilter(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  >
+                    <option value="">{appointmentCustomerLoading ? 'Loading customers...' : 'All Customers'}</option>
+                    {appointmentCustomerOptions.map((customer) => (
+                      <option key={`appointment-customer-${customer.id}`} value={String(customer.id)}>
+                        {customer.name}{customer.phone ? ` · ${customer.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={appointmentStaffFilter}
+                    onChange={(e) => setAppointmentStaffFilter(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  >
+                    <option value="">{appointmentStaffLoading ? 'Loading staffs...' : 'All Staffs'}</option>
+                    {appointmentStaffOptions.map((staff) => (
+                      <option key={`appointment-staff-${staff.id}`} value={String(staff.id)}>
+                        {staff.name}{staff.code ? ` · ${staff.code}` : ''}
+                      </option>
+                    ))}
+                  </select>
                   <select
                     value={appointmentStatusFilter}
                     onChange={(e) => setAppointmentStatusFilter(e.target.value)}
