@@ -65,6 +65,10 @@ class PublicReturnController extends Controller
             return $this->respond(null, __('You are not allowed to access this order.'), false, 403);
         }
 
+        if (! is_null($order->created_by_user_id)) {
+            return $this->respond(null, __('You are not allowed to access this order.'), false, 403);
+        }
+
         if ($order->status !== 'completed') {
             return $this->respond(null, __('Only completed orders can be returned.'), false, 422);
         }
@@ -216,6 +220,12 @@ class PublicReturnController extends Controller
         $query = ReturnRequest::with(['order', 'items.orderItem.product'])
             ->where('customer_id', $customer->id);
 
+        // Only show returns for eCommerce shop orders.
+        // POS orders are created by staff users and have created_by_user_id set.
+        $query->whereHas('order', function ($orderQuery) {
+            $orderQuery->whereNull('created_by_user_id');
+        });
+
         if (!empty($validated['status'])) {
             $query->where('status', $validated['status']);
         }
@@ -284,6 +294,9 @@ class PublicReturnController extends Controller
         }
 
         $returnRequest->load(['items.orderItem.product.images', 'order']);
+        if (! is_null($returnRequest->order?->created_by_user_id)) {
+            return $this->respond(null, __('You are not allowed to access this return request.'), false, 403);
+        }
         $refundProofUrl = $returnRequest->refund_proof_path
             ? Storage::disk('public')->url($returnRequest->refund_proof_path)
             : null;
@@ -361,6 +374,11 @@ class PublicReturnController extends Controller
         ]);
 
         if ($returnRequest->customer_id !== (int) $customer->id) {
+            return $this->respond(null, __('You are not allowed to access this return request.'), false, 403);
+        }
+
+        $returnRequest->loadMissing('order:id,created_by_user_id');
+        if (! is_null($returnRequest->order?->created_by_user_id)) {
             return $this->respond(null, __('You are not allowed to access this return request.'), false, 403);
         }
 
