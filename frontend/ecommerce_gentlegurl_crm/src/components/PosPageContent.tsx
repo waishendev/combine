@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import BookingStatusBadge from './booking/BookingStatusBadge'
 
 type CartItem = {
   id: number
@@ -483,6 +484,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [bookingSlotValue, setBookingSlotValue] = useState('')
   const [bookingNotes, setBookingNotes] = useState('')
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
+  const [bookingModalError, setBookingModalError] = useState<string | null>(null)
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
   const [serviceRedeemingIds, setServiceRedeemingIds] = useState<Record<number, boolean>>({})
 
@@ -1726,25 +1728,27 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setBookingSlots([])
     setBookingSlotValue('')
     setBookingNotes('')
+    setBookingModalError(null)
     setBookingModalOpen(true)
   }, [currentUser.staff_id])
 
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
+    setBookingModalError(null)
     if (!selectedMember?.id) {
-      showMsg('Please assign member.', 'error')
+      setBookingModalError('Please assign member.')
       return
     }
     if (!bookingAssignedStaffId) {
-      showMsg('Please select assigned staff.', 'error')
+      setBookingModalError('Please select assigned staff.')
       return
     }
     if (!bookingDate) {
-      showMsg('Please select appointment date.', 'error')
+      setBookingModalError('Please select appointment date.')
       return
     }
     if (!bookingSlotValue) {
-      showMsg('Please select appointment slot/time.', 'error')
+      setBookingModalError('Please select appointment slot/time.')
       return
     }
 
@@ -1765,7 +1769,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     const json = await res.json().catch(() => null)
 
     if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to add service to cart.', 'error')
+      setBookingModalError(json?.message ?? 'Unable to add service to cart.')
       setBookingSubmitting(false)
       return
     }
@@ -1773,6 +1777,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setCart((json?.data?.cart ?? null) as Cart | null)
     showMsg('Service added to cart. Continue with checkout to collect payment.', 'success')
     setBookingModalOpen(false)
+    setBookingModalError(null)
     setBookingSubmitting(false)
   }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingServiceDraft, bookingSlotValue, selectedMember?.id, showMsg])
 
@@ -3099,6 +3104,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     return appointmentIsFullyPackageCovered && wasCollected ? amount : 0
   }, [appointmentDetail?.deposit_previously_collected, appointmentDetail?.deposit_previously_collected_amount, appointmentIsFullyPackageCovered])
 
+  const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
+  const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
+  const appointmentPackageApplied = ['reserved', 'consumed'].includes(
+    String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
+  )
+  const appointmentCheckoutCompleted = appointmentSettlementPaid > 0
+  const canMarkAppointmentCompleted = !appointmentActionLoading && (
+    appointmentDueAmountNow <= 0 || appointmentPackageApplied
+  )
+
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
       <div className="flex items-center justify-between">
@@ -3366,7 +3381,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-sm font-semibold text-gray-900">{service.name}</p>
                             <p className="text-xs text-gray-500">Type: {(service.service_type ?? 'standard').toUpperCase()}</p>
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-col items-end gap-2">
                             <span className="text-sm font-bold text-gray-900">RM {displayPrice.toFixed(2)}</span>
                             <button
                               type="button"
@@ -3415,7 +3430,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             </div>
                           ) : null}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-col items-end gap-2">
                           <span className="text-sm font-bold text-gray-900">RM {Number(servicePackage.selling_price ?? 0).toFixed(2)}</span>
                           <button
                             type="button"
@@ -3495,8 +3510,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-xs text-gray-600">{appt.customer_name} • {(appt.service_names ?? []).join(', ')}</p>
                             <p className="text-xs text-gray-500">{formatDateTimeRange(appt.appointment_start_at, appt.appointment_end_at)}</p>
                             <p className="text-xs text-gray-500">Staff: {appt.staff_name ?? '-'}</p>
-                            <p className="text-xs text-gray-500">Status: {appt.status}</p>
-                            <p className="text-xs text-gray-500">
+                            <div className="flex items-center gap-2 pt-0.5 text-xs text-gray-500">
+                              <span>Status:</span>
+                              <BookingStatusBadge status={appt.status} label={appt.status} showDot={false} />
+                            </div>
+                            {/* <p className="text-xs text-gray-500">
                               Deposit Contribution: RM {((Number(appt.package_offset ?? 0) >= Number(appt.service_total ?? 0) - 0.0001) ? 0 : Number(appt.deposit_contribution ?? appt.deposit_paid ?? 0)).toFixed(2)}
                               {' • '}
                               Linked Booking Deposit: RM {Number(appt.linked_booking_deposit_total ?? appt.linked_booking_deposit ?? 0).toFixed(2)}
@@ -3504,7 +3522,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                               Package: RM {Number(appt.package_offset ?? 0).toFixed(2)}
                               {' • '}
                               Due: RM {Number(appt.amount_due_now ?? appt.balance_due ?? 0).toFixed(2)}
-                            </p>
+                            </p> */}
                           </div>
                           <button
                             type="button"
@@ -3542,7 +3560,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       <p><span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}</p>
                       <p><span className="font-semibold">Staff:</span> {appointmentDetail.staff?.name ?? '-'}</p>
                       <p><span className="font-semibold">Date/Time:</span> {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}</p>
-                      <p><span className="font-semibold">Status:</span> {appointmentDetail.status}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">Status:</span>
+                        <BookingStatusBadge
+                          status={appointmentDetail.status}
+                          label={appointmentDetail.status}
+                          showDot={false}
+                        />
+                      </div>
                     </div>
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
                       <p>Service Total: <span className="font-semibold">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</span></p>
@@ -3576,9 +3601,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
-                            disabled={appointmentActionLoading || Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0) <= 0}
+                            disabled={appointmentActionLoading || appointmentDueAmountNow <= 0}
                             onClick={() => {
-                              const due = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
+                              const due = appointmentDueAmountNow
                               setAppointmentPaymentMethod('cash')
                               setAppointmentCashReceived(due > 0 ? due.toFixed(2) : '')
                               setAppointmentCheckoutConfirmationOpen(true)
@@ -3589,16 +3614,35 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           </button>
                           <button
                             type="button"
+                            disabled={appointmentActionLoading || appointmentPackageApplied || appointmentCheckoutCompleted}
+                            onClick={() => void applyAppointmentPackage()}
+                            title={appointmentCheckoutCompleted ? 'Checkout already completed' : undefined}
+                            className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                          >
+                            {appointmentPackageApplied ? 'Package Applied' : 'Apply Package'}
+                          </button>
+
+                          <button
+                            type="button"
                             disabled={appointmentActionLoading || ['reserved', 'consumed'].includes(String(appointmentDetail.package_status?.status ?? '').toLowerCase())}
                             onClick={() => void applyAppointmentPackage()}
                             className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
                           >
                             {['reserved', 'consumed'].includes(String(appointmentDetail.package_status?.status ?? '').toLowerCase()) ? 'Package Applied' : 'Apply Package'}
                           </button>
+                          
                           {appointmentDetail.status === 'CONFIRMED' ? (
                             <>
                               <button type="button" disabled={appointmentActionLoading} onClick={openAppointmentRescheduleModal} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Reschedule</button>
-                              <button type="button" disabled={appointmentActionLoading} onClick={() => void markAppointmentCompleted()} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Mark Completed</button>
+                              <button
+                                type="button"
+                                disabled={!canMarkAppointmentCompleted}
+                                onClick={() => void markAppointmentCompleted()}
+                                title={canMarkAppointmentCompleted ? 'Mark Completed' : 'Complete payment or apply package first'}
+                                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                              >
+                                Mark Completed
+                              </button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('CANCELLED')} className="rounded-md bg-slate-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50">Mark Cancelled</button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')} className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 disabled:opacity-50">Late Cancellation</button>
                               <button type="button" disabled={appointmentActionLoading} onClick={() => void updateAppointmentStatus('NO_SHOW')} className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">Mark No-show</button>
@@ -4818,10 +4862,26 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900">Add Service to Cart</h3>
-            <p className="mt-1 text-sm text-gray-600">{bookingServiceDraft.name}</p>
-            <div className="mt-4 space-y-3">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+            <div className="border-b border-gray-200 bg-white px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Add Service to Cart</h3>
+                </div>
+
+              </div>
+              <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Selected Service</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">{bookingServiceDraft.name} ({bookingServiceDraft.service_type})</p>
+              </div>
+            </div>
+            <div className="p-5">
+            {bookingModalError ? (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {bookingModalError}
+              </div>
+            ) : null}
+            <div className="space-y-3">
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-xs font-semibold text-gray-600">Member</label>
@@ -4891,7 +4951,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setBookingModalOpen(false)}
+                onClick={() => {
+                  setBookingModalOpen(false)
+                  setBookingModalError(null)
+                }}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
               >
                 Cancel
@@ -4904,6 +4967,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               >
                 {bookingSubmitting ? 'Creating...' : 'Add Service to Cart'}
               </button>
+            </div>
             </div>
           </div>
         </div>

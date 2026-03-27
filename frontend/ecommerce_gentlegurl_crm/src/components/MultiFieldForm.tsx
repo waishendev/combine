@@ -3,12 +3,10 @@ import FieldRenderer, { FieldConfig, FieldType } from './FileRender'
 
 const FIELD_CONFIG: FieldConfig[] = [
   { key: 'price', label: 'Price', type: 'number' },
-  { key: 'cost_price', label: 'Cost Price', type: 'number' },
   { key: 'discount_percent', label: 'Apply Discount', type: 'discount' },
   { key: 'sale_price', label: 'Sale Price', type: 'number' },
   { key: 'sale_price_start_at', label: 'Start At', type: 'datetime' },
   { key: 'sale_price_end_at', label: 'End At', type: 'datetime' },
-  { key: 'stock', label: 'Stock', type: 'number' },
   { key: 'low_stock_threshold', label: 'Low Stock Threshold', type: 'number' },
   { key: 'category_id', label: 'Category', type: 'select' },
 ]
