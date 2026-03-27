@@ -41,3 +41,29 @@ export const mapBlockApiItemToRow = (
     reason: item.reason ?? null,
   }
 }
+
+export const toApiDateTime = (value: string): string | undefined => {
+  if (!value) return undefined
+  if (value.includes('T')) {
+    const [date, time] = value.split('T')
+    if (!time) return undefined
+    const normalizedTime = time.length === 5 ? `${time}:00` : time
+    return `${date} ${normalizedTime}`
+  }
+
+  return value
+}
+
+export const toDateTimeLocalValue = (value?: string | null): string => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
