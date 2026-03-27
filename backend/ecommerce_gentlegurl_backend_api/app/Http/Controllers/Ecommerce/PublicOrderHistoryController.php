@@ -34,9 +34,6 @@ class PublicOrderHistoryController extends Controller
         $perPage = $request->integer('per_page', 10);
 
         $orders = Order::where('customer_id', $customer->id)
-            // Only show orders placed from eCommerce shop.
-            // POS orders are created by staff users and have created_by_user_id set.
-            ->whereNull('created_by_user_id')
             ->with(['items.product.images', 'items.review'])
             ->orderByDesc('created_at')
             ->paginate($perPage);
@@ -117,7 +114,6 @@ class PublicOrderHistoryController extends Controller
         ])
             ->where('id', $id)
             ->where('customer_id', $customer->id)
-            ->whereNull('created_by_user_id')
             ->firstOrFail();
 
         $reviewSettings = $this->reviewService->settings();

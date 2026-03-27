@@ -304,6 +304,7 @@ class PosController extends Controller
             $order = Order::query()->create([
                 'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                 'customer_id' => (int) $booking->customer_id,
+                'created_by_user_id' => $request->user()->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
                 'payment_method' => $validated['payment_method'],

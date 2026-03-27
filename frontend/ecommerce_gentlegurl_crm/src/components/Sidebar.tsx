@@ -464,12 +464,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/booking/staff-schedules',
             requiredPermission: 'booking.schedules.view',
           },
-          {
-            key: 'booking-blocks',
-            label: 'Blocks',
-            href: '/booking/blocks',
-            requiredPermission: 'booking.blocks.view',
-          },
+          // {
+          //   key: 'booking-blocks',
+          //   label: 'Blocks',
+          //   href: '/booking/blocks',
+          //   requiredPermission: 'booking.blocks.view',
+          // },
           {
             key: 'booking-commission-tiers',
             label: 'Commission Tiers',
