@@ -423,7 +423,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [servicePackagesLoading, setServicePackagesLoading] = useState(false)
   const [packageQuery, setPackageQuery] = useState('')
   const [appointmentQuery, setAppointmentQuery] = useState('')
-  const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
+  const [appointmentDateFilter, setAppointmentDateFilter] = useState(() => {
+    const now = new Date()
+    const timezoneOffsetMs = now.getTimezoneOffset() * 60 * 1000
+    return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 10)
+  })
   const [appointmentCustomerFilter, setAppointmentCustomerFilter] = useState('')
   const [appointmentStaffFilter, setAppointmentStaffFilter] = useState('')
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('')
@@ -432,6 +436,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [appointmentDetail, setAppointmentDetail] = useState<AppointmentDetail | null>(null)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
+  const [appointmentCheckoutConfirmationOpen, setAppointmentCheckoutConfirmationOpen] = useState(false)
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
   const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
@@ -1386,6 +1391,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const openAppointmentDetail = useCallback(async (appointmentId: number) => {
     setAppointmentDetailLoading(true)
     setAppointmentDetail(null)
+    setAppointmentCheckoutConfirmationOpen(false)
     setAppointmentPaymentMethod('cash')
     setAppointmentReschedulePolicyWarnings([])
     try {
@@ -1430,6 +1436,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       }
 
       showMsg('Appointment payment collected.', 'success')
+      setAppointmentCheckoutConfirmationOpen(false)
       await fetchAppointments()
       await refreshOpenedAppointmentDetail()
     } finally {
@@ -2661,18 +2668,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     showMsg('Member assigned.', 'success')
   }
 
-  const onClearMember = async () => {
-    setReceiptEmail(selectedMember?.email?.trim() ?? '')
-    setReceiptEmailError(null)
-    setReceiptCooldownUntil(0)
-    setSelectedMember(null)
-    setVoucherModalOpen(false)
-    setSelectedVoucherKey('')
-    if (appliedVoucher?.customer_voucher_id) {
-      await removeVoucher(true)
-    }
-  }
-
   useEffect(() => {
     if (!voucherModalOpen) return
     void fetchVouchers(selectedMember?.id ?? null)
@@ -3423,16 +3418,16 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       ) : null}
                       <p className="mb-2 font-semibold text-gray-900">Settlement Payment</p>
                       <div className="grid gap-2">
-                        <select
-                          value={appointmentPaymentMethod}
-                          onChange={(e) => setAppointmentPaymentMethod(e.target.value as 'cash' | 'qrpay')}
-                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        >
-                          <option value="cash">Cash</option>
-                          <option value="qrpay">QRPay</option>
-                        </select>
+                        <p className="text-xs text-gray-500">Payment method is selected during checkout confirmation.</p>
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" disabled={appointmentActionLoading || Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0) <= 0} onClick={() => void settleAppointmentPayment()} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Checkout</button>
+                          <button
+                            type="button"
+                            disabled={appointmentActionLoading || Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0) <= 0}
+                            onClick={() => setAppointmentCheckoutConfirmationOpen(true)}
+                            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Checkout
+                          </button>
                           <button
                             type="button"
                             disabled={appointmentActionLoading || ['reserved', 'consumed'].includes(String(appointmentDetail.package_status?.status ?? '').toLowerCase())}
@@ -4064,7 +4059,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <thead className="bg-gradient-to-r from-slate-50 to-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Item</th>
-                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Staff Assignment</th>
+                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Details</th>
                       <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Unit Price</th>
                       <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Total Price</th>
                     </tr>
@@ -4269,58 +4264,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     <p className="text-base font-semibold text-gray-700">Net Amount</p>
                     <p className="text-2xl font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
                   </div>
-                </div>
-              </div>
-
-              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <p className="text-sm font-bold text-gray-800">Member</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void toggleMemberDropdown()}
-                      className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50 active:scale-95"
-                    >
-                      {selectedMember ? 'Change' : 'Assign'}
-                    </button>
-                  </div>
-                  {selectedMember ? (
-                    <div className="space-y-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
-                      <p className="text-xs font-semibold text-blue-800">{selectedMember.name}</p>
-                      <p className="text-xs text-blue-700">{selectedMember.phone || selectedMember.email || `Member #${selectedMember.id}`}</p>
-                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={() => void onClearMember()}>Clear member</button>
-                    </div>
-                  ) : <p className="text-xs text-gray-500 italic">No member assigned</p>}
-                </div>
-
-                <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-sm font-bold text-gray-800">Voucher</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setVoucherModalOpen(true)}
-                      className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-50 active:scale-95"
-                    >
-                      {appliedVoucher ? 'Change' : 'Apply'}
-                    </button>
-                  </div>
-                  {appliedVoucher ? (
-                    <div className="space-y-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
-                      <p className="text-xs font-semibold text-green-800">Applied: {appliedVoucher.code}</p>
-                      {!!appliedVoucher.discount_amount && <p className="text-xs text-green-700">Discount: -RM {Number(appliedVoucher.discount_amount).toFixed(2)}</p>}
-                      <button type="button" className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={() => void removeVoucher()}>Remove voucher</button>
-                    </div>
-                  ) : <p className="text-xs text-gray-500 italic">No voucher applied</p>}
                 </div>
               </div>
 
@@ -4994,6 +4937,73 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               >
                 {voucherApplying ? 'Applying...' : 'Apply Voucher'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {appointmentCheckoutConfirmationOpen && appointmentDetail && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+              <div>
+                <h4 className="text-lg font-bold text-gray-900">Checkout Confirmation</h4>
+                <p className="text-xs text-gray-500">Select payment method before collecting settlement.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAppointmentCheckoutConfirmationOpen(false)}
+                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                <p className="font-semibold text-gray-900">{appointmentDetail.booking_code}</p>
+                <p className="text-xs text-gray-600">{appointmentDetail.customer?.name ?? '-'}</p>
+                <p className="text-xs text-gray-600">Amount Due: <span className="font-semibold text-emerald-700">RM {Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0).toFixed(2)}</span></p>
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-semibold text-gray-900">Payment Method</p>
+                <div className="grid gap-2">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:border-blue-400">
+                    <input
+                      type="radio"
+                      checked={appointmentPaymentMethod === 'cash'}
+                      onChange={() => setAppointmentPaymentMethod('cash')}
+                    />
+                    Cash
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:border-blue-400">
+                    <input
+                      type="radio"
+                      checked={appointmentPaymentMethod === 'qrpay'}
+                      onChange={() => setAppointmentPaymentMethod('qrpay')}
+                    />
+                    QRPay
+                  </label>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAppointmentCheckoutConfirmationOpen(false)}
+                  className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={appointmentActionLoading || Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0) <= 0}
+                  onClick={() => void settleAppointmentPayment()}
+                  className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Confirm Checkout
+                </button>
+              </div>
             </div>
           </div>
         </div>
