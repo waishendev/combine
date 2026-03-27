@@ -52,6 +52,9 @@ class OrderController extends Controller
             'returns:id,order_id,status,created_at',
             'returns.items:id,return_request_id,quantity',
         ])
+            // Only include eCommerce shop orders here.
+            // POS orders are created by an admin user and have created_by_user_id set.
+            ->whereNull('created_by_user_id')
             ->when($status, function ($q) use ($status, $paymentStatus) {
                 // If filtering ONLY by cancelled status (no other statuses) and payment_status is not specified 
                 // (or doesn't include 'refunded'), exclude refunded orders to show only cancelled (non-refunded) orders
