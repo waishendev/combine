@@ -14,7 +14,7 @@ export default async function PaymentResultPage({ searchParams }: PaymentResultP
   const params = await searchParams;
   const { order_no, payment_method, order_id } = params;
 
-  if (!order_no) {
+  if (!order_no && !order_id) {
     redirect("/");
   }
 

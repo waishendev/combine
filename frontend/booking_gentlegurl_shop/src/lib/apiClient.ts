@@ -308,8 +308,11 @@ export type BookingOrderLookupResponse = {
   }>;
 };
 
-export async function lookupBookingOrder(orderNo: string, orderId?: number | null) {
-  const query = new URLSearchParams({ order_no: orderNo });
+export async function lookupBookingOrder(orderNo?: string | null, orderId?: number | null) {
+  const query = new URLSearchParams();
+  if (orderNo) {
+    query.set("order_no", orderNo);
+  }
   if (typeof orderId === "number" && Number.isFinite(orderId)) {
     query.set("order_id", String(orderId));
   }
@@ -317,10 +320,13 @@ export async function lookupBookingOrder(orderNo: string, orderId?: number | nul
   return unwrapData<BookingOrderLookupResponse>(response);
 }
 
-export async function uploadBookingOrderSlip(orderId: number, orderNo: string, file: File) {
+export async function uploadBookingOrderSlip(orderId: number, orderNo: string, file: File, note?: string) {
   const formData = new FormData();
   formData.append("order_no", orderNo);
   formData.append("slip", file);
+  if (note && note.trim()) {
+    formData.append("note", note.trim());
+  }
 
   const response = await request<{ data?: { upload?: { id: number; file_url: string; status?: string | null; created_at?: string | null } } }>(`/public/shop/bookings/${orderId}/upload-slip`, {
     method: "POST",

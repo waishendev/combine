@@ -133,11 +133,14 @@ class PaymentController extends Controller
     public function publicLookup(Request $request)
     {
         $validated = $request->validate([
-            'order_no' => ['required', 'string'],
-            'order_id' => ['nullable', 'integer'],
+            'order_no' => ['nullable', 'string', 'required_without:order_id'],
+            'order_id' => ['nullable', 'integer', 'required_without:order_no'],
         ]);
 
-        $query = Booking::query()->where('booking_code', $validated['order_no']);
+        $query = Booking::query();
+        if (! empty($validated['order_no'])) {
+            $query->where('booking_code', $validated['order_no']);
+        }
 
         if (! empty($validated['order_id'])) {
             $query->where('id', (int) $validated['order_id']);
@@ -169,7 +172,7 @@ class PaymentController extends Controller
                 data_get($payment?->raw_response, 'manual_slip_url') ? [
                     'id' => (int) ($payment?->id ?? 0),
                     'file_url' => (string) data_get($payment?->raw_response, 'manual_slip_url'),
-                    'note' => null,
+                    'note' => data_get($payment?->raw_response, 'manual_slip_note'),
                     'status' => (string) data_get($payment?->raw_response, 'payment_status', 'pending_manual_review'),
                     'created_at' => optional($payment?->updated_at)->toDateTimeString(),
                 ] : null,
@@ -182,6 +185,7 @@ class PaymentController extends Controller
         $validated = $request->validate([
             'order_no' => ['required', 'string'],
             'slip' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf,webp', 'max:5120'],
+            'note' => ['nullable', 'string'],
         ]);
 
         $booking = Booking::query()
@@ -203,6 +207,7 @@ class PaymentController extends Controller
         $raw = $payment->raw_response ?? [];
         $raw['manual_slip_path'] = $path;
         $raw['manual_slip_url'] = Storage::disk('public')->url($path);
+        $raw['manual_slip_note'] = $validated['note'] ?? null;
         $raw['payment_status'] = 'slip_uploaded_pending_review';
         $payment->raw_response = $raw;
         $payment->save();
@@ -211,7 +216,7 @@ class PaymentController extends Controller
             'upload' => [
                 'id' => (int) $payment->id,
                 'file_url' => (string) $raw['manual_slip_url'],
-                'note' => null,
+                'note' => $raw['manual_slip_note'] ?? null,
                 'status' => (string) $raw['payment_status'],
                 'created_at' => optional($payment->updated_at)->toDateTimeString(),
             ],
