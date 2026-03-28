@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+
 import StatusBadge from '../StatusBadge'
 import { useI18n } from '@/lib/i18n'
 
@@ -25,8 +27,10 @@ interface BookingServiceRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  canViewAllowedStaff?: boolean
   onEdit?: (service: BookingServiceRowData) => void
   onDelete?: (service: BookingServiceRowData) => void
+  onViewAllowedStaff?: (service: BookingServiceRowData) => void
 }
 
 export default function BookingServiceRow({
@@ -34,10 +38,54 @@ export default function BookingServiceRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  canViewAllowedStaff = false,
   onEdit,
   onDelete,
+  onViewAllowedStaff,
 }: BookingServiceRowProps) {
   const { t } = useI18n()
+  const [visibleNameCount, setVisibleNameCount] = useState(2)
+
+  useEffect(() => {
+    const calculateVisibleCount = () => {
+      if (typeof window === 'undefined') return 2
+      const width = window.innerWidth
+
+      if (width >= 1536) return 5
+      if (width >= 1280) return 3
+      if (width >= 1024) return 3
+      if (width >= 768) return 3
+      return 2
+    }
+
+    const updateVisibleCount = () => {
+      setVisibleNameCount((prev) => {
+        const next = calculateVisibleCount()
+        return prev === next ? prev : next
+      })
+    }
+
+    updateVisibleCount()
+
+    window.addEventListener('resize', updateVisibleCount)
+    return () => window.removeEventListener('resize', updateVisibleCount)
+  }, [])
+
+  const names = service.allowedStaffNames ?? []
+  const staffCount =
+    service.allowedStaffCount != null && service.allowedStaffCount > 0
+      ? service.allowedStaffCount
+      : names.length
+
+  const previewNames = names.slice(0, visibleNameCount)
+  const remaining = staffCount - previewNames.length
+  const displayText =
+    staffCount === 0
+      ? '—'
+      : previewNames.length > 0
+        ? `${previewNames.join(', ')}${remaining > 0 ? ` +${remaining} ${t('role.moreSuffix')}` : ''}`
+        : `${staffCount} staff`
+
   return (
     <tr className="text-sm">
       <td className="px-4 py-2 border border-gray-200">{service.imageUrl ? <img src={service.imageUrl} alt={service.name} className="h-10 w-10 rounded object-cover" /> : <div className="h-10 w-10 rounded bg-gray-200" />}</td>
@@ -48,6 +96,28 @@ export default function BookingServiceRow({
       <td className="px-4 py-2 border border-gray-200">{service.service_price}</td>
       <td className="px-4 py-2 border border-gray-200">{service.deposit_amount}</td>
       <td className="px-4 py-2 border border-gray-200">{service.buffer_min}</td>
+      <td className="border border-gray-200 px-4 py-2">
+        <div className="flex items-center gap-2">
+          <span
+            className={`max-w-[220px] break-words sm:max-w-[320px] lg:max-w-[480px] xl:max-w-[640px] 2xl:max-w-[800px] ${
+              staffCount === 0 ? 'text-gray-400' : 'text-gray-700'
+            }`}
+          >
+            {displayText}
+          </span>
+          {canViewAllowedStaff && staffCount > 0 && (
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded bg-emerald-500 text-white hover:bg-emerald-600"
+              onClick={() => onViewAllowedStaff?.(service)}
+              aria-label={t('booking.viewAllowedStaff')}
+              title={t('booking.viewAllowedStaff')}
+            >
+              <i className="fa-solid fa-eye" />
+            </button>
+          )}
+        </div>
+      </td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={service.isActive ? 'active' : 'inactive'}

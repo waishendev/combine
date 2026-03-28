@@ -3,11 +3,12 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { BookingServiceRowData } from './BookingServiceRow'
+import BookingServiceAllowedStaffPicker, {
+  type BookingStaffOption,
+} from './BookingServiceAllowedStaffPicker'
 import { mapBookingServiceApiItemToRow, type BookingServiceApiItem } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '../mediaAccept'
-
-type StaffOption = { id: number; name: string }
 
 interface BookingServiceEditModalProps {
   serviceId: number
@@ -58,7 +59,8 @@ export default function BookingServiceEditModal({
   const [error, setError] = useState<string | null>(null)
   const [loadedService, setLoadedService] = useState<BookingServiceRowData | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
+  const [staffOptions, setStaffOptions] = useState<BookingStaffOption[]>([])
+  const [staffLoading, setStaffLoading] = useState(true)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -150,9 +152,13 @@ export default function BookingServiceEditModal({
     let ignore = false
 
     const loadStaffs = async () => {
+      setStaffLoading(true)
       try {
         const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', { cache: 'no-store' })
-        if (!res.ok) return
+        if (!res.ok) {
+          if (!ignore) setStaffOptions([])
+          return
+        }
         const json = await res.json().catch(() => null)
         const payload = (json && typeof json === 'object' && 'data' in json)
           ? (json as { data?: { data?: unknown[] } | unknown[] }).data
@@ -165,7 +171,7 @@ export default function BookingServiceEditModal({
             : []
 
         const mapped = rows
-          .map((row): StaffOption | null => {
+          .map((row): BookingStaffOption | null => {
             if (!row || typeof row !== 'object') return null
             const maybe = row as Record<string, unknown>
             const id = Number(maybe.id)
@@ -173,11 +179,13 @@ export default function BookingServiceEditModal({
             if (!id || !name) return null
             return { id, name }
           })
-          .filter((row): row is StaffOption => Boolean(row))
+          .filter((row): row is BookingStaffOption => Boolean(row))
 
         if (!ignore) setStaffOptions(mapped)
       } catch {
         if (!ignore) setStaffOptions([])
+      } finally {
+        if (!ignore) setStaffLoading(false)
       }
     }
 
@@ -215,26 +223,6 @@ export default function BookingServiceEditModal({
     }
   }
 
-
-  const toggleAllowedStaff = (staffId: number) => {
-    setForm((prev) => {
-      const exists = prev.allowed_staff_ids.includes(staffId)
-      return {
-        ...prev,
-        allowed_staff_ids: exists
-          ? prev.allowed_staff_ids.filter((id) => id !== staffId)
-          : [...prev.allowed_staff_ids, staffId],
-      }
-    })
-  }
-
-  const selectAllStaffs = () => {
-    setForm((prev) => ({ ...prev, allowed_staff_ids: staffOptions.map((staff) => staff.id) }))
-  }
-
-  const clearAllStaffs = () => {
-    setForm((prev) => ({ ...prev, allowed_staff_ids: [] }))
-  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -394,7 +382,8 @@ export default function BookingServiceEditModal({
           {loading ? (
             <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
           ) : (
-            <div className="flex flex-col gap-6 lg:flex-row">
+            <>
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
               {/* Left Side - Image Upload */}
               <div className="space-y-4 w-full lg:w-1/2">
                 <div>
@@ -599,6 +588,14 @@ export default function BookingServiceEditModal({
                   />
                 </div>
 
+                <BookingServiceAllowedStaffPicker
+                  staffOptions={staffOptions}
+                  value={form.allowed_staff_ids}
+                  onChange={(ids) => setForm((prev) => ({ ...prev, allowed_staff_ids: ids }))}
+                  disabled={disableForm}
+                  loading={staffLoading}
+                />
+
                 <div>
                   <label
                     htmlFor="edit-isActive"
@@ -618,54 +615,35 @@ export default function BookingServiceEditModal({
                     <option value="false">Inactive</option>
                   </select>
                 </div>
-
-
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <label className="block text-sm font-medium text-gray-700">Allowed Staff <span className="text-red-500">*</span></label>
-                    <span className="text-xs text-gray-500">{form.allowed_staff_ids.length} staff selected</span>
-                  </div>
-                  <div className="mb-2 flex items-center gap-2">
-                    <button type="button" className="rounded border border-blue-200 px-2 py-1 text-xs text-blue-700" onClick={selectAllStaffs} disabled={disableForm || staffOptions.length === 0}>Select All Staff</button>
-                    <button type="button" className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-700" onClick={clearAllStaffs} disabled={disableForm || form.allowed_staff_ids.length === 0}>Clear All</button>
-                  </div>
-                  <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border border-gray-200 p-2">
-                    {staffOptions.length === 0 ? <p className="text-xs text-gray-500">No active staff found.</p> : staffOptions.map((staff) => (
-                      <label key={staff.id} className="flex items-center gap-2 text-sm text-gray-700">
-                        <input type="checkbox" checked={form.allowed_staff_ids.includes(staff.id)} onChange={() => toggleAllowedStaff(staff.id)} disabled={disableForm} />
-                        <span>{staff.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="text-sm text-red-600" role="alert">
-                    {error}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-3 pt-4 mt-4 border-t border-gray-200">
-                  <button
-                    type="button"
-                    className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
-                    onClick={() => {
-                      if (!submitting) onClose()
-                    }}
-                    disabled={submitting}
-                  >
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-                    disabled={disableForm}
-                  >
-                    {submitting ? t('common.saving') : 'Save Changes'}
-                  </button>
-                </div>
               </div>
             </div>
+
+            {error && (
+              <div className="mt-4 text-sm text-red-600" role="alert">
+                {error}
+              </div>
+            )}
+
+            <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+                onClick={() => {
+                  if (!submitting) onClose()
+                }}
+                disabled={submitting}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                disabled={disableForm}
+              >
+                {submitting ? t('common.saving') : 'Save Changes'}
+              </button>
+            </div>
+            </>
           )}
         </form>
       </div>

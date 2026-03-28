@@ -177,6 +177,11 @@
   "role.detailTitle": "Role Details",
   "common.permissions": "Permissions",
 
+  "booking.allowedStaffDetailTitle": "Services",
+  "booking.viewAllowedStaff": "View allowed staff",
+  "booking.allowedStaffListHeading": "Staff",
+  "booking.staffNamesUnavailable": "Names are not available for this list; the count above reflects how many staff can perform this service.",
+
   "product.title": "Products",
   "product.back": "Back",
   "product.backToProducts": "Back to Products",
