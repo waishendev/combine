@@ -28,9 +28,9 @@ ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 
 COPY . .
 RUN mkdir -p public \
- && npm run build \
- && npm prune --omit=dev --no-audit --no-fund \
- && npm cache clean --force
+    && npm run build \
+    && npm prune --omit=dev --no-audit --no-fund \
+    && npm cache clean --force
 
 # ---- runner: 生产运行（standalone + 纯运行时依赖）----
 FROM mirror.gcr.io/library/node:20-bookworm-slim AS runner
@@ -39,6 +39,13 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0
+
+# ✅ Add pkill (procps) to avoid spawn pkill ENOENT
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends procps \
+    && rm -rf /var/lib/apt/lists/*
+# （可选）如果你也常用 ps/top/killall，这个就够了
 
 # 复制构建产物（standalone 会带 server.js 和运行依赖）
 COPY --chown=node:node --from=builder /app/.next/standalone ./
