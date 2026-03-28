@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBookingCart } from "@/lib/apiClient";
+import { getBookingCart, getServicePackages } from "@/lib/apiClient";
+import { SERVICE_PACKAGES_SECTION_ID } from "@/lib/landingAnchors";
 import { CartDrawer } from "@/components/booking/CartDrawer";
 
 export function Header({ logoUrl }: { logoUrl?: string | null }) {
@@ -16,7 +17,10 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const [cartCount, setCartCount] = useState(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [hasPackages, setHasPackages] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const packagesHref = `/#${SERVICE_PACKAGES_SECTION_ID}`;
 
   const isActive = (path: string) => (pathname === path || pathname?.startsWith(`${path}/`) ? "text-[var(--foreground)]" : "text-[var(--text-muted)]");
   const fallbackLogo = "/images/logo.png";
@@ -85,6 +89,35 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await getServicePackages();
+        const list = Array.isArray(rows) ? rows : [];
+        const active = list.filter((p) => p.is_active !== false);
+        if (!cancelled) setHasPackages(active.length > 0);
+      } catch {
+        if (!cancelled) setHasPackages(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const scrollToServicePackages = () => {
+    document.getElementById(SERVICE_PACKAGES_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const onPackagesNavClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (pathname === "/" && hasPackages) {
+      e.preventDefault();
+      scrollToServicePackages();
+    }
+    setMobileMenuOpen(false);
+  };
+
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-[var(--muted)]/50 bg-[var(--background)]/80 backdrop-blur">
@@ -106,12 +139,18 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
               <Link href="/" className={isActive("/")}>
                 Home
               </Link>
+              {hasPackages ? (
+                <Link
+                  href={packagesHref}
+                  onClick={onPackagesNavClick}
+                  className="text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+                >
+                  Packages
+                </Link>
+              ) : null}
               <Link href="/booking" className={isActive("/booking")}>
                 Book
               </Link>
-              {/* <Link href="/booking/packages" className={isActive("/booking/packages")}>
-                Packages
-              </Link> */}
             </nav>
           </div>
 
@@ -315,6 +354,15 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                 >
                   Home
                 </Link>
+                {hasPackages ? (
+                  <Link
+                    href={packagesHref}
+                    className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                    onClick={onPackagesNavClick}
+                  >
+                    Packages
+                  </Link>
+                ) : null}
                 <Link
                   href="/booking"
                   className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
@@ -322,13 +370,6 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                 >
                   Book
                 </Link>
-                {/* <Link
-                  href="/booking/packages"
-                  className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Packages
-                </Link> */}
               </nav>
             </div>
           </div>

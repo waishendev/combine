@@ -124,12 +124,6 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/returns',
             requiredPermission: 'ecommerce.returns.view',
           },
-          {
-            key: 'orders-pos',
-            label: 'POS Checkout',
-            href: '/pos',
-            requiredPermission: 'pos.checkout',
-          },
         ],
       },
   

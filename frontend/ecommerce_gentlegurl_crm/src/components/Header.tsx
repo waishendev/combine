@@ -10,9 +10,10 @@ type HeaderProps = {
   onLogout: () => Promise<void> | void
   onToggleSidebar: () => void
   userEmail?: string | null
+  permissions?: string[]
 }
 
-export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderProps) {
+export default function Header({ onLogout, onToggleSidebar, userEmail, permissions = [] }: HeaderProps) {
   const { t } = useI18n()
   const [accountOpen, setAccountOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -129,7 +130,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail }: HeaderP
       </div>
 
       <div className="flex items-center gap-4">
-        <WorkspaceSwitcher />
+        <WorkspaceSwitcher permissions={permissions} />
         <div className="relative" ref={accountRef}>
           <button
             type="button"

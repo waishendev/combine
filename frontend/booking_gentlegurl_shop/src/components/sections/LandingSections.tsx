@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { addPackageCartItem, getServicePackages } from "@/lib/apiClient";
+import { SERVICE_PACKAGES_SECTION_ID } from "@/lib/landingAnchors";
 import type { ServicePackage } from "@/lib/types";
 
 export function Hero() {
@@ -123,6 +124,19 @@ export function StaticSections() {
 
     void run();
   }, []);
+
+  useEffect(() => {
+    if (pathname !== "/") return;
+    if (packagesLoading) return;
+    if (packages.length === 0) return;
+    if (typeof window === "undefined" || window.location.hash !== `#${SERVICE_PACKAGES_SECTION_ID}`) return;
+    const el = document.getElementById(SERVICE_PACKAGES_SECTION_ID);
+    if (!el) return;
+    const id = requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pathname, packagesLoading, packages.length]);
 
   const onAddPackageToCart = async (pkg: ServicePackage) => {
     if (!user) {
@@ -244,50 +258,50 @@ export function StaticSections() {
         </div>
       )}
 
-      {/* Packages (moved from /booking/packages) */}
-      <section className="space-y-6">
-        {renderSectionHeading({ label: "Packages", title: "Service Packages", align: "left" }, "accent")}
-        {packagesMessage ? <p className="text-sm text-[var(--accent)]">{packagesMessage}</p> : null}
-        {packagesLoading ? <p className="text-sm text-[var(--foreground)]/70">Loading packages...</p> : null}
-        {packagesError ? <p className="text-sm text-[var(--status-error)]">{packagesError}</p> : null}
+      {!packagesLoading && packages.length > 0 ? (
+        <section id={SERVICE_PACKAGES_SECTION_ID} className="scroll-mt-24 space-y-6">
+          {renderSectionHeading({ label: "Packages", title: "Service Packages", align: "left" }, "accent")}
+          {packagesMessage ? <p className="text-sm text-[var(--accent)]">{packagesMessage}</p> : null}
+          {packagesError ? <p className="text-sm text-[var(--status-error)]">{packagesError}</p> : null}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {packages.slice(0, 4).map((pkg) => (
-            <article
-              key={pkg.id}
-              className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h3 className="truncate text-base font-semibold text-[var(--foreground)]">{pkg.name}</h3>
-                  <p className="mt-1 line-clamp-2 text-sm text-[var(--foreground)]/70">
-                    {pkg.description || "Service package"}
-                  </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            {packages.slice(0, 4).map((pkg) => (
+              <article
+                key={pkg.id}
+                className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-base font-semibold text-[var(--foreground)]">{pkg.name}</h3>
+                    <p className="mt-1 line-clamp-2 text-sm text-[var(--foreground)]/70">
+                      {pkg.description || "Service package"}
+                    </p>
+                  </div>
+                  <div className="shrink-0 rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
+                    RM {pkg.selling_price}
+                  </div>
                 </div>
-                <div className="shrink-0 rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
-                  RM {pkg.selling_price}
+
+                <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--foreground)]/70">
+                  <span className="rounded-full border border-[var(--card-border)] bg-[var(--card)]/60 px-3 py-1">
+                    Valid: {pkg.valid_days ?? "-"} days
+                  </span>
                 </div>
-              </div>
 
-              <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--foreground)]/70">
-                <span className="rounded-full border border-[var(--card-border)] bg-[var(--card)]/60 px-3 py-1">
-                  Valid: {pkg.valid_days ?? "-"} days
-                </span>
-              </div>
-
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => void onAddPackageToCart(pkg)}
-                  className="inline-flex rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
-                >
-                  Add to Cart
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+                <div className="mt-4 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void onAddPackageToCart(pkg)}
+                    className="inline-flex rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
+                  >
+                    Add to Cart
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
         <section className="space-y-6">
           {renderSectionHeading({ label: "FAQ", title: "You might be wondering", align: "left" }, "accent")}

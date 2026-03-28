@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { startTransition, useEffect, useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 
 import { getWorkspace, getWorkspaceLanding, setWorkspace, type Workspace } from '@/lib/workspace'
 
@@ -10,9 +11,21 @@ const OPTIONS: Array<{ label: string; value: Workspace }> = [
   { label: 'Booking', value: 'booking' },
 ]
 
-export default function WorkspaceSwitcher() {
+type WorkspaceSwitcherProps = {
+  permissions?: string[]
+}
+
+const segmentClass = (active: boolean) =>
+  `rounded-md px-3 py-1 text-xs font-semibold transition ${
+    active ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+  }`
+
+export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitcherProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
+  const showPos = permissions.includes('pos.checkout')
+  const isPosRoute = pathname === '/pos' || pathname.startsWith('/pos/')
 
   useEffect(() => {
     const handleWorkspaceChanged = () => {
@@ -23,32 +36,50 @@ export default function WorkspaceSwitcher() {
     return () => window.removeEventListener('crm_workspace_changed', handleWorkspaceChanged)
   }, [])
 
-  const handleSwitch = (ws: Workspace) => {
-    if (ws === workspace) return
+  // Warm common targets so leaving POS / heavy pages feels snappier.
+  useEffect(() => {
+    router.prefetch('/dashboard')
+    router.prefetch('/booking/appointments')
+  }, [router])
 
-    setWorkspace(ws)
-    setWorkspaceState(ws)
-    router.push(getWorkspaceLanding(ws))
+  const handleSwitch = (ws: Workspace) => {
+    const landing = getWorkspaceLanding(ws)
+    // POS 页不会改 workspace cookie，这里常仍是 ecommerce — 旧逻辑会 `ws === workspace` 直接 return，导致点 Ecommerce 不跳转、像卡住。
+    if (ws === workspace && !isPosRoute) {
+      return
+    }
+
+    if (ws !== workspace) {
+      setWorkspace(ws)
+      setWorkspaceState(ws)
+    }
+
+    startTransition(() => {
+      router.push(landing)
+    })
   }
 
   return (
-    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+    <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
       {OPTIONS.map((option) => {
-        const isActive = option.value === workspace
+        const isActive = option.value === workspace && !isPosRoute
 
         return (
           <button
             key={option.value}
             type="button"
             onClick={() => handleSwitch(option.value)}
-            className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-              isActive ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={segmentClass(isActive)}
           >
             {option.label}
           </button>
         )
       })}
+      {showPos && (
+        <Link href="/pos" className={segmentClass(isPosRoute)}>
+          POS Checkout
+        </Link>
+      )}
     </div>
   )
 }

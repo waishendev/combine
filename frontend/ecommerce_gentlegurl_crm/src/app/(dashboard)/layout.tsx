@@ -191,6 +191,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         userEmail={userEmail}
         onLogout={handleLogout}
         onToggleSidebar={toggleSidebar}
+        permissions={permissions}
       />
       <div className="flex h-screen pt-16">
         <Sidebar collapsed={collapsed} overlayMode={overlaySidebar} permissions={permissions} onToggleSidebar={toggleSidebar} />
