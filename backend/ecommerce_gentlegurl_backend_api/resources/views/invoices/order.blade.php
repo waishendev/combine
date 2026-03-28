@@ -471,7 +471,7 @@
               @endif
 
               <div style="margin-top:8px;" class="muted small">
-                Pickup Contact: <strong style="color:#111827;">{{ $order->shipping_name ?: ($customerName ?? '-') }}</strong>
+                <strong style="color:#111827;">{{ $order->shipping_name ?: ($customerName ?? '-') }}</strong>
               </div>
               @if($order->shipping_phone || $customerPhone)
                 <div class="muted small">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
@@ -533,7 +533,7 @@
                   <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>
                 @endif
                 @if(!empty($item['covered_by_package']))
-                  <div class="sku" style="margin-top:3px; color:#065f46; font-weight:700;">Covered by Package</div>
+              
                   @if(!empty($item['package_applied_name']))
                     <div class="sku" style="color:#065f46;">Package Applied: {{ $item['package_applied_name'] }}</div>
                   @endif
@@ -555,16 +555,6 @@
       </table>
     </div>
 
-    @if($coveredByPackage)
-      <div class="section" style="margin-top:-4px;">
-        <div style="border:1px solid #a7f3d0; background:#ecfdf5; color:#065f46; border-radius:8px; padding:8px 10px; font-size:11px;">
-          <div style="font-weight:700;">Covered by Package</div>
-          @if(!empty($packageAppliedNames))
-            <div style="margin-top:2px;">Package Applied: {{ implode(', ', $packageAppliedNames) }}</div>
-          @endif
-        </div>
-      </div>
-    @endif
 
     <!-- Totals -->
     <div class="section totals-wrap">
