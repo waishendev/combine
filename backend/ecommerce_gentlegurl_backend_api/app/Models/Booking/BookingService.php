@@ -2,6 +2,7 @@
 
 namespace App\Models\Booking;
 
+use App\Models\Staff;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
@@ -23,6 +24,20 @@ class BookingService extends Model
         'service_price' => 'decimal:2',
         'price' => 'decimal:2',
     ];
+
+
+
+    public function allowedStaffs()
+    {
+        return $this->belongsToMany(Staff::class, 'booking_service_staff', 'service_id', 'staff_id')
+            ->withTimestamps()
+            ->wherePivot('is_active', true);
+    }
+
+    public function isStaffAllowed(int $staffId): bool
+    {
+        return $this->allowedStaffs()->where('staffs.id', $staffId)->exists();
+    }
 
     public function getImageUrlAttribute(): ?string
     {

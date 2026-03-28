@@ -52,11 +52,11 @@ function SlotPageContent() {
   const [confirmModal, setConfirmModal] = useState<BookingSlot | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const canLoad = Boolean(serviceId && staffId && date);
   const selectedStaff = useMemo(
     () => service?.staffs?.find((s) => String(s.id) === staffId),
     [service, staffId]
   );
+  const canLoad = Boolean(serviceId && staffId && date && selectedStaff);
 
   const loadSlots = useCallback(async () => {
     if (!canLoad) return;
@@ -95,6 +95,20 @@ function SlotPageContent() {
     };
     run();
   }, [serviceId]);
+
+  useEffect(() => {
+    if (!service) return
+
+    const staffs = service.staffs ?? []
+    if (staffs.length === 0) {
+      setError('This service is temporarily unavailable.')
+      return
+    }
+
+    if (staffId && !staffs.some((staff) => String(staff.id) === staffId)) {
+      setError('Selected staff is not available for this service.')
+    }
+  }, [service, staffId])
 
   useEffect(() => {
     if (canLoad) loadSlots();

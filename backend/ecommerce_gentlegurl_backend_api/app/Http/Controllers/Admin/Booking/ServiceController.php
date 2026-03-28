@@ -5,14 +5,34 @@ namespace App\Http\Controllers\Admin\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\BookingServiceStaff;
+use App\Models\Staff;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ServiceController extends Controller
 {
-    public function index() { return $this->respond(BookingService::latest()->paginate(20)); }
-    public function show(int $id) { return $this->respond(BookingService::findOrFail($id)); }
+    public function index()
+    {
+        $services = BookingService::query()
+            ->with(['allowedStaffs:id,name'])
+            ->latest()
+            ->paginate(20);
+
+        $services->getCollection()->transform(fn (BookingService $service) => $this->formatService($service));
+
+        return $this->respond($services);
+    }
+
+    public function show(int $id)
+    {
+        $service = BookingService::query()
+            ->with(['allowedStaffs:id,name,position,avatar_path'])
+            ->findOrFail($id);
+
+        return $this->respond($this->formatService($service));
+    }
 
     public function store(Request $request)
     {
@@ -28,6 +48,8 @@ class ServiceController extends Controller
             'buffer_min' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
             'rules_json' => ['nullable', 'array'],
+            'allowed_staff_ids' => ['required', 'array', 'min:1'],
+            'allowed_staff_ids.*' => ['integer', 'distinct'],
         ]);
         $data['service_price'] = $data['service_price'] ?? 0;
         $data['price'] = $data['price'] ?? $data['service_price'];
@@ -41,9 +63,13 @@ class ServiceController extends Controller
             );
         }
 
+        $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
+        unset($data['allowed_staff_ids']);
+
         $service = BookingService::create($data);
+        $this->syncAllowedStaffs($service, $allowedStaffIds);
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($service, 'Created', true, 201);
+        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path'])), 'Created', true, 201);
     }
 
     public function update(Request $request, int $id)
@@ -62,6 +88,8 @@ class ServiceController extends Controller
             'buffer_min' => ['sometimes', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
             'rules_json' => ['nullable', 'array'],
+            'allowed_staff_ids' => ['required', 'array', 'min:1'],
+            'allowed_staff_ids.*' => ['integer', 'distinct'],
         ]);
 
         $oldImagePath = $service->image_path;
@@ -73,14 +101,18 @@ class ServiceController extends Controller
             );
         }
 
+        $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
+        unset($data['allowed_staff_ids']);
+
         $service->update($data);
+        $this->syncAllowedStaffs($service, $allowedStaffIds);
 
         if (isset($data['image_path']) && $oldImagePath && $oldImagePath !== $data['image_path'] && Storage::disk('public')->exists($oldImagePath)) {
             Storage::disk('public')->delete($oldImagePath);
         }
 
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($service->fresh());
+        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path'])));
     }
 
     public function destroy(int $id)
@@ -88,5 +120,80 @@ class ServiceController extends Controller
         $service = BookingService::findOrFail($id);
         $service->delete();
         return $this->respond(null);
+    }
+
+    private function resolveAllowedStaffIds(array $staffIds): array
+    {
+        $ids = collect($staffIds)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values();
+
+        if ($ids->isEmpty()) {
+            abort(response()->json([
+                'success' => false,
+                'message' => 'At least one allowed staff is required.',
+                'data' => [
+                    'errors' => [
+                        'allowed_staff_ids' => ['At least one allowed staff is required.'],
+                    ],
+                ],
+            ], 422));
+        }
+
+        $validIds = Staff::query()
+            ->whereIn('id', $ids->all())
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        if ($validIds->count() !== $ids->count()) {
+            abort(response()->json([
+                'success' => false,
+                'message' => 'Allowed staffs must be active staffs.',
+                'data' => [
+                    'errors' => [
+                        'allowed_staff_ids' => ['Allowed staffs must be active staffs.'],
+                    ],
+                ],
+            ], 422));
+        }
+
+        return $validIds->all();
+    }
+
+    private function syncAllowedStaffs(BookingService $service, array $allowedStaffIds): void
+    {
+        BookingServiceStaff::query()
+            ->where('service_id', $service->id)
+            ->whereNotIn('staff_id', $allowedStaffIds)
+            ->delete();
+
+        foreach ($allowedStaffIds as $staffId) {
+            BookingServiceStaff::query()->updateOrCreate(
+                ['service_id' => $service->id, 'staff_id' => $staffId],
+                ['is_active' => true]
+            );
+        }
+    }
+
+    private function formatService(BookingService $service): array
+    {
+        $allowedStaffs = $service->allowedStaffs
+            ->sortBy('name')
+            ->values()
+            ->map(fn (Staff $staff) => [
+                'id' => (int) $staff->id,
+                'name' => $staff->name,
+                'position' => $staff->position,
+                'avatar_path' => $staff->avatar_path,
+                'avatar_url' => $staff->avatar_url,
+            ])
+            ->all();
+
+        return array_merge($service->toArray(), [
+            'allowed_staffs' => $allowedStaffs,
+            'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
+            'allowed_staff_count' => count($allowedStaffs),
+            'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+        ]);
     }
 }

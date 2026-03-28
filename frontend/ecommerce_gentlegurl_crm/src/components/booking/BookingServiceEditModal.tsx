@@ -3,6 +3,9 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { BookingServiceRowData } from './BookingServiceRow'
+import BookingServiceAllowedStaffPicker, {
+  type BookingStaffOption,
+} from './BookingServiceAllowedStaffPicker'
 import { mapBookingServiceApiItemToRow, type BookingServiceApiItem } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '../mediaAccept'
@@ -28,6 +31,7 @@ interface FormState {
   buffer_min: string
   is_active: 'true' | 'false'
   imageFile: File | null
+  allowed_staff_ids: number[]
 }
 
 const initialFormState: FormState = {
@@ -40,6 +44,7 @@ const initialFormState: FormState = {
   buffer_min: '15',
   is_active: 'true',
   imageFile: null,
+  allowed_staff_ids: [],
 }
 
 export default function BookingServiceEditModal({
@@ -54,6 +59,8 @@ export default function BookingServiceEditModal({
   const [error, setError] = useState<string | null>(null)
   const [loadedService, setLoadedService] = useState<BookingServiceRowData | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [staffOptions, setStaffOptions] = useState<BookingStaffOption[]>([])
+  const [staffLoading, setStaffLoading] = useState(true)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -117,6 +124,11 @@ export default function BookingServiceEditModal({
               ? 'true'
               : 'false',
           imageFile: null,
+          allowed_staff_ids: Array.isArray((service as { allowed_staff_ids?: unknown }).allowed_staff_ids)
+            ? ((service as { allowed_staff_ids?: unknown[] }).allowed_staff_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+            : Array.isArray((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs)
+              ? ((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs ?? []).map((staff) => Number(staff?.id)).filter((id) => Number.isFinite(id) && id > 0)
+              : [],
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -134,6 +146,52 @@ export default function BookingServiceEditModal({
 
     return () => controller.abort()
   }, [serviceId])
+
+
+  useEffect(() => {
+    let ignore = false
+
+    const loadStaffs = async () => {
+      setStaffLoading(true)
+      try {
+        const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!ignore) setStaffOptions([])
+          return
+        }
+        const json = await res.json().catch(() => null)
+        const payload = (json && typeof json === 'object' && 'data' in json)
+          ? (json as { data?: { data?: unknown[] } | unknown[] }).data
+          : null
+
+        const rows = Array.isArray((payload as { data?: unknown[] } | null)?.data)
+          ? ((payload as { data?: unknown[] }).data ?? [])
+          : Array.isArray(payload)
+            ? payload
+            : []
+
+        const mapped = rows
+          .map((row): BookingStaffOption | null => {
+            if (!row || typeof row !== 'object') return null
+            const maybe = row as Record<string, unknown>
+            const id = Number(maybe.id)
+            const name = String(maybe.name ?? '').trim()
+            if (!id || !name) return null
+            return { id, name }
+          })
+          .filter((row): row is BookingStaffOption => Boolean(row))
+
+        if (!ignore) setStaffOptions(mapped)
+      } catch {
+        if (!ignore) setStaffOptions([])
+      } finally {
+        if (!ignore) setStaffLoading(false)
+      }
+    }
+
+    void loadStaffs()
+    return () => { ignore = true }
+  }, [])
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
@@ -164,6 +222,7 @@ export default function BookingServiceEditModal({
       imageInputRef.current.value = ''
     }
   }
+
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -197,6 +256,11 @@ export default function BookingServiceEditModal({
       return
     }
 
+    if (form.allowed_staff_ids.length === 0) {
+      setError('Please assign at least 1 allowed staff')
+      return
+    }
+
     setSubmitting(true)
     setError(null)
 
@@ -211,6 +275,7 @@ export default function BookingServiceEditModal({
       fd.append('deposit_amount', String(deposit))
       fd.append('buffer_min', String(buffer))
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
+      form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       if (form.imageFile) {
         fd.append('image', form.imageFile)
       }
@@ -317,7 +382,8 @@ export default function BookingServiceEditModal({
           {loading ? (
             <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
           ) : (
-            <div className="flex flex-col gap-6 lg:flex-row">
+            <>
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
               {/* Left Side - Image Upload */}
               <div className="space-y-4 w-full lg:w-1/2">
                 <div>
@@ -522,6 +588,14 @@ export default function BookingServiceEditModal({
                   />
                 </div>
 
+                <BookingServiceAllowedStaffPicker
+                  staffOptions={staffOptions}
+                  value={form.allowed_staff_ids}
+                  onChange={(ids) => setForm((prev) => ({ ...prev, allowed_staff_ids: ids }))}
+                  disabled={disableForm}
+                  loading={staffLoading}
+                />
+
                 <div>
                   <label
                     htmlFor="edit-isActive"
@@ -541,34 +615,35 @@ export default function BookingServiceEditModal({
                     <option value="false">Inactive</option>
                   </select>
                 </div>
-
-                {error && (
-                  <div className="text-sm text-red-600" role="alert">
-                    {error}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-3 pt-4 mt-4 border-t border-gray-200">
-                  <button
-                    type="button"
-                    className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
-                    onClick={() => {
-                      if (!submitting) onClose()
-                    }}
-                    disabled={submitting}
-                  >
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-                    disabled={disableForm}
-                  >
-                    {submitting ? t('common.saving') : 'Save Changes'}
-                  </button>
-                </div>
               </div>
             </div>
+
+            {error && (
+              <div className="mt-4 text-sm text-red-600" role="alert">
+                {error}
+              </div>
+            )}
+
+            <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+                onClick={() => {
+                  if (!submitting) onClose()
+                }}
+                disabled={submitting}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                disabled={disableForm}
+              >
+                {submitting ? t('common.saving') : 'Save Changes'}
+              </button>
+            </div>
+            </>
           )}
         </form>
       </div>

@@ -39,7 +39,11 @@ class AvailabilityController extends Controller
 
         $validated = $validator->validated();
 
-        $service = BookingService::findOrFail($validated['service_id']);
+        $service = BookingService::query()->with('allowedStaffs:id')->findOrFail($validated['service_id']);
+        if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
+            return $this->respondError('Selected staff is not allowed for this service.', 422);
+        }
+
         $slots = $this->availabilityService->getAvailableSlots($service, (int) $validated['staff_id'], $validated['date']);
 
         return $this->respond([

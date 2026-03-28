@@ -14,6 +14,7 @@ import {
 import BookingServiceCreateModal from './BookingServiceCreateModal'
 import BookingServiceEditModal from './BookingServiceEditModal'
 import BookingServiceDeleteModal from './BookingServiceDeleteModal'
+import BookingServiceAllowedStaffPanel from './BookingServiceAllowedStaffPanel'
 import {
   type BookingServiceApiItem,
   mapBookingServiceApiItemToRow,
@@ -62,10 +63,13 @@ export default function BookingServicesTable({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BookingServiceRowData | null>(null)
+  const [viewingAllowedStaffService, setViewingAllowedStaffService] =
+    useState<BookingServiceRowData | null>(null)
 
   const canCreate = permissions.includes('booking.services.create')
   const canUpdate = permissions.includes('booking.services.update')
   const canDelete = permissions.includes('booking.services.delete')
+  const canViewAllowedStaff = permissions.includes('booking.services.view')
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -272,7 +276,7 @@ export default function BookingServicesTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 10 : 9
+  const colCount = showActions ? 11 : 10
 
   const totalPages = meta.last_page || 1
 
@@ -451,6 +455,7 @@ export default function BookingServicesTable({
                   { key: 'service_price', label: 'Service Price' },
                   { key: 'deposit_amount', label: 'Deposit' },
                   { key: 'buffer_min', label: 'Buffer (min)' },
+                  { key: 'allowedStaffCount', label: 'Allowed staff' },
                   { key: 'isActive', label: t('common.status') },
                 ] as const
               ).map(({ key, label }) => (
@@ -489,6 +494,7 @@ export default function BookingServicesTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  canViewAllowedStaff={canViewAllowedStaff}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingServiceId(service.id)
@@ -497,6 +503,11 @@ export default function BookingServicesTable({
                   onDelete={() => {
                     if (canDelete) {
                       setDeleteTarget(service)
+                    }
+                  }}
+                  onViewAllowedStaff={() => {
+                    if (canViewAllowedStaff) {
+                      setViewingAllowedStaffService(service)
                     }
                   }}
                 />
@@ -527,6 +538,13 @@ export default function BookingServicesTable({
             setDeleteTarget(null)
             handleServiceDeleted(serviceId)
           }}
+        />
+      )}
+
+      {viewingAllowedStaffService && (
+        <BookingServiceAllowedStaffPanel
+          service={viewingAllowedStaffService}
+          onClose={() => setViewingAllowedStaffService(null)}
         />
       )}
 

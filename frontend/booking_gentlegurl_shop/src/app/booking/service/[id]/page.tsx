@@ -114,7 +114,7 @@ export default function ServiceDetailPage() {
 
               {staffs.length === 0 ? (
                 <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 text-sm text-[var(--text-muted)]">
-                  No stylists available for this service.
+                  This service is temporarily unavailable because no eligible staff is assigned.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
