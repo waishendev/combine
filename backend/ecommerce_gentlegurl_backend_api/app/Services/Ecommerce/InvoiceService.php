@@ -141,6 +141,10 @@ class InvoiceService
         $displayGrandTotal = (float) $order->grand_total;
         $receiptLabel = 'Receipt';
 
+        if ($canRenderServiceCoverageLines) {
+            $displaySubtotal = round((float) $items->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
+        }
+
         if ($hasDepositLine && $mixedItems->count() === $mixedItems->where('line_type', 'booking_deposit')->count()) {
             $receiptLabel = 'Booking Deposit Receipt';
         } elseif ($hasSettlementLine && $mixedItems->count() === $mixedItems->where('line_type', 'booking_settlement')->count()) {

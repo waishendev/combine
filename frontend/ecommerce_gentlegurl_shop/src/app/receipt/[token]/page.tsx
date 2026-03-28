@@ -22,6 +22,12 @@ type ReceiptData = {
   shipping_fee?: number;
   grand_total: number;
   items: ReceiptItem[];
+  package_coverage?: {
+    covered?: boolean;
+    package_offset?: number;
+    package_names?: string[];
+    note?: string | null;
+  };
 };
 
 type Props = {
@@ -161,6 +167,12 @@ export default async function PublicReceiptPage({ params }: Props) {
               <td className="px-4 py-2 text-[var(--foreground)]/70">Shipping</td>
               <td className="px-4 py-2 text-right font-semibold">{money(receipt.shipping_fee)}</td>
             </tr>
+            {receipt.package_coverage?.covered && (receipt.package_coverage?.package_offset ?? 0) > 0 ? (
+              <tr className="border-b border-[var(--card-border)]">
+                <td className="px-4 py-2 text-[var(--foreground)]/70">Package Offset</td>
+                <td className="px-4 py-2 text-right font-semibold">- {money(receipt.package_coverage?.package_offset)}</td>
+              </tr>
+            ) : null}
             <tr className="bg-[var(--muted)]/40">
               <td className="px-4 py-3 text-xs font-extrabold uppercase tracking-wider">Grand Total</td>
               <td className="px-4 py-3 text-right text-base font-extrabold">{money(receipt.grand_total)}</td>

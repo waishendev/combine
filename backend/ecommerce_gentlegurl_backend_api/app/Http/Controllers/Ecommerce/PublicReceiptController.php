@@ -133,13 +133,18 @@ class PublicReceiptController extends Controller
             'package_applied_name' => null,
         ])->values()->concat($serviceCoverageLines)->values();
 
+        $summarySubtotal = (float) $order->subtotal;
+        if ($canRenderServiceCoverageLines) {
+            $summarySubtotal = round((float) $displayItemsForResponse->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
+        }
+
         return $this->respond([
             'order_number' => $order->order_number,
             'status' => $order->status,
             'payment_status' => $order->payment_status,
             'payment_method' => $order->payment_method,
             'created_at' => $order->created_at,
-            'subtotal' => $order->subtotal,
+            'subtotal' => $summarySubtotal,
             'discount_total' => $order->discount_total,
             'shipping_fee' => $order->shipping_fee,
             'grand_total' => $order->grand_total,
