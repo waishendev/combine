@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { payBooking } from "@/lib/apiClient";
 
-export default function CheckoutPage() {
+function CheckoutContent() {
   const params = useSearchParams();
   const router = useRouter();
   const bookingId = params.get("booking_id") || "";
@@ -57,5 +57,19 @@ export default function CheckoutPage() {
         {paying ? "Processing..." : "Pay Deposit"}
       </button>
     </main>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto flex max-w-3xl justify-center px-4 py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+        </main>
+      }
+    >
+      <CheckoutContent />
+    </Suspense>
   );
 }

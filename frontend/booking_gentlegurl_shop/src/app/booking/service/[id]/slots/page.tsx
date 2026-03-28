@@ -24,6 +24,10 @@ function formatTime(iso: string) {
 type AvailabilityPayload = {
   success?: boolean;
   message?: string;
+  /** Some endpoints nest under `data`; others return these at the root */
+  date?: string;
+  slots?: BookingSlot[];
+  duration_min?: number;
   data?: {
     date?: string;
     slots?: BookingSlot[];

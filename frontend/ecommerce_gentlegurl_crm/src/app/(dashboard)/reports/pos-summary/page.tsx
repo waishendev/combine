@@ -5,10 +5,7 @@ import MyPosSummaryPage from '@/components/MyPosSummaryPage'
 import { getCurrentUser } from '@/lib/auth'
 
 type PosSummaryReportPageProps = {
-  searchParams?: {
-    created_by_user_id?: string
-    staff_name?: string
-  } | Promise<{
+  searchParams?: Promise<{
     created_by_user_id?: string
     staff_name?: string
   }>
@@ -16,7 +13,7 @@ type PosSummaryReportPageProps = {
 
 export default async function PosSummaryReport({ searchParams }: PosSummaryReportPageProps) {
   const user = await getCurrentUser()
-  const resolvedSearchParams = searchParams ? await Promise.resolve(searchParams) : {}
+  const resolvedSearchParams = searchParams ? await searchParams : {}
   const createdByUserId = resolvedSearchParams.created_by_user_id ?? ''
   const staffName = resolvedSearchParams.staff_name ?? ''
 

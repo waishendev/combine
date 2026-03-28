@@ -94,6 +94,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       });
       getMe()
         .then((me) => {
+          if (!me) {
+            setIsLoggedIn(false);
+            setCustomerId(null);
+            return;
+          }
           setIsLoggedIn(true);
           setCustomerId(me.id);
           setGuestName((prev) => prev || me.name || "");

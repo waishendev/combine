@@ -838,7 +838,9 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             email: typeof row?.email === 'string' ? row.email : null,
           }
         })
-        .filter((row): row is { id: number; name: string; phone?: string | null; email?: string | null } => Boolean(row))
+        .filter(
+          (row): row is { id: number; name: string; phone: string | null; email: string | null } => Boolean(row),
+        )
       setAppointmentCustomerOptions(mapped)
     } catch {
       setAppointmentCustomerOptions([])
@@ -1699,7 +1701,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         })
         const res = await fetch(`/api/proxy/booking/availability?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
-        const rows = Array.isArray(json?.data?.slots) ? json.data.slots : []
+        const rows: unknown[] = Array.isArray(json?.data?.slots) ? json.data.slots : []
         const slots = rows
           .map((row: unknown) => {
             if (!row || typeof row !== 'object') return null
@@ -1799,7 +1801,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         })
         const res = await fetch(`/api/proxy/booking/availability?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
-        const rows = Array.isArray(json?.data?.slots) ? json.data.slots : []
+        const rows: unknown[] = Array.isArray(json?.data?.slots) ? json.data.slots : []
         const slots = rows
           .map((row: unknown) => {
             if (!row || typeof row !== 'object') return null
@@ -4430,7 +4432,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               </div>
 
 
-              {(cart.service_items?.length ?? 0) > 0 && (
+              {(cart?.service_items?.length ?? 0) > 0 && (
                 <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                   <h5 className="text-sm font-bold text-emerald-900">Booking Deposit Summary</h5>
                   <div className="mt-2 space-y-1 text-xs text-emerald-900">

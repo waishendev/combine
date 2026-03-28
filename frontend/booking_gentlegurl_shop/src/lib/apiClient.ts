@@ -263,10 +263,14 @@ export async function registerCustomer(payload: {
   });
 }
 
-export async function getMe() {
+export async function getMe(): Promise<AuthUser | undefined> {
   const response = await request<{ data: AuthUser } | AuthUser>("/public/shop/account/overview");
   const data = unwrapData<AuthUser | { profile?: AuthUser }>(response);
-  return "profile" in data ? data.profile : data;
+  if (!data || typeof data !== "object") return undefined;
+  if ("profile" in data) {
+    return data.profile;
+  }
+  return data as AuthUser;
 }
 
 export async function logoutCustomer() {

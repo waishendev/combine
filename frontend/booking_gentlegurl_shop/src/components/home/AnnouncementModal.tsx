@@ -5,8 +5,8 @@ import Image from "next/image";
 
 type Announcement = {
   id: number | string;
-  title?: string;
-  content?: string;
+  title?: string | null;
+  content?: string | null;
   image_path?: string | null;
   image_url?: string | null;
   button_link?: string | null;

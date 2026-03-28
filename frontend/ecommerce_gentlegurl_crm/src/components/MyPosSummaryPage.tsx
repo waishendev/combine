@@ -181,14 +181,24 @@ export default function MyPosSummaryPage({
       if (!res.ok) return
 
       const json = await res.json().catch(() => ({}))
-      const list = Array.isArray(json?.data?.data) ? json.data.data : []
+      const list: unknown[] = Array.isArray(json?.data?.data) ? json.data.data : []
+      type StaffApiRow = {
+        id?: number
+        name?: string
+        phone?: string | null
+        email?: string | null
+        admin?: { email?: string | null }
+      }
       const mapped: StaffOption[] = list
-        .map((item: { id?: number; name?: string; phone?: string | null; email?: string | null; admin?: { email?: string | null } }) => ({
-          id: Number(item.id),
-          name: item.name ?? `Staff #${item.id}`,
-          phone: item.phone ?? null,
-          email: item.email ?? item.admin?.email ?? null,
-        }))
+        .map((item: unknown): StaffOption => {
+          const rec = item as StaffApiRow
+          return {
+            id: Number(rec.id),
+            name: rec.name ?? `Staff #${rec.id}`,
+            phone: rec.phone ?? null,
+            email: rec.email ?? rec.admin?.email ?? null,
+          }
+        })
         .filter((item) => Number.isFinite(item.id))
 
       setStaffOptions(mapped)

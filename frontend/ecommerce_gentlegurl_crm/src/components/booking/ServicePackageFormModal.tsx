@@ -81,7 +81,7 @@ export default function ServicePackageFormModal({
           return
         }
 
-        const rows =
+        const rows: unknown[] =
           data &&
           typeof data === 'object' &&
           'data' in data &&
@@ -94,12 +94,11 @@ export default function ServicePackageFormModal({
 
         setServices(
           rows
-            .filter((item): item is { id: number; name: string; is_package_eligible?: boolean } => (
-              typeof item === 'object' &&
-              item !== null &&
-              typeof item.id === 'number' &&
-              typeof item.name === 'string'
-            ))
+            .filter((item: unknown): item is { id: number; name: string; is_package_eligible?: boolean } => {
+              if (typeof item !== 'object' || item === null) return false
+              const rec = item as Record<string, unknown>
+              return typeof rec.id === 'number' && typeof rec.name === 'string'
+            })
             .filter((item) => item.is_package_eligible !== false)
             .map((item) => ({ id: item.id, name: item.name })),
         )

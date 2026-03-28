@@ -1,7 +1,7 @@
 interface MarqueeProps {
   items: Array<{
     id: number | string;
-    text?: string;
+    text?: string | null;
   }>;
 }
 
