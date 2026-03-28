@@ -319,7 +319,7 @@ $protectedRoutes = function () {
 
     // Customers
     Route::get('/customers', [CustomerController::class, 'index'])
-        ->middleware('permission:customers.view');
+        ->middleware('permission:customers.view|pos.checkout');
 
     Route::get('/customers/export', [CustomerController::class, 'exportCsv'])
         ->middleware('permission:customers.view');
@@ -344,7 +344,7 @@ $protectedRoutes = function () {
 
 
     Route::get('/service-packages', [ServicePackageController::class, 'index'])
-        ->middleware('permission:service-packages.view');
+        ->middleware('permission:service-packages.view|pos.checkout');
     Route::post('/service-packages', [ServicePackageController::class, 'store'])
         ->middleware('permission:service-packages.create');
     Route::get('/service-packages/{id}', [ServicePackageController::class, 'show'])
@@ -361,13 +361,13 @@ $protectedRoutes = function () {
     Route::get('/customers/{id}/service-package-usages', [CustomerServicePackageController::class, 'usages'])
         ->middleware('permission:customer-service-packages.view');
     Route::get('/customers/{id}/service-package-available-for/{serviceId}', [CustomerServicePackageController::class, 'availableFor'])
-        ->middleware('permission:customer-service-packages.view');
+        ->middleware('permission:customer-service-packages.view|pos.checkout');
     Route::post('/service-packages/redeem', [ServicePackageRedeemController::class, 'redeem'])
-        ->middleware('permission:customer-service-packages.update');
+        ->middleware('permission:customer-service-packages.update|pos.checkout');
 
     // Staffs
     Route::get('/staffs', [StaffController::class, 'index'])
-        ->middleware('permission:staff.view');
+        ->middleware('permission:staff.view|pos.checkout');
 
     Route::post('/staffs', [StaffController::class, 'store'])
         ->middleware('permission:staff.create');
@@ -419,7 +419,7 @@ $protectedRoutes = function () {
     Route::prefix('ecommerce')->group(function () {
         // Categories
         Route::get('/categories', [CategoryController::class, 'index'])
-            ->middleware('permission:ecommerce.categories.view');
+            ->middleware('permission:ecommerce.categories.view|pos.checkout');
 
         Route::get('/categories/export', [CategoryController::class, 'exportCsv'])
             ->middleware('permission:ecommerce.categories.view');
@@ -441,7 +441,7 @@ $protectedRoutes = function () {
 
         // Products
         Route::get('/products', [ProductController::class, 'index'])
-            ->middleware('permission:ecommerce.products.view');
+            ->middleware('permission:ecommerce.products.view|pos.checkout');
 
         Route::get('/products/export', [ProductController::class, 'exportCsv'])
             ->middleware('permission:ecommerce.products.view');
@@ -456,7 +456,7 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.products.update');
 
         Route::get('/products/{product}', [ProductController::class, 'show'])
-            ->middleware('permission:ecommerce.products.view');
+            ->middleware('permission:ecommerce.products.view|pos.checkout');
 
         Route::put('/products/{product}', [ProductController::class, 'update'])
             ->middleware('permission:ecommerce.products.update');
@@ -677,7 +677,7 @@ $protectedRoutes = function () {
 
         // Voucher Admin
         Route::get('/vouchers', [VoucherController::class, 'index'])
-            ->middleware('permission:ecommerce.vouchers.view');
+            ->middleware('permission:ecommerce.vouchers.view|pos.checkout');
 
         Route::get('/vouchers/assignable', [VoucherController::class, 'assignable'])
             ->middleware('permission:ecommerce.vouchers.assign');
