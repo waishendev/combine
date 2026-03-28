@@ -196,7 +196,7 @@ export default async function PublicReceiptPage({ params }: Props) {
 
       {isPackageCoveredReceipt ? (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <p className="font-semibold">{receipt.package_coverage?.note || 'Covered by Package'}</p>
+          {/* <p className="font-semibold">{receipt.package_coverage?.note || 'Covered by Package'}</p> */}
           <p>Payment collected at checkout: RM 0.00</p>
           {packageNames.length > 0 ? (
             <p className="mt-1 text-xs text-emerald-900">Package Applied: {packageNames.join(', ')}</p>
