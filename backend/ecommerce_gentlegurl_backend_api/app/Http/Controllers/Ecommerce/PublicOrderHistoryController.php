@@ -134,7 +134,7 @@ class PublicOrderHistoryController extends Controller
             ]);
         }
 
-        $frontendUrl = FrontendUrlResolver::resolve($request);
+        $frontendUrl = FrontendUrlResolver::resolveBaseUrl();
 
         return $frontendUrl . '/api/proxy/public/receipt/' . $token->token;
     }

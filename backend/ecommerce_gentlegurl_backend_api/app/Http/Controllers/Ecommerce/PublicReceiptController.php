@@ -71,6 +71,13 @@ class PublicReceiptController extends Controller
                 ? 'booking_deposit'
                 : ($hasSettlementLine ? 'final_settlement' : 'regular'));
 
+        $displayItems = $mixedItems;
+        if ($hasDepositLine) {
+            $displayItems = $mixedItems->where('line_type', 'booking_deposit')->values();
+        } elseif ($hasSettlementLine) {
+            $displayItems = $mixedItems->where('line_type', 'booking_settlement')->values();
+        }
+
         return $this->respond([
             'order_number' => $order->order_number,
             'status' => $order->status,
@@ -89,7 +96,7 @@ class PublicReceiptController extends Controller
                 'package_covered_booking' => 'Package-Covered Booking Receipt',
                 default => 'Receipt',
             },
-            'items' => $mixedItems->map(fn ($item) => [
+            'items' => $displayItems->map(fn ($item) => [
                 'type' => (string) ($item->line_type ?: 'product'),
                 'name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
                 'variant_name' => (function () use ($item) {
@@ -132,7 +139,7 @@ class PublicReceiptController extends Controller
                 'package_names' => [],
                 'note' => null,
             ],
-            'package_items' => $mixedItems->where('line_type', 'service_package')->groupBy('service_package_id')->map(function ($rows) {
+            'package_items' => $displayItems->where('line_type', 'service_package')->groupBy('service_package_id')->map(function ($rows) {
                 $first = $rows->first();
                 return [
                     'type' => 'service_package',

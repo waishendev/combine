@@ -89,7 +89,11 @@ class InvoiceService
 
         $items = $mixedItems->concat($serviceItems)->values();
 
-        if ($isPackageCoveredReceipt) {
+        if ($hasDepositLine) {
+            $items = $mixedItems->where('line_type', 'booking_deposit')->values();
+        } elseif ($hasSettlementLine) {
+            $items = $mixedItems->where('line_type', 'booking_settlement')->values();
+        } elseif ($isPackageCoveredReceipt) {
             $items = $coveredServiceItems->values();
         }
 
