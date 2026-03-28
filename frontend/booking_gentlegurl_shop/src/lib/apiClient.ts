@@ -212,11 +212,20 @@ export type PublicAccountOrder = {
   payment_method?: string | null;
   grand_total: number;
   created_at?: string | null;
-  items?: Array<{ id: number; line_type?: string | null; name?: string | null; line_total?: number | null }>;
+  receipt_public_url?: string | null;
+  items?: Array<{
+    id: number;
+    line_type?: string | null;
+    name?: string | null;
+    quantity?: number | null;
+    line_total?: number | null;
+    booking_id?: number | null;
+    service_package_id?: number | null;
+  }>;
 };
 
 export async function getMyOrders() {
-  const response = await request<{ data?: { orders?: PublicAccountOrder[] } | PublicAccountOrder[] }>("/public/shop/orders");
+  const response = await request<{ data?: { orders?: PublicAccountOrder[] } | PublicAccountOrder[] }>("/public/shop/orders?scope=booking_related");
   const unwrapped = unwrapData<{ orders?: PublicAccountOrder[] } | PublicAccountOrder[]>(response);
   if (Array.isArray(unwrapped)) return unwrapped;
   return unwrapped?.orders ?? [];

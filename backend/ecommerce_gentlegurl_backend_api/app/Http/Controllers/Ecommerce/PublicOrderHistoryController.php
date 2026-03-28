@@ -10,10 +10,13 @@ use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
 use App\Services\BillplzService;
 use App\Models\BillplzBill;
+use App\Models\Ecommerce\OrderReceiptToken;
+use App\Support\FrontendUrlResolver;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -32,11 +35,24 @@ class PublicOrderHistoryController extends Controller
     {
         $customer = $request->user('customer');
         $perPage = $request->integer('per_page', 10);
+        $scope = strtolower((string) $request->query('scope', ''));
+        $workspace = strtolower((string) $request->header('X-Workspace', $request->query('workspace', '')));
 
-        $orders = Order::where('customer_id', $customer->id)
+        $ordersQuery = Order::query()
+            ->where('customer_id', $customer->id)
             ->with(['items.product.images', 'items.review'])
-            ->orderByDesc('created_at')
-            ->paginate($perPage);
+            ->orderByDesc('created_at');
+
+        if ($scope === 'booking_related' || $workspace === 'booking') {
+            $ordersQuery->whereHas('items', function ($query) {
+                $query->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'service_package'])
+                    ->orWhereNotNull('booking_id')
+                    ->orWhereNotNull('service_package_id')
+                    ->orWhereNotNull('customer_service_package_id');
+            });
+        }
+
+        $orders = $ordersQuery->paginate($perPage);
 
         $reviewSettings = $this->reviewService->settings();
         $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
@@ -52,6 +68,7 @@ class PublicOrderHistoryController extends Controller
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
+                'receipt_public_url' => $this->resolveReceiptUrl($order, $request),
                 'items' => $order->items->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
                     $thumbnail = $item->product?->cover_image_url;
                     $productType = $item->product?->type;
@@ -78,6 +95,9 @@ class PublicOrderHistoryController extends Controller
                         'quantity' => $item->quantity,
                         'unit_price' => $item->price_snapshot,
                         'line_total' => $item->line_total,
+                        'line_type' => $item->line_type,
+                        'booking_id' => $item->booking_id,
+                        'service_package_id' => $item->service_package_id,
                         'product_image' => $thumbnail,
                         'cover_image_url' => $thumbnail,
                         'review_id' => $review?->id,
@@ -97,6 +117,26 @@ class PublicOrderHistoryController extends Controller
         ];
 
         return $this->respond($data);
+    }
+
+    protected function resolveReceiptUrl(Order $order, Request $request): ?string
+    {
+        $token = OrderReceiptToken::query()
+            ->where('order_id', $order->id)
+            ->latest('id')
+            ->first();
+
+        if (! $token) {
+            $token = OrderReceiptToken::create([
+                'order_id' => $order->id,
+                'token' => Str::random(40),
+                'expires_at' => now()->addDays(30),
+            ]);
+        }
+
+        $frontendUrl = FrontendUrlResolver::resolve($request);
+
+        return $frontendUrl . '/api/proxy/public/receipt/' . $token->token;
     }
 
     public function showById(Request $request, int $id)
