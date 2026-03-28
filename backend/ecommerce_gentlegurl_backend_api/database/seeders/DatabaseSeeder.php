@@ -38,13 +38,13 @@ class DatabaseSeeder extends Seeder
             // upper all should open , no command to avoid error seed
 
 
-            // FrontendTestDataSeeder::class,
-            // LoyaltyRewardSeederTesting::class,
-            // LoyaltyDemoCustomerSeederTesting::class,
-            // // SelfPickupCompletedOrderSeeder::class,
-            // // GuestCompletedOrderSeeder::class,
-            // BookingTestingSeeder::class,
-            // ServicePackageTestingSeeder::class,
+            FrontendTestDataSeeder::class,
+            LoyaltyRewardSeederTesting::class,
+            LoyaltyDemoCustomerSeederTesting::class,
+            // SelfPickupCompletedOrderSeeder::class,
+            // GuestCompletedOrderSeeder::class,
+            BookingTestingSeeder::class,
+            ServicePackageTestingSeeder::class,
 
             //ReturnDemoSeeder::class,
             // SalesReportSeeder::class,

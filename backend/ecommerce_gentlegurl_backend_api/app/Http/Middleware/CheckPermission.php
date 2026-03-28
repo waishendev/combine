@@ -24,7 +24,14 @@ class CheckPermission
             ->pluck('slug')
             ->unique();
 
-        if (! $permissionSlugs->contains($permission)) {
+        // `permission:a|b` passes the whole string as one argument; treat `|` as OR.
+        $required = str_contains($permission, '|')
+            ? array_map('trim', explode('|', $permission))
+            : [$permission];
+
+        $allowed = collect($required)->contains(fn (string $slug) => $permissionSlugs->contains($slug));
+
+        if (! $allowed) {
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
