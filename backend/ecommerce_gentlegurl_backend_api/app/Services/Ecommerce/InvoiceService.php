@@ -60,6 +60,7 @@ class InvoiceService
             ->filter(fn (array $item) => $this->isBookingCoveredByPackage((int) ($item['booking_id'] ?? 0)))
             ->values();
         $hasPackageCoverage = $coveredServiceItems->isNotEmpty();
+        $canRenderServiceCoverageLines = $hasPackageCoverage && ! $hasDepositLine && ! $hasSettlementLine;
         $isPackageCoveredReceipt = ! $hasDepositLine
             && ! $hasSettlementLine
             && $mixedItems->isEmpty()
@@ -88,7 +89,11 @@ class InvoiceService
             })
             ->values();
 
-        $items = $mixedItems->concat($serviceItems)->values();
+        $items = $mixedItems->values();
+
+        if ($canRenderServiceCoverageLines) {
+            $items = $items->concat($coveredServiceItems)->values();
+        }
 
         if ($isPackageCoveredReceipt) {
             $items = $coveredServiceItems->values();
@@ -98,12 +103,12 @@ class InvoiceService
             $items = $items->concat($packageItems)->values();
         }
 
-        $packageOffset = $hasPackageCoverage
+        $packageOffset = $canRenderServiceCoverageLines
             ? round((float) $coveredServiceItems->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2)
             : 0.0;
 
         $packageNames = [];
-        if ($hasPackageCoverage) {
+        if ($canRenderServiceCoverageLines) {
             $packageNames = $coveredServiceItems
                 ->map(function (array $item) {
                     $usage = CustomerServicePackageUsage::query()
@@ -148,9 +153,9 @@ class InvoiceService
             'displayShipping' => $displayShipping,
             'displayGrandTotal' => $displayGrandTotal,
             'packageCoverage' => [
-                'covered' => $hasPackageCoverage,
+                'covered' => $canRenderServiceCoverageLines,
                 'offset' => $packageOffset,
-                'note' => $hasPackageCoverage ? 'Covered by Package' : null,
+                'note' => $canRenderServiceCoverageLines ? 'Covered by Package' : null,
                 'package_names' => $packageNames,
             ],
         ]);

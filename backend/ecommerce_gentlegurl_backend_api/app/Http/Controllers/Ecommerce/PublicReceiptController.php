@@ -40,16 +40,17 @@ class PublicReceiptController extends Controller
             ->filter(fn ($item) => $this->isBookingCoveredByPackage((int) ($item->booking_id ?? 0)))
             ->values();
         $hasPackageCoverage = $packageCoveredServiceItems->isNotEmpty();
+        $canRenderServiceCoverageLines = $hasPackageCoverage && ! $hasDepositLine && ! $hasSettlementLine;
         $isPackageCoveredReceipt = ! $hasDepositLine
             && ! $hasSettlementLine
             && $mixedItems->isEmpty()
             && $hasPackageCoverage
             && (float) ($order->grand_total ?? 0) <= 0.0001;
 
-        $packageOffset = $hasPackageCoverage
+        $packageOffset = $canRenderServiceCoverageLines
             ? (float) $packageCoveredServiceItems->sum(fn ($item) => (float) ($item->line_total ?? 0))
             : 0.0;
-        $packageNames = $hasPackageCoverage
+        $packageNames = $canRenderServiceCoverageLines
             ? $packageCoveredServiceItems
                 ->map(function ($item) {
                     $usage = CustomerServicePackageUsage::query()
@@ -129,14 +130,14 @@ class PublicReceiptController extends Controller
                 'promotion_tier_summary' => data_get($item->promotion_snapshot, 'summary'),
                 'promotion_snapshot' => $item->promotion_snapshot,
             ])->values(),
-            'service_items' => $serviceItems->map(fn ($item) => [
+            'service_items' => ($canRenderServiceCoverageLines ? $packageCoveredServiceItems : collect())->map(fn ($item) => [
                 'type' => 'service',
                 'name' => $item->service_name_snapshot,
                 'qty' => $item->qty,
                 'unit_price' => $item->price_snapshot,
                 'line_total' => $item->line_total,
             ])->values(),
-            'package_coverage' => $hasPackageCoverage ? [
+            'package_coverage' => $canRenderServiceCoverageLines ? [
                 'covered' => true,
                 'package_offset' => round($packageOffset, 2),
                 'package_names' => $packageNames,
