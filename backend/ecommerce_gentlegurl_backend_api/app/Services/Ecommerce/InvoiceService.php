@@ -59,10 +59,11 @@ class InvoiceService
         $coveredServiceItems = $serviceItems
             ->filter(fn (array $item) => $this->isBookingCoveredByPackage((int) ($item['booking_id'] ?? 0)))
             ->values();
+        $hasPackageCoverage = $coveredServiceItems->isNotEmpty();
         $isPackageCoveredReceipt = ! $hasDepositLine
             && ! $hasSettlementLine
             && $mixedItems->isEmpty()
-            && $coveredServiceItems->isNotEmpty()
+            && $hasPackageCoverage
             && (float) ($order->grand_total ?? 0) <= 0.0001;
 
         $packageItems = CustomerServicePackage::query()
@@ -89,11 +90,7 @@ class InvoiceService
 
         $items = $mixedItems->concat($serviceItems)->values();
 
-        if ($hasDepositLine) {
-            $items = $mixedItems->where('line_type', 'booking_deposit')->values();
-        } elseif ($hasSettlementLine) {
-            $items = $mixedItems->where('line_type', 'booking_settlement')->values();
-        } elseif ($isPackageCoveredReceipt) {
+        if ($isPackageCoveredReceipt) {
             $items = $coveredServiceItems->values();
         }
 
@@ -101,12 +98,12 @@ class InvoiceService
             $items = $items->concat($packageItems)->values();
         }
 
-        $packageOffset = $isPackageCoveredReceipt
+        $packageOffset = $hasPackageCoverage
             ? round((float) $coveredServiceItems->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2)
             : 0.0;
 
         $packageNames = [];
-        if ($isPackageCoveredReceipt) {
+        if ($hasPackageCoverage) {
             $packageNames = $coveredServiceItems
                 ->map(function (array $item) {
                     $usage = CustomerServicePackageUsage::query()
@@ -129,9 +126,9 @@ class InvoiceService
         $displayGrandTotal = (float) $order->grand_total;
         $receiptLabel = 'Receipt';
 
-        if ($hasDepositLine) {
+        if ($hasDepositLine && $mixedItems->count() === $mixedItems->where('line_type', 'booking_deposit')->count()) {
             $receiptLabel = 'Booking Deposit Receipt';
-        } elseif ($hasSettlementLine) {
+        } elseif ($hasSettlementLine && $mixedItems->count() === $mixedItems->where('line_type', 'booking_settlement')->count()) {
             $receiptLabel = 'Final Settlement Receipt';
         } elseif ($isPackageCoveredReceipt) {
             $receiptLabel = 'Package-Covered Booking Receipt';
@@ -151,9 +148,9 @@ class InvoiceService
             'displayShipping' => $displayShipping,
             'displayGrandTotal' => $displayGrandTotal,
             'packageCoverage' => [
-                'covered' => $isPackageCoveredReceipt,
+                'covered' => $hasPackageCoverage,
                 'offset' => $packageOffset,
-                'note' => $isPackageCoveredReceipt ? 'Covered by Package' : null,
+                'note' => $hasPackageCoverage ? 'Covered by Package' : null,
                 'package_names' => $packageNames,
             ],
         ]);

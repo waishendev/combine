@@ -39,16 +39,17 @@ class PublicReceiptController extends Controller
         $packageCoveredServiceItems = $serviceItems
             ->filter(fn ($item) => $this->isBookingCoveredByPackage((int) ($item->booking_id ?? 0)))
             ->values();
+        $hasPackageCoverage = $packageCoveredServiceItems->isNotEmpty();
         $isPackageCoveredReceipt = ! $hasDepositLine
             && ! $hasSettlementLine
             && $mixedItems->isEmpty()
-            && $packageCoveredServiceItems->isNotEmpty()
+            && $hasPackageCoverage
             && (float) ($order->grand_total ?? 0) <= 0.0001;
 
-        $packageOffset = $isPackageCoveredReceipt
+        $packageOffset = $hasPackageCoverage
             ? (float) $packageCoveredServiceItems->sum(fn ($item) => (float) ($item->line_total ?? 0))
             : 0.0;
-        $packageNames = $isPackageCoveredReceipt
+        $packageNames = $hasPackageCoverage
             ? $packageCoveredServiceItems
                 ->map(function ($item) {
                     $usage = CustomerServicePackageUsage::query()
@@ -65,16 +66,23 @@ class PublicReceiptController extends Controller
                 ->all()
             : [];
 
+        $hasOnlyDepositLines = $hasDepositLine
+            && $mixedItems->count() > 0
+            && $mixedItems->count() === $mixedItems->where('line_type', 'booking_deposit')->count();
+        $hasOnlySettlementLines = $hasSettlementLine
+            && $mixedItems->count() > 0
+            && $mixedItems->count() === $mixedItems->where('line_type', 'booking_settlement')->count();
+
         $receiptStage = $isPackageCoveredReceipt
             ? 'package_covered_booking'
-            : ($hasDepositLine
+            : ($hasOnlyDepositLines
                 ? 'booking_deposit'
-                : ($hasSettlementLine ? 'final_settlement' : 'regular'));
+                : ($hasOnlySettlementLines ? 'final_settlement' : 'regular'));
 
         $displayItems = $mixedItems;
-        if ($hasDepositLine) {
+        if ($hasOnlyDepositLines) {
             $displayItems = $mixedItems->where('line_type', 'booking_deposit')->values();
-        } elseif ($hasSettlementLine) {
+        } elseif ($hasOnlySettlementLines) {
             $displayItems = $mixedItems->where('line_type', 'booking_settlement')->values();
         }
 
@@ -128,7 +136,7 @@ class PublicReceiptController extends Controller
                 'unit_price' => $item->price_snapshot,
                 'line_total' => $item->line_total,
             ])->values(),
-            'package_coverage' => $isPackageCoveredReceipt ? [
+            'package_coverage' => $hasPackageCoverage ? [
                 'covered' => true,
                 'package_offset' => round($packageOffset, 2),
                 'package_names' => $packageNames,

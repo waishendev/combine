@@ -50,6 +50,14 @@ class PublicOrderHistoryController extends Controller
                     ->orWhereNotNull('service_package_id')
                     ->orWhereNotNull('customer_service_package_id');
             });
+        } elseif ($scope === 'ecommerce_products' || $workspace === 'ecommerce') {
+            $ordersQuery->whereHas('items', function ($query) {
+                $query->where(function ($lineTypeQuery) {
+                    $lineTypeQuery->whereNull('line_type')
+                        ->orWhere('line_type', '')
+                        ->orWhere('line_type', 'product');
+                });
+            });
         }
 
         $orders = $ordersQuery->paginate($perPage);
