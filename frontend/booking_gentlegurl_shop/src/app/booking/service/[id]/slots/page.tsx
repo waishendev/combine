@@ -52,11 +52,11 @@ function SlotPageContent() {
   const [confirmModal, setConfirmModal] = useState<BookingSlot | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const canLoad = Boolean(serviceId && staffId && date && selectedStaff);
   const selectedStaff = useMemo(
     () => service?.staffs?.find((s) => String(s.id) === staffId),
     [service, staffId]
   );
+  const canLoad = Boolean(serviceId && staffId && date && selectedStaff);
 
   const loadSlots = useCallback(async () => {
     if (!canLoad) return;
