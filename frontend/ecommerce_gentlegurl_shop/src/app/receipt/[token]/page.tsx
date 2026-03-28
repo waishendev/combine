@@ -7,6 +7,8 @@ type ReceiptItem = {
   qty: number;
   unit_price: number;
   line_total?: number;
+  covered_by_package?: boolean;
+  package_applied_name?: string | null;
 };
 
 type ReceiptData = {
@@ -125,6 +127,14 @@ export default async function PublicReceiptPage({ params }: Props) {
                   {item.sku ? <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku}</p> : null}
                   {item.variant_name ? (
                     <p className="text-xs text-[var(--foreground)]/70">Variant: {item.variant_name}</p>
+                  ) : null}
+                  {item.covered_by_package ? (
+                    <>
+                      <p className="text-xs font-semibold text-emerald-700">Covered by Package</p>
+                      {item.package_applied_name ? (
+                        <p className="text-xs text-emerald-700">Package Applied: {item.package_applied_name}</p>
+                      ) : null}
+                    </>
                   ) : null}
                 </td>
                 <td className="px-4 py-3 text-right">{item.qty}</td>

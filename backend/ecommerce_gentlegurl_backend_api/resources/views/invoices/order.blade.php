@@ -298,12 +298,22 @@
   $useShippingForBilling = !collect($billingFields)->filter()->count();
   $billingName = $useShippingForBilling ? $order->shipping_name : $order->billing_name;
   $billingPhone = $useShippingForBilling ? $order->shipping_phone : $order->billing_phone;
+  $billingEmail = $order->customer?->email;
   $billingLine1 = $useShippingForBilling ? $order->shipping_address_line1 : $order->billing_address_line1;
   $billingLine2 = $useShippingForBilling ? $order->shipping_address_line2 : $order->billing_address_line2;
   $billingCity = $useShippingForBilling ? $order->shipping_city : $order->billing_city;
   $billingState = $useShippingForBilling ? $order->shipping_state : $order->billing_state;
   $billingPostcode = $useShippingForBilling ? $order->shipping_postcode : $order->billing_postcode;
   $billingCountry = $useShippingForBilling ? $order->shipping_country : $order->billing_country;
+  $customerName = $order->customer?->name;
+  $customerPhone = $order->customer?->phone;
+
+  if (!$billingName && $customerName) {
+    $billingName = $customerName;
+  }
+  if (!$billingPhone && $customerPhone) {
+    $billingPhone = $customerPhone;
+  }
 
   $paymentMethodRaw = $order->payment_method ?? '';
   $paymentMethodMap = [
@@ -427,6 +437,9 @@
             @if($billingPhone)
               <div class="addr-line muted">Phone: {{ $billingPhone }}</div>
             @endif
+            @if($billingEmail)
+              <div class="addr-line muted">Email: {{ $billingEmail }}</div>
+            @endif
             @if($billingLine1)
               <div class="addr-line">{{ $billingLine1 }}</div>
             @endif
@@ -458,16 +471,16 @@
               @endif
 
               <div style="margin-top:8px;" class="muted small">
-                Pickup Contact: <strong style="color:#111827;">{{ $order->shipping_name ?? '-' }}</strong>
+                Pickup Contact: <strong style="color:#111827;">{{ $order->shipping_name ?: ($customerName ?? '-') }}</strong>
               </div>
-              @if($order->shipping_phone)
-                <div class="muted small">Phone: {{ $order->shipping_phone }}</div>
+              @if($order->shipping_phone || $customerPhone)
+                <div class="muted small">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
               @endif
 
             @else
-              <div class="addr-title">{{ $order->shipping_name ?? '-' }}</div>
-              @if($order->shipping_phone)
-                <div class="addr-line muted">Phone: {{ $order->shipping_phone }}</div>
+              <div class="addr-title">{{ $order->shipping_name ?: ($customerName ?? '-') }}</div>
+              @if($order->shipping_phone || $customerPhone)
+                <div class="addr-line muted">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
               @endif
               @if($order->shipping_address_line1)
                 <div class="addr-line">{{ $order->shipping_address_line1 }}</div>
@@ -518,6 +531,12 @@
                 @endif
                 @if(!empty($item['promotion_summary']))
                   <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>
+                @endif
+                @if(!empty($item['covered_by_package']))
+                  <div class="sku" style="margin-top:3px; color:#065f46; font-weight:700;">Covered by Package</div>
+                  @if(!empty($item['package_applied_name']))
+                    <div class="sku" style="color:#065f46;">Package Applied: {{ $item['package_applied_name'] }}</div>
+                  @endif
                 @endif
 
                 <!-- Optional: show price x qty in a friendly way -->
