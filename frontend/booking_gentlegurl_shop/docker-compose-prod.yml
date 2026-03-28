@@ -12,11 +12,11 @@ services:
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME}
         NEXT_PUBLIC_TIMEZONE: ${NEXT_PUBLIC_TIMEZONE}
 
-    # host 3002 -> container 3000 (avoid conflicts)
+    # host 3003 -> container 3000 (avoid conflicts)
     ports:
-      - "3002:3000"
+      - "3003:3000"
       # Safer with reverse proxy:
-      # - "127.0.0.1:3002:3000"
+      # - "127.0.0.1:3003:3000"
 
     env_file:
       - .env.production
