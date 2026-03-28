@@ -309,6 +309,18 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             requiredPermission: 'ecommerce.reports.sales.view',
           },
           {
+            key: 'sales-ecommerce',
+            label: 'Ecommerce Sales',
+            href: '/reports/sales/ecommerce',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'sales-booking',
+            label: 'Booking Sales',
+            href: '/reports/sales/booking',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
             key: 'staff-commission',
             label: 'Staff Commission',
             href: '/reports/staff-commission',

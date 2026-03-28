@@ -47,6 +47,7 @@ use App\Http\Controllers\Ecommerce\Reports\SalesReportExportController;
 use App\Http\Controllers\Ecommerce\Reports\StaffCommissionReportController;
 use App\Http\Controllers\Ecommerce\Reports\MyPosSummaryReportController;
 use App\Http\Controllers\Ecommerce\Reports\PosSummaryReportController;
+use App\Http\Controllers\Ecommerce\Reports\SalesChannelReportController;
 use App\Http\Controllers\Ecommerce\LoyaltyAdminController;
 use App\Http\Controllers\Ecommerce\LoyaltyRewardController;
 use App\Http\Controllers\Ecommerce\LoyaltyRedemptionAdminController;
@@ -916,6 +917,12 @@ $protectedRoutes = function () {
             Route::get('/sales/by-customers', [SalesReportController::class, 'byCustomers'])
                 ->middleware('permission:ecommerce.reports.sales.view');
 
+            Route::get('/sales/ecommerce', [SalesChannelReportController::class, 'ecommerce'])
+                ->middleware('permission:ecommerce.reports.sales.view');
+
+            Route::get('/sales/booking', [SalesChannelReportController::class, 'booking'])
+                ->middleware('permission:ecommerce.reports.sales.view');
+
             Route::get('/staff-commission', [StaffCommissionReportController::class, 'summary'])
                 ->middleware('permission:ecommerce.reports.sales.view');
 
@@ -942,6 +949,12 @@ $protectedRoutes = function () {
                     ->middleware('permission:ecommerce.reports.sales.export');
 
                 Route::get('/export/by-customers', [SalesReportExportController::class, 'byCustomers'])
+                    ->middleware('permission:ecommerce.reports.sales.export');
+
+                Route::get('/export/ecommerce', [SalesChannelReportController::class, 'exportEcommerce'])
+                    ->middleware('permission:ecommerce.reports.sales.export');
+
+                Route::get('/export/booking', [SalesChannelReportController::class, 'exportBooking'])
                     ->middleware('permission:ecommerce.reports.sales.export');
             });
         });
