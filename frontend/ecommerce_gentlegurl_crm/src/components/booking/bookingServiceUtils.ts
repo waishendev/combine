@@ -14,7 +14,10 @@ export type BookingServiceApiItem = {
   image_url?: string | null
   created_at?: string | null
   updated_at?: string | null
+  allowed_staff_count?: number | string | null
+  allowed_staff_names?: string[] | null
 }
+
 
 export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): BookingServiceRowData => {
   const idValue =
@@ -57,5 +60,7 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     imagePath: item.image_path ?? '',
     imageUrl: item.image_url ?? item.image_path ?? '',
     createdAt: item.created_at ?? undefined,
+    allowedStaffCount: item.allowed_staff_count != null ? Number(item.allowed_staff_count) : undefined,
+    allowedStaffNames: Array.isArray(item.allowed_staff_names) ? item.allowed_staff_names.filter((name): name is string => typeof name === 'string') : undefined,
   }
 }

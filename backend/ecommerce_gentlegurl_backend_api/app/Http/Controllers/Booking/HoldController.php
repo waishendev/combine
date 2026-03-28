@@ -34,7 +34,11 @@ class HoldController extends Controller
             return $this->respondError('Guest name and guest phone are required for guest booking.', 422);
         }
 
-        $service = BookingService::findOrFail($validated['service_id']);
+        $service = BookingService::query()->with('allowedStaffs:id')->findOrFail($validated['service_id']);
+
+        if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
+            return $this->respondError('Selected staff is not allowed for this service.', 422);
+        }
         $startAt = Carbon::parse($validated['start_at']);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 

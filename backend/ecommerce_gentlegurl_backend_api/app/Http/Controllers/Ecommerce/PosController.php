@@ -104,7 +104,21 @@ class PosController extends Controller
         }
 
         return $this->respond([
-            'data' => $builder->get(['id', 'name', 'service_type', 'service_price', 'duration_min', 'buffer_min']),
+            'data' => $builder->with(['allowedStaffs:id,name'])->get(['id', 'name', 'service_type', 'service_price', 'price', 'duration_min', 'buffer_min'])->map(function (BookingService $service) {
+                return [
+                    'id' => (int) $service->id,
+                    'name' => $service->name,
+                    'service_type' => $service->service_type,
+                    'service_price' => (float) $service->service_price,
+                    'price' => (float) ($service->price ?? $service->service_price),
+                    'duration_min' => (int) $service->duration_min,
+                    'buffer_min' => (int) $service->buffer_min,
+                    'allowed_staffs' => $service->allowedStaffs->map(fn (Staff $staff) => [
+                        'id' => (int) $staff->id,
+                        'name' => $staff->name,
+                    ])->values()->all(),
+                ];
+            })->values(),
         ]);
     }
 
@@ -612,9 +626,13 @@ class PosController extends Controller
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $service = BookingService::query()->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
+        $service = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
         $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+
+        if (! $service->isStaffAllowed((int) $staff->id)) {
+            return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
+        }
         $qty = max(1, (int) ($validated['qty'] ?? 1));
 
         $startAt = Carbon::parse((string) $validated['start_at']);
@@ -631,6 +649,12 @@ class PosController extends Controller
         }
 
         $staffIds = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
+
+        foreach ($staffIds as $splitStaffId) {
+            if (! $service->isStaffAllowed((int) $splitStaffId)) {
+                return $this->respondError(__('Selected staff split contains staff not allowed for this service.'), 422);
+            }
+        }
         $staffCommissionRates = DB::table('staffs')
             ->whereIn('id', $staffIds)
             ->pluck('service_commission_rate', 'id')
@@ -680,9 +704,13 @@ class PosController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $service = BookingService::query()->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
+        $service = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
         $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+
+        if (! $service->isStaffAllowed((int) $staff->id)) {
+            return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
+        }
 
         $startAt = Carbon::parse((string) $validated['start_at']);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);

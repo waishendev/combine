@@ -83,6 +83,9 @@ class ServiceController extends Controller
             'image_path' => $service->image_path,
             'image_url' => $service->image_url,
             'staffs' => $staffs,
+            'allowed_staffs' => $staffs,
+            'allowed_staff_count' => count($staffs),
+            'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
         ];
 
         if ($includeDescription) {

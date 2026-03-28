@@ -116,6 +116,7 @@ type BookingServiceOption = {
   price?: number
   service_price?: number
   is_active?: boolean
+  allowed_staffs?: Array<{ id: number; name: string }>
 }
 
 type ServicePackageOption = {
@@ -1339,6 +1340,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             price: Number(maybe.price ?? 0),
             service_price: Number(maybe.service_price ?? 0),
             is_active: Boolean(maybe.is_active ?? true),
+            allowed_staffs: Array.isArray(maybe.allowed_staffs)
+              ? (maybe.allowed_staffs as Array<Record<string, unknown>>)
+                .map((staff) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim() }))
+                .filter((staff) => staff.id > 0 && staff.name)
+              : [],
           }
         })
         .filter((item): item is BookingServiceOption => Boolean(item && item.name))
@@ -1416,6 +1422,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             valid_days: Number(maybe.valid_days ?? 0),
             items_summary: itemsSummary,
             is_active: Boolean(maybe.is_active ?? true),
+            allowed_staffs: Array.isArray(maybe.allowed_staffs)
+              ? (maybe.allowed_staffs as Array<Record<string, unknown>>)
+                .map((staff) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim() }))
+                .filter((staff) => staff.id > 0 && staff.name)
+              : [],
           }
         })
         .filter((item): item is ServicePackageOption => Boolean(item && item.name && item.is_active !== false))
@@ -1725,7 +1736,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const openBookingModal = useCallback((service: BookingServiceOption) => {
     setBookingServiceDraft(service)
-    setBookingAssignedStaffId(currentUser.staff_id ?? null)
+    const allowedStaffs = service.allowed_staffs ?? []
+    const preferredStaff = currentUser.staff_id && allowedStaffs.some((staff) => staff.id === currentUser.staff_id)
+      ? currentUser.staff_id
+      : (allowedStaffs[0]?.id ?? null)
+    setBookingAssignedStaffId(preferredStaff)
     setBookingDate('')
     setBookingSlots([])
     setBookingSlotValue('')
@@ -4792,6 +4807,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             </div>
 
             <div className="mt-4 space-y-3">
+              {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  This service is temporarily unavailable because no eligible staff is assigned.
+                </div>
+              ) : null}
+
               <div>
                 <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
                 <select
@@ -4901,6 +4922,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     : 'No member selected'}
                 </div>
               </div>
+              {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  This service is temporarily unavailable because no eligible staff is assigned.
+                </div>
+              ) : null}
+
               <div>
                 <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
                 <select
@@ -4909,7 +4936,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
                   <option value="">Select staff</option>
-                  {activeStaffs.map((staff) => (
+                  {(bookingServiceDraft.allowed_staffs ?? []).map((staff) => (
                     <option key={staff.id} value={staff.id}>{staff.name}</option>
                   ))}
                 </select>
@@ -4963,7 +4990,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               </button>
               <button
                 type="button"
-                disabled={bookingSubmitting}
+                disabled={bookingSubmitting || (bookingServiceDraft.allowed_staffs?.length ?? 0) === 0}
                 onClick={() => void submitBooking()}
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >

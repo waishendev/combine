@@ -16,6 +16,8 @@ export interface BookingServiceRowData {
   imagePath?: string
   imageUrl?: string
   createdAt?: string
+  allowedStaffCount?: number
+  allowedStaffNames?: string[]
 }
 
 interface BookingServiceRowProps {

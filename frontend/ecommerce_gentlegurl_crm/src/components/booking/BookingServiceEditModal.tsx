@@ -7,6 +7,8 @@ import { mapBookingServiceApiItemToRow, type BookingServiceApiItem } from './boo
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 
+type StaffOption = { id: number; name: string }
+
 interface BookingServiceEditModalProps {
   serviceId: number
   onClose: () => void
@@ -28,6 +30,7 @@ interface FormState {
   buffer_min: string
   is_active: 'true' | 'false'
   imageFile: File | null
+  allowed_staff_ids: number[]
 }
 
 const initialFormState: FormState = {
@@ -40,6 +43,7 @@ const initialFormState: FormState = {
   buffer_min: '15',
   is_active: 'true',
   imageFile: null,
+  allowed_staff_ids: [],
 }
 
 export default function BookingServiceEditModal({
@@ -54,6 +58,7 @@ export default function BookingServiceEditModal({
   const [error, setError] = useState<string | null>(null)
   const [loadedService, setLoadedService] = useState<BookingServiceRowData | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -117,6 +122,11 @@ export default function BookingServiceEditModal({
               ? 'true'
               : 'false',
           imageFile: null,
+          allowed_staff_ids: Array.isArray((service as { allowed_staff_ids?: unknown }).allowed_staff_ids)
+            ? ((service as { allowed_staff_ids?: unknown[] }).allowed_staff_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+            : Array.isArray((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs)
+              ? ((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs ?? []).map((staff) => Number(staff?.id)).filter((id) => Number.isFinite(id) && id > 0)
+              : [],
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -134,6 +144,46 @@ export default function BookingServiceEditModal({
 
     return () => controller.abort()
   }, [serviceId])
+
+
+  useEffect(() => {
+    let ignore = false
+
+    const loadStaffs = async () => {
+      try {
+        const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', { cache: 'no-store' })
+        if (!res.ok) return
+        const json = await res.json().catch(() => null)
+        const payload = (json && typeof json === 'object' && 'data' in json)
+          ? (json as { data?: { data?: unknown[] } | unknown[] }).data
+          : null
+
+        const rows = Array.isArray((payload as { data?: unknown[] } | null)?.data)
+          ? ((payload as { data?: unknown[] }).data ?? [])
+          : Array.isArray(payload)
+            ? payload
+            : []
+
+        const mapped = rows
+          .map((row): StaffOption | null => {
+            if (!row || typeof row !== 'object') return null
+            const maybe = row as Record<string, unknown>
+            const id = Number(maybe.id)
+            const name = String(maybe.name ?? '').trim()
+            if (!id || !name) return null
+            return { id, name }
+          })
+          .filter((row): row is StaffOption => Boolean(row))
+
+        if (!ignore) setStaffOptions(mapped)
+      } catch {
+        if (!ignore) setStaffOptions([])
+      }
+    }
+
+    void loadStaffs()
+    return () => { ignore = true }
+  }, [])
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
@@ -163,6 +213,27 @@ export default function BookingServiceEditModal({
     if (imageInputRef.current) {
       imageInputRef.current.value = ''
     }
+  }
+
+
+  const toggleAllowedStaff = (staffId: number) => {
+    setForm((prev) => {
+      const exists = prev.allowed_staff_ids.includes(staffId)
+      return {
+        ...prev,
+        allowed_staff_ids: exists
+          ? prev.allowed_staff_ids.filter((id) => id !== staffId)
+          : [...prev.allowed_staff_ids, staffId],
+      }
+    })
+  }
+
+  const selectAllStaffs = () => {
+    setForm((prev) => ({ ...prev, allowed_staff_ids: staffOptions.map((staff) => staff.id) }))
+  }
+
+  const clearAllStaffs = () => {
+    setForm((prev) => ({ ...prev, allowed_staff_ids: [] }))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -197,6 +268,11 @@ export default function BookingServiceEditModal({
       return
     }
 
+    if (form.allowed_staff_ids.length === 0) {
+      setError('Please assign at least 1 allowed staff')
+      return
+    }
+
     setSubmitting(true)
     setError(null)
 
@@ -211,6 +287,7 @@ export default function BookingServiceEditModal({
       fd.append('deposit_amount', String(deposit))
       fd.append('buffer_min', String(buffer))
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
+      form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       if (form.imageFile) {
         fd.append('image', form.imageFile)
       }
@@ -540,6 +617,26 @@ export default function BookingServiceEditModal({
                     <option value="true">Active</option>
                     <option value="false">Inactive</option>
                   </select>
+                </div>
+
+
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-700">Allowed Staff <span className="text-red-500">*</span></label>
+                    <span className="text-xs text-gray-500">{form.allowed_staff_ids.length} staff selected</span>
+                  </div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <button type="button" className="rounded border border-blue-200 px-2 py-1 text-xs text-blue-700" onClick={selectAllStaffs} disabled={disableForm || staffOptions.length === 0}>Select All Staff</button>
+                    <button type="button" className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-700" onClick={clearAllStaffs} disabled={disableForm || form.allowed_staff_ids.length === 0}>Clear All</button>
+                  </div>
+                  <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border border-gray-200 p-2">
+                    {staffOptions.length === 0 ? <p className="text-xs text-gray-500">No active staff found.</p> : staffOptions.map((staff) => (
+                      <label key={staff.id} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" checked={form.allowed_staff_ids.includes(staff.id)} onChange={() => toggleAllowedStaff(staff.id)} disabled={disableForm} />
+                        <span>{staff.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 {error && (
