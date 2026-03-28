@@ -329,7 +329,6 @@ class LiveRbacPatchSeeder extends Seeder
         }
 
         $staffPermissionIds = Permission::whereIn('slug', [
-            'staff.view',
             'pos.checkout',
             'pos.orders.view',
             'reports.my-pos-summary.view',

@@ -32,7 +32,6 @@ class StaffRbacSeeder extends Seeder
         }
 
         $permissionIds = Permission::whereIn('slug', [
-            'staff.view',
             'pos.checkout',
             'pos.orders.view',
             'reports.my-pos-summary.view',
