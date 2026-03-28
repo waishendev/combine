@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { addCartItem, getAvailability, getBookingServiceDetail } from "@/lib/apiClient";
@@ -37,7 +37,7 @@ type AvailabilityPayload = {
 
 type ServiceDetail = Service & { staffs?: Staff[] };
 
-export default function SlotPage() {
+function SlotPageContent() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const serviceId = params.id;
@@ -584,5 +584,19 @@ export default function SlotPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function SlotPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto flex max-w-5xl justify-center px-4 py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+        </main>
+      }
+    >
+      <SlotPageContent />
+    </Suspense>
   );
 }
