@@ -52,6 +52,18 @@ type EcommerceResponse = {
     total_orders?: number
   }
   rows?: EcommerceRow[]
+  totals_page?: {
+    orders_count?: number
+    product_amount?: number
+    discount?: number
+    net_amount?: number
+  }
+  grand_totals?: {
+    orders_count?: number
+    product_amount?: number
+    discount?: number
+    net_amount?: number
+  }
   pagination?: Partial<Pagination>
 }
 
@@ -63,6 +75,18 @@ type BookingResponse = {
     total_transactions?: number
   }
   rows?: BookingRow[]
+  totals_page?: {
+    orders_count?: number
+    gross_amount?: number
+    discount?: number
+    net_amount?: number
+  }
+  grand_totals?: {
+    orders_count?: number
+    gross_amount?: number
+    discount?: number
+    net_amount?: number
+  }
   pagination?: Partial<Pagination>
 }
 
@@ -129,6 +153,8 @@ export default function SalesChannelReportPage({ mode, canExport = false }: { mo
   const [ecommerceRows, setEcommerceRows] = useState<EcommerceRow[]>([])
   const [bookingRows, setBookingRows] = useState<BookingRow[]>([])
   const [summary, setSummary] = useState<Record<string, number>>({})
+  const [totalsPage, setTotalsPage] = useState<Record<string, number>>({})
+  const [grandTotals, setGrandTotals] = useState<Record<string, number>>({})
   const [pagination, setPagination] = useState<Pagination>({ total: 0, per_page: DEFAULT_PAGE_SIZE, current_page: 1, last_page: 1 })
   const [loading, setLoading] = useState(true)
 
@@ -158,6 +184,8 @@ export default function SalesChannelReportPage({ mode, canExport = false }: { mo
         setEcommerceRows([])
         setBookingRows([])
         setSummary({})
+        setTotalsPage({})
+        setGrandTotals({})
         setPagination({ total: 0, per_page: resolved.perPage, current_page: 1, last_page: 1 })
         setLoading(false)
         return
@@ -165,6 +193,8 @@ export default function SalesChannelReportPage({ mode, canExport = false }: { mo
 
       const data: EcommerceResponse | BookingResponse = await response.json()
       setSummary((data.summary as Record<string, number>) ?? {})
+      setTotalsPage((data.totals_page as Record<string, number>) ?? {})
+      setGrandTotals((data.grand_totals as Record<string, number>) ?? {})
       setPagination({
         total: data.pagination?.total ?? 0,
         per_page: data.pagination?.per_page ?? resolved.perPage,
@@ -341,6 +371,26 @@ export default function SalesChannelReportPage({ mode, canExport = false }: { mo
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="bg-white rounded-lg border p-4 space-y-2 text-sm">
+        <div className="font-semibold">Page Totals</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div>Orders count: <strong>{(totalsPage.orders_count ?? 0).toLocaleString()}</strong></div>
+          <div>{mode === 'ecommerce' ? 'Product Amount' : 'Gross Amount'}: <strong>{formatAmount(mode === 'ecommerce' ? (totalsPage.product_amount ?? 0) : (totalsPage.gross_amount ?? 0))}</strong></div>
+          <div>Discount: <strong>{formatAmount(totalsPage.discount ?? 0)}</strong></div>
+          <div>Net Amount: <strong>{formatAmount(totalsPage.net_amount ?? 0)}</strong></div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border p-4 space-y-2 text-sm">
+        <div className="font-semibold">Grand Totals</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div>Orders count: <strong>{(grandTotals.orders_count ?? 0).toLocaleString()}</strong></div>
+          <div>{mode === 'ecommerce' ? 'Product Amount' : 'Gross Amount'}: <strong>{formatAmount(mode === 'ecommerce' ? (grandTotals.product_amount ?? 0) : (grandTotals.gross_amount ?? 0))}</strong></div>
+          <div>Discount: <strong>{formatAmount(grandTotals.discount ?? 0)}</strong></div>
+          <div>Net Amount: <strong>{formatAmount(grandTotals.net_amount ?? 0)}</strong></div>
+        </div>
       </div>
 
       <PaginationControls

@@ -54,6 +54,14 @@ class SalesChannelReportService
             ->selectRaw("COALESCE(SUM(CASE WHEN channel = 'offline' THEN net_amount ELSE 0 END), 0) as offline_sales")
             ->first();
 
+        $totalsPage = $this->aggregateEcommerceTotals($rows);
+        $grandTotals = [
+            'orders_count' => (int) ($summaryRow->total_orders ?? 0),
+            'product_amount' => (float) ((clone $baseQuery)->sum('product_amount') ?? 0),
+            'discount' => (float) ((clone $baseQuery)->sum('discount') ?? 0),
+            'net_amount' => (float) ($summaryRow->total_sales ?? 0),
+        ];
+
         return [
             'summary' => [
                 'total_sales' => (float) ($summaryRow->total_sales ?? 0),
@@ -61,6 +69,8 @@ class SalesChannelReportService
                 'offline_sales' => (float) ($summaryRow->offline_sales ?? 0),
                 'total_orders' => (int) ($summaryRow->total_orders ?? 0),
             ],
+            'totals_page' => $totalsPage,
+            'grand_totals' => $grandTotals,
             'rows' => $rows,
             'pagination' => [
                 'total' => $paginator->total(),
@@ -134,6 +144,14 @@ class SalesChannelReportService
             ->selectRaw("COALESCE(SUM(CASE WHEN channel = 'offline' THEN net_amount ELSE 0 END), 0) as offline_booking_revenue")
             ->first();
 
+        $totalsPage = $this->aggregateBookingTotals($rows);
+        $grandTotals = [
+            'orders_count' => (int) ($summaryRow->total_transactions ?? 0),
+            'gross_amount' => (float) ((clone $baseQuery)->sum('gross_amount') ?? 0),
+            'discount' => (float) ((clone $baseQuery)->sum('discount') ?? 0),
+            'net_amount' => (float) ($summaryRow->total_booking_revenue ?? 0),
+        ];
+
         return [
             'summary' => [
                 'total_booking_revenue' => (float) ($summaryRow->total_booking_revenue ?? 0),
@@ -141,6 +159,8 @@ class SalesChannelReportService
                 'offline_booking_revenue' => (float) ($summaryRow->offline_booking_revenue ?? 0),
                 'total_transactions' => (int) ($summaryRow->total_transactions ?? 0),
             ],
+            'totals_page' => $totalsPage,
+            'grand_totals' => $grandTotals,
             'rows' => $rows,
             'pagination' => [
                 'total' => $paginator->total(),
@@ -299,5 +319,25 @@ class SalesChannelReportService
         $string = is_string($value) ? trim($value) : '';
 
         return $string === '' ? null : $string;
+    }
+
+    private function aggregateEcommerceTotals($rows): array
+    {
+        return [
+            'orders_count' => (int) $rows->count(),
+            'product_amount' => (float) $rows->sum('product_amount'),
+            'discount' => (float) $rows->sum('discount'),
+            'net_amount' => (float) $rows->sum('net_amount'),
+        ];
+    }
+
+    private function aggregateBookingTotals($rows): array
+    {
+        return [
+            'orders_count' => (int) $rows->count(),
+            'gross_amount' => (float) $rows->sum('gross_amount'),
+            'discount' => (float) $rows->sum('discount'),
+            'net_amount' => (float) $rows->sum('net_amount'),
+        ];
     }
 }
