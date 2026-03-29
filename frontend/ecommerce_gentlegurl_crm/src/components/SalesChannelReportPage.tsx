@@ -448,7 +448,7 @@ export default function SalesChannelReportPage({
                   </th>
                 ))
               ) : (
-                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Package Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status'].map((h) => (
+                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status'].map((h) => (
                   <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
                     {reportTableColumnHeader(h)}
                   </th>
@@ -532,9 +532,9 @@ export default function SalesChannelReportPage({
                 <tr className="bg-gray-100 font-semibold">
                   <td colSpan={5} className="border border-gray-300 px-4 py-2 text-left">
                     Page Totals
-                    <span className="ml-2 font-normal text-gray-600">
+                    {/* <span className="ml-2 font-normal text-gray-600">
                       ({(totalsPage.orders_count ?? 0).toLocaleString()} on this page)
-                    </span>
+                    </span> */}
                   </td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
@@ -547,13 +547,13 @@ export default function SalesChannelReportPage({
                 <tr className="bg-gray-100 font-bold">
                   <td colSpan={5} className="border border-gray-300 px-4 py-2 text-left">
                     Grand Totals
-                    <span className="ml-2 font-normal text-gray-600">
+                    {/* <span className="ml-2 font-normal text-gray-600">
                       ({(grandTotals.orders_count ?? 0).toLocaleString()} total)
-                    </span>
+                    </span> */}
                   </td>
-                  <td className="border border-gray-300 px-4 py-2">—</td>
-                  <td className="border border-gray-300 px-4 py-2">—</td>
-                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2"></td>
+                  <td className="border border-gray-300 px-4 py-2"></td>
+                  <td className="border border-gray-300 px-4 py-2"></td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.gross_amount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.discount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.net_amount ?? 0)}</td>

@@ -271,7 +271,7 @@ export default function CustomerSalesDomainReportPage({
                       {reportTableColumnHeader(h)}
                     </th>
                   ))
-                : ['Customer', 'Email', 'Transactions', 'Booking Deposit Amount', 'Booking Settlement Amount', 'Package Purchase Amount', 'Total Revenue'].map((h) => (
+                : ['Customer', 'Email', 'Transactions', 'Booking Deposit', 'Booking Settlement', 'Package Purchase', 'Total Revenue'].map((h) => (
                     <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
                       {reportTableColumnHeader(h)}
                     </th>

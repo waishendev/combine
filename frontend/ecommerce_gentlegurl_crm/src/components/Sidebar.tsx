@@ -284,30 +284,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
         label: 'Reports',
         icon: 'fa-solid fa-chart-line',
         children: [
-          // {
-          //   key: 'sales-daily',
-          //   label: 'Daily Sales',
-          //   href: '/reports/sales/daily',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-          {
-            key: 'sales-by-category',
-            label: 'Category Sales',
-            href: '/reports/sales/by-category',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'sales-by-product',
-            label: 'Product Sales',
-            href: '/reports/sales/by-product',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          // {
-          //   key: 'sales-by-customer',
-          //   label: 'Customer Sales',
-          //   href: '/reports/sales/by-customer',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
+
           {
             key: 'sales-customers-ecommerce',
             label: 'Ecommerce Customer Sales',
@@ -332,6 +309,32 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/reports/sales/booking',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
+          
+          // {
+          //   key: 'sales-daily',
+          //   label: 'Daily Sales',
+          //   href: '/reports/sales/daily',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
+          {
+            key: 'sales-by-category',
+            label: 'Category Sales',
+            href: '/reports/sales/by-category',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'sales-by-product',
+            label: 'Product Sales',
+            href: '/reports/sales/by-product',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          // {
+          //   key: 'sales-by-customer',
+          //   label: 'Customer Sales',
+          //   href: '/reports/sales/by-customer',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
+         
           {
             key: 'staff-commission',
             label: 'Staff Commission',
