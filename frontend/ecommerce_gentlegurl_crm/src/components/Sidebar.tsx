@@ -284,12 +284,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
         label: 'Reports',
         icon: 'fa-solid fa-chart-line',
         children: [
-          {
-            key: 'sales-daily',
-            label: 'Daily Sales',
-            href: '/reports/sales/daily',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
+          // {
+          //   key: 'sales-daily',
+          //   label: 'Daily Sales',
+          //   href: '/reports/sales/daily',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
           {
             key: 'sales-by-category',
             label: 'Category Sales',
@@ -302,12 +302,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/reports/sales/by-product',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
-          {
-            key: 'sales-by-customer',
-            label: 'Customer Sales',
-            href: '/reports/sales/by-customer',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
+          // {
+          //   key: 'sales-by-customer',
+          //   label: 'Customer Sales',
+          //   href: '/reports/sales/by-customer',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
           {
             key: 'sales-customers-ecommerce',
             label: 'Ecommerce Customer Sales',
@@ -352,6 +352,40 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
           },
         ],
       },
+      {
+        key: 'daily-reports',
+        label: 'Daily Reports',
+        icon: 'fa-solid fa-chart-line',
+        children: [
+      
+              {
+                key: 'sales-daily-customers-ecommerce',
+                label: 'Ecommerce Customer Sales',
+                href: '/reports/sales/daily/customers-ecommerce',
+                requiredPermission: 'ecommerce.reports.sales.view',
+              },
+              {
+                key: 'sales-daily-customers-booking',
+                label: 'Booking Customer Sales',
+                href: '/reports/sales/daily/customers-booking',
+                requiredPermission: 'ecommerce.reports.sales.view',
+              },
+              {
+                key: 'sales-daily-ecommerce',
+                label: 'Ecommerce Sales',
+                href: '/reports/sales/daily/ecommerce',
+                requiredPermission: 'ecommerce.reports.sales.view',
+              },
+              {
+                key: 'sales-daily-booking',
+                label: 'Booking Sales',
+                href: '/reports/sales/daily/booking',
+                requiredPermission: 'ecommerce.reports.sales.view',
+              },
+
+        ],
+      },
+
       
             // ======================
       // Payment Gateway
@@ -632,9 +666,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
           next[key] = true
         }
       })
+      if (pathname.startsWith('/reports/sales/daily')) {
+        next['reports-sales-daily-group'] = true
+      }
       return next
     })
-  }, [activeParentKeys])
+  }, [activeParentKeys, pathname])
 
   return (
     <>

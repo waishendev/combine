@@ -1,6 +1,6 @@
 'use client'
 
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import PaginationControls from './PaginationControls'
@@ -108,6 +108,17 @@ const getDefaultRange = () => {
   return { from: formatDateInput(start), to: formatDateInput(end) }
 }
 
+const getTodayRange = () => {
+  const d = formatDateInput(new Date())
+  return { from: d, to: d }
+}
+
+const formatDisplayDate = (dateString: string) => {
+  const date = new Date(`${dateString}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return dateString || '—'
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(date)
+}
+
 const formatDisplayDateTime = (value: string) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value || '—'
@@ -128,11 +139,26 @@ const labelize = (value: string) =>
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
 
-export default function SalesChannelReportPage({ mode, canExport = false }: { mode: Mode; canExport?: boolean }) {
+/** Table header: only the first character is uppercase (no full-string caps). */
+const reportTableColumnHeader = (label: string) =>
+  label ? `${label.charAt(0).toUpperCase()}${label.slice(1).toLowerCase()}` : label
+
+export default function SalesChannelReportPage({
+  mode,
+  canExport = false,
+  defaultDatePreset = 'month',
+}: {
+  mode: Mode
+  canExport?: boolean
+  defaultDatePreset?: 'month' | 'today'
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const defaultRange = useMemo(() => getDefaultRange(), [])
+  const defaultRange = useMemo(
+    () => (defaultDatePreset === 'today' ? getTodayRange() : getDefaultRange()),
+    [defaultDatePreset],
+  )
 
   const resolved = useMemo(() => {
     const parsedPage = Number(searchParams.get('page'))
@@ -157,6 +183,7 @@ export default function SalesChannelReportPage({ mode, canExport = false }: { mo
   const [grandTotals, setGrandTotals] = useState<Record<string, number>>({})
   const [pagination, setPagination] = useState<Pagination>({ total: 0, per_page: DEFAULT_PAGE_SIZE, current_page: 1, last_page: 1 })
   const [loading, setLoading] = useState(true)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
 
   useEffect(() => {
     setInputs(resolved)
@@ -213,22 +240,13 @@ export default function SalesChannelReportPage({ mode, canExport = false }: { mo
     return () => controller.abort()
   }, [mode, resolved])
 
-  const paymentMethodOptions = useMemo(() => {
-    const set = new Set<string>()
-    ;(mode === 'ecommerce' ? ecommerceRows : bookingRows).forEach((row) => {
-      if (row.payment_method) set.add(row.payment_method)
-    })
-    return ['all', ...Array.from(set).sort()]
-  }, [mode, ecommerceRows, bookingRows])
-
   const updateQuery = (patch: Record<string, string>) => {
     const next = new URLSearchParams(searchParams.toString())
     Object.entries(patch).forEach(([k, v]) => next.set(k, v))
-    router.replace(`${pathname}?${next.toString()}`)
+    router.push(`${pathname}?${next.toString()}`)
   }
 
-  const handleApply = (e: FormEvent) => {
-    e.preventDefault()
+  const handleApply = () => {
     updateQuery({
       date_from: inputs.dateFrom,
       date_to: inputs.dateTo,
@@ -238,7 +256,31 @@ export default function SalesChannelReportPage({ mode, canExport = false }: { mo
       type: inputs.type,
       page: '1',
     })
+    setIsFilterOpen(false)
   }
+
+  const handleReset = () => {
+    const range = defaultDatePreset === 'today' ? getTodayRange() : defaultRange
+    updateQuery({
+      date_from: range.from,
+      date_to: range.to,
+      channel: 'all',
+      payment_method: 'all',
+      status: 'all',
+      type: 'all',
+      page: '1',
+    })
+    setIsFilterOpen(false)
+  }
+
+  const showingRange = `${formatDisplayDate(resolved.dateFrom)} – ${formatDisplayDate(resolved.dateTo)}`
+  const activeFilters = [
+    { label: 'Date Range', value: showingRange },
+    ...(resolved.channel !== 'all' ? [{ label: 'Channel', value: labelize(resolved.channel) }] : []),
+    ...(resolved.paymentMethod !== 'all' ? [{ label: 'Payment', value: labelize(resolved.paymentMethod) }] : []),
+    ...(mode === 'ecommerce' && resolved.status !== 'all' ? [{ label: 'Status', value: labelize(resolved.status) }] : []),
+    ...(mode === 'booking' && resolved.type !== 'all' ? [{ label: 'Type', value: labelize(resolved.type) }] : []),
+  ]
 
   const exportUrl = useMemo(() => {
     const qs = new URLSearchParams()
@@ -251,166 +293,294 @@ export default function SalesChannelReportPage({ mode, canExport = false }: { mo
     return `/api/proxy/ecommerce/reports/sales/export/${mode}?${qs.toString()}`
   }, [mode, resolved])
 
+  const ecColSpan = 10
+  const bkColSpan = 12
+
   return (
-    <div className="space-y-4">
-      <form onSubmit={handleApply} className="bg-white rounded-lg border p-4 grid grid-cols-1 md:grid-cols-6 gap-3">
-        <input type="date" value={inputs.dateFrom} onChange={(e) => setInputs((p) => ({ ...p, dateFrom: e.target.value }))} className="border rounded px-3 py-2" />
-        <input type="date" value={inputs.dateTo} onChange={(e) => setInputs((p) => ({ ...p, dateTo: e.target.value }))} className="border rounded px-3 py-2" />
-        <select value={inputs.channel} onChange={(e) => setInputs((p) => ({ ...p, channel: e.target.value }))} className="border rounded px-3 py-2">
-          <option value="all">All Channel</option>
-          <option value="online">Online</option>
-          <option value="offline">Offline</option>
-        </select>
-        <select value={inputs.paymentMethod} onChange={(e) => setInputs((p) => ({ ...p, paymentMethod: e.target.value }))} className="border rounded px-3 py-2">
-          {paymentMethodOptions.map((option) => (
-            <option key={option} value={option}>{option === 'all' ? 'All Payment Methods' : labelize(option)}</option>
-          ))}
-        </select>
-        {mode === 'ecommerce' ? (
-          <select value={inputs.status} onChange={(e) => setInputs((p) => ({ ...p, status: e.target.value }))} className="border rounded px-3 py-2">
-            <option value="all">All Statuses</option>
-            <option value="paid">Paid</option>
-            <option value="packed">Packed</option>
-            <option value="shipped">Shipped</option>
-            <option value="completed">Completed</option>
+    <div className="space-y-6">
+      {isFilterOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setIsFilterOpen(false)} />
+          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+              <h2 className="text-lg font-semibold">Filter</h2>
+              <button type="button" onClick={() => setIsFilterOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl leading-none" aria-label="Close">
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="p-5 grid gap-4 sm:grid-cols-2">
+              <input
+                type="date"
+                value={inputs.dateFrom}
+                onChange={(e) => setInputs((p) => ({ ...p, dateFrom: e.target.value }))}
+                className="h-10 rounded border border-slate-200 px-3 text-sm"
+              />
+              <input
+                type="date"
+                value={inputs.dateTo}
+                onChange={(e) => setInputs((p) => ({ ...p, dateTo: e.target.value }))}
+                className="h-10 rounded border border-slate-200 px-3 text-sm"
+              />
+              <select
+                value={inputs.channel}
+                onChange={(e) => setInputs((p) => ({ ...p, channel: e.target.value }))}
+                className="h-10 rounded border border-slate-200 px-3 text-sm"
+              >
+                <option value="all">All Channels</option>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+              </select>
+              <select
+                value={inputs.paymentMethod}
+                onChange={(e) => setInputs((p) => ({ ...p, paymentMethod: e.target.value }))}
+                className="h-10 rounded border border-slate-200 px-3 text-sm"
+              >
+                <option value="all">All Payment Methods</option>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="online_banking">Online Banking</option>
+              </select>
+              {mode === 'ecommerce' ? (
+                <select
+                  value={inputs.status}
+                  onChange={(e) => setInputs((p) => ({ ...p, status: e.target.value }))}
+                  className="h-10 rounded border border-slate-200 px-3 text-sm sm:col-span-2"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="paid">Paid</option>
+                  <option value="packed">Packed</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="completed">Completed</option>
+                </select>
+              ) : (
+                <select
+                  value={inputs.type}
+                  onChange={(e) => setInputs((p) => ({ ...p, type: e.target.value }))}
+                  className="h-10 rounded border border-slate-200 px-3 text-sm sm:col-span-2"
+                >
+                  <option value="all">All Types</option>
+                  <option value="deposit">Deposit</option>
+                  <option value="final_settlement">Final Settlement</option>
+                  <option value="package_purchase">Package Purchase</option>
+                </select>
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
+              <button type="button" onClick={handleReset} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200">
+                Reset
+              </button>
+              <button type="button" onClick={handleApply} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700">
+                Apply Filter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <button type="button" onClick={() => setIsFilterOpen(true)} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2">
+          <i className="fa-solid fa-filter" />
+          Filter
+        </button>
+        <div className="flex items-center gap-3">
+          <label htmlFor="pageSize" className="text-sm text-gray-700">
+            Show
+          </label>
+          <select
+            id="pageSize"
+            value={resolved.perPage}
+            onChange={(event) => updateQuery({ per_page: event.target.value, page: '1' })}
+            className="border border-gray-300 rounded px-2 py-1 text-sm"
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
           </select>
-        ) : (
-          <select value={inputs.type} onChange={(e) => setInputs((p) => ({ ...p, type: e.target.value }))} className="border rounded px-3 py-2">
-            <option value="all">All Types</option>
-            <option value="deposit">Deposit</option>
-            <option value="final_settlement">Final Settlement</option>
-            <option value="package_purchase">Package Purchase</option>
-          </select>
-        )}
-        <div className="flex gap-2">
-          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Apply</button>
           {canExport && (
-            <a href={exportUrl} className="px-4 py-2 bg-emerald-600 text-white rounded" target="_blank" rel="noreferrer">Export CSV</a>
+            <a href={exportUrl} className="flex items-center gap-2 rounded border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" target="_blank" rel="noreferrer">
+              <i className="fa-solid fa-download" />
+              Export CSV
+            </a>
           )}
         </div>
-      </form>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        {mode === 'ecommerce' ? (
-          <>
-            <Card label="Total Sales" value={summary.total_sales ?? 0} isCurrency />
-            <Card label="Online Sales" value={summary.online_sales ?? 0} isCurrency />
-            <Card label="Offline Sales" value={summary.offline_sales ?? 0} isCurrency />
-            <Card label="Total Orders" value={summary.total_orders ?? 0} />
-          </>
-        ) : (
-          <>
-            <Card label="Total Booking Revenue" value={summary.total_booking_revenue ?? 0} isCurrency />
-            <Card label="Online Booking Revenue" value={summary.online_booking_revenue ?? 0} isCurrency />
-            <Card label="Offline Booking Revenue" value={summary.offline_booking_revenue ?? 0} isCurrency />
-            <Card label="Total Transactions" value={summary.total_transactions ?? 0} />
-          </>
-        )}
       </div>
 
-      <div className="bg-white rounded-lg border overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 text-gray-700">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {activeFilters.map((filter) => (
+          <span key={`${filter.label}-${filter.value}`} className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs">
+            <span className="font-medium">{filter.label}</span>
+            <span>{filter.value}</span>
+          </span>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="text-sm font-semibold text-slate-700">Summary</div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {mode === 'ecommerce' ? (
+            <>
+              <SummaryCard label="Total Sales" value={`RM ${formatAmount(summary.total_sales ?? 0)}`} />
+              <SummaryCard label="Online Sales" value={`RM ${formatAmount(summary.online_sales ?? 0)}`} />
+              <SummaryCard label="Offline Sales" value={`RM ${formatAmount(summary.offline_sales ?? 0)}`} />
+              <SummaryCard label="Total Orders" value={(summary.total_orders ?? 0).toLocaleString()} />
+            </>
+          ) : (
+            <>
+              <SummaryCard label="Total Booking Revenue" value={`RM ${formatAmount(summary.total_booking_revenue ?? 0)}`} />
+              <SummaryCard label="Online Booking Revenue" value={`RM ${formatAmount(summary.online_booking_revenue ?? 0)}`} />
+              <SummaryCard label="Offline Booking Revenue" value={`RM ${formatAmount(summary.offline_booking_revenue ?? 0)}`} />
+              <SummaryCard label="Total Transactions" value={(summary.total_transactions ?? 0).toLocaleString()} />
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
             <tr>
               {mode === 'ecommerce' ? (
-                <>
-                  {['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status'].map((h) => (
-                    <th key={h} className="px-4 py-2 text-left">{h}</th>
-                  ))}
-                </>
+                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status'].map((h) => (
+                  <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
+                    {reportTableColumnHeader(h)}
+                  </th>
+                ))
               ) : (
-                <>
-                  {['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Package Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status'].map((h) => (
-                    <th key={h} className="px-4 py-2 text-left">{h}</th>
-                  ))}
-                </>
+                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Package Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status'].map((h) => (
+                  <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
+                    {reportTableColumnHeader(h)}
+                  </th>
+                ))
               )}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={mode === 'ecommerce' ? 10 : 12} />
+              <TableLoadingRow colSpan={mode === 'ecommerce' ? ecColSpan : bkColSpan} />
             ) : mode === 'ecommerce' ? (
               ecommerceRows.length === 0 ? (
-                <TableEmptyState colSpan={10} />
+                <TableEmptyState colSpan={ecColSpan} />
               ) : (
                 ecommerceRows.map((row) => (
-                  <tr key={`${row.order_no}-${row.order_datetime}`} className="border-t">
-                    <td className="px-4 py-2">{row.order_no}</td>
-                    <td className="px-4 py-2">{formatDisplayDateTime(row.order_datetime)}</td>
-                    <td className="px-4 py-2">{row.customer}</td>
-                    <td className="px-4 py-2">{labelize(row.channel)}</td>
-                    <td className="px-4 py-2">{labelize(row.payment_method)}</td>
-                    <td className="px-4 py-2">{row.item_count}</td>
-                    <td className="px-4 py-2">{formatAmount(row.product_amount)}</td>
-                    <td className="px-4 py-2">{formatAmount(row.discount)}</td>
-                    <td className="px-4 py-2">{formatAmount(row.net_amount)}</td>
-                    <td className="px-4 py-2">{labelize(row.status)}</td>
+                  <tr key={`${row.order_no}-${row.order_datetime}`}>
+                    <td className="px-4 py-2 border border-gray-200">{row.order_no}</td>
+                    <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
+                    <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
+                    <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
+                    <td className="px-4 py-2 border border-gray-200">{labelize(row.payment_method)}</td>
+                    <td className="px-4 py-2 border border-gray-200">{row.item_count}</td>
+                    <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.product_amount)}</td>
+                    <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
+                    <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>
+                    <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
                   </tr>
                 ))
               )
             ) : bookingRows.length === 0 ? (
-              <TableEmptyState colSpan={12} />
+              <TableEmptyState colSpan={bkColSpan} />
             ) : (
               bookingRows.map((row, idx) => (
-                <tr key={`${row.order_no}-${idx}`} className="border-t">
-                  <td className="px-4 py-2">{row.order_no}</td>
-                  <td className="px-4 py-2">{formatDisplayDateTime(row.order_datetime)}</td>
-                  <td className="px-4 py-2">{row.customer}</td>
-                  <td className="px-4 py-2">{labelize(row.channel)}</td>
-                  <td className="px-4 py-2">{labelize(row.payment_method)}</td>
-                  <td className="px-4 py-2">{labelize(row.type)}</td>
-                  <td className="px-4 py-2">{row.booking_no ?? '—'}</td>
-                  <td className="px-4 py-2">{row.package_name ?? '—'}</td>
-                  <td className="px-4 py-2">{formatAmount(row.gross_amount)}</td>
-                  <td className="px-4 py-2">{formatAmount(row.discount)}</td>
-                  <td className="px-4 py-2">{formatAmount(row.net_amount)}</td>
-                  <td className="px-4 py-2">{labelize(row.status)}</td>
+                <tr key={`${row.order_no}-${idx}`}>
+                  <td className="px-4 py-2 border border-gray-200">{row.order_no}</td>
+                  <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
+                  <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
+                  <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
+                  <td className="px-4 py-2 border border-gray-200">{labelize(row.payment_method)}</td>
+                  <td className="px-4 py-2 border border-gray-200">{labelize(row.type)}</td>
+                  <td className="px-4 py-2 border border-gray-200">{row.booking_no ?? '—'}</td>
+                  <td className="px-4 py-2 border border-gray-200">{row.package_name ?? '—'}</td>
+                  <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.gross_amount)}</td>
+                  <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
+                  <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>
+                  <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
                 </tr>
               ))
             )}
           </tbody>
+          <tfoot>
+            {mode === 'ecommerce' ? (
+              <>
+                <tr className="bg-gray-100 font-semibold">
+                  <td className="border border-gray-300 px-4 py-2 text-left">Page Totals</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">{(totalsPage.orders_count ?? 0).toLocaleString()}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.product_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.discount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.net_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                </tr>
+                <tr className="bg-gray-100 font-bold">
+                  <td className="border border-gray-300 px-4 py-2 text-left">Grand Totals</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">{(grandTotals.orders_count ?? 0).toLocaleString()}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.product_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.discount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.net_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                </tr>
+              </>
+            ) : (
+              <>
+                <tr className="bg-gray-100 font-semibold">
+                  <td colSpan={5} className="border border-gray-300 px-4 py-2 text-left">
+                    Page Totals
+                    <span className="ml-2 font-normal text-gray-600">
+                      ({(totalsPage.orders_count ?? 0).toLocaleString()} on this page)
+                    </span>
+                  </td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.gross_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.discount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.net_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                </tr>
+                <tr className="bg-gray-100 font-bold">
+                  <td colSpan={5} className="border border-gray-300 px-4 py-2 text-left">
+                    Grand Totals
+                    <span className="ml-2 font-normal text-gray-600">
+                      ({(grandTotals.orders_count ?? 0).toLocaleString()} total)
+                    </span>
+                  </td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.gross_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.discount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.net_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
+                </tr>
+              </>
+            )}
+          </tfoot>
         </table>
-      </div>
-
-      <div className="bg-white rounded-lg border p-4 space-y-2 text-sm">
-        <div className="font-semibold">Page Totals</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div>Orders count: <strong>{(totalsPage.orders_count ?? 0).toLocaleString()}</strong></div>
-          <div>{mode === 'ecommerce' ? 'Product Amount' : 'Gross Amount'}: <strong>{formatAmount(mode === 'ecommerce' ? (totalsPage.product_amount ?? 0) : (totalsPage.gross_amount ?? 0))}</strong></div>
-          <div>Discount: <strong>{formatAmount(totalsPage.discount ?? 0)}</strong></div>
-          <div>Net Amount: <strong>{formatAmount(totalsPage.net_amount ?? 0)}</strong></div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border p-4 space-y-2 text-sm">
-        <div className="font-semibold">Grand Totals</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div>Orders count: <strong>{(grandTotals.orders_count ?? 0).toLocaleString()}</strong></div>
-          <div>{mode === 'ecommerce' ? 'Product Amount' : 'Gross Amount'}: <strong>{formatAmount(mode === 'ecommerce' ? (grandTotals.product_amount ?? 0) : (grandTotals.gross_amount ?? 0))}</strong></div>
-          <div>Discount: <strong>{formatAmount(grandTotals.discount ?? 0)}</strong></div>
-          <div>Net Amount: <strong>{formatAmount(grandTotals.net_amount ?? 0)}</strong></div>
-        </div>
       </div>
 
       <PaginationControls
         currentPage={pagination.current_page}
         totalPages={pagination.last_page}
         pageSize={pagination.per_page}
-        totalItems={pagination.total}
-        pageSizeOptions={PAGE_SIZE_OPTIONS}
         onPageChange={(page) => updateQuery({ page: String(page) })}
-        onPageSizeChange={(nextPageSize) => updateQuery({ per_page: String(nextPageSize), page: '1' })}
+        disabled={loading}
       />
     </div>
   )
 }
 
-function Card({ label, value, isCurrency = false }: { label: string; value: number; isCurrency?: boolean }) {
+function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-white rounded-lg border p-4">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-2xl font-semibold mt-1">{isCurrency ? formatAmount(value) : value.toLocaleString()}</div>
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase text-slate-400">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-slate-700">{value}</p>
     </div>
   )
 }

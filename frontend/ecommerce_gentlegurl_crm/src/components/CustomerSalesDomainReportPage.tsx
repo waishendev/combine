@@ -54,6 +54,11 @@ const getDefaultRange = () => {
   }
 }
 
+const getTodayRange = () => {
+  const d = formatDateInput(new Date())
+  return { from: d, to: d }
+}
+
 const formatDisplayDate = (dateString: string) => {
   const date = new Date(`${dateString}T00:00:00`)
   if (Number.isNaN(date.getTime())) return dateString || '—'
@@ -62,11 +67,26 @@ const formatDisplayDate = (dateString: string) => {
 
 const formatAmount = (amount: number) => amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export default function CustomerSalesDomainReportPage({ mode, canExport = false }: { mode: Mode; canExport?: boolean }) {
+const reportTableColumnHeader = (label: string) =>
+  label ? `${label.charAt(0).toUpperCase()}${label.slice(1).toLowerCase()}` : label
+
+export default function CustomerSalesDomainReportPage({
+  mode,
+  canExport = false,
+  defaultDatePreset = 'month',
+}: {
+  mode: Mode
+  canExport?: boolean
+  /** `today` = default date range is the current day (still fully filterable). */
+  defaultDatePreset?: 'month' | 'today'
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const defaultRange = useMemo(() => getDefaultRange(), [])
+  const defaultRange = useMemo(
+    () => (defaultDatePreset === 'today' ? getTodayRange() : getDefaultRange()),
+    [defaultDatePreset],
+  )
 
   const resolved = useMemo(() => {
     const parsedPage = Number(searchParams.get('page'))
@@ -162,7 +182,17 @@ export default function CustomerSalesDomainReportPage({ mode, canExport = false 
   }
 
   const handleReset = () => {
-    updateQuery({ date_from: defaultRange.from, date_to: defaultRange.to, customer: '', payment_method: 'all', status: 'all', channel: 'all', top: String(DEFAULT_TOP_COUNT), page: '1' })
+    const range = defaultDatePreset === 'today' ? getTodayRange() : defaultRange
+    updateQuery({
+      date_from: range.from,
+      date_to: range.to,
+      customer: '',
+      payment_method: 'all',
+      status: 'all',
+      channel: 'all',
+      top: String(DEFAULT_TOP_COUNT),
+      page: '1',
+    })
     setIsFilterOpen(false)
   }
 
@@ -233,7 +263,21 @@ export default function CustomerSalesDomainReportPage({ mode, canExport = false 
 
       <div className="bg-white shadow rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-slate-300/70"><tr>{mode === 'ecommerce' ? ['Customer', 'Email', 'Orders', 'Items', 'Revenue', 'COGS', 'Gross Profit'].map((h) => <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">{h}</th>) : ['Customer', 'Email', 'Transactions', 'Booking Deposit Amount', 'Booking Settlement Amount', 'Package Purchase Amount', 'Total Revenue'].map((h) => <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">{h}</th>)}</tr></thead>
+          <thead className="bg-slate-300/70">
+            <tr>
+              {mode === 'ecommerce'
+                ? ['Customer', 'Email', 'Orders', 'Items', 'Revenue', 'COGS', 'Gross Profit'].map((h) => (
+                    <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
+                      {reportTableColumnHeader(h)}
+                    </th>
+                  ))
+                : ['Customer', 'Email', 'Transactions', 'Booking Deposit Amount', 'Booking Settlement Amount', 'Package Purchase Amount', 'Total Revenue'].map((h) => (
+                    <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
+                      {reportTableColumnHeader(h)}
+                    </th>
+                  ))}
+            </tr>
+          </thead>
           <tbody>
             {loading ? <TableLoadingRow colSpan={7} /> : rows.length === 0 ? <TableEmptyState colSpan={7} /> : mode === 'ecommerce' ? (rows as EcommerceRow[]).map((row) => <tr key={row.customer_id}><td className="px-4 py-2 border border-gray-200 font-medium">{row.customer_name}</td><td className="px-4 py-2 border border-gray-200">{row.customer_email ?? '—'}</td><td className="px-4 py-2 border border-gray-200">{row.orders_count}</td><td className="px-4 py-2 border border-gray-200">{row.items_count}</td><td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.revenue)}</td><td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.cogs)}</td><td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.gross_profit)}</td></tr>) : (rows as BookingRow[]).map((row) => <tr key={row.customer_id}><td className="px-4 py-2 border border-gray-200 font-medium">{row.customer_name}</td><td className="px-4 py-2 border border-gray-200">{row.customer_email ?? '—'}</td><td className="px-4 py-2 border border-gray-200">{row.transactions_count}</td><td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.booking_deposit_amount)}</td><td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.booking_settlement_amount)}</td><td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.package_purchase_amount)}</td><td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.total_revenue)}</td></tr>)}
           </tbody>
