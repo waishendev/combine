@@ -127,6 +127,7 @@ type ServicePackageOption = {
   valid_days?: number
   items_summary?: string[]
   is_active?: boolean
+  allowed_staffs?: Array<{ id: number; name: string }>
 }
 
 type AppointmentListItem = {
@@ -4807,7 +4808,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             </div>
 
             <div className="mt-4 space-y-3">
-              {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
+              {bookingServiceDraft != null &&
+              (!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   This service is temporarily unavailable because no eligible staff is assigned.
                 </div>
