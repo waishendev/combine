@@ -978,6 +978,7 @@ $protectedRoutes = function () {
 Route::middleware(['api.session', 'auth:web,sanctum'])->group($protectedRoutes);
 
 Route::prefix('/booking')->middleware('api.session')->group(function () {
+    Route::get('/service-categories', [\App\Http\Controllers\Booking\ServiceController::class, 'categories']);
     Route::get('/services', [\App\Http\Controllers\Booking\ServiceController::class, 'index']);
     Route::get('/services/{id}', [\App\Http\Controllers\Booking\ServiceController::class, 'show']);
     Route::get('/service-packages', [\App\Http\Controllers\ServicePackageController::class, 'index']);
@@ -1031,6 +1032,9 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::put('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'update']);
 
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
+    Route::apiResource('/categories', \App\Http\Controllers\Admin\Booking\CategoryController::class);
+    Route::post('/categories/{id}/move-up', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveUp']);
+    Route::post('/categories/{id}/move-down', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveDown']);
     Route::put('/staff-schedules/bulk', [\App\Http\Controllers\Admin\Booking\StaffScheduleController::class, 'bulkUpdate']);
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
     Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);

@@ -502,6 +502,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             requiredPermission: 'booking.services.view',
           },
           {
+            key: 'booking-categories',
+            label: 'Categories',
+            href: '/booking/categories',
+            requiredPermission: 'booking.services.view',
+          },
+          {
             key: 'booking-service-packages',
             label: 'Service Packages',
             href: '/booking/service-packages',

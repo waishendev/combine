@@ -32,6 +32,7 @@ interface FormState {
   is_active: 'true' | 'false'
   imageFile: File | null
   allowed_staff_ids: number[]
+  primary_slots: string
 }
 
 const initialFormState: FormState = {
@@ -45,6 +46,7 @@ const initialFormState: FormState = {
   is_active: 'true',
   imageFile: null,
   allowed_staff_ids: [],
+  primary_slots: '',
 }
 
 export default function BookingServiceEditModal({
@@ -124,6 +126,9 @@ export default function BookingServiceEditModal({
               ? 'true'
               : 'false',
           imageFile: null,
+          primary_slots: Array.isArray((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots)
+            ? ((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
+            : '',
           allowed_staff_ids: Array.isArray((service as { allowed_staff_ids?: unknown }).allowed_staff_ids)
             ? ((service as { allowed_staff_ids?: unknown[] }).allowed_staff_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
             : Array.isArray((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs)
@@ -276,6 +281,7 @@ export default function BookingServiceEditModal({
       fd.append('buffer_min', String(buffer))
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
+      form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       if (form.imageFile) {
         fd.append('image', form.imageFile)
       }
@@ -595,6 +601,21 @@ export default function BookingServiceEditModal({
                   disabled={disableForm}
                   loading={staffLoading}
                 />
+                <div>
+                  <label htmlFor="edit-primary_slots" className="block text-sm font-medium text-gray-700 mb-1">
+                    Primary slot times (HH:mm, comma-separated)
+                  </label>
+                  <input
+                    id="edit-primary_slots"
+                    name="primary_slots"
+                    type="text"
+                    value={form.primary_slots}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="12:00, 15:00, 18:00"
+                    disabled={disableForm}
+                  />
+                </div>
 
                 <div>
                   <label

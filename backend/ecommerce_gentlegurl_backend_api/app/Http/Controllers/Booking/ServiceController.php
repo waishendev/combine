@@ -4,19 +4,48 @@ namespace App\Http\Controllers\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\BookingServiceCategory;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
+use Illuminate\Http\Request;
 
 class ServiceController extends Controller
 {
-    public function index()
+    public function categories()
+    {
+        $categories = BookingServiceCategory::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        return $this->respond($categories->map(fn (BookingServiceCategory $category) => [
+            'id' => (int) $category->id,
+            'name' => $category->name,
+            'slug' => $category->slug,
+            'description' => $category->description,
+            'image_path' => $category->image_path,
+            'image_url' => $category->image_url,
+            'is_active' => (bool) $category->is_active,
+            'sort_order' => (int) $category->sort_order,
+        ])->values());
+    }
+
+    public function index(Request $request)
     {
         $services = BookingService::query()
             ->where('is_active', true)
+            ->when($request->filled('category_id'), function ($query) use ($request) {
+                $query->whereHas('categories', function ($categoryQuery) use ($request) {
+                    $categoryQuery->where('booking_service_category_id', (int) $request->integer('category_id'))
+                        ->where('is_active', true);
+                });
+            })
             ->orderBy('name')
             ->get([
                 'id',
                 'name',
+                'description',
                 'service_type',
                 'service_price',
                 'price',
@@ -28,16 +57,14 @@ class ServiceController extends Controller
                 'image_path',
             ]);
 
-        $payload = $services->map(function (BookingService $service) {
-            return $this->mapService($service, false);
-        })->values();
+        $payload = $services->map(fn (BookingService $service) => $this->mapService($service, false))->values();
 
         return $this->respond($payload);
     }
 
     public function show(int $id)
     {
-        $service = BookingService::query()->findOrFail($id);
+        $service = BookingService::query()->with(['primarySlots'])->findOrFail($id);
 
         return $this->respond($this->mapService($service, true));
     }
@@ -68,6 +95,10 @@ class ServiceController extends Controller
             ->values()
             ->all();
 
+        $primarySlots = $service->relationLoaded('primarySlots')
+            ? $service->primarySlots
+            : $service->primarySlots()->where('is_active', true)->get();
+
         $payload = [
             'id' => (int) $service->id,
             'name' => $service->name,
@@ -82,6 +113,16 @@ class ServiceController extends Controller
             'is_active' => (bool) $service->is_active,
             'image_path' => $service->image_path,
             'image_url' => $service->image_url,
+            'primary_slots' => $primarySlots
+                ->where('is_active', true)
+                ->sortBy('sort_order')
+                ->values()
+                ->map(fn ($slot) => [
+                    'id' => (int) $slot->id,
+                    'start_time' => substr((string) $slot->start_time, 0, 5),
+                    'sort_order' => (int) $slot->sort_order,
+                    'is_active' => (bool) $slot->is_active,
+                ])->all(),
             'staffs' => $staffs,
             'allowed_staffs' => $staffs,
             'allowed_staff_count' => count($staffs),

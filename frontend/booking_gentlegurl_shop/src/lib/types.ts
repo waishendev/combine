@@ -1,3 +1,14 @@
+export type BookingServiceCategory = {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string | null;
+  image_path?: string | null;
+  image_url?: string | null;
+  is_active: boolean;
+  sort_order: number;
+};
+
 export type Service = {
   id: number;
   name: string;
@@ -10,6 +21,7 @@ export type Service = {
   category?: string;
   image_path?: string | null;
   image_url?: string | null;
+  primary_slots?: Array<{ id: number; start_time: string; sort_order: number; is_active: boolean }>;
 };
 
 export type Staff = {

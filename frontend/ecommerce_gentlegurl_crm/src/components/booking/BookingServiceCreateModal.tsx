@@ -32,6 +32,7 @@ interface FormState {
   is_active: boolean
   imageFile: File | null
   allowed_staff_ids: number[]
+  primary_slots: string
 }
 
 const initialFormState: FormState = {
@@ -45,6 +46,7 @@ const initialFormState: FormState = {
   is_active: true,
   imageFile: null,
   allowed_staff_ids: [],
+  primary_slots: '',
 }
 
 export default function BookingServiceCreateModal({
@@ -185,6 +187,7 @@ export default function BookingServiceCreateModal({
       fd.append('buffer_min', String(buffer))
       fd.append('is_active', form.is_active ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
+      form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       if (form.imageFile) fd.append('image', form.imageFile)
 
       const res = await fetch('/api/proxy/admin/booking/services', {
@@ -429,6 +432,21 @@ export default function BookingServiceCreateModal({
                 disabled={submitting}
                 loading={staffLoading}
               />
+              <div>
+                <label htmlFor="primary_slots" className="block text-sm font-medium text-gray-700 mb-1">
+                  Primary slot times (HH:mm, comma-separated)
+                </label>
+                <input
+                  id="primary_slots"
+                  name="primary_slots"
+                  type="text"
+                  value={form.primary_slots}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="12:00, 15:00, 18:00"
+                  disabled={submitting}
+                />
+              </div>
             </div>
           </div>
 

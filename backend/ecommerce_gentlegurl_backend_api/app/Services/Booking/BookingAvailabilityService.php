@@ -50,7 +50,60 @@ class BookingAvailabilityService
             ];
         }
 
+        $slots = $this->prioritizePrimarySlots($service, $slots);
+
         return $slots;
+    }
+
+    /**
+     * @param array<int, array{start_at:string,end_at:string,is_available:bool}> $slots
+     * @return array<int, array{start_at:string,end_at:string,is_available:bool}>
+     */
+    private function prioritizePrimarySlots(BookingService $service, array $slots): array
+    {
+        $primaryTimes = $service->primarySlots()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('start_time')
+            ->pluck('start_time')
+            ->map(fn ($time) => substr((string) $time, 0, 5))
+            ->filter()
+            ->values();
+
+        if ($primaryTimes->isEmpty() || empty($slots)) {
+            return $slots;
+        }
+
+        $remaining = array_values($slots);
+        $prioritized = [];
+
+        foreach ($primaryTimes as $time) {
+            $candidateIndex = null;
+            foreach ($remaining as $index => $slot) {
+                $slotTime = Carbon::parse($slot['start_at'])->format('H:i');
+                if ($slotTime === $time) {
+                    $candidateIndex = $index;
+                    break;
+                }
+            }
+
+            if ($candidateIndex === null) {
+                foreach ($remaining as $index => $slot) {
+                    $slotTime = Carbon::parse($slot['start_at'])->format('H:i');
+                    if ($slotTime >= $time) {
+                        $candidateIndex = $index;
+                        break;
+                    }
+                }
+            }
+
+            if ($candidateIndex !== null) {
+                $prioritized[] = $remaining[$candidateIndex];
+                array_splice($remaining, $candidateIndex, 1);
+            }
+        }
+
+        return array_merge($prioritized, $remaining);
     }
 
     public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin): bool
