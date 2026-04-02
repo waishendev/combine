@@ -37,10 +37,6 @@ function formatSlotRange(startAt: string, endAt: string) {
   return { dateStr, timeRange: `${t1} – ${t2}` };
 }
 
-function isPremiumService(serviceType: "premium" | "standard") {
-  return serviceType === "premium";
-}
-
 function secondsLeft(expiresAt: string) {
   return Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
 }
@@ -323,49 +319,19 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       };
     }
 
-    const payableItems = bookingItems.filter(
-      (item) => !["reserved", "consumed"].includes(item.package_claim_status ?? ""),
-    );
-    const premiumItems = payableItems.filter((item) => isPremiumService(item.service_type));
-    const standardItems = payableItems.filter((item) => item.service_type === "standard");
-    const premiumCount = premiumItems.length;
-    const standardCount = standardItems.length;
-
-    const premiumAmountFallback = premiumItems.find((item) => Number(item.deposit_amount ?? 0) > 0)?.deposit_amount ?? 0;
-    const standardBaseFallback = standardItems.find((item) => Number(item.deposit_amount ?? 0) > 0)?.deposit_amount ?? 0;
-
-    let calculatedTotal = 0;
-    if (premiumCount > 0) {
-      calculatedTotal = premiumCount * Number(premiumAmountFallback || 0);
-    } else if (standardCount > 0) {
-      calculatedTotal = Number(standardBaseFallback || 0);
-    }
-
+    const payableItems = bookingItems.filter((item) => !["reserved", "consumed"].includes(item.package_claim_status ?? ""));
     const backendTotal = Number(cart?.deposit_total ?? 0);
-    const useBackendTotal =
-      Number.isFinite(backendTotal) && Math.abs(backendTotal - calculatedTotal) < 0.01;
-    const total = useBackendTotal ? backendTotal : calculatedTotal;
+    const calculatedTotal = payableItems.reduce((sum, item) => sum + Number(item.deposit_amount ?? 0), 0);
+    const total =
+      Number.isFinite(backendTotal) && Math.abs(backendTotal - calculatedTotal) < 0.01
+        ? backendTotal
+        : calculatedTotal;
 
     const perItem: Record<number, number> = {};
-    if (premiumCount > 0) {
-      const perPremiumAmount = premiumCount > 0 ? total / premiumCount : 0;
-      premiumItems.forEach((item) => {
-        perItem[item.id] = perPremiumAmount;
-      });
-      standardItems.forEach((item) => {
-        perItem[item.id] = 0;
-      });
-    } else if (standardCount > 0) {
-      const firstStandardId = standardItems[0]?.id;
-      standardItems.forEach((item) => {
-        perItem[item.id] = item.id === firstStandardId ? total : 0;
-      });
-    }
-
     bookingItems.forEach((item) => {
       if (["reserved", "consumed"].includes(item.package_claim_status ?? "")) {
         perItem[item.id] = 0;
-      } else if (typeof perItem[item.id] !== "number") {
+      } else {
         perItem[item.id] = Number(item.deposit_amount ?? 0);
       }
     });

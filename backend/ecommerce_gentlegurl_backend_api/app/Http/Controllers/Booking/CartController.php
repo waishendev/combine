@@ -601,40 +601,22 @@ class CartController extends Controller
 
     private function calculateDepositTotal(array $items, array $claimStatusesByItem = []): float
     {
-        $settings = $this->getSettings();
         $payableItems = collect($items)->filter(function (BookingCartItem $item) use ($claimStatusesByItem) {
             return ! in_array($claimStatusesByItem[(int) $item->id] ?? null, ['reserved', 'consumed'], true);
         })->values();
 
-        $premiumCount = $payableItems->where('service_type', 'premium')->count();
-
-        if ($premiumCount > 0) {
-            return (float) $settings->deposit_amount_per_premium * $premiumCount;
-        }
-
-        return $payableItems->count() > 0 ? (float) $settings->deposit_base_amount_if_only_standard : 0.0;
+        return round((float) $payableItems->sum(function (BookingCartItem $item) {
+            return (float) ($item->service?->deposit_amount ?? 0);
+        }), 2);
     }
 
     private function resolveDepositByCartItem(array $items, array $claimStatusesByItem = []): array
     {
-        $settings = $this->getSettings();
-        $payableItems = collect($items)->filter(function (BookingCartItem $item) use ($claimStatusesByItem) {
-            return ! in_array($claimStatusesByItem[(int) $item->id] ?? null, ['reserved', 'consumed'], true);
-        })->values();
-
         $result = [];
-        $premiumItems = $payableItems->where('service_type', 'premium')->values();
-        if ($premiumItems->isNotEmpty()) {
-            foreach ($premiumItems as $item) {
-                $result[(int) $item->id] = (float) $settings->deposit_amount_per_premium;
-            }
-
-            return $result;
-        }
-
-        $firstStandard = $payableItems->first();
-        if ($firstStandard) {
-            $result[(int) $firstStandard->id] = (float) $settings->deposit_base_amount_if_only_standard;
+        foreach ($items as $item) {
+            $itemId = (int) $item->id;
+            $isPayable = ! in_array($claimStatusesByItem[$itemId] ?? null, ['reserved', 'consumed'], true);
+            $result[$itemId] = $isPayable ? (float) ($item->service?->deposit_amount ?? 0) : 0.0;
         }
 
         return $result;
