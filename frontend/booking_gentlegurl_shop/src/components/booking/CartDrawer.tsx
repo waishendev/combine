@@ -47,6 +47,10 @@ function formatDuration(sec: number) {
   return `${mm}:${ss}`;
 }
 
+function isPremiumService(serviceType: string | null | undefined): boolean {
+  return String(serviceType ?? "").toLowerCase() === "premium";
+}
+
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
