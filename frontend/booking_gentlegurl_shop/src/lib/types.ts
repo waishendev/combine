@@ -117,6 +117,15 @@ export type BookingRecord = {
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;
+  addon_duration_min?: number;
+  addon_price?: number;
+  addon_items?: Array<{
+    id?: number;
+    name?: string;
+    label?: string;
+    extra_duration_min?: number;
+    extra_price?: number;
+  }>;
   payment_status?: string;
   reschedule_count?: number;
   cancellation_request?: {

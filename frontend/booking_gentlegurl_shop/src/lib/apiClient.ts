@@ -238,6 +238,16 @@ export type PublicAccountOrder = {
     booking_id?: number | null;
     service_package_id?: number | null;
   }>;
+  service_items?: Array<{
+    id: number;
+    item_type: "service";
+    name?: string | null;
+    quantity?: number | null;
+    unit_price?: number | null;
+    line_total?: number | null;
+    booking_id?: number | null;
+    covered_by_package?: boolean;
+  }>;
 };
 
 export async function getMyOrders() {

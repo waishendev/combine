@@ -72,17 +72,29 @@ type BookingResponse = {
     total_booking_revenue?: number
     online_booking_revenue?: number
     offline_booking_revenue?: number
+    booking_deposit_amount?: number
+    booking_settlement_amount?: number
+    addon_revenue?: number
+    package_purchase_amount?: number
     total_transactions?: number
   }
   rows?: BookingRow[]
   totals_page?: {
     orders_count?: number
+    booking_deposit_amount?: number
+    booking_settlement_amount?: number
+    addon_revenue?: number
+    package_purchase_amount?: number
     gross_amount?: number
     discount?: number
     net_amount?: number
   }
   grand_totals?: {
     orders_count?: number
+    booking_deposit_amount?: number
+    booking_settlement_amount?: number
+    addon_revenue?: number
+    package_purchase_amount?: number
     gross_amount?: number
     discount?: number
     net_amount?: number
@@ -361,6 +373,7 @@ export default function SalesChannelReportPage({
                   <option value="all">All Types</option>
                   <option value="deposit">Deposit</option>
                   <option value="final_settlement">Final Settlement</option>
+                  <option value="addon">Add-on</option>
                   <option value="package_purchase">Package Purchase</option>
                 </select>
               )}
@@ -429,9 +442,10 @@ export default function SalesChannelReportPage({
           ) : (
             <>
               <SummaryCard label="Total Booking Revenue" value={`RM ${formatAmount(summary.total_booking_revenue ?? 0)}`} />
-              <SummaryCard label="Online Booking Revenue" value={`RM ${formatAmount(summary.online_booking_revenue ?? 0)}`} />
-              <SummaryCard label="Offline Booking Revenue" value={`RM ${formatAmount(summary.offline_booking_revenue ?? 0)}`} />
-              <SummaryCard label="Total Transactions" value={(summary.total_transactions ?? 0).toLocaleString()} />
+              <SummaryCard label="Booking Deposits" value={`RM ${formatAmount(summary.booking_deposit_amount ?? 0)}`} />
+              <SummaryCard label="Add-on Revenue" value={`RM ${formatAmount(summary.addon_revenue ?? 0)}`} />
+              <SummaryCard label="Package Sales" value={`RM ${formatAmount(summary.package_purchase_amount ?? 0)}`} />
+              <SummaryCard label="Booking Settlements" value={`RM ${formatAmount(summary.booking_settlement_amount ?? 0)}`} />
             </>
           )}
         </div>
@@ -530,34 +544,18 @@ export default function SalesChannelReportPage({
             ) : (
               <>
                 <tr className="bg-gray-100 font-semibold">
-                  <td colSpan={5} className="border border-gray-300 px-4 py-2 text-left">
-                    Page Totals
-                    {/* <span className="ml-2 font-normal text-gray-600">
-                      ({(totalsPage.orders_count ?? 0).toLocaleString()} on this page)
-                    </span> */}
-                  </td>
-                  <td className="border border-gray-300 px-4 py-2">—</td>
-                  <td className="border border-gray-300 px-4 py-2">—</td>
-                  <td className="border border-gray-300 px-4 py-2">—</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.gross_amount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.discount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.net_amount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td colSpan={8} className="border border-gray-300 px-4 py-2 text-left">Page Totals (Total Revenue: RM {formatAmount(totalsPage.net_amount ?? 0)})</td>
+                  <td className="border border-gray-300 px-4 py-2">Deposit: RM {formatAmount(totalsPage.booking_deposit_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">Settlement: RM {formatAmount(totalsPage.booking_settlement_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">Add-on: RM {formatAmount(totalsPage.addon_revenue ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">Package: RM {formatAmount(totalsPage.package_purchase_amount ?? 0)}</td>
                 </tr>
                 <tr className="bg-gray-100 font-bold">
-                  <td colSpan={5} className="border border-gray-300 px-4 py-2 text-left">
-                    Grand Totals
-                    {/* <span className="ml-2 font-normal text-gray-600">
-                      ({(grandTotals.orders_count ?? 0).toLocaleString()} total)
-                    </span> */}
-                  </td>
-                  <td className="border border-gray-300 px-4 py-2"></td>
-                  <td className="border border-gray-300 px-4 py-2"></td>
-                  <td className="border border-gray-300 px-4 py-2"></td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.gross_amount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.discount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.net_amount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td colSpan={8} className="border border-gray-300 px-4 py-2 text-left">Grand Totals (Total Revenue: RM {formatAmount(grandTotals.net_amount ?? 0)})</td>
+                  <td className="border border-gray-300 px-4 py-2">Deposit: RM {formatAmount(grandTotals.booking_deposit_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">Settlement: RM {formatAmount(grandTotals.booking_settlement_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">Add-on: RM {formatAmount(grandTotals.addon_revenue ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">Package: RM {formatAmount(grandTotals.package_purchase_amount ?? 0)}</td>
                 </tr>
               </>
             )}

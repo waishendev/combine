@@ -29,6 +29,7 @@ class ServicePackageTestingSeeder extends Seeder
         $packageIds = $this->seedServicePackages($serviceIds);
         $this->seedServiceQuestionsAndOptions($serviceIds);
         $this->seedCustomerOwnershipAndBalances($customerId, $packageIds);
+        $this->seedPackageCoveredAddonQaBooking($customerId, $serviceIds);
 
         $this->command?->info('Service package testing data seeded successfully.');
     }
@@ -428,5 +429,130 @@ class ServicePackageTestingSeeder extends Seeder
                 }
             }
         }
+    }
+
+    /**
+     * Seed a QA booking where main service is package-covered while add-ons are still charged.
+     *
+     * This helps verify:
+     * - package covers main service only
+     * - add-on remains separate booking_addon revenue line
+     */
+    private function seedPackageCoveredAddonQaBooking(int $customerId, array $serviceIds): void
+    {
+        if (!Schema::hasTable('bookings') || !Schema::hasTable('order_items') || !Schema::hasTable('orders')) {
+            return;
+        }
+
+        $serviceId = (int) ($serviceIds[0] ?? 0);
+        if ($serviceId <= 0) {
+            return;
+        }
+
+        $service = DB::table('booking_services')->where('id', $serviceId)->first();
+        if (! $service) {
+            return;
+        }
+
+        $staffId = (int) (DB::table('staffs')->orderBy('id')->value('id') ?? 0);
+        $startAt = Carbon::now()->addDays(1)->setTime(11, 0, 0);
+        $addonPrice = 25.00;
+        $addonDuration = 15;
+
+        $bookingId = DB::table('bookings')->insertGetId([
+            'booking_code' => 'BKG-SP-QA-' . strtoupper(substr(md5((string) microtime(true)), 0, 8)),
+            'source' => 'CUSTOMER',
+            'customer_id' => $customerId,
+            'staff_id' => $staffId > 0 ? $staffId : null,
+            'service_id' => $serviceId,
+            'start_at' => $startAt,
+            'end_at' => $startAt->copy()->addMinutes((int) ($service->duration_min ?? 30) + $addonDuration),
+            'buffer_min' => (int) ($service->buffer_min ?? 15),
+            'status' => 'CONFIRMED',
+            'deposit_amount' => (float) ($service->deposit_amount ?? 0),
+            'addon_duration_min' => $addonDuration,
+            'addon_price' => $addonPrice,
+            'addon_items_json' => json_encode([
+                [
+                    'id' => 99001,
+                    'label' => 'Package QA Add-on',
+                    'extra_duration_min' => $addonDuration,
+                    'extra_price' => $addonPrice,
+                ],
+            ]),
+            'payment_status' => 'PAID',
+            'notes' => 'QA_SCENARIO=PACKAGE_COVERED_MAIN_WITH_ADDON_CHARGE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        if (Schema::hasTable('customer_service_package_usages')) {
+            $customerPackageId = (int) DB::table('customer_service_packages')
+                ->where('customer_id', $customerId)
+                ->orderBy('id')
+                ->value('id');
+
+            if ($customerPackageId > 0) {
+                $usagePayload = [
+                    'customer_service_package_id' => $customerPackageId,
+                    'customer_id' => $customerId,
+                    'booking_service_id' => $serviceId,
+                    'booking_id' => $bookingId,
+                    'used_from' => 'BOOKING',
+                    'used_ref_id' => $bookingId,
+                    'used_qty' => 1,
+                    'status' => 'reserved',
+                    'reserved_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+
+                DB::table('customer_service_package_usages')->insert(
+                    collect($usagePayload)
+                        ->filter(fn ($_value, $key) => Schema::hasColumn('customer_service_package_usages', $key))
+                        ->all()
+                );
+            }
+        }
+
+        $orderId = DB::table('orders')->insertGetId([
+            'order_number' => 'SP-QA-' . strtoupper(substr(md5((string) $bookingId), 0, 8)),
+            'customer_id' => $customerId,
+            'created_by_user_id' => null,
+            'status' => 'completed',
+            'payment_status' => 'paid',
+            'payment_method' => 'billplz_fpx',
+            'payment_provider' => 'billplz',
+            'subtotal' => $addonPrice,
+            'discount_total' => 0,
+            'shipping_fee' => 0,
+            'grand_total' => $addonPrice,
+            'pickup_or_shipping' => 'pickup',
+            'placed_at' => now(),
+            'paid_at' => now(),
+            'completed_at' => now(),
+            'notes' => 'Seeded package-covered booking add-on charge only',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('order_items')->insert([
+            'order_id' => $orderId,
+            'line_type' => 'booking_addon',
+            'product_name_snapshot' => 'Package QA Add-on',
+            'display_name_snapshot' => 'Package QA Add-on',
+            'quantity' => 1,
+            'price_snapshot' => $addonPrice,
+            'unit_price_snapshot' => $addonPrice,
+            'line_total' => $addonPrice,
+            'line_total_snapshot' => $addonPrice,
+            'effective_unit_price' => $addonPrice,
+            'effective_line_total' => $addonPrice,
+            'locked' => true,
+            'booking_id' => $bookingId,
+            'booking_service_id' => $serviceId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }

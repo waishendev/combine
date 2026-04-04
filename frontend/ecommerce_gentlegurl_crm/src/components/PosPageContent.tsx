@@ -159,6 +159,13 @@ type AppointmentDetail = {
   appointment_end_at?: string | null
   customer?: { id: number; name: string; phone?: string | null; email?: string | null }
   service?: { id: number; name: string; service_type?: string | null }
+  addon_duration_min?: number
+  addon_price?: number
+  addon_items?: Array<{ id?: number; name?: string; label?: string; extra_duration_min?: number; extra_price?: number }>
+  addon_paid_total?: number
+  addon_paid_online?: number
+  addon_paid_offline?: number
+  addon_balance_due?: number
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>
   service_total: number
@@ -3575,7 +3582,28 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
                       <p><span className="font-semibold">Booking:</span> {appointmentDetail.booking_code}</p>
                       <p><span className="font-semibold">Customer:</span> {appointmentDetail.customer?.name ?? '-'}</p>
-                      <p><span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}</p>
+                      <p><span className="font-semibold">Main Service:</span> {appointmentDetail.service?.name ?? '-'}</p>
+                      <div className="mt-2">
+                        <p className="font-semibold">Add-ons:</p>
+                        {(appointmentDetail.addon_items?.length ?? 0) > 0 ? (
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-700">
+                            {appointmentDetail.addon_items?.map((addon, addonIndex) => {
+                              const addonDuration = Number(addon?.extra_duration_min ?? 0)
+                              const addonPrice = Number(addon?.extra_price ?? 0)
+                              const addonName = String(addon?.name ?? addon?.label ?? `Add-on ${addonIndex + 1}`)
+                              return (
+                                <li key={`${addon?.id ?? addonName}-${addonIndex}`}>
+                                  {addonName} (+{addonDuration} mins, +RM{addonPrice.toFixed(2)})
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        ) : (
+                          <p className="text-gray-500">No add-ons selected.</p>
+                        )}
+                        <p className="mt-1"><span className="font-semibold">Add-on extra duration:</span> +{Number(appointmentDetail.addon_duration_min ?? 0)} mins</p>
+                        <p><span className="font-semibold">Add-on extra price:</span> +RM{Number(appointmentDetail.addon_price ?? 0).toFixed(2)}</p>
+                      </div>
                       <p><span className="font-semibold">Staff:</span> {appointmentDetail.staff?.name ?? '-'}</p>
                       <p><span className="font-semibold">Date/Time:</span> {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}</p>
                       <div className="flex items-center gap-2">
@@ -3588,12 +3616,18 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       </div>
                     </div>
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
-                      <p>Service Total: <span className="font-semibold">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</span></p>
+                      <p>Service Total (Main Service): <span className="font-semibold">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</span></p>
+                      <p>Add-on Total: <span className="font-semibold">RM {Number(appointmentDetail.addon_price ?? 0).toFixed(2)}</span></p>
+                      <p>Add-on Paid Online: <span className="font-semibold">RM {Number(appointmentDetail.addon_paid_online ?? 0).toFixed(2)}</span></p>
+                      <p>Add-on Paid at POS: <span className="font-semibold">RM {Number(appointmentDetail.addon_paid_offline ?? 0).toFixed(2)}</span></p>
+                      <p>Add-on Paid Total: <span className="font-semibold">RM {Number(appointmentDetail.addon_paid_total ?? 0).toFixed(2)}</span></p>
+                      <p>Add-on Balance Due: <span className="font-semibold text-amber-700">RM {Number(appointmentDetail.addon_balance_due ?? 0).toFixed(2)}</span></p>
                       <p>Deposit Contribution: <span className="font-semibold">RM {Number(appointmentDepositContributionForSettlement ?? 0).toFixed(2)}</span></p>
                       <p>Linked Booking Deposit: <span className="font-semibold">RM {Number(appointmentDetail.linked_booking_deposit_total ?? appointmentDetail.linked_booking_deposit ?? 0).toFixed(2)}</span></p>
                       <p>Package Applied / Offset: <span className="font-semibold">RM {Number(appointmentDetail.package_offset ?? 0).toFixed(2)}</span></p>
-                      <p>Settlement Paid: <span className="font-semibold">RM {Number(appointmentDetail.settlement_paid ?? 0).toFixed(2)}</span></p>
-                      <p>Amount Due Now: <span className="font-semibold text-emerald-700">RM {Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0).toFixed(2)}</span></p>
+                      <p>Main Service Settlement Paid: <span className="font-semibold">RM {Number(appointmentDetail.settlement_paid ?? 0).toFixed(2)}</span></p>
+                      <p>Main Service Balance Due: <span className="font-semibold">RM {Number(appointmentDetail.balance_due ?? 0).toFixed(2)}</span></p>
+                      <p>Amount Due Now (Main + Add-ons): <span className="font-semibold text-emerald-700">RM {Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0).toFixed(2)}</span></p>
                       <p>Package Status: <span className="font-semibold">{appointmentDetail.package_status?.status ?? 'Not applied'}</span></p>
                       {appointmentIsFullyPackageCovered ? (
                         <p className="mt-1 font-semibold text-emerald-700">Covered by Package</p>

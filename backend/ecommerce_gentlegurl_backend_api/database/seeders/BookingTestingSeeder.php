@@ -33,7 +33,7 @@ class BookingTestingSeeder extends Seeder
         $customerId = $this->resolveCustomerId();
 
         $services = $this->seedServices();
-        $haircutService = $services['Haircut'];
+        $coloringService = $services['Coloring'];
         $this->seedServiceCategoriesAndPrimarySlots($services);
         $this->seedServiceQuestionsAndOptions($services);
 
@@ -44,10 +44,12 @@ class BookingTestingSeeder extends Seeder
 
         $this->seedBookingSettings();
 
-        $bookings = $this->seedBookings($staffOneId, $haircutService, $customerId);
+        $bookings = $this->seedBookings($staffOneId, $coloringService, $customerId);
         $this->seedBookingLogs($bookings, $staffOneId);
+        $this->seedAddonSettlementQaScenarios($bookings, $services, $customerId, $staffOneId);
 
         $this->seedVoucherForNotifiedCancellation($bookings['NOTIFIED_CANCELLATION'], $customerId);
+        $this->command?->info('BookingTestingSeeder: add-on QA scenarios ready (online-paid add-on + add-on-due-at-POS).');
     }
 
     private function truncateBookingTables(): void
@@ -477,6 +479,9 @@ class BookingTestingSeeder extends Seeder
                 'buffer_min' => 15,
                 'status' => $status,
                 'deposit_amount' => $service->deposit_amount,
+                'addon_duration_min' => 0,
+                'addon_price' => 0,
+                'addon_items_json' => null,
                 'payment_status' => $isHold ? 'UNPAID' : 'PAID',
                 'hold_expires_at' => $isHold
                     ? ($statusKey === 'HOLD_ACTIVE' ? $now->copy()->addMinutes(30) : $now->copy()->subMinutes(30))
@@ -496,6 +501,200 @@ class BookingTestingSeeder extends Seeder
         }
 
         return $bookings;
+    }
+
+    private function seedAddonSettlementQaScenarios(array $bookings, array $services, int $customerId, int $staffId): void
+    {
+        if (!Schema::hasTable('orders') || !Schema::hasTable('order_items')) {
+            return;
+        }
+
+        $primaryBooking = $bookings['CONFIRMED'] ?? null;
+        $dueBooking = $bookings['HOLD_ACTIVE'] ?? null;
+        $addonA = $services['Treatment'] ?? null;
+        $addonB = $services['Haircut'] ?? null;
+
+        if (! $primaryBooking || ! $dueBooking || ! $addonA || ! $addonB) {
+            return;
+        }
+
+        $primaryAddonItems = [
+            [
+                'id' => 90001,
+                'label' => 'Nail Art Add-on',
+                'extra_duration_min' => 20,
+                'extra_price' => 20.00,
+            ],
+            [
+                'id' => 90002,
+                'label' => 'Strengthening Add-on',
+                'extra_duration_min' => 10,
+                'extra_price' => 8.00,
+            ],
+        ];
+
+        $primaryAddonDuration = collect($primaryAddonItems)->sum('extra_duration_min');
+        $primaryAddonPrice = (float) collect($primaryAddonItems)->sum('extra_price');
+
+        $primaryServiceDuration = (int) ($services['Coloring']?->duration_min ?? 0);
+        $primaryServicePrice = (float) ($services['Coloring']?->service_price ?? 0);
+
+        $primaryBooking->update([
+            'addon_duration_min' => $primaryAddonDuration,
+            'addon_price' => $primaryAddonPrice,
+            'addon_items_json' => $primaryAddonItems,
+            'end_at' => optional($primaryBooking->start_at)?->copy()->addMinutes($primaryServiceDuration + $primaryAddonDuration),
+            'notes' => trim((string) $primaryBooking->notes) . ' | QA_SCENARIO=ADDON_PAID_ONLINE',
+        ]);
+
+        $this->seedBookingOrderForQa(
+            bookingId: (int) $primaryBooking->id,
+            customerId: $customerId,
+            staffId: $staffId,
+            serviceId: (int) $primaryBooking->service_id,
+            serviceName: (string) ($primaryBooking->service?->name ?? 'Service'),
+            serviceLineTotal: $primaryServicePrice,
+            depositAmount: (float) ($primaryBooking->deposit_amount ?? 0),
+            addonLines: $primaryAddonItems,
+            orderNumberPrefix: 'BKG-QA-PAID-',
+            paidOnline: true,
+        );
+
+        $dueAddonItems = [
+            [
+                'id' => 90003,
+                'label' => 'Express Add-on',
+                'extra_duration_min' => 15,
+                'extra_price' => 15.00,
+            ],
+        ];
+        $dueAddonDuration = collect($dueAddonItems)->sum('extra_duration_min');
+        $dueAddonPrice = (float) collect($dueAddonItems)->sum('extra_price');
+
+        $dueBooking->update([
+            'addon_duration_min' => $dueAddonDuration,
+            'addon_price' => $dueAddonPrice,
+            'addon_items_json' => $dueAddonItems,
+            'end_at' => optional($dueBooking->start_at)?->copy()->addMinutes($primaryServiceDuration + $dueAddonDuration),
+            'notes' => trim((string) $dueBooking->notes) . ' | QA_SCENARIO=ADDON_DUE_AT_POS',
+        ]);
+
+        $this->seedBookingOrderForQa(
+            bookingId: (int) $dueBooking->id,
+            customerId: $customerId,
+            staffId: $staffId,
+            serviceId: (int) $dueBooking->service_id,
+            serviceName: (string) ($dueBooking->service?->name ?? 'Service'),
+            serviceLineTotal: $primaryServicePrice,
+            depositAmount: (float) ($dueBooking->deposit_amount ?? 0),
+            addonLines: [],
+            orderNumberPrefix: 'BKG-QA-DUE-',
+            paidOnline: true,
+        );
+    }
+
+    private function seedBookingOrderForQa(
+        int $bookingId,
+        int $customerId,
+        int $staffId,
+        int $serviceId,
+        string $serviceName,
+        float $serviceLineTotal,
+        float $depositAmount,
+        array $addonLines,
+        string $orderNumberPrefix,
+        bool $paidOnline = true,
+    ): void {
+        $subtotal = round($depositAmount + collect($addonLines)->sum(fn ($line) => (float) ($line['extra_price'] ?? 0)), 2);
+        $orderId = DB::table('orders')->insertGetId([
+            'order_number' => $orderNumberPrefix . strtoupper(substr(md5((string) microtime(true) . $bookingId), 0, 8)),
+            'customer_id' => $customerId,
+            'created_by_user_id' => $paidOnline ? null : $staffId,
+            'status' => 'completed',
+            'payment_status' => 'paid',
+            'payment_method' => $paidOnline ? 'billplz_fpx' : 'cash',
+            'payment_provider' => $paidOnline ? 'billplz' : 'manual',
+            'subtotal' => $subtotal,
+            'discount_total' => 0,
+            'shipping_fee' => 0,
+            'grand_total' => $subtotal,
+            'pickup_or_shipping' => 'pickup',
+            'placed_at' => now(),
+            'paid_at' => now(),
+            'completed_at' => now(),
+            'notes' => 'booking_deposit=' . number_format($depositAmount, 2, '.', '') . ' | seeded for booking addon QA',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        if (Schema::hasTable('order_service_items')) {
+            $serviceItemPayload = [
+                'order_id' => $orderId,
+                'booking_id' => $bookingId,
+                'service_id' => $serviceId,
+                'booking_service_id' => $serviceId,
+                'service_name_snapshot' => $serviceName,
+                'item_type' => 'service',
+                'qty' => 1,
+                'price_snapshot' => $serviceLineTotal,
+                'line_total' => $serviceLineTotal,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+
+            $filteredServiceItemPayload = collect($serviceItemPayload)
+                ->filter(fn ($_value, $key) => Schema::hasColumn('order_service_items', $key))
+                ->all();
+
+            if (! empty($filteredServiceItemPayload['order_id'])) {
+                DB::table('order_service_items')->insert($filteredServiceItemPayload);
+            }
+        }
+
+        DB::table('order_items')->insert([
+            'order_id' => $orderId,
+            'line_type' => 'booking_deposit',
+            'product_name_snapshot' => 'Booking Deposit - ' . $serviceName,
+            'display_name_snapshot' => 'Booking Deposit - ' . $serviceName,
+            'quantity' => 1,
+            'price_snapshot' => $depositAmount,
+            'unit_price_snapshot' => $depositAmount,
+            'line_total' => $depositAmount,
+            'line_total_snapshot' => $depositAmount,
+            'effective_unit_price' => $depositAmount,
+            'effective_line_total' => $depositAmount,
+            'locked' => true,
+            'booking_id' => $bookingId,
+            'booking_service_id' => $serviceId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        foreach ($addonLines as $line) {
+            $amount = (float) ($line['extra_price'] ?? 0);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            DB::table('order_items')->insert([
+                'order_id' => $orderId,
+                'line_type' => 'booking_addon',
+                'product_name_snapshot' => (string) ($line['label'] ?? 'Add-on'),
+                'display_name_snapshot' => (string) ($line['label'] ?? 'Add-on'),
+                'quantity' => 1,
+                'price_snapshot' => $amount,
+                'unit_price_snapshot' => $amount,
+                'line_total' => $amount,
+                'line_total_snapshot' => $amount,
+                'effective_unit_price' => $amount,
+                'effective_line_total' => $amount,
+                'locked' => true,
+                'booking_id' => $bookingId,
+                'booking_service_id' => $serviceId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     private function seedBookingLogs(array $bookings, int $actorStaffId): void
