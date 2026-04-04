@@ -628,17 +628,27 @@ class BookingTestingSeeder extends Seeder
         ]);
 
         if (Schema::hasTable('order_service_items')) {
-            DB::table('order_service_items')->insert([
+            $serviceItemPayload = [
                 'order_id' => $orderId,
                 'booking_id' => $bookingId,
                 'service_id' => $serviceId,
+                'booking_service_id' => $serviceId,
                 'service_name_snapshot' => $serviceName,
+                'item_type' => 'service',
                 'qty' => 1,
                 'price_snapshot' => $serviceLineTotal,
                 'line_total' => $serviceLineTotal,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);
+            ];
+
+            $filteredServiceItemPayload = collect($serviceItemPayload)
+                ->filter(fn ($_value, $key) => Schema::hasColumn('order_service_items', $key))
+                ->all();
+
+            if (! empty($filteredServiceItemPayload['order_id'])) {
+                DB::table('order_service_items')->insert($filteredServiceItemPayload);
+            }
         }
 
         DB::table('order_items')->insert([
