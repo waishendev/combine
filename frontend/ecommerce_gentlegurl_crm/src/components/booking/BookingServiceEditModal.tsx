@@ -6,6 +6,7 @@ import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceAllowedStaffPicker, {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
+import BookingServiceQuestionsBuilder, { emptyQuestion, emptyQuestionOption, type QuestionForm } from './BookingServiceQuestionsBuilder'
 import { mapBookingServiceApiItemToRow, type BookingServiceApiItem } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '../mediaAccept'
@@ -33,7 +34,7 @@ interface FormState {
   imageFile: File | null
   allowed_staff_ids: number[]
   primary_slots: string
-  questions_json: string
+  questions: QuestionForm[]
 }
 
 const initialFormState: FormState = {
@@ -48,7 +49,7 @@ const initialFormState: FormState = {
   imageFile: null,
   allowed_staff_ids: [],
   primary_slots: '',
-  questions_json: '[]',
+  questions: [],
 }
 
 export default function BookingServiceEditModal({
@@ -131,7 +132,47 @@ export default function BookingServiceEditModal({
           primary_slots: Array.isArray((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots)
             ? ((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
             : '',
-          questions_json: JSON.stringify((service as { questions?: unknown[] }).questions ?? [], null, 2),
+          questions: Array.isArray((service as { questions?: unknown[] }).questions)
+            ? ((service as {
+                questions?: Array<{
+                  id?: number
+                  title?: string
+                  description?: string | null
+                  question_type?: 'single_choice' | 'multi_choice'
+                  sort_order?: number
+                  is_required?: boolean
+                  is_active?: boolean
+                  options?: Array<{
+                    id?: number
+                    label?: string
+                    linked_booking_service_id?: number | null
+                    extra_duration_min?: number
+                    extra_price?: number
+                    sort_order?: number
+                    is_active?: boolean
+                  }>
+                }>
+              }).questions ?? []).map((question, questionIndex) => ({
+                id: question?.id,
+                title: question?.title ?? '',
+                description: question?.description ?? '',
+                question_type: question?.question_type === 'multi_choice' ? 'multi_choice' : 'single_choice',
+                sort_order: String(question?.sort_order ?? questionIndex),
+                is_required: Boolean(question?.is_required),
+                is_active: question?.is_active !== false,
+                options: Array.isArray(question?.options) && question.options.length > 0
+                  ? question.options.map((option, optionIndex) => ({
+                    id: option?.id,
+                    label: option?.label ?? '',
+                    linked_booking_service_id: option?.linked_booking_service_id ? String(option?.linked_booking_service_id) : '',
+                    extra_duration_min: String(option?.extra_duration_min ?? 0),
+                    extra_price: String(option?.extra_price ?? 0),
+                    sort_order: String(option?.sort_order ?? optionIndex),
+                    is_active: option?.is_active !== false,
+                  }))
+                  : [emptyQuestionOption()],
+              }))
+            : [],
           allowed_staff_ids: Array.isArray((service as { allowed_staff_ids?: unknown }).allowed_staff_ids)
             ? ((service as { allowed_staff_ids?: unknown[] }).allowed_staff_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
             : Array.isArray((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs)
@@ -204,7 +245,7 @@ export default function BookingServiceEditModal({
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
-    const { name, value, type } = event.target
+    const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -285,7 +326,22 @@ export default function BookingServiceEditModal({
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
-      fd.append('questions_json', form.questions_json.trim() || '[]')
+      form.questions.forEach((question, questionIndex) => {
+        fd.append(`questions[${questionIndex}][title]`, question.title.trim())
+        fd.append(`questions[${questionIndex}][description]`, question.description.trim())
+        fd.append(`questions[${questionIndex}][question_type]`, question.question_type)
+        fd.append(`questions[${questionIndex}][sort_order]`, String(Number(question.sort_order || questionIndex)))
+        fd.append(`questions[${questionIndex}][is_required]`, question.is_required ? '1' : '0')
+        fd.append(`questions[${questionIndex}][is_active]`, question.is_active ? '1' : '0')
+        question.options.forEach((option, optionIndex) => {
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][label]`, option.label.trim())
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][linked_booking_service_id]`, option.linked_booking_service_id.trim())
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][extra_duration_min]`, String(Number(option.extra_duration_min || 0)))
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][extra_price]`, String(Number(option.extra_price || 0)))
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(Number(option.sort_order || optionIndex)))
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')
+        })
+      })
       if (form.imageFile) {
         fd.append('image', form.imageFile)
       }
@@ -620,20 +676,21 @@ export default function BookingServiceEditModal({
                     disabled={disableForm}
                   />
                 </div>
-                <div>
-                  <label htmlFor="edit-questions_json" className="block text-sm font-medium text-gray-700 mb-1">
-                    Questions / Add-ons JSON
-                  </label>
-                  <textarea
-                    id="edit-questions_json"
-                    name="questions_json"
-                    rows={6}
-                    value={form.questions_json}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                <BookingServiceQuestionsBuilder
+                  value={form.questions}
+                  onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+                  disabled={disableForm}
+                />
+                {form.questions.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, questions: [emptyQuestion()] }))}
                     disabled={disableForm}
-                  />
-                </div>
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Add first question
+                  </button>
+                ) : null}
 
                 <div>
                   <label

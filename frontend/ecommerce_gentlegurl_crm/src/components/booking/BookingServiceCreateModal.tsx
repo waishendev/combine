@@ -10,6 +10,7 @@ import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceAllowedStaffPicker, {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
+import BookingServiceQuestionsBuilder, { emptyQuestion, type QuestionForm } from './BookingServiceQuestionsBuilder'
 import { mapBookingServiceApiItemToRow, type BookingServiceApiItem } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '../mediaAccept'
@@ -33,7 +34,7 @@ interface FormState {
   imageFile: File | null
   allowed_staff_ids: number[]
   primary_slots: string
-  questions_json: string
+  questions: QuestionForm[]
 }
 
 const initialFormState: FormState = {
@@ -48,7 +49,7 @@ const initialFormState: FormState = {
   imageFile: null,
   allowed_staff_ids: [],
   primary_slots: '',
-  questions_json: '[]',
+  questions: [],
 }
 
 export default function BookingServiceCreateModal({
@@ -190,7 +191,22 @@ export default function BookingServiceCreateModal({
       fd.append('is_active', form.is_active ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
-      fd.append('questions_json', form.questions_json.trim() || '[]')
+      form.questions.forEach((question, questionIndex) => {
+        fd.append(`questions[${questionIndex}][title]`, question.title.trim())
+        fd.append(`questions[${questionIndex}][description]`, question.description.trim())
+        fd.append(`questions[${questionIndex}][question_type]`, question.question_type)
+        fd.append(`questions[${questionIndex}][sort_order]`, String(Number(question.sort_order || questionIndex)))
+        fd.append(`questions[${questionIndex}][is_required]`, question.is_required ? '1' : '0')
+        fd.append(`questions[${questionIndex}][is_active]`, question.is_active ? '1' : '0')
+        question.options.forEach((option, optionIndex) => {
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][label]`, option.label.trim())
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][linked_booking_service_id]`, option.linked_booking_service_id.trim())
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][extra_duration_min]`, String(Number(option.extra_duration_min || 0)))
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][extra_price]`, String(Number(option.extra_price || 0)))
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(Number(option.sort_order || optionIndex)))
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')
+        })
+      })
       if (form.imageFile) fd.append('image', form.imageFile)
 
       const res = await fetch('/api/proxy/admin/booking/services', {
@@ -450,20 +466,21 @@ export default function BookingServiceCreateModal({
                   disabled={submitting}
                 />
               </div>
-              <div>
-                <label htmlFor="questions_json" className="block text-sm font-medium text-gray-700 mb-1">
-                  Questions / Add-ons JSON
-                </label>
-                <textarea
-                  id="questions_json"
-                  name="questions_json"
-                  value={form.questions_json}
-                  onChange={handleChange}
-                  rows={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              <BookingServiceQuestionsBuilder
+                value={form.questions}
+                onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+                disabled={submitting}
+              />
+              {form.questions.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setForm((prev) => ({ ...prev, questions: [emptyQuestion()] }))}
                   disabled={submitting}
-                />
-              </div>
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Add first question
+                </button>
+              ) : null}
             </div>
           </div>
 
