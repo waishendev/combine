@@ -341,10 +341,7 @@ class BookingTestingSeeder extends Seeder
                 'sort_order' => 1,
                 'is_required' => false,
                 'is_active' => true,
-                'options' => [
-                    ['label' => 'Nail Art Add-on', 'extra_duration_min' => 20, 'extra_price' => 20, 'sort_order' => 1],
-                    ['label' => 'Premium Nail Art Add-on', 'extra_duration_min' => 35, 'extra_price' => 35, 'sort_order' => 2],
-                ],
+                'service_keys' => ['Treatment', 'Haircut'],
             ],
             [
                 'title' => 'Preparation add-ons',
@@ -353,10 +350,7 @@ class BookingTestingSeeder extends Seeder
                 'sort_order' => 2,
                 'is_required' => false,
                 'is_active' => true,
-                'options' => [
-                    ['label' => 'Removal Add-on', 'extra_duration_min' => 15, 'extra_price' => 12, 'sort_order' => 1],
-                    ['label' => 'Strengthening Add-on', 'extra_duration_min' => 10, 'extra_price' => 8, 'sort_order' => 2],
-                ],
+                'service_keys' => ['Haircut', 'Treatment'],
             ],
         ];
 
@@ -373,14 +367,19 @@ class BookingTestingSeeder extends Seeder
                 'updated_at' => $now,
             ]);
 
-            foreach ($row['options'] as $option) {
+            $selectedAddonServices = collect($row['service_keys'] ?? [])
+                ->map(fn ($serviceKey) => $services[$serviceKey] ?? null)
+                ->filter()
+                ->values();
+
+            foreach ($selectedAddonServices as $optionIndex => $addonService) {
                 DB::table('booking_service_question_options')->insert([
                     'booking_service_question_id' => $questionId,
-                    'label' => $option['label'],
-                    'linked_booking_service_id' => null,
-                    'extra_duration_min' => $option['extra_duration_min'],
-                    'extra_price' => $option['extra_price'],
-                    'sort_order' => $option['sort_order'],
+                    'label' => (string) $addonService->name,
+                    'linked_booking_service_id' => (int) $addonService->id,
+                    'extra_duration_min' => max(0, (int) $addonService->duration_min),
+                    'extra_price' => max(0, (float) $addonService->service_price),
+                    'sort_order' => $optionIndex + 1,
                     'is_active' => true,
                     'created_at' => $now,
                     'updated_at' => $now,

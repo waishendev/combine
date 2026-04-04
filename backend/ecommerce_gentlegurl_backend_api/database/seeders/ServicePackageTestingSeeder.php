@@ -238,19 +238,25 @@ class ServicePackageTestingSeeder extends Seeder
             'updated_at' => $now,
         ]);
 
-        $options = [
-            ['label' => 'Express Add-on', 'extra_duration_min' => 10, 'extra_price' => 5, 'sort_order' => 1],
-            ['label' => 'Detailed Add-on', 'extra_duration_min' => 25, 'extra_price' => 18, 'sort_order' => 2],
-        ];
+        $addonServices = DB::table('booking_services')
+            ->where('id', '!=', $serviceId)
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->limit(2)
+            ->get(['id', 'name', 'duration_min', 'service_price']);
 
-        foreach ($options as $option) {
+        if ($addonServices->isEmpty()) {
+            return;
+        }
+
+        foreach ($addonServices as $index => $addonService) {
             DB::table('booking_service_question_options')->insert([
                 'booking_service_question_id' => $questionId,
-                'label' => $option['label'],
-                'linked_booking_service_id' => null,
-                'extra_duration_min' => $option['extra_duration_min'],
-                'extra_price' => $option['extra_price'],
-                'sort_order' => $option['sort_order'],
+                'label' => (string) ($addonService->name ?? ('Package QA Add-on ' . ($index + 1))),
+                'linked_booking_service_id' => (int) $addonService->id,
+                'extra_duration_min' => max(0, (int) ($addonService->duration_min ?? 0)),
+                'extra_price' => max(0, (float) ($addonService->service_price ?? 0)),
+                'sort_order' => $index + 1,
                 'is_active' => true,
                 'created_at' => $now,
                 'updated_at' => $now,
