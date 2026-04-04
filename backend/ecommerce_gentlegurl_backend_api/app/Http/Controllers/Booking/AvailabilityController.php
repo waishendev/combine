@@ -39,12 +39,21 @@ class AvailabilityController extends Controller
 
         $validated = $validator->validated();
 
-        $service = BookingService::query()->with('allowedStaffs:id')->findOrFail($validated['service_id']);
+        $service = BookingService::query()->with(['allowedStaffs:id', 'primarySlots'])->findOrFail($validated['service_id']);
         if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
             return $this->respondError('Selected staff is not allowed for this service.', 422);
         }
 
         $slots = $this->availabilityService->getAvailableSlots($service, (int) $validated['staff_id'], $validated['date']);
+
+        $configuredPrimarySlots = $service->primarySlots
+            ->where('is_active', true)
+            ->sortBy('sort_order')
+            ->values()
+            ->map(fn ($slot) => substr((string) $slot->start_time, 0, 5))
+            ->filter()
+            ->values()
+            ->all();
 
         return $this->respond([
             'date' => $validated['date'],
@@ -53,6 +62,9 @@ class AvailabilityController extends Controller
             'duration_min' => (int) $service->duration_min,
             'buffer_min' => (int) $service->buffer_min,
             'slot_step_min' => 15,
+            'has_primary_slot_policy' => ! empty($configuredPrimarySlots),
+            'configured_primary_slots' => $configuredPrimarySlots,
+            'visible_slots' => $slots,
             'slots' => $slots,
         ]);
     }

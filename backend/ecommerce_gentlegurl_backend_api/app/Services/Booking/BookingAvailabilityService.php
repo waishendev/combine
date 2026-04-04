@@ -13,7 +13,18 @@ use Carbon\CarbonPeriod;
 
 class BookingAvailabilityService
 {
-    /** @return array<int, array{start_at:string,end_at:string}> */
+    /**
+     * @return array<int, array{
+     *   start_at:string,
+     *   end_at:string,
+     *   is_available:bool,
+     *   slot_kind?:string,
+     *   configured_primary_time?:string|null,
+     *   matched_primary_time?:string|null,
+     *   is_primary?:bool,
+     *   is_fallback?:bool
+     * }>
+     */
     public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15): array
     {
         $day = Carbon::parse($date);
@@ -50,7 +61,7 @@ class BookingAvailabilityService
             ];
         }
 
-        $slots = $this->prioritizePrimarySlots($service, $slots);
+        $slots = $this->applyPrimarySlotDisplayPolicy($service, $slots);
 
         return $slots;
     }
@@ -59,7 +70,7 @@ class BookingAvailabilityService
      * @param array<int, array{start_at:string,end_at:string,is_available:bool}> $slots
      * @return array<int, array{start_at:string,end_at:string,is_available:bool}>
      */
-    private function prioritizePrimarySlots(BookingService $service, array $slots): array
+    private function applyPrimarySlotDisplayPolicy(BookingService $service, array $slots): array
     {
         $primaryTimes = $service->primarySlots()
             ->where('is_active', true)
@@ -70,12 +81,24 @@ class BookingAvailabilityService
             ->filter()
             ->values();
 
-        if ($primaryTimes->isEmpty() || empty($slots)) {
+        if (empty($slots)) {
             return $slots;
         }
 
+        if ($primaryTimes->isEmpty()) {
+            return array_map(function (array $slot): array {
+                $slot['slot_kind'] = 'standard';
+                $slot['configured_primary_time'] = null;
+                $slot['matched_primary_time'] = null;
+                $slot['is_primary'] = false;
+                $slot['is_fallback'] = false;
+
+                return $slot;
+            }, $slots);
+        }
+
         $remaining = array_values($slots);
-        $prioritized = [];
+        $visible = [];
 
         foreach ($primaryTimes as $time) {
             $candidateIndex = null;
@@ -98,12 +121,21 @@ class BookingAvailabilityService
             }
 
             if ($candidateIndex !== null) {
-                $prioritized[] = $remaining[$candidateIndex];
+                $selected = $remaining[$candidateIndex];
+                $selectedTime = Carbon::parse($selected['start_at'])->format('H:i');
+
+                $selected['configured_primary_time'] = $time;
+                $selected['matched_primary_time'] = $selectedTime;
+                $selected['is_primary'] = $selectedTime === $time;
+                $selected['is_fallback'] = $selectedTime !== $time;
+                $selected['slot_kind'] = $selectedTime === $time ? 'primary' : 'fallback';
+
+                $visible[] = $selected;
                 array_splice($remaining, $candidateIndex, 1);
             }
         }
 
-        return array_merge($prioritized, $remaining);
+        return $visible;
     }
 
     public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin): bool

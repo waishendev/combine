@@ -42,6 +42,11 @@ export type BookingSlot = {
   end_time?: string;
   is_available?: boolean;
   label?: string;
+  slot_kind?: "primary" | "fallback" | "standard";
+  configured_primary_time?: string | null;
+  matched_primary_time?: string | null;
+  is_primary?: boolean;
+  is_fallback?: boolean;
 };
 
 export type BookingCartItem = {
