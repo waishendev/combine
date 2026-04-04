@@ -64,7 +64,7 @@ class ServiceController extends Controller
 
     public function show(int $id)
     {
-        $service = BookingService::query()->with(['primarySlots', 'questions.options'])->findOrFail($id);
+        $service = BookingService::query()->with(['primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])->findOrFail($id);
 
         return $this->respond($this->mapService($service, true));
     }
@@ -129,7 +129,7 @@ class ServiceController extends Controller
             'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
             'questions' => $service->questions()
                 ->where('is_active', true)
-                ->with(['options' => fn ($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id')])
+                ->with(['options' => fn ($q) => $q->where('is_active', true)->with('linkedBookingService:id,name,duration_min,service_price')->orderBy('sort_order')->orderBy('id')])
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get()
@@ -140,15 +140,18 @@ class ServiceController extends Controller
                     'question_type' => (string) $question->question_type,
                     'is_required' => (bool) $question->is_required,
                     'sort_order' => (int) $question->sort_order,
-                    'options' => $question->options->map(fn ($option) => [
-                        'id' => (int) $option->id,
-                        'label' => (string) $option->label,
-                        'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
-                        'extra_duration_min' => (int) $option->extra_duration_min,
-                        'extra_price' => (float) $option->extra_price,
-                        'sort_order' => (int) $option->sort_order,
-                        'is_active' => (bool) $option->is_active,
-                    ])->values()->all(),
+                    'options' => $question->options->map(function ($option) {
+                        $linkedService = $option->linkedBookingService;
+                        return [
+                            'id' => (int) $option->id,
+                            'label' => trim((string) $option->label) !== '' ? (string) $option->label : (string) optional($linkedService)->name,
+                            'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
+                            'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : (int) $option->extra_duration_min,
+                            'extra_price' => $linkedService ? (float) $linkedService->service_price : (float) $option->extra_price,
+                            'sort_order' => (int) $option->sort_order,
+                            'is_active' => (bool) $option->is_active,
+                        ];
+                    })->values()->all(),
                 ])->values()->all(),
         ];
 
