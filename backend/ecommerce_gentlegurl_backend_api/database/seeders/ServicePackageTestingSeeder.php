@@ -60,6 +60,7 @@ class ServicePackageTestingSeeder extends Seeder
 
         if (count($serviceIds) > 0) {
             $this->ensureBookingServicePriceAndEligibility($serviceIds);
+            $this->ensureBookingCategoryAndPrimarySlots($serviceIds);
             return $serviceIds;
         }
 
@@ -99,7 +100,10 @@ class ServicePackageTestingSeeder extends Seeder
             DB::table('booking_services')->insert($this->filterBookingServiceColumns($payload));
         }
 
-        return DB::table('booking_services')->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $serviceIds = DB::table('booking_services')->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->ensureBookingCategoryAndPrimarySlots($serviceIds);
+
+        return $serviceIds;
     }
 
     private function ensureBookingServicePriceAndEligibility(array $serviceIds): void
@@ -124,6 +128,66 @@ class ServicePackageTestingSeeder extends Seeder
         return collect($payload)
             ->filter(fn ($_value, $key) => Schema::hasColumn('booking_services', $key))
             ->all();
+    }
+
+    /**
+     * @param int[] $serviceIds
+     */
+    private function ensureBookingCategoryAndPrimarySlots(array $serviceIds): void
+    {
+        $now = now();
+
+        if (Schema::hasTable('booking_service_categories') && Schema::hasTable('booking_service_category_service')) {
+            DB::table('booking_service_categories')->updateOrInsert(
+                ['slug' => 'seed-service-packages'],
+                [
+                    'name' => 'Seed Service Packages',
+                    'description' => 'Auto-seeded category used for package QA.',
+                    'is_active' => true,
+                    'sort_order' => 99,
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ]
+            );
+
+            $categoryId = (int) DB::table('booking_service_categories')
+                ->where('slug', 'seed-service-packages')
+                ->value('id');
+
+            foreach ($serviceIds as $serviceId) {
+                DB::table('booking_service_category_service')->updateOrInsert(
+                    [
+                        'booking_service_category_id' => $categoryId,
+                        'booking_service_id' => (int) $serviceId,
+                    ],
+                    [
+                        'updated_at' => $now,
+                        'created_at' => $now,
+                    ]
+                );
+            }
+        }
+
+        if (Schema::hasTable('booking_service_primary_slots')) {
+            foreach ($serviceIds as $serviceId) {
+                $baseTimes = ['10:00:00', '13:00:00', '16:00:00'];
+
+                DB::table('booking_service_primary_slots')
+                    ->where('booking_service_id', (int) $serviceId)
+                    ->delete();
+
+                foreach ($baseTimes as $slotOrder => $time) {
+                    DB::table('booking_service_primary_slots')->insert([
+                        'booking_service_id' => (int) $serviceId,
+                        'start_time' => $time,
+                        'sort_order' => $slotOrder,
+                        'is_active' => true,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }
+            }
+        }
     }
 
     private function seedStaffServiceCommissionRates(): void
