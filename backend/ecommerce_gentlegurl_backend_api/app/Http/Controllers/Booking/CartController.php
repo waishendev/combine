@@ -50,6 +50,7 @@ class CartController extends Controller
             ->whereIn('id', $selectedOptionIds)
             ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
             ->where('is_active', true)
+            ->with('linkedBookingService:id,name,duration_min,service_price')
             ->get();
 
         foreach ($serviceQuestions as $question) {
@@ -62,8 +63,16 @@ class CartController extends Controller
             }
         }
 
-        $addonDurationMin = (int) $selectedOptions->sum(fn (BookingServiceQuestionOption $option) => (int) $option->extra_duration_min);
-        $addonPrice = round((float) $selectedOptions->sum(fn (BookingServiceQuestionOption $option) => (float) $option->extra_price), 2);
+        $addonDurationMin = (int) $selectedOptions->sum(function (BookingServiceQuestionOption $option): int {
+            return $option->linkedBookingService
+                ? (int) $option->linkedBookingService->duration_min
+                : (int) $option->extra_duration_min;
+        });
+        $addonPrice = round((float) $selectedOptions->sum(function (BookingServiceQuestionOption $option): float {
+            return $option->linkedBookingService
+                ? (float) $option->linkedBookingService->service_price
+                : (float) $option->extra_price;
+        }), 2);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min + $addonDurationMin);
 
         return DB::transaction(function () use ($request, $validated, $service, $startAt, $endAt, $addonDurationMin, $addonPrice, $selectedOptions, $selectedOptionIds) {
@@ -101,9 +110,15 @@ class CartController extends Controller
                         'selected_option_ids' => $selectedOptionIds,
                         'selected_options' => $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
                             'id' => (int) $option->id,
-                            'label' => (string) $option->label,
-                            'extra_duration_min' => (int) $option->extra_duration_min,
-                            'extra_price' => (float) $option->extra_price,
+                            'label' => trim((string) $option->label) !== ''
+                                ? (string) $option->label
+                                : (string) optional($option->linkedBookingService)->name,
+                            'extra_duration_min' => $option->linkedBookingService
+                                ? (int) $option->linkedBookingService->duration_min
+                                : (int) $option->extra_duration_min,
+                            'extra_price' => $option->linkedBookingService
+                                ? (float) $option->linkedBookingService->service_price
+                                : (float) $option->extra_price,
                         ])->values()->all(),
                     ],
                     'expires_at' => $expiresAt,

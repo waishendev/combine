@@ -4,8 +4,6 @@ export type QuestionOptionForm = {
   id?: number
   label: string
   linked_booking_service_id: string
-  extra_duration_min: string
-  extra_price: string
   sort_order: string
   is_active: boolean
 }
@@ -24,8 +22,6 @@ export type QuestionForm = {
 export const emptyQuestionOption = (): QuestionOptionForm => ({
   label: '',
   linked_booking_service_id: '',
-  extra_duration_min: '0',
-  extra_price: '0',
   sort_order: '0',
   is_active: true,
 })
@@ -43,10 +39,11 @@ export const emptyQuestion = (): QuestionForm => ({
 interface Props {
   value: QuestionForm[]
   onChange: (next: QuestionForm[]) => void
+  bookingServiceOptions: Array<{ id: number; name: string; duration_min: number; service_price: number }>
   disabled?: boolean
 }
 
-export default function BookingServiceQuestionsBuilder({ value, onChange, disabled }: Props) {
+export default function BookingServiceQuestionsBuilder({ value, onChange, bookingServiceOptions, disabled }: Props) {
   const setQuestion = (index: number, patch: Partial<QuestionForm>) => {
     const next = [...value]
     next[index] = { ...next[index], ...patch }
@@ -116,11 +113,33 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, disabl
                   <button type="button" disabled={disabled} onClick={() => setQuestion(qIndex, { options: question.options.filter((_, index) => index !== oIndex) })} className="text-xs text-red-600 hover:underline disabled:opacity-50">Remove Option</button>
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
-                  <input value={option.label} disabled={disabled} onChange={(e) => setOption(qIndex, oIndex, { label: e.target.value })} placeholder="Label" className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
+                  <input value={option.label} disabled={disabled} onChange={(e) => setOption(qIndex, oIndex, { label: e.target.value })} placeholder="Option label (optional — defaults to selected service name)" className="w-full rounded border border-gray-300 px-3 py-2 text-sm md:col-span-2" />
+                  <select
+                    value={option.linked_booking_service_id}
+                    disabled={disabled}
+                    onChange={(e) => setOption(qIndex, oIndex, { linked_booking_service_id: e.target.value })}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm md:col-span-2"
+                  >
+                    <option value="">Select linked booking service</option>
+                    {bookingServiceOptions.map((service) => (
+                      <option key={service.id} value={String(service.id)}>
+                        {service.name} ({service.duration_min} min, RM{Number(service.service_price || 0).toFixed(2)})
+                      </option>
+                    ))}
+                  </select>
                   <input type="number" min={0} value={option.sort_order} disabled={disabled} onChange={(e) => setOption(qIndex, oIndex, { sort_order: e.target.value })} placeholder="Sort order" className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
-                  <input type="number" min={0} value={option.extra_duration_min} disabled={disabled} onChange={(e) => setOption(qIndex, oIndex, { extra_duration_min: e.target.value })} placeholder="Extra duration (min)" className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
-                  <input type="number" min={0} step="0.01" value={option.extra_price} disabled={disabled} onChange={(e) => setOption(qIndex, oIndex, { extra_price: e.target.value })} placeholder="Extra price" className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
-                  <input type="number" min={0} value={option.linked_booking_service_id} disabled={disabled} onChange={(e) => setOption(qIndex, oIndex, { linked_booking_service_id: e.target.value })} placeholder="Linked booking service ID (optional)" className="w-full rounded border border-gray-300 px-3 py-2 text-sm md:col-span-2" />
+                  {(() => {
+                    const selectedService = bookingServiceOptions.find((service) => String(service.id) === option.linked_booking_service_id)
+                    return selectedService ? (
+                      <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+                        Auto add-on values from <span className="font-semibold">{selectedService.name}</span>: +{selectedService.duration_min} min, +RM{Number(selectedService.service_price || 0).toFixed(2)}
+                      </p>
+                    ) : (
+                      <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        Select a linked booking service to auto-use its duration and price.
+                      </p>
+                    )
+                  })()}
                 </div>
                 <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={option.is_active} disabled={disabled} onChange={(e) => setOption(qIndex, oIndex, { is_active: e.target.checked })} /> Active</label>
               </div>

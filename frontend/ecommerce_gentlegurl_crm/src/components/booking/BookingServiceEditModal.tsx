@@ -36,6 +36,7 @@ interface FormState {
   primary_slots: string
   questions: QuestionForm[]
 }
+type BookingServiceOption = { id: number; name: string; duration_min: number; service_price: number }
 
 const initialFormState: FormState = {
   name: '',
@@ -65,6 +66,7 @@ export default function BookingServiceEditModal({
   const [loadedService, setLoadedService] = useState<BookingServiceRowData | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [staffOptions, setStaffOptions] = useState<BookingStaffOption[]>([])
+  const [bookingServiceOptions, setBookingServiceOptions] = useState<BookingServiceOption[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
@@ -165,8 +167,6 @@ export default function BookingServiceEditModal({
                     id: option?.id,
                     label: option?.label ?? '',
                     linked_booking_service_id: option?.linked_booking_service_id ? String(option?.linked_booking_service_id) : '',
-                    extra_duration_min: String(option?.extra_duration_min ?? 0),
-                    extra_price: String(option?.extra_price ?? 0),
                     sort_order: String(option?.sort_order ?? optionIndex),
                     is_active: option?.is_active !== false,
                   }))
@@ -242,6 +242,53 @@ export default function BookingServiceEditModal({
     return () => { ignore = true }
   }, [])
 
+  useEffect(() => {
+    let ignore = false
+
+    const loadBookingServices = async () => {
+      try {
+        const res = await fetch('/api/proxy/admin/booking/services?per_page=200', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!ignore) setBookingServiceOptions([])
+          return
+        }
+        const json = await res.json().catch(() => null)
+        const payload = (json && typeof json === 'object' && 'data' in json)
+          ? (json as { data?: { data?: unknown[] } | unknown[] }).data
+          : null
+        const rows = Array.isArray((payload as { data?: unknown[] } | null)?.data)
+          ? ((payload as { data?: unknown[] }).data ?? [])
+          : Array.isArray(payload)
+            ? payload
+            : []
+
+        const mapped = rows
+          .map((row): BookingServiceOption | null => {
+            if (!row || typeof row !== 'object') return null
+            const maybe = row as Record<string, unknown>
+            const id = Number(maybe.id)
+            const name = String(maybe.name ?? '').trim()
+            if (!id || !name) return null
+            return {
+              id,
+              name,
+              duration_min: Math.max(0, Number(maybe.duration_min ?? 0)),
+              service_price: Math.max(0, Number(maybe.service_price ?? 0)),
+            }
+          })
+          .filter((row): row is BookingServiceOption => Boolean(row))
+          .filter((row) => row.id !== serviceId)
+
+        if (!ignore) setBookingServiceOptions(mapped)
+      } catch {
+        if (!ignore) setBookingServiceOptions([])
+      }
+    }
+
+    void loadBookingServices()
+    return () => { ignore = true }
+  }, [serviceId])
+
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
@@ -309,6 +356,13 @@ export default function BookingServiceEditModal({
       setError('Please assign at least 1 allowed staff')
       return
     }
+    const missingLinkedService = form.questions.some((question) =>
+      question.options.some((option) => !option.linked_booking_service_id.trim()),
+    )
+    if (missingLinkedService) {
+      setError('Each add-on option must select a linked booking service')
+      return
+    }
 
     setSubmitting(true)
     setError(null)
@@ -336,8 +390,6 @@ export default function BookingServiceEditModal({
         question.options.forEach((option, optionIndex) => {
           fd.append(`questions[${questionIndex}][options][${optionIndex}][label]`, option.label.trim())
           fd.append(`questions[${questionIndex}][options][${optionIndex}][linked_booking_service_id]`, option.linked_booking_service_id.trim())
-          fd.append(`questions[${questionIndex}][options][${optionIndex}][extra_duration_min]`, String(Number(option.extra_duration_min || 0)))
-          fd.append(`questions[${questionIndex}][options][${optionIndex}][extra_price]`, String(Number(option.extra_price || 0)))
           fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(Number(option.sort_order || optionIndex)))
           fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')
         })
@@ -679,6 +731,7 @@ export default function BookingServiceEditModal({
                 <BookingServiceQuestionsBuilder
                   value={form.questions}
                   onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+                  bookingServiceOptions={bookingServiceOptions}
                   disabled={disableForm}
                 />
                 {form.questions.length === 0 ? (

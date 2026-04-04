@@ -7,6 +7,7 @@ use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingServicePrimarySlot;
 use App\Models\Booking\BookingServiceQuestion;
+use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ class ServiceController extends Controller
     public function index()
     {
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options'])
+            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])
             ->latest()
             ->paginate(20);
 
@@ -30,7 +31,7 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options'])
+            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -69,8 +70,8 @@ class ServiceController extends Controller
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
             'questions.*.options' => ['nullable', 'array'],
-            'questions.*.options.*.label' => ['required_with:questions.*.options', 'string', 'max:255'],
-            'questions.*.options.*.linked_booking_service_id' => ['nullable', 'integer', 'exists:booking_services,id'],
+            'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
+            'questions.*.options.*.linked_booking_service_id' => ['required_with:questions.*.options', 'integer', 'exists:booking_services,id'],
             'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
             'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
@@ -100,7 +101,7 @@ class ServiceController extends Controller
         $this->syncQuestions($service, $questions);
 
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options'])), 'Created', true, 201);
+        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])), 'Created', true, 201);
     }
 
     public function update(Request $request, int $id)
@@ -138,8 +139,8 @@ class ServiceController extends Controller
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
             'questions.*.options' => ['nullable', 'array'],
-            'questions.*.options.*.label' => ['required_with:questions.*.options', 'string', 'max:255'],
-            'questions.*.options.*.linked_booking_service_id' => ['nullable', 'integer', 'exists:booking_services,id'],
+            'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
+            'questions.*.options.*.linked_booking_service_id' => ['required_with:questions.*.options', 'integer', 'exists:booking_services,id'],
             'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
             'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
@@ -171,7 +172,7 @@ class ServiceController extends Controller
         }
 
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options'])));
+        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])));
     }
 
     public function destroy(int $id)
@@ -257,6 +258,18 @@ class ServiceController extends Controller
     private function syncQuestions(BookingService $service, array $questions): void
     {
         BookingServiceQuestion::query()->where('booking_service_id', $service->id)->delete();
+        $linkedServiceIds = collect($questions)
+            ->flatMap(fn ($questionPayload) => $questionPayload['options'] ?? [])
+            ->map(fn ($optionPayload) => (int) ($optionPayload['linked_booking_service_id'] ?? 0))
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $linkedServices = BookingService::query()
+            ->whereIn('id', $linkedServiceIds)
+            ->get(['id', 'name', 'duration_min', 'service_price'])
+            ->keyBy('id');
 
         foreach ($questions as $index => $questionPayload) {
             $question = BookingServiceQuestion::query()->create([
@@ -270,11 +283,13 @@ class ServiceController extends Controller
             ]);
 
             foreach (($questionPayload['options'] ?? []) as $optionIndex => $optionPayload) {
+                $linkedServiceId = (int) ($optionPayload['linked_booking_service_id'] ?? 0);
+                $linkedService = $linkedServiceId > 0 ? $linkedServices->get($linkedServiceId) : null;
                 $question->options()->create([
-                    'label' => (string) ($optionPayload['label'] ?? ''),
-                    'linked_booking_service_id' => (int) ($optionPayload['linked_booking_service_id'] ?? 0) ?: null,
-                    'extra_duration_min' => max(0, (int) ($optionPayload['extra_duration_min'] ?? 0)),
-                    'extra_price' => max(0, (float) ($optionPayload['extra_price'] ?? 0)),
+                    'label' => trim((string) ($optionPayload['label'] ?? '')) ?: (string) optional($linkedService)->name,
+                    'linked_booking_service_id' => $linkedServiceId ?: null,
+                    'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : max(0, (int) ($optionPayload['extra_duration_min'] ?? 0)),
+                    'extra_price' => $linkedService ? max(0, (float) $linkedService->service_price) : max(0, (float) ($optionPayload['extra_price'] ?? 0)),
                     'sort_order' => (int) ($optionPayload['sort_order'] ?? $optionIndex),
                     'is_active' => (bool) ($optionPayload['is_active'] ?? true),
                 ]);
@@ -324,17 +339,26 @@ class ServiceController extends Controller
                     'sort_order' => (int) $question->sort_order,
                     'is_required' => (bool) $question->is_required,
                     'is_active' => (bool) $question->is_active,
-                    'options' => $question->options->sortBy('sort_order')->values()->map(fn ($option) => [
-                        'id' => (int) $option->id,
-                        'label' => (string) $option->label,
-                        'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
-                        'extra_duration_min' => (int) $option->extra_duration_min,
-                        'extra_price' => (float) $option->extra_price,
-                        'sort_order' => (int) $option->sort_order,
-                        'is_active' => (bool) $option->is_active,
-                    ])->all(),
+                    'options' => $question->options->sortBy('sort_order')->values()->map(fn ($option) => $this->formatQuestionOption($option))->all(),
                 ])->all(),
             'primary_slots' => $primarySlots,
         ]);
+    }
+
+    private function formatQuestionOption(BookingServiceQuestionOption $option): array
+    {
+        $linkedService = $option->linkedBookingService;
+        $extraDuration = $linkedService ? (int) $linkedService->duration_min : (int) $option->extra_duration_min;
+        $extraPrice = $linkedService ? (float) $linkedService->service_price : (float) $option->extra_price;
+
+        return [
+            'id' => (int) $option->id,
+            'label' => trim((string) $option->label) !== '' ? (string) $option->label : (string) optional($linkedService)->name,
+            'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
+            'extra_duration_min' => $extraDuration,
+            'extra_price' => $extraPrice,
+            'sort_order' => (int) $option->sort_order,
+            'is_active' => (bool) $option->is_active,
+        ];
     }
 }
