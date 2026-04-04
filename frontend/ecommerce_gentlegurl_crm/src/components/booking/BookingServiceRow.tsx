@@ -20,6 +20,7 @@ export interface BookingServiceRowData {
   createdAt?: string
   allowedStaffCount?: number
   allowedStaffNames?: string[]
+  primarySlots?: string[]
 }
 
 interface BookingServiceRowProps {

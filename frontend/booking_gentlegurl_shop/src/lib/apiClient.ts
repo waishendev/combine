@@ -113,9 +113,17 @@ export async function verifyCustomerEmail(payload: {
   return request<{ success?: boolean; message?: string }>(url);
 }
 
-export async function getBookingServices(search?: string) {
-  const query = search ? `?search=${encodeURIComponent(search)}` : "";
-  const response = await request<{ data: Service[] } | Service[]>(`/booking/services${query}`);
+export async function getBookingServiceCategories() {
+  const response = await request<{ data: BookingServiceCategory[] } | BookingServiceCategory[]>(`/booking/service-categories`);
+  return unwrapData<BookingServiceCategory[]>(response);
+}
+
+export async function getBookingServices(search?: string, categoryId?: number) {
+  const qs = new URLSearchParams();
+  if (search) qs.set("search", search);
+  if (categoryId) qs.set("category_id", String(categoryId));
+  const query = qs.toString();
+  const response = await request<{ data: Service[] } | Service[]>(`/booking/services${query ? `?${query}` : ""}`);
   return unwrapData<Service[]>(response);
 }
 

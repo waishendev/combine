@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\BookingServicePrimarySlot;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ class ServiceController extends Controller
     public function index()
     {
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name'])
+            ->with(['allowedStaffs:id,name', 'primarySlots'])
             ->latest()
             ->paginate(20);
 
@@ -28,7 +29,7 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path'])
+            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots'])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -50,6 +51,8 @@ class ServiceController extends Controller
             'rules_json' => ['nullable', 'array'],
             'allowed_staff_ids' => ['required', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
+            'primary_slots' => ['nullable', 'array'],
+            'primary_slots.*' => ['date_format:H:i'],
         ]);
         $data['service_price'] = $data['service_price'] ?? 0;
         $data['price'] = $data['price'] ?? $data['service_price'];
@@ -64,12 +67,15 @@ class ServiceController extends Controller
         }
 
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
-        unset($data['allowed_staff_ids']);
+        $primarySlots = $data['primary_slots'] ?? [];
+        unset($data['allowed_staff_ids'], $data['primary_slots']);
 
         $service = BookingService::create($data);
         $this->syncAllowedStaffs($service, $allowedStaffIds);
+        $this->syncPrimarySlots($service, $primarySlots);
+
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path'])), 'Created', true, 201);
+        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots'])), 'Created', true, 201);
     }
 
     public function update(Request $request, int $id)
@@ -90,6 +96,8 @@ class ServiceController extends Controller
             'rules_json' => ['nullable', 'array'],
             'allowed_staff_ids' => ['required', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
+            'primary_slots' => ['nullable', 'array'],
+            'primary_slots.*' => ['date_format:H:i'],
         ]);
 
         $oldImagePath = $service->image_path;
@@ -102,17 +110,19 @@ class ServiceController extends Controller
         }
 
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
-        unset($data['allowed_staff_ids']);
+        $primarySlots = $data['primary_slots'] ?? [];
+        unset($data['allowed_staff_ids'], $data['primary_slots']);
 
         $service->update($data);
         $this->syncAllowedStaffs($service, $allowedStaffIds);
+        $this->syncPrimarySlots($service, $primarySlots);
 
         if (isset($data['image_path']) && $oldImagePath && $oldImagePath !== $data['image_path'] && Storage::disk('public')->exists($oldImagePath)) {
             Storage::disk('public')->delete($oldImagePath);
         }
 
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path'])));
+        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots'])));
     }
 
     public function destroy(int $id)
@@ -175,6 +185,26 @@ class ServiceController extends Controller
         }
     }
 
+    private function syncPrimarySlots(BookingService $service, array $primarySlots): void
+    {
+        BookingServicePrimarySlot::query()->where('booking_service_id', $service->id)->delete();
+
+        $normalized = collect($primarySlots)
+            ->map(fn ($time) => substr((string) $time, 0, 5))
+            ->filter(fn ($time) => preg_match('/^\d{2}:\d{2}$/', $time) === 1)
+            ->unique()
+            ->values();
+
+        foreach ($normalized as $index => $time) {
+            BookingServicePrimarySlot::query()->create([
+                'booking_service_id' => $service->id,
+                'start_time' => $time . ':00',
+                'sort_order' => $index,
+                'is_active' => true,
+            ]);
+        }
+    }
+
     private function formatService(BookingService $service): array
     {
         $allowedStaffs = $service->allowedStaffs
@@ -189,11 +219,24 @@ class ServiceController extends Controller
             ])
             ->all();
 
+        $primarySlots = $service->primarySlots
+            ->where('is_active', true)
+            ->sortBy('sort_order')
+            ->values()
+            ->map(fn (BookingServicePrimarySlot $slot) => [
+                'id' => (int) $slot->id,
+                'start_time' => substr((string) $slot->start_time, 0, 5),
+                'sort_order' => (int) $slot->sort_order,
+                'is_active' => (bool) $slot->is_active,
+            ])
+            ->all();
+
         return array_merge($service->toArray(), [
             'allowed_staffs' => $allowedStaffs,
             'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
             'allowed_staff_count' => count($allowedStaffs),
             'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+            'primary_slots' => $primarySlots,
         ]);
     }
 }

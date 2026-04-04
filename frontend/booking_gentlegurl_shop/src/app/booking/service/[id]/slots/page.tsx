@@ -27,10 +27,16 @@ type AvailabilityPayload = {
   /** Some endpoints nest under `data`; others return these at the root */
   date?: string;
   slots?: BookingSlot[];
+  visible_slots?: BookingSlot[];
+  has_primary_slot_policy?: boolean;
+  configured_primary_slots?: string[];
   duration_min?: number;
   data?: {
     date?: string;
     slots?: BookingSlot[];
+    visible_slots?: BookingSlot[];
+    has_primary_slot_policy?: boolean;
+    configured_primary_slots?: string[];
     duration_min?: number;
   };
 };
@@ -67,7 +73,11 @@ function SlotPageContent() {
     try {
       const res = await getAvailability(serviceId, staffId, date);
       const payload = (res as AvailabilityPayload)?.data ?? (res as AvailabilityPayload);
-      const slotsArr = Array.isArray(payload?.slots) ? payload.slots : [];
+      const visibleSlots = Array.isArray(payload?.visible_slots)
+        ? payload.visible_slots
+        : Array.isArray(payload?.slots)
+          ? payload.slots
+          : [];
 
       if ((res as AvailabilityPayload).success === false) {
         setError((res as AvailabilityPayload).message || "Unable to load available slots.");
@@ -75,7 +85,7 @@ function SlotPageContent() {
         return;
       }
 
-      setSlots(slotsArr);
+      setSlots(visibleSlots);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load available slots.");
       setSlots([]);
@@ -429,6 +439,11 @@ function SlotPageContent() {
                         <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
                           {durationMin} min
                         </div>
+                        {slot.slot_kind === "fallback" && (
+                          <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
+                            Fallback
+                          </div>
+                        )}
                       </button>
                     );
                   })}
@@ -460,6 +475,11 @@ function SlotPageContent() {
                         <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
                           {durationMin} min
                         </div>
+                        {slot.slot_kind === "fallback" && (
+                          <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
+                            Fallback
+                          </div>
+                        )}
                       </button>
                     );
                   })}

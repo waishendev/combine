@@ -16,6 +16,7 @@ export type BookingServiceApiItem = {
   updated_at?: string | null
   allowed_staff_count?: number | string | null
   allowed_staff_names?: string[] | null
+  primary_slots?: Array<{ start_time?: string | null }> | null
 }
 
 
@@ -62,5 +63,6 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     createdAt: item.created_at ?? undefined,
     allowedStaffCount: item.allowed_staff_count != null ? Number(item.allowed_staff_count) : undefined,
     allowedStaffNames: Array.isArray(item.allowed_staff_names) ? item.allowed_staff_names.filter((name): name is string => typeof name === 'string') : undefined,
+    primarySlots: Array.isArray(item.primary_slots) ? item.primary_slots.map((slot) => String(slot?.start_time ?? "")).filter(Boolean) : undefined,
   }
 }

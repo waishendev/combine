@@ -34,6 +34,7 @@ class BookingTestingSeeder extends Seeder
 
         $services = $this->seedServices();
         $haircutService = $services['Haircut'];
+        $this->seedServiceCategoriesAndPrimarySlots($services);
 
         $this->seedCommissionTiers();
         $this->seedServiceStaffMappings($services, [$staffOneId, $staffTwoId, $staffThreeId]);
@@ -61,6 +62,9 @@ class BookingTestingSeeder extends Seeder
             'booking_staff_timeoffs',
             'booking_staff_schedules',
             'booking_service_staff',
+            'booking_service_primary_slots',
+            'booking_service_category_service',
+            'booking_service_categories',
             'booking_cart_items',
             'booking_carts',
             'booking_settings',
@@ -200,6 +204,95 @@ class BookingTestingSeeder extends Seeder
                     'updated_at' => $now,
                 ]
             );
+        }
+    }
+
+    private function seedServiceCategoriesAndPrimarySlots(array $services): void
+    {
+        $now = now();
+
+        if (Schema::hasTable('booking_service_categories') && Schema::hasTable('booking_service_category_service')) {
+            $categories = [
+                [
+                    'name' => 'Hair Essentials',
+                    'slug' => 'hair-essentials',
+                    'description' => 'Daily and classic hair services.',
+                    'sort_order' => 1,
+                    'service_names' => ['Haircut', 'Coloring'],
+                ],
+                [
+                    'name' => 'Premium Treatments',
+                    'slug' => 'premium-treatments',
+                    'description' => 'Repair and intensive premium care.',
+                    'sort_order' => 2,
+                    'service_names' => ['Coloring', 'Treatment'],
+                ],
+            ];
+
+            foreach ($categories as $category) {
+                DB::table('booking_service_categories')->updateOrInsert(
+                    ['slug' => $category['slug']],
+                    [
+                        'name' => $category['name'],
+                        'description' => $category['description'],
+                        'is_active' => true,
+                        'sort_order' => $category['sort_order'],
+                        'updated_at' => $now,
+                        'created_at' => $now,
+                    ]
+                );
+
+                $resolvedCategoryId = (int) DB::table('booking_service_categories')
+                    ->where('slug', $category['slug'])
+                    ->value('id');
+
+                foreach ($category['service_names'] as $serviceName) {
+                    $service = $services[$serviceName] ?? null;
+                    if (! $service) {
+                        continue;
+                    }
+                    DB::table('booking_service_category_service')->updateOrInsert(
+                        [
+                            'booking_service_category_id' => $resolvedCategoryId,
+                            'booking_service_id' => $service->id,
+                        ],
+                        [
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ]
+                    );
+                }
+            }
+        }
+
+        if (Schema::hasTable('booking_service_primary_slots')) {
+            $slotConfig = [
+                'Haircut' => ['10:00:00', '12:00:00', '15:00:00'],
+                'Coloring' => ['11:00:00', '14:00:00', '17:00:00'],
+                'Treatment' => ['12:00:00', '15:00:00', '18:00:00'],
+            ];
+
+            foreach ($slotConfig as $serviceName => $times) {
+                $service = $services[$serviceName] ?? null;
+                if (! $service) {
+                    continue;
+                }
+
+                DB::table('booking_service_primary_slots')
+                    ->where('booking_service_id', $service->id)
+                    ->delete();
+
+                foreach ($times as $index => $time) {
+                    DB::table('booking_service_primary_slots')->insert([
+                        'booking_service_id' => $service->id,
+                        'start_time' => $time,
+                        'sort_order' => $index,
+                        'is_active' => true,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }
+            }
         }
     }
 

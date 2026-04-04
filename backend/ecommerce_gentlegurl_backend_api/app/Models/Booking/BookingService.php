@@ -27,6 +27,18 @@ class BookingService extends Model
 
 
 
+
+    public function categories()
+    {
+        return $this->belongsToMany(BookingServiceCategory::class, 'booking_service_category_service', 'booking_service_id', 'booking_service_category_id')
+            ->withTimestamps();
+    }
+
+    public function primarySlots()
+    {
+        return $this->hasMany(BookingServicePrimarySlot::class, 'booking_service_id')->orderBy('sort_order')->orderBy('start_time');
+    }
+
     public function allowedStaffs()
     {
         return $this->belongsToMany(Staff::class, 'booking_service_staff', 'service_id', 'staff_id')
