@@ -9,6 +9,15 @@ function money(amount: number | null | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`;
 }
 
+function getBookingLineLabel(lineType?: string | null) {
+  const key = String(lineType ?? "").toLowerCase();
+  if (key === "booking_deposit") return "Booking Deposit";
+  if (key === "booking_addon") return "Add-on";
+  if (key === "booking_settlement") return "Final Settlement";
+  if (key === "service_package") return "Service Package";
+  return "Item";
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "-";
   const date = new Date(value);
@@ -165,20 +174,39 @@ export default function BookingAccountOrdersPage() {
                     </div>
                   </div>
 
-                  {isExpanded && Array.isArray(order.items) && order.items.length > 0 ? (
+                  {isExpanded && ((Array.isArray(order.items) && order.items.length > 0) || (Array.isArray(order.service_items) && order.service_items.length > 0)) ? (
                     <div className="sm:col-span-3">
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Items</p>
                       <div className="space-y-2">
-                        {order.items.map((item) => (
+                        {order.items?.map((item) => (
                           <div
                             key={item.id}
                             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                           >
                             <div>
                               <p className="text-sm font-semibold text-[var(--foreground)]">{item.name || "Item"}</p>
+                              <p className="text-xs text-[var(--foreground)]/70">Type: {getBookingLineLabel(item.line_type)}</p>
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
                             </div>
                             <p className="text-sm font-semibold text-[var(--foreground)]">{money(item.line_total)}</p>
+                          </div>
+                        ))}
+                        {order.service_items?.map((item) => (
+                          <div
+                            key={`service-${item.id}`}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
+                          >
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--foreground)]">{item.name || "Service"}</p>
+                              <p className="text-xs text-[var(--foreground)]/70">Type: Main Service</p>
+                              <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
+                              {item.covered_by_package ? (
+                                <p className="text-xs font-semibold text-emerald-700">Covered by Package</p>
+                              ) : null}
+                            </div>
+                            <p className="text-sm font-semibold text-[var(--foreground)]">
+                              {item.covered_by_package ? "RM 0.00" : money(item.line_total)}
+                            </p>
                           </div>
                         ))}
                       </div>

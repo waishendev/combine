@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\Ecommerce\OrderReserveService;
@@ -40,15 +41,19 @@ class PublicOrderHistoryController extends Controller
 
         $ordersQuery = Order::query()
             ->where('customer_id', $customer->id)
-            ->with(['items.product.images', 'items.review'])
+            ->with(['items.product.images', 'items.review', 'serviceItems'])
             ->orderByDesc('created_at');
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
-            $ordersQuery->whereHas('items', function ($query) {
-                $query->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'service_package'])
-                    ->orWhereNotNull('booking_id')
-                    ->orWhereNotNull('service_package_id')
-                    ->orWhereNotNull('customer_service_package_id');
+            $ordersQuery->where(function ($bookingRelatedQuery) {
+                $bookingRelatedQuery->whereHas('items', function ($query) {
+                    $query->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'])
+                        ->orWhereNotNull('booking_id')
+                        ->orWhereNotNull('service_package_id')
+                        ->orWhereNotNull('customer_service_package_id');
+                })->orWhereHas('serviceItems', function ($query) {
+                    $query->where('item_type', 'service');
+                });
             });
         } elseif ($scope === 'ecommerce_products' || $workspace === 'ecommerce') {
             $ordersQuery->whereHas('items', function ($query) {
@@ -61,13 +66,26 @@ class PublicOrderHistoryController extends Controller
         }
 
         $orders = $ordersQuery->paginate($perPage);
+        $ordersCollection = collect($orders->items());
+        $serviceBookingIds = $ordersCollection
+            ->flatMap(fn (Order $order) => $order->serviceItems->pluck('booking_id')->filter())
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $packageCoveredBookingIds = CustomerServicePackageUsage::query()
+            ->whereIn('booking_id', $serviceBookingIds->all())
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->pluck('booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $packageCoveredBookingMap = array_fill_keys($packageCoveredBookingIds, true);
 
         $reviewSettings = $this->reviewService->settings();
         $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
         $reviewWindowDays = (int) ($reviewSettings['review_window_days'] ?? 30);
 
         $data = [
-            'orders' => collect($orders->items())->map(fn(Order $order) => [
+            'orders' => $ordersCollection->map(fn(Order $order) => [
                 'id' => $order->id,
                 'order_no' => $order->order_number,
                 'status' => $order->status,
@@ -96,7 +114,7 @@ class PublicOrderHistoryController extends Controller
                         'product_type' => $productType,
                         'is_variant_product' => $productType === 'variant',
                         'product_slug' => $item->product?->slug,
-                        'name' => $item->product_name_snapshot,
+                        'name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
                         'sku' => $item->sku_snapshot,
                         'variant_name' => $item->variant_name_snapshot,
                         'variant_sku' => $item->variant_sku_snapshot,
@@ -113,6 +131,22 @@ class PublicOrderHistoryController extends Controller
                         'can_review' => $canReview,
                     ];
                 })->values(),
+                'service_items' => $order->serviceItems
+                    ->where('item_type', 'service')
+                    ->map(function ($item) use ($packageCoveredBookingMap) {
+                        $bookingId = (int) ($item->booking_id ?? 0);
+                        return [
+                            'id' => (int) $item->id,
+                            'item_type' => 'service',
+                            'name' => (string) ($item->service_name_snapshot ?? 'Service'),
+                            'quantity' => (int) ($item->qty ?? 1),
+                            'unit_price' => (float) ($item->price_snapshot ?? 0),
+                            'line_total' => (float) ($item->line_total ?? 0),
+                            'booking_id' => $bookingId > 0 ? $bookingId : null,
+                            'covered_by_package' => $bookingId > 0 && isset($packageCoveredBookingMap[$bookingId]),
+                        ];
+                    })
+                    ->values(),
             ])->all(),
             'pagination' => [
                 'current_page' => $orders->currentPage(),

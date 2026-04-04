@@ -48,6 +48,7 @@ class MyBookingController extends Controller
             ->map(fn ($group) => $group->first());
 
         $payload = $bookings->map(function (Booking $booking) use ($claimsByBooking, $latestCancellationRequests, $latestPaymentsByBooking) {
+            $addons = $this->formatBookingAddons($booking);
             $depositOrderItem = OrderItem::query()
                 ->with('order:id,order_number')
                 ->where('line_type', 'booking_deposit')
@@ -64,6 +65,9 @@ class MyBookingController extends Controller
                 'start_at' => $booking->start_at?->toIso8601String(),
                 'starts_at' => $booking->start_at?->toIso8601String(),
                 'deposit_amount' => (float) $booking->deposit_amount,
+                'addon_duration_min' => (int) $addons['total_extra_duration_min'],
+                'addon_price' => (float) $addons['total_extra_price'],
+                'addon_items' => $addons['items'],
                 'payment_status' => (string) $booking->payment_status,
                 'reschedule_count' => (int) ($booking->reschedule_count ?? 0),
                 'cancellation_request' => (function () use ($latestCancellationRequests, $booking) {
@@ -125,6 +129,30 @@ class MyBookingController extends Controller
         })->values();
 
         return $this->respond($payload);
+    }
+
+    private function formatBookingAddons(Booking $booking): array
+    {
+        $items = collect($booking->addon_items_json ?? [])
+            ->filter(fn ($row) => is_array($row))
+            ->map(function (array $row) {
+                return [
+                    'id' => (int) ($row['id'] ?? 0),
+                    'name' => trim((string) ($row['label'] ?? $row['name'] ?? 'Add-on')),
+                    'extra_duration_min' => max(0, (int) ($row['extra_duration_min'] ?? 0)),
+                    'extra_price' => round(max(0, (float) ($row['extra_price'] ?? 0)), 2),
+                ];
+            })
+            ->values();
+
+        $durationTotal = (int) $items->sum(fn (array $item) => (int) ($item['extra_duration_min'] ?? 0));
+        $priceTotal = round((float) $items->sum(fn (array $item) => (float) ($item['extra_price'] ?? 0)), 2);
+
+        return [
+            'items' => $items->all(),
+            'total_extra_duration_min' => $durationTotal > 0 ? $durationTotal : (int) ($booking->addon_duration_min ?? 0),
+            'total_extra_price' => $priceTotal > 0 ? $priceTotal : round((float) ($booking->addon_price ?? 0), 2),
+        ];
     }
 
     private function resolveBookingReceipts(int $bookingId): array

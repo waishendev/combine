@@ -72,10 +72,10 @@ class PublicReceiptController extends Controller
 
         $hasOnlyDepositLines = $hasDepositLine
             && $mixedItems->count() > 0
-            && $mixedItems->count() === $mixedItems->where('line_type', 'booking_deposit')->count();
+            && $mixedItems->every(fn ($item) => in_array((string) $item->line_type, ['booking_deposit', 'booking_addon'], true));
         $hasOnlySettlementLines = $hasSettlementLine
             && $mixedItems->count() > 0
-            && $mixedItems->count() === $mixedItems->where('line_type', 'booking_settlement')->count();
+            && $mixedItems->every(fn ($item) => in_array((string) $item->line_type, ['booking_settlement', 'booking_addon'], true));
 
         $receiptStage = $isPackageCoveredReceipt
             ? 'package_covered_booking'
@@ -85,9 +85,9 @@ class PublicReceiptController extends Controller
 
         $displayItems = $mixedItems;
         if ($hasOnlyDepositLines) {
-            $displayItems = $mixedItems->where('line_type', 'booking_deposit')->values();
+            $displayItems = $mixedItems->filter(fn ($item) => in_array((string) $item->line_type, ['booking_deposit', 'booking_addon'], true))->values();
         } elseif ($hasOnlySettlementLines) {
-            $displayItems = $mixedItems->where('line_type', 'booking_settlement')->values();
+            $displayItems = $mixedItems->filter(fn ($item) => in_array((string) $item->line_type, ['booking_settlement', 'booking_addon'], true))->values();
         }
 
         $serviceCoverageLines = ($canRenderServiceCoverageLines ? $packageCoveredServiceItems : collect())->map(function ($item) use ($packageNameByBooking) {

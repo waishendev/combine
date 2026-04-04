@@ -129,6 +129,31 @@ export default function MyBookingsPage() {
           return (
             <div key={booking.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5">
               <p className="font-semibold">{booking.service_name}</p>
+              <div className="mt-1 text-sm text-[var(--foreground)]/90">
+                <p className="font-medium">Selected add-ons</p>
+                {(booking.addon_items?.length ?? 0) > 0 ? (
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-[var(--text-muted)]">
+                    {booking.addon_items?.map((addon, addonIndex) => {
+                      const addonDuration = Number(addon?.extra_duration_min ?? 0);
+                      const addonPrice = Number(addon?.extra_price ?? 0);
+                      const addonName = String(addon?.name ?? addon?.label ?? `Add-on ${addonIndex + 1}`);
+                      return (
+                        <li key={`${addon?.id ?? addonName}-${addonIndex}`}>
+                          {addonName} (+{addonDuration} mins, +RM{addonPrice.toFixed(2)})
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-[var(--text-muted)]">No add-ons selected.</p>
+                )}
+                <p className="mt-1 text-[var(--text-muted)]">
+                  Add-on extra duration: +{Number(booking.addon_duration_min ?? 0)} mins
+                </p>
+                <p className="text-[var(--text-muted)]">
+                  Add-on extra price: +RM{Number(booking.addon_price ?? 0).toFixed(2)}
+                </p>
+              </div>
               <p className="text-sm text-[var(--text-muted)]">Staff: {booking.staff_name || "Any staff"}</p>
               <p className="text-sm text-[var(--text-muted)]">
                 Date: {new Date(booking.starts_at).toLocaleDateString("en-MY", { dateStyle: "medium" })}

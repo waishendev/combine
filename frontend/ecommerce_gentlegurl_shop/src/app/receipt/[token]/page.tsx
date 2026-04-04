@@ -136,7 +136,7 @@ export default async function PublicReceiptPage({ params }: Props) {
                   ) : null}
                   {item.covered_by_package ? (
                     <>
-                      {/* <p className="text-xs font-semibold text-emerald-700">Covered by Package</p> */}
+                      <p className="text-xs font-semibold text-emerald-700">Covered by Package</p>
                       {item.package_applied_name ? (
                         <p className="text-xs text-emerald-700">Package Applied: {item.package_applied_name}</p>
                       ) : null}
