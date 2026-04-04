@@ -27,6 +27,7 @@ class ServicePackageTestingSeeder extends Seeder
 
         $this->seedStaffServiceCommissionRates();
         $packageIds = $this->seedServicePackages($serviceIds);
+        $this->seedServiceQuestionsAndOptions($serviceIds);
         $this->seedCustomerOwnershipAndBalances($customerId, $packageIds);
 
         $this->command?->info('Service package testing data seeded successfully.');
@@ -203,6 +204,58 @@ class ServicePackageTestingSeeder extends Seeder
                 'service_commission_rate' => 0.10,
                 'updated_at' => now(),
             ]);
+    }
+
+    /**
+     * @param int[] $serviceIds
+     */
+    private function seedServiceQuestionsAndOptions(array $serviceIds): void
+    {
+        if (!Schema::hasTable('booking_service_questions') || !Schema::hasTable('booking_service_question_options')) {
+            return;
+        }
+
+        $serviceId = (int) ($serviceIds[0] ?? 0);
+        if ($serviceId <= 0) {
+            return;
+        }
+
+        $now = now();
+
+        DB::table('booking_service_questions')
+            ->where('booking_service_id', $serviceId)
+            ->delete();
+
+        $questionId = DB::table('booking_service_questions')->insertGetId([
+            'booking_service_id' => $serviceId,
+            'title' => 'Package QA Add-ons',
+            'description' => 'Use this to verify package covers main service only, while add-ons remain chargeable.',
+            'question_type' => 'multi_choice',
+            'sort_order' => 1,
+            'is_required' => false,
+            'is_active' => true,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $options = [
+            ['label' => 'Express Add-on', 'extra_duration_min' => 10, 'extra_price' => 5, 'sort_order' => 1],
+            ['label' => 'Detailed Add-on', 'extra_duration_min' => 25, 'extra_price' => 18, 'sort_order' => 2],
+        ];
+
+        foreach ($options as $option) {
+            DB::table('booking_service_question_options')->insert([
+                'booking_service_question_id' => $questionId,
+                'label' => $option['label'],
+                'linked_booking_service_id' => null,
+                'extra_duration_min' => $option['extra_duration_min'],
+                'extra_price' => $option['extra_price'],
+                'sort_order' => $option['sort_order'],
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
     }
 
     /**
