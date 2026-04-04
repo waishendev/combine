@@ -465,6 +465,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       {formatDuration(sec)} left
                     </span>
                   </div>
+                  {(item.selected_options?.length || 0) > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {item.selected_options?.map((opt) => (
+                        <p key={opt.id} className="text-[11px] text-[var(--text-muted)]">
+                          • {opt.label} (+{opt.extra_duration_min} mins{opt.extra_price > 0 ? `, +RM${Number(opt.extra_price).toFixed(2)}` : ""})
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
 
                   {isLoggedIn ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -759,6 +768,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <span className="font-medium tabular-nums text-[var(--foreground)]">RM {depositDisplay.total.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
+                  <span className="text-[var(--text-muted)]">Add-ons</span>
+                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.addon_total ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-muted)]">Packages</span>
                   <span className="font-medium tabular-nums text-[var(--foreground)]">RM {cart?.package_total ?? 0}</span>
                 </div>
@@ -766,7 +779,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
                     <span className="font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
-                      RM {(Number(cart?.package_total ?? 0) + depositDisplay.total).toFixed(2)}
+                      RM {(Number(cart?.package_total ?? 0) + depositDisplay.total + Number(cart?.addon_total ?? 0)).toFixed(2)}
                     </span>
                   </div>
                   {nextExpiryIn ? (

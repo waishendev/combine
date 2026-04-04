@@ -15,6 +15,7 @@ export default function ServiceDetailPage() {
   const [service, setService] = useState<ServiceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [packageHint, setPackageHint] = useState<string | null>(null);
+  const [selectedOptionIds, setSelectedOptionIds] = useState<number[]>([]);
 
   useEffect(() => {
     const run = async () => {
@@ -48,6 +49,9 @@ export default function ServiceDetailPage() {
   }, [id]);
 
   const staffs = service?.staffs ?? [];
+  const questions = service?.questions ?? [];
+  const totalAddonDuration = questions.flatMap((q) => q.options).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0);
+  const totalAddonPrice = questions.flatMap((q) => q.options).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_price || 0), 0);
 
   const getInitials = (name?: string) => {
     const safe = (name || '').trim()
@@ -77,7 +81,7 @@ export default function ServiceDetailPage() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 pb-24">
       <div className="space-y-6">
-        <BookingProgress step={2} />
+        <BookingProgress step={3} />
 
         <div>
           <Link
@@ -105,9 +109,43 @@ export default function ServiceDetailPage() {
               <h1 className="text-3xl font-semibold">{service.name}</h1>
               <p className="text-[var(--text-muted)]">{service.description || "Select your preferred stylist to continue."}</p>
               <p className="text-sm text-[var(--text-muted)]">
-                Duration {service.duration_minutes} min • Deposit RM {service.deposit_amount}
+                Duration {service.duration_minutes + totalAddonDuration} min • Deposit RM {service.deposit_amount}
               </p>
             </div>
+            {questions.length > 0 ? (
+              <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 space-y-4">
+                <h2 className="text-lg font-semibold">Questions / Add-ons</h2>
+                {questions.map((q) => (
+                  <div key={q.id} className="space-y-2">
+                    <p className="font-medium">{q.title} {q.is_required ? "*" : ""}</p>
+                    {q.options.map((opt) => {
+                      const checked = selectedOptionIds.includes(opt.id);
+                      return (
+                        <label key={opt.id} className="flex items-center justify-between text-sm gap-3">
+                          <span className="flex items-center gap-2">
+                            <input
+                              type={q.question_type === "single_choice" ? "radio" : "checkbox"}
+                              name={`q-${q.id}`}
+                              checked={checked}
+                              onChange={() => setSelectedOptionIds((prev) => {
+                                if (q.question_type === "single_choice") {
+                                  const withoutQuestion = prev.filter((id) => !q.options.some((o) => o.id === id));
+                                  return checked ? withoutQuestion : [...withoutQuestion, opt.id];
+                                }
+                                return checked ? prev.filter((id) => id !== opt.id) : [...prev, opt.id];
+                              })}
+                            />
+                            {opt.label}
+                          </span>
+                          <span className="text-[var(--text-muted)]">+{opt.extra_duration_min} mins {opt.extra_price > 0 ? `• +RM${opt.extra_price}` : ""}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
+                <p className="text-sm text-[var(--text-muted)]">Add-ons: +{totalAddonDuration} mins • +RM{totalAddonPrice.toFixed(2)}</p>
+              </div>
+            ) : null}
 
             <div className="space-y-4">
               <h2 className="text-xl font-semibold">Choose a stylist</h2>
@@ -121,7 +159,7 @@ export default function ServiceDetailPage() {
                   {staffs.map((staff) => (
                     <Link
                       key={staff.id}
-                      href={`/booking/service/${id}/slots?staff_id=${staff.id}`}
+                      href={`/booking/service/${id}/slots?staff_id=${staff.id}&selected_option_ids=${selectedOptionIds.join(",")}`}
                       className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow"
                     >
                       <div className="flex flex-col items-center gap-3">

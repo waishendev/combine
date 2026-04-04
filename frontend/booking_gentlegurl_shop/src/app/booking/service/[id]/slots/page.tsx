@@ -48,6 +48,7 @@ function SlotPageContent() {
   const searchParams = useSearchParams();
   const serviceId = params.id;
   const staffId = searchParams.get("staff_id") || "";
+  const selectedOptionIds = (searchParams.get("selected_option_ids") || "").split(",").map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0);
 
   const [date, setDate] = useState(todayInTimezone());
   const [slots, setSlots] = useState<BookingSlot[]>([]);
@@ -71,7 +72,8 @@ function SlotPageContent() {
     setError(null);
 
     try {
-      const res = await getAvailability(serviceId, staffId, date);
+      const extraDuration = (service?.questions ?? []).flatMap((q) => q.options ?? []).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0);
+      const res = await getAvailability(serviceId, staffId, date, extraDuration);
       const payload = (res as AvailabilityPayload)?.data ?? (res as AvailabilityPayload);
       const visibleSlots = Array.isArray(payload?.visible_slots)
         ? payload.visible_slots
@@ -92,7 +94,7 @@ function SlotPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [canLoad, serviceId, staffId, date]);
+  }, [canLoad, serviceId, staffId, date, selectedOptionIds, service]);
 
   useEffect(() => {
     const run = async () => {
@@ -247,6 +249,7 @@ function SlotPageContent() {
         service_id: Number(serviceId),
         staff_id: Number(staffId),
         start_at: slotStartAt,
+        selected_option_ids: selectedOptionIds,
       });
       setConfirmModal(null);
       const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
@@ -259,11 +262,12 @@ function SlotPageContent() {
     }
   };
 
-  const durationMin = service?.duration_minutes ?? 60;
+  const extraDurationMin = (service?.questions ?? []).flatMap((q) => q.options ?? []).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0);
+  const durationMin = (service?.duration_minutes ?? 60) + extraDurationMin;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 pb-28 sm:py-10 sm:pb-32">
-      <BookingProgress step={3} />
+      <BookingProgress step={5} />
 
       <div className="mb-6 sm:mb-8">
         <Link

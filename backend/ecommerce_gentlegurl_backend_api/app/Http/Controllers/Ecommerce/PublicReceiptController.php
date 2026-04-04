@@ -116,6 +116,9 @@ class PublicReceiptController extends Controller
                 if ($lineType === 'booking_settlement') {
                     return 'Final Settlement';
                 }
+                if ($lineType === 'booking_addon') {
+                    return 'Booking Add-on';
+                }
                 return $item->variant_name_snapshot;
             })(),
             'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,

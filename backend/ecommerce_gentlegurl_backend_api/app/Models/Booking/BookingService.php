@@ -27,6 +27,12 @@ class BookingService extends Model
 
 
 
+    public function questions()
+    {
+        return $this->hasMany(BookingServiceQuestion::class, 'booking_service_id')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
 
     public function categories()
     {

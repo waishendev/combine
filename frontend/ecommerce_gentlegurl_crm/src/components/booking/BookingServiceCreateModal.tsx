@@ -33,6 +33,7 @@ interface FormState {
   imageFile: File | null
   allowed_staff_ids: number[]
   primary_slots: string
+  questions_json: string
 }
 
 const initialFormState: FormState = {
@@ -47,6 +48,7 @@ const initialFormState: FormState = {
   imageFile: null,
   allowed_staff_ids: [],
   primary_slots: '',
+  questions_json: '[]',
 }
 
 export default function BookingServiceCreateModal({
@@ -188,6 +190,7 @@ export default function BookingServiceCreateModal({
       fd.append('is_active', form.is_active ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
+      fd.append('questions_json', form.questions_json.trim() || '[]')
       if (form.imageFile) fd.append('image', form.imageFile)
 
       const res = await fetch('/api/proxy/admin/booking/services', {
@@ -444,6 +447,20 @@ export default function BookingServiceCreateModal({
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   placeholder="12:00, 15:00, 18:00"
+                  disabled={submitting}
+                />
+              </div>
+              <div>
+                <label htmlFor="questions_json" className="block text-sm font-medium text-gray-700 mb-1">
+                  Questions / Add-ons JSON
+                </label>
+                <textarea
+                  id="questions_json"
+                  name="questions_json"
+                  value={form.questions_json}
+                  onChange={handleChange}
+                  rows={6}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   disabled={submitting}
                 />
               </div>

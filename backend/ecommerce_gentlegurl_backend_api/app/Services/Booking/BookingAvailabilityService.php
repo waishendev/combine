@@ -25,7 +25,7 @@ class BookingAvailabilityService
      *   is_fallback?:bool
      * }>
      */
-    public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15): array
+    public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0): array
     {
         $day = Carbon::parse($date);
         $schedule = BookingStaffSchedule::where('staff_id', $staffId)
@@ -38,7 +38,7 @@ class BookingAvailabilityService
 
         $startWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->start_time);
         $endWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->end_time);
-        $durationMin = (int) $service->duration_min;
+        $durationMin = (int) $service->duration_min + max(0, $extraDurationMin);
         $bufferMin = (int) $service->buffer_min;
 
         $slots = [];

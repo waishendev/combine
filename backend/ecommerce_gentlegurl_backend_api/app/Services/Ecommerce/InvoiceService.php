@@ -21,6 +21,8 @@ class InvoiceService
                 $variantName = 'Booking Deposit';
             } elseif ($lineType === 'booking_settlement') {
                 $variantName = 'Final Settlement';
+            } elseif ($lineType === 'booking_addon') {
+                $variantName = 'Booking Add-on';
             } elseif ($lineType === 'service_package') {
                 $variantName = 'Service Package';
             }

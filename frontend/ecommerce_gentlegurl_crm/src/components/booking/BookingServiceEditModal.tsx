@@ -33,6 +33,7 @@ interface FormState {
   imageFile: File | null
   allowed_staff_ids: number[]
   primary_slots: string
+  questions_json: string
 }
 
 const initialFormState: FormState = {
@@ -47,6 +48,7 @@ const initialFormState: FormState = {
   imageFile: null,
   allowed_staff_ids: [],
   primary_slots: '',
+  questions_json: '[]',
 }
 
 export default function BookingServiceEditModal({
@@ -129,6 +131,7 @@ export default function BookingServiceEditModal({
           primary_slots: Array.isArray((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots)
             ? ((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
             : '',
+          questions_json: JSON.stringify((service as { questions?: unknown[] }).questions ?? [], null, 2),
           allowed_staff_ids: Array.isArray((service as { allowed_staff_ids?: unknown }).allowed_staff_ids)
             ? ((service as { allowed_staff_ids?: unknown[] }).allowed_staff_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
             : Array.isArray((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs)
@@ -282,6 +285,7 @@ export default function BookingServiceEditModal({
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
+      fd.append('questions_json', form.questions_json.trim() || '[]')
       if (form.imageFile) {
         fd.append('image', form.imageFile)
       }
@@ -613,6 +617,20 @@ export default function BookingServiceEditModal({
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                     placeholder="12:00, 15:00, 18:00"
+                    disabled={disableForm}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-questions_json" className="block text-sm font-medium text-gray-700 mb-1">
+                    Questions / Add-ons JSON
+                  </label>
+                  <textarea
+                    id="edit-questions_json"
+                    name="questions_json"
+                    rows={6}
+                    value={form.questions_json}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                     disabled={disableForm}
                   />
                 </div>

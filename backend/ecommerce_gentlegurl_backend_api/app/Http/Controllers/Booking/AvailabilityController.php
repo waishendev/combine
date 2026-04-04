@@ -22,6 +22,7 @@ class AvailabilityController extends Controller
             'service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'date' => ['required', 'date_format:Y-m-d'],
+            'extra_duration_min' => ['nullable', 'integer', 'min:0'],
         ]);
 
         if ($validator->fails()) {
@@ -44,7 +45,8 @@ class AvailabilityController extends Controller
             return $this->respondError('Selected staff is not allowed for this service.', 422);
         }
 
-        $slots = $this->availabilityService->getAvailableSlots($service, (int) $validated['staff_id'], $validated['date']);
+        $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
+        $slots = $this->availabilityService->getAvailableSlots($service, (int) $validated['staff_id'], $validated['date'], 15, $extraDurationMin);
 
         $configuredPrimarySlots = $service->primarySlots
             ->where('is_active', true)
@@ -59,7 +61,7 @@ class AvailabilityController extends Controller
             'date' => $validated['date'],
             'service_id' => (int) $validated['service_id'],
             'staff_id' => (int) $validated['staff_id'],
-            'duration_min' => (int) $service->duration_min,
+            'duration_min' => (int) $service->duration_min + $extraDurationMin,
             'buffer_min' => (int) $service->buffer_min,
             'slot_step_min' => 15,
             'has_primary_slot_policy' => ! empty($configuredPrimarySlots),
