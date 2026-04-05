@@ -90,7 +90,7 @@ class CustomerSalesDomainReportController extends Controller
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['Customer', 'Email', 'Transactions', 'Booking Deposit Amount', 'Booking Settlement Amount', 'Package Purchase Amount', 'Total Revenue', 'Last Transaction Date']);
+            fputcsv($out, ['Customer', 'Email', 'Transactions', 'Booking Deposit Amount', 'Booking Settlement Amount', 'Add-on Revenue', 'Package Purchase Amount', 'Total Revenue', 'Last Transaction Date']);
 
             foreach ($rows as $row) {
                 fputcsv($out, [
@@ -99,6 +99,7 @@ class CustomerSalesDomainReportController extends Controller
                     $row['transactions_count'] ?? 0,
                     $row['booking_deposit_amount'] ?? 0,
                     $row['booking_settlement_amount'] ?? 0,
+                    $row['addon_revenue'] ?? 0,
                     $row['package_purchase_amount'] ?? 0,
                     $row['total_revenue'] ?? 0,
                     $row['last_transaction_date'] ?? '',

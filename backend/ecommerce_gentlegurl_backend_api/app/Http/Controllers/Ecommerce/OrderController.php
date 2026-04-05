@@ -214,6 +214,17 @@ class OrderController extends Controller
                     'booking_service_id' => $item->booking_service_id,
                 ];
             }),
+            'booking_addon_items' => $orderLineItems->where('line_type', 'booking_addon')->values()->map(function ($item) {
+                return [
+                    'item_type' => 'booking_addon',
+                    'display_name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
+                    'quantity' => (int) $item->quantity,
+                    'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
+                    'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
+                    'booking_id' => $item->booking_id,
+                    'booking_service_id' => $item->booking_service_id,
+                ];
+            }),
             'service_items' => $order->serviceItems->values()->map(function ($item) use ($claimsByBooking) {
                 $claims = $item->booking_id ? ($claimsByBooking->get((int) $item->booking_id) ?? collect()) : collect();
                 $claimStatus = null;
