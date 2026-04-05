@@ -11,6 +11,9 @@ type BookingDetail = {
   guest_phone: string | null
   guest_email: string | null
   service: { id: number; name: string; duration_min: number } | null
+  add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  addon_total_duration_min?: number
+  addon_total_price?: number
   staff: { id: number; name: string } | null
   start_at: string
   end_at: string
@@ -52,6 +55,8 @@ const formatDateTime = (value?: string | null) => {
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
 }
+
+const formatCurrency = (value?: number | string | null) => `RM${Number(value ?? 0).toFixed(2)}`
 
 export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, permissions, onStatusUpdated }: Props) {
   const [data, setData] = useState<BookingDetail | null>(null)
@@ -353,6 +358,25 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
                     <div>
                       <dt className="text-gray-500 mb-1">Service</dt>
                       <dd className="font-medium text-gray-900">{data.service?.name || '-'}</dd>
+                    </div>
+                    <div className="md:col-span-2">
+                      <dt className="text-gray-500 mb-1">Add-ons</dt>
+                      <dd className="font-medium text-gray-900">
+                        {(data.add_ons?.length ?? 0) > 0 ? (
+                          <div className="space-y-1">
+                            {data.add_ons?.map((addon, index) => (
+                              <p key={`${addon.id ?? addon.name}-${index}`}>
+                                {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(addon.extra_price)})
+                              </p>
+                            ))}
+                            <p className="text-gray-700">
+                              Summary: +{Number(data.addon_total_duration_min ?? 0)} mins, +{formatCurrency(data.addon_total_price)}
+                            </p>
+                          </div>
+                        ) : (
+                          '-'
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-gray-500 mb-1">Staff</dt>

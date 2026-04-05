@@ -18,6 +18,7 @@ const defaultPolicy: BookingPolicy = {
 };
 
 const BOOKING_ACTION_STATUS = new Set(["CONFIRMED"]);
+const formatCurrency = (value?: number | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
 
 export default function MyBookingsPage() {
   const router = useRouter();
@@ -129,6 +130,21 @@ export default function MyBookingsPage() {
           return (
             <div key={booking.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5">
               <p className="font-semibold">{booking.service_name}</p>
+              {(booking.add_ons?.length ?? 0) > 0 ? (
+                <div className="mt-2 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
+                  <p className="text-sm font-semibold">Selected Add-ons</p>
+                  <div className="mt-1 space-y-1">
+                    {booking.add_ons?.map((addon, index) => (
+                      <p key={`${addon.id ?? addon.name}-${index}`} className="text-sm text-[var(--text-muted)]">
+                        {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(Number(addon.extra_price ?? 0))})
+                      </p>
+                    ))}
+                    <p className="pt-1 text-sm font-medium text-[var(--foreground)]">
+                      Summary: +{Number(booking.addon_total_duration_min ?? 0)} mins, +{formatCurrency(booking.addon_total_price)}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
               <p className="text-sm text-[var(--text-muted)]">Staff: {booking.staff_name || "Any staff"}</p>
               <p className="text-sm text-[var(--text-muted)]">
                 Date: {new Date(booking.starts_at).toLocaleDateString("en-MY", { dateStyle: "medium" })}

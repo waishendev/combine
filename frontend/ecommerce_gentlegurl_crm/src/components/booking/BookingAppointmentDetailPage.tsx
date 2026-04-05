@@ -12,6 +12,9 @@ type BookingDetail = {
   guest_phone: string | null
   guest_email: string | null
   service: { id: number; name: string; duration_min: number } | null
+  add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  addon_total_duration_min?: number
+  addon_total_price?: number
   staff: { id: number; name: string } | null
   start_at: string
   end_at: string
@@ -50,6 +53,8 @@ const formatDateTime = (value?: string | null) => {
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
 }
+
+const formatCurrency = (value?: number | string | null) => `RM${Number(value ?? 0).toFixed(2)}`
 
 export default function BookingAppointmentDetailPage({ bookingId, permissions }: Props) {
   const [data, setData] = useState<BookingDetail | null>(null)
@@ -215,6 +220,25 @@ export default function BookingAppointmentDetailPage({ bookingId, permissions }:
             <div><dt className="text-slate-500">Customer</dt><dd className="font-medium">{data.customer?.name || data.guest_name || '-'}</dd></div>
             <div><dt className="text-slate-500">Phone</dt><dd className="font-medium">{data.customer?.phone || data.guest_phone || '-'}</dd></div>
             <div><dt className="text-slate-500">Service</dt><dd className="font-medium">{data.service?.name || '-'}</dd></div>
+            <div className="md:col-span-2">
+              <dt className="text-slate-500">Add-ons</dt>
+              <dd className="font-medium">
+                {(data.add_ons?.length ?? 0) > 0 ? (
+                  <div className="space-y-1">
+                    {data.add_ons?.map((addon, index) => (
+                      <p key={`${addon.id ?? addon.name}-${index}`}>
+                        {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(addon.extra_price)})
+                      </p>
+                    ))}
+                    <p className="text-slate-700">
+                      Summary: +{Number(data.addon_total_duration_min ?? 0)} mins, +{formatCurrency(data.addon_total_price)}
+                    </p>
+                  </div>
+                ) : (
+                  '-'
+                )}
+              </dd>
+            </div>
             <div><dt className="text-slate-500">Staff</dt><dd className="font-medium">{data.staff?.name || '-'}</dd></div>
             <div><dt className="text-slate-500">Start</dt><dd className="font-medium">{formatDateTime(data.start_at)}</dd></div>
             <div><dt className="text-slate-500">End</dt><dd className="font-medium">{formatDateTime(data.end_at)}</dd></div>

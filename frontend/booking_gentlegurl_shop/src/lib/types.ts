@@ -114,6 +114,14 @@ export type BookingRecord = {
   booking_code?: string | null;
   status: string;
   service_name: string;
+  add_ons?: Array<{
+    id?: number | null;
+    name: string;
+    extra_duration_min: number;
+    extra_price: number;
+  }>;
+  addon_total_duration_min?: number;
+  addon_total_price?: number;
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;
