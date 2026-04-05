@@ -3957,6 +3957,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <h4 className="font-bold text-gray-900 text-sm mt-0.5">{serviceItem.service_name}</h4>
                         <p className="text-xs text-gray-600 mt-1">Qty: {serviceItem.qty}</p>
                         <p className="text-xs text-emerald-700">Type: {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
+                        {(serviceItem.addon_items?.length ?? 0) > 0 ? (
+                          <div className="mt-1 rounded border border-emerald-200 bg-white/70 px-2 py-1.5">
+                            <p className="text-[11px] font-semibold text-emerald-800">Add-ons</p>
+                            {serviceItem.addon_items?.map((addon, idx) => (
+                              <p key={`${addon.id ?? addon.name}-${idx}`} className="text-[11px] text-emerald-700">
+                                {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +RM {Number(addon.extra_price ?? 0).toFixed(2)})
+                              </p>
+                            ))}
+                            <p className="mt-1 text-[11px] font-semibold text-emerald-800">
+                              Add-on total: +RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}
+                            </p>
+                          </div>
+                        ) : null}
                         {serviceItem.start_at ? (
                           <p className="text-xs text-gray-700">Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
                         ) : null}
@@ -3972,6 +3985,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="font-semibold text-gray-700 text-sm">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
                         <div className="mt-1 text-xs text-gray-500">Deposit Contribution</div>
                         <div className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</div>
+                        {(serviceItem.addon_items?.length ?? 0) > 0 ? (
+                          <>
+                            <div className="mt-1 text-xs text-gray-500">Add-on Charge</div>
+                            <div className="font-semibold text-emerald-800">RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}</div>
+                          </>
+                        ) : null}
                         {serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed' ? (
                           <div className="mt-1 text-[11px] font-semibold text-emerald-700">Reserved from Package</div>
                         ) : null}
@@ -4488,12 +4507,23 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
                         ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
                         : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
+                      const chargeNow = Number(serviceItem.deposit_contribution ?? 0) + Number(serviceItem.addon_price ?? 0)
 
                       return (
                         <tr key={`checkout-service-${serviceItem.id}`} className="bg-emerald-50/60 hover:bg-emerald-50 transition-colors align-top">
                           <td className="px-4 py-3">
                             <p className="font-semibold text-gray-900">{serviceItem.service_name}</p>
                             <p className="text-[11px] text-emerald-700 font-semibold">BOOKING SERVICE · {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
+                            {(serviceItem.addon_items?.length ?? 0) > 0 ? (
+                              <div className="mt-1 space-y-0.5 rounded border border-emerald-200 bg-white/70 px-2 py-1.5">
+                                <p className="text-[11px] font-semibold text-emerald-800">Add-ons</p>
+                                {serviceItem.addon_items?.map((addon, idx) => (
+                                  <p key={`${addon.id ?? addon.name}-${idx}`} className="text-[11px] text-emerald-700">
+                                    {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +RM {Number(addon.extra_price ?? 0).toFixed(2)})
+                                  </p>
+                                ))}
+                              </div>
+                            ) : null}
                             {serviceItem.start_at ? <p className="text-xs text-gray-600 mt-0.5">{formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p> : null}
                             <p className="text-xs text-gray-500 mt-0.5">Qty: {serviceItem.qty}</p>
                             <p className="text-[11px] text-gray-500 mt-0.5">Service price ref: RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</p>
@@ -4502,10 +4532,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-xs text-gray-700">{splitSummary}</p>
                           </td>
                           <td className="px-4 py-3">
-                            <p className="text-gray-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                            <div className="space-y-0.5">
+                              <p className="text-gray-700">Deposit: RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                              <p className="text-gray-700">Add-ons: RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}</p>
+                            </div>
                           </td>
                           <td className="px-4 py-3">
-                            <p className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                            <p className="font-bold text-emerald-700">RM {chargeNow.toFixed(2)}</p>
                           </td>
                         </tr>
                       )
