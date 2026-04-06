@@ -768,8 +768,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <span className="font-medium tabular-nums text-[var(--foreground)]">RM {depositDisplay.total.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Add-ons</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.addon_total ?? 0).toFixed(2)}</span>
+                  <span className="text-[var(--text-muted)]">Add-on immediate charge</span>
+                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM 0.00</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-muted)]">Packages</span>
@@ -779,7 +779,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
                     <span className="font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
-                      RM {(Number(cart?.package_total ?? 0) + depositDisplay.total + Number(cart?.addon_total ?? 0)).toFixed(2)}
+                      RM {(Number(cart?.package_total ?? 0) + depositDisplay.total).toFixed(2)}
                     </span>
                   </div>
                   {nextExpiryIn ? (

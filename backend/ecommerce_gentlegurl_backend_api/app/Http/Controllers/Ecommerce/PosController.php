@@ -658,6 +658,7 @@ class PosController extends Controller
         $selectedOptions = BookingServiceQuestionOption::query()
             ->whereIn('id', $selectedOptionIds->all())
             ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
+            ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
             ->get();
 
         foreach ($serviceQuestions as $question) {
@@ -670,13 +671,34 @@ class PosController extends Controller
             }
         }
 
-        $addonDurationMin = (int) $selectedOptions->sum(fn (BookingServiceQuestionOption $option) => max(0, (int) ($option->extra_duration_min ?? 0)));
-        $addonPrice = round((float) $selectedOptions->sum(fn (BookingServiceQuestionOption $option) => max(0, (float) ($option->extra_price ?? 0))), 2);
+        $addonDurationMin = (int) $selectedOptions->sum(function (BookingServiceQuestionOption $option): int {
+            return $option->linkedBookingService
+                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                : max(0, (int) ($option->extra_duration_min ?? 0));
+        });
+        $addonPrice = round((float) $selectedOptions->sum(function (BookingServiceQuestionOption $option): float {
+            return $option->linkedBookingService
+                ? max(0, (float) ($option->linkedBookingService->service_price ?? 0))
+                : max(0, (float) ($option->extra_price ?? 0));
+        }), 2);
         $addonItems = $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
             'id' => (int) $option->id,
-            'name' => (string) ($option->label ?? 'Add-on'),
-            'extra_duration_min' => max(0, (int) ($option->extra_duration_min ?? 0)),
-            'extra_price' => round(max(0, (float) ($option->extra_price ?? 0)), 2),
+            'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+            'extra_duration_min' => $option->linkedBookingService
+                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                : max(0, (int) ($option->extra_duration_min ?? 0)),
+            'extra_price' => $option->linkedBookingService
+                ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+            'linked_booking_service_id' => $option->linkedBookingService
+                ? (int) $option->linkedBookingService->id
+                : null,
+            'linked_service_type' => $option->linkedBookingService
+                ? (string) $option->linkedBookingService->service_type
+                : null,
+            'linked_deposit_amount' => $option->linkedBookingService
+                ? round(max(0, (float) ($option->linkedBookingService->deposit_amount ?? 0)), 2)
+                : null,
         ])->values()->all();
         $endAt = $startAt->copy()->addMinutes((int) ($service->duration_min ?? 0) + $addonDurationMin);
 
@@ -1484,9 +1506,9 @@ class PosController extends Controller
 
             $serviceClaimStatuses = $this->resolveServiceItemClaimStatuses($cart);
             $depositBreakdown = $this->resolvePosBookingDepositBreakdown($cart, $serviceClaimStatuses);
-            $standardBaseAppliedItemId = (int) ($depositBreakdown['standard_base_applied_item_id'] ?? 0);
-            $premiumDepositAmount = (float) ($depositBreakdown['per_premium_amount'] ?? 0);
-            $standardBaseAmount = (float) ($depositBreakdown['standard_base_amount'] ?? 0);
+            $depositByServiceItemId = collect($depositBreakdown['deposit_by_service_item'] ?? [])
+                ->mapWithKeys(fn ($amount, $id) => [(int) $id => (float) $amount])
+                ->all();
 
             foreach ($cart->items as $item) {
                 $variant = $item->variant;
@@ -1657,15 +1679,9 @@ class PosController extends Controller
 
                 $claimStatus = $serviceClaimStatuses[(int) $serviceItem->id] ?? null;
                 $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
-                $serviceType = strtoupper((string) ($serviceItem->bookingService?->service_type ?? 'STANDARD'));
-                $depositContribution = 0.0;
-                if (! $claimedByPackage) {
-                    if ($serviceType === 'PREMIUM') {
-                        $depositContribution = (float) $serviceItem->qty * $premiumDepositAmount;
-                    } elseif ($standardBaseAppliedItemId > 0 && (int) $serviceItem->id === $standardBaseAppliedItemId) {
-                        $depositContribution = $standardBaseAmount;
-                    }
-                }
+                $depositContribution = ! $claimedByPackage
+                    ? (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)
+                    : 0.0;
 
                 if ($depositContribution > 0) {
                     OrderItem::create([
@@ -1687,32 +1703,6 @@ class PosController extends Controller
                     ]);
                 }
 
-                if ((float) ($serviceItem->addon_price ?? 0) > 0) {
-                    foreach ((array) ($serviceItem->addon_items_json ?? []) as $selectedAddon) {
-                        $addonPrice = round((float) ($selectedAddon['extra_price'] ?? 0), 2);
-                        if ($addonPrice <= 0) {
-                            continue;
-                        }
-                        $addonName = (string) ($selectedAddon['name'] ?? $selectedAddon['label'] ?? 'Add-on');
-                        OrderItem::create([
-                            'order_id' => $order->id,
-                            'line_type' => 'booking_addon',
-                            'product_id' => null,
-                            'product_name_snapshot' => 'Add-on - ' . $addonName,
-                            'display_name_snapshot' => 'Add-on - ' . $addonName,
-                            'quantity' => 1,
-                            'price_snapshot' => $addonPrice,
-                            'unit_price_snapshot' => $addonPrice,
-                            'line_total' => $addonPrice,
-                            'line_total_snapshot' => $addonPrice,
-                            'effective_unit_price' => $addonPrice,
-                            'effective_line_total' => $addonPrice,
-                            'locked' => true,
-                            'booking_id' => $booking->id,
-                            'booking_service_id' => $serviceItem->booking_service_id,
-                        ]);
-                    }
-                }
             }
 
             foreach ($cart->packageItems as $packageItem) {
@@ -2020,23 +2010,16 @@ class PosController extends Controller
 
         $serviceClaimStatuses = $this->resolveServiceItemClaimStatuses($cart);
         $depositBreakdown = $this->resolvePosBookingDepositBreakdown($cart, $serviceClaimStatuses);
-        $standardBaseAppliedItemId = $depositBreakdown['standard_base_applied_item_id'] ?? null;
-        $premiumItemDeposit = (float) ($depositBreakdown['per_premium_amount'] ?? 0);
-        $hasPremium = (int) ($depositBreakdown['premium_count'] ?? 0) > 0;
+        $depositByServiceItemId = collect($depositBreakdown['deposit_by_service_item'] ?? [])
+            ->mapWithKeys(fn ($amount, $id) => [(int) $id => (float) $amount])
+            ->all();
 
-        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($standardBaseAppliedItemId, $premiumItemDeposit, $hasPremium, $serviceClaimStatuses, $depositBreakdown) {
+        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($depositByServiceItemId, $serviceClaimStatuses) {
             $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
             $serviceType = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
             $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
             $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
-            $depositContribution = 0.0;
-            if ($claimedByPackage) {
-                $depositContribution = 0.0;
-            } elseif ($serviceType === 'PREMIUM') {
-                $depositContribution = (float) $item->qty * $premiumItemDeposit;
-            } elseif (! $hasPremium && $standardBaseAppliedItemId && (int) $item->id === (int) $standardBaseAppliedItemId) {
-                $depositContribution = (float) ($depositBreakdown['standard_base_amount'] ?? 0);
-            }
+            $depositContribution = $claimedByPackage ? 0.0 : (float) ($depositByServiceItemId[(int) $item->id] ?? 0);
 
             return [
                 'id' => $item->id,
@@ -2086,8 +2069,8 @@ class PosController extends Controller
 
         $voucherDiscount = (float) ($cart->voucher_discount_amount ?? 0);
         $bookingDepositTotal = (float) ($depositBreakdown['deposit_total'] ?? 0);
-        $serviceAddonTotal = (float) $serviceItems->sum(fn ($item) => (float) ($item['addon_price'] ?? 0));
-        $subtotal = (float) (($cartPricing['subtotal'] ?? $items->sum('line_total')) + $packageItems->sum('line_total') + $bookingDepositTotal + $serviceAddonTotal);
+        $serviceAddonTotal = 0.0;
+        $subtotal = (float) (($cartPricing['subtotal'] ?? $items->sum('line_total')) + $packageItems->sum('line_total') + $bookingDepositTotal);
         $grandTotal = max(0, $subtotal - $voucherDiscount);
 
         return [
@@ -2130,43 +2113,71 @@ class PosController extends Controller
             ];
         }
 
-        $settings = BookingSetting::query()->first();
-        $premiumDeposit = (float) ($settings?->deposit_amount_per_premium ?? 0);
-        $standardDeposit = (float) ($settings?->deposit_base_amount_if_only_standard ?? 0);
-
         $premiumCount = 0;
         $standardCount = 0;
+        $premiumDepositTotal = 0.0;
+        $standardBaseAmount = 0.0;
         $standardBaseAppliedItemId = null;
+        $depositByServiceItem = [];
+        $candidates = [];
 
         foreach ($cart->serviceItems as $item) {
+            $itemId = (int) $item->id;
+            $depositByServiceItem[$itemId] = 0.0;
             $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
             if (in_array($claimStatus, ['reserved', 'consumed'], true)) {
                 continue;
             }
 
             $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
-            $qty = max(1, (int) $item->qty);
-            if ($type === 'PREMIUM') {
-                $premiumCount += $qty;
-            } else {
-                $standardCount += $qty;
-                if ($standardBaseAppliedItemId === null) {
-                    $standardBaseAppliedItemId = (int) $item->id;
+            $mainDeposit = max(0, (float) ($item->bookingService?->deposit_amount ?? 0));
+            $candidates[] = ['service_item_id' => $itemId, 'type' => $type, 'deposit_amount' => $mainDeposit];
+
+            foreach ((array) ($item->addon_items_json ?? []) as $addon) {
+                $addonType = strtoupper((string) ($addon['linked_service_type'] ?? ''));
+                if ($addonType === '') {
+                    continue;
+                }
+                $addonDeposit = max(0, (float) ($addon['linked_deposit_amount'] ?? 0));
+                $candidates[] = ['service_item_id' => $itemId, 'type' => $addonType, 'deposit_amount' => $addonDeposit];
+            }
+        }
+
+        $premiumCandidates = collect($candidates)->filter(fn (array $row) => ($row['type'] ?? '') === 'PREMIUM')->values();
+        if ($premiumCandidates->isNotEmpty()) {
+            $premiumCount = (int) $premiumCandidates->count();
+            $premiumDepositTotal = (float) $premiumCandidates->sum(fn (array $row) => (float) ($row['deposit_amount'] ?? 0));
+            foreach ($premiumCandidates as $row) {
+                $itemId = (int) ($row['service_item_id'] ?? 0);
+                if ($itemId <= 0) {
+                    continue;
+                }
+                $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + (float) ($row['deposit_amount'] ?? 0), 2);
+            }
+        } else {
+            $standardCandidates = collect($candidates)->filter(fn (array $row) => ($row['type'] ?? '') !== 'PREMIUM')->values();
+            $standardCount = (int) $standardCandidates->count();
+            if ($standardCandidates->isNotEmpty()) {
+                $selectedStandard = $standardCandidates->first();
+                $standardBaseAmount = max(0, (float) ($selectedStandard['deposit_amount'] ?? 0));
+                $standardBaseAppliedItemId = (int) ($selectedStandard['service_item_id'] ?? 0) ?: null;
+                if ($standardBaseAppliedItemId) {
+                    $depositByServiceItem[$standardBaseAppliedItemId] = round($standardBaseAmount, 2);
                 }
             }
         }
 
-        $depositTotal = $premiumCount > 0
-            ? ($premiumCount * $premiumDeposit)
-            : ($standardCount > 0 ? $standardDeposit : 0);
+        $depositTotal = round((float) collect($depositByServiceItem)->sum(), 2);
 
         return [
             'premium_count' => $premiumCount,
             'standard_count' => $standardCount,
-            'per_premium_amount' => $premiumDeposit,
-            'standard_base_amount' => $standardDeposit,
+            'per_premium_amount' => 0,
+            'premium_deposit_total' => round($premiumDepositTotal, 2),
+            'standard_base_amount' => round($standardBaseAmount, 2),
             'standard_base_applied_item_id' => $standardBaseAppliedItemId,
             'deposit_total' => (float) $depositTotal,
+            'deposit_by_service_item' => $depositByServiceItem,
         ];
     }
 

@@ -54,7 +54,7 @@ type Cart = {
   grand_total: number
   booking_deposit_total?: number
   booking_addon_total?: number
-  booking_deposit_breakdown?: { premium_count?: number; standard_count?: number; deposit_total?: number; per_premium_amount?: number; standard_base_amount?: number }
+  booking_deposit_breakdown?: { premium_count?: number; standard_count?: number; deposit_total?: number; per_premium_amount?: number; premium_deposit_total?: number; standard_base_amount?: number }
   voucher?: {
     id?: number | null
     customer_voucher_id?: number | null
@@ -4507,7 +4507,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
                         ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
                         : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
-                      const chargeNow = Number(serviceItem.deposit_contribution ?? 0) + Number(serviceItem.addon_price ?? 0)
+                      const chargeNow = Number(serviceItem.deposit_contribution ?? 0)
 
                       return (
                         <tr key={`checkout-service-${serviceItem.id}`} className="bg-emerald-50/60 hover:bg-emerald-50 transition-colors align-top">
@@ -4534,7 +4534,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                           <td className="px-4 py-3">
                             <div className="space-y-0.5">
                               <p className="text-gray-700">Deposit: RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
-                              <p className="text-gray-700">Add-ons: RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}</p>
+                              <p className="text-gray-700">Add-ons (immediate): RM 0.00</p>
                             </div>
                           </td>
                           <td className="px-4 py-3">
@@ -4589,7 +4589,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   <div className="mt-2 space-y-1 text-xs text-emerald-900">
                     <p>Premium services: {bookingDepositBreakdown?.premium_count ?? 0}</p>
                     <p>Standard services: {bookingDepositBreakdown?.standard_count ?? 0}</p>
-                    <p>Per premium deposit: RM {Number(bookingDepositBreakdown?.per_premium_amount ?? 0).toFixed(2)}</p>
+                    <p>Premium deposit total: RM {Number(bookingDepositBreakdown?.premium_deposit_total ?? 0).toFixed(2)}</p>
                     <p>Standard-only base deposit: RM {Number(bookingDepositBreakdown?.standard_base_amount ?? 0).toFixed(2)}</p>
                   </div>
                   <div className="mt-2 border-t border-emerald-200 pt-2 text-sm font-bold text-emerald-800">
