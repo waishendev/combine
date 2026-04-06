@@ -45,7 +45,7 @@ class PublicOrderHistoryController extends Controller
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
             $ordersQuery->whereHas('items', function ($query) {
-                $query->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'service_package'])
+                $query->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'])
                     ->orWhereNotNull('booking_id')
                     ->orWhereNotNull('service_package_id')
                     ->orWhereNotNull('customer_service_package_id');

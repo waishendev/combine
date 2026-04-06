@@ -11,6 +11,7 @@ class PosCartServiceItem extends Model
     protected $fillable = [
         'pos_cart_id', 'booking_service_id', 'customer_id', 'service_name_snapshot', 'price_snapshot',
         'qty', 'assigned_staff_id', 'start_at', 'end_at', 'notes', 'staff_splits', 'commission_rate_used',
+        'addon_duration_min', 'addon_price', 'selected_option_ids', 'addon_items_json',
     ];
 
     protected function casts(): array
@@ -22,6 +23,10 @@ class PosCartServiceItem extends Model
             'end_at' => 'datetime',
             'staff_splits' => 'array',
             'commission_rate_used' => 'decimal:4',
+            'addon_duration_min' => 'integer',
+            'addon_price' => 'decimal:2',
+            'selected_option_ids' => 'array',
+            'addon_items_json' => 'array',
         ];
     }
 
