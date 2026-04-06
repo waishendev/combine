@@ -116,7 +116,7 @@ class PublicReceiptController extends Controller
                     return 'Final Settlement';
                 }
                 if ($lineType === 'booking_addon') {
-                    return 'Add-on';
+                    return 'Booking Add-on Deposit';
                 }
                 return $item->variant_name_snapshot;
             })(),

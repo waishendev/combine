@@ -84,6 +84,13 @@ export type BookingCartItem = {
   expires_at: string;
   status: string;
   deposit_amount?: number | null;
+  main_deposit_amount?: number | null;
+  addon_deposit_amount?: number | null;
+  addon_deposit_items?: Array<{
+    id?: number | null;
+    label: string;
+    deposit_contribution: number;
+  }>;
   package_claim_status?: "reserved" | "consumed" | "released" | null;
 };
 
@@ -93,6 +100,8 @@ export type BookingCart = {
   items: BookingCartItem[];
   package_items: BookingCartPackageItem[];
   deposit_total: number;
+  main_deposit_total?: number;
+  addon_deposit_total?: number;
   addon_total?: number;
   package_total: number;
   cart_total: number;

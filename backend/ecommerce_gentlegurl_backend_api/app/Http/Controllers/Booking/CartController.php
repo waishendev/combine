@@ -294,8 +294,12 @@ class CartController extends Controller
             $bookingIds = [];
             $ownedPackageIds = [];
             $claimStatusesByItem = $this->claimStatusesByCartItem($customer?->id, $activeItems->pluck('id')->all());
-            $depositByCartItemId = $this->resolveDepositByCartItem($activeItems->all(), $claimStatusesByItem);
-            $depositTotal = round((float) collect($depositByCartItemId)->sum(), 2);
+            $depositBreakdown = $this->resolveDepositBreakdownByCartItem($activeItems->all(), $claimStatusesByItem);
+            $depositByCartItemId = $depositBreakdown['deposit_by_cart_item'] ?? [];
+            $mainDepositByCartItemId = $depositBreakdown['main_deposit_by_cart_item'] ?? [];
+            $addonDepositByCartItemId = $depositBreakdown['addon_deposit_by_cart_item'] ?? [];
+            $addonDepositItemsByCartItemId = $depositBreakdown['addon_deposit_items_by_cart_item'] ?? [];
+            $depositTotal = round((float) ($depositBreakdown['deposit_total'] ?? 0), 2);
             $addonTotal = 0.0;
             $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $activeItemIds = $activeItems->pluck('id')->all();
@@ -380,23 +384,52 @@ class CartController extends Controller
                 $bookingIds[] = $booking->id;
 
                 $bookingDepositAmount = (float) ($depositByCartItemId[(int) $item->id] ?? 0);
-                if ($order && $bookingDepositAmount > 0) {
+                $mainDepositAmount = (float) ($mainDepositByCartItemId[(int) $item->id] ?? 0);
+                $addonDepositItems = collect($addonDepositItemsByCartItemId[(int) $item->id] ?? []);
+
+                if ($order && $mainDepositAmount > 0) {
                     OrderItem::query()->create([
                         'order_id' => (int) $order->id,
                         'line_type' => 'booking_deposit',
                         'product_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?? 'Service'),
                         'display_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?? 'Service'),
                         'quantity' => 1,
-                        'price_snapshot' => $bookingDepositAmount,
-                        'unit_price_snapshot' => $bookingDepositAmount,
-                        'line_total' => $bookingDepositAmount,
-                        'line_total_snapshot' => $bookingDepositAmount,
-                        'effective_unit_price' => $bookingDepositAmount,
-                        'effective_line_total' => $bookingDepositAmount,
+                        'price_snapshot' => $mainDepositAmount,
+                        'unit_price_snapshot' => $mainDepositAmount,
+                        'line_total' => $mainDepositAmount,
+                        'line_total_snapshot' => $mainDepositAmount,
+                        'effective_unit_price' => $mainDepositAmount,
+                        'effective_line_total' => $mainDepositAmount,
                         'locked' => true,
                         'booking_id' => (int) $booking->id,
                         'booking_service_id' => (int) $item->service_id,
                     ]);
+                }
+
+                if ($order) {
+                    foreach ($addonDepositItems as $addonDepositItem) {
+                        $addonDepositAmount = (float) ($addonDepositItem['deposit_contribution'] ?? 0);
+                        if ($addonDepositAmount <= 0) {
+                            continue;
+                        }
+                        $addonLabel = (string) ($addonDepositItem['label'] ?? 'Add-on');
+                        OrderItem::query()->create([
+                            'order_id' => (int) $order->id,
+                            'line_type' => 'booking_addon',
+                            'product_name_snapshot' => $addonLabel,
+                            'display_name_snapshot' => $addonLabel,
+                            'quantity' => 1,
+                            'price_snapshot' => $addonDepositAmount,
+                            'unit_price_snapshot' => $addonDepositAmount,
+                            'line_total' => $addonDepositAmount,
+                            'line_total_snapshot' => $addonDepositAmount,
+                            'effective_unit_price' => $addonDepositAmount,
+                            'effective_line_total' => $addonDepositAmount,
+                            'locked' => true,
+                            'booking_id' => (int) $booking->id,
+                            'booking_service_id' => (int) $item->service_id,
+                        ]);
+                    }
                 }
 
             }
@@ -597,8 +630,12 @@ class CartController extends Controller
 
         $nextExpiry = $activeItems->min('expires_at');
         $claimStatusesByItem = $this->claimStatusesByCartItem($cart->customer_id, $activeItems->pluck('id')->all());
-        $depositByCartItemId = $this->resolveDepositByCartItem($activeItems->all(), $claimStatusesByItem);
-        $depositTotal = round((float) collect($depositByCartItemId)->sum(), 2);
+        $depositBreakdown = $this->resolveDepositBreakdownByCartItem($activeItems->all(), $claimStatusesByItem);
+        $depositByCartItemId = $depositBreakdown['deposit_by_cart_item'] ?? [];
+        $mainDepositByCartItemId = $depositBreakdown['main_deposit_by_cart_item'] ?? [];
+        $addonDepositByCartItemId = $depositBreakdown['addon_deposit_by_cart_item'] ?? [];
+        $addonDepositItemsByCartItemId = $depositBreakdown['addon_deposit_items_by_cart_item'] ?? [];
+        $depositTotal = round((float) ($depositBreakdown['deposit_total'] ?? 0), 2);
         $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
 
         return [
@@ -620,6 +657,9 @@ class CartController extends Controller
                 'status' => $item->status,
                 'package_claim_status' => $claimStatusesByItem[(int) $item->id] ?? null,
                 'deposit_amount' => (float) ($depositByCartItemId[(int) $item->id] ?? 0),
+                'main_deposit_amount' => (float) ($mainDepositByCartItemId[(int) $item->id] ?? 0),
+                'addon_deposit_amount' => (float) ($addonDepositByCartItemId[(int) $item->id] ?? 0),
+                'addon_deposit_items' => $addonDepositItemsByCartItemId[(int) $item->id] ?? [],
             ])->values(),
             'package_items' => $activePackageItems->map(fn (BookingCartPackageItem $item) => [
                 'id' => (int) $item->id,
@@ -631,6 +671,8 @@ class CartController extends Controller
                 'status' => (string) $item->status,
             ])->values(),
             'deposit_total' => $depositTotal,
+            'main_deposit_total' => round((float) ($depositBreakdown['main_deposit_total'] ?? 0), 2),
+            'addon_deposit_total' => round((float) ($depositBreakdown['addon_deposit_total'] ?? 0), 2),
             'addon_total' => 0,
             'package_total' => round($packageTotal, 2),
             'cart_total' => round($depositTotal + $packageTotal, 2),
@@ -667,7 +709,15 @@ class CartController extends Controller
 
     private function resolveDepositByCartItem(array $items, array $claimStatusesByItem = []): array
     {
+        return $this->resolveDepositBreakdownByCartItem($items, $claimStatusesByItem)['deposit_by_cart_item'] ?? [];
+    }
+
+    private function resolveDepositBreakdownByCartItem(array $items, array $claimStatusesByItem = []): array
+    {
         $result = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
+        $mainResult = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
+        $addonResult = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
+        $addonDepositItems = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => []])->all();
         $candidates = [];
         foreach ($items as $item) {
             $itemId = (int) $item->id;
@@ -678,7 +728,7 @@ class CartController extends Controller
 
             $mainType = strtoupper((string) ($item->service?->service_type ?? $item->service_type ?? 'STANDARD'));
             $mainDeposit = (float) ($item->service?->deposit_amount ?? 0);
-            $candidates[] = ['item_id' => $itemId, 'type' => $mainType, 'deposit_amount' => $mainDeposit];
+            $candidates[] = ['item_id' => $itemId, 'type' => $mainType, 'deposit_amount' => $mainDeposit, 'scope' => 'main'];
 
             foreach ((array) ($item->question_answers_json['selected_options'] ?? []) as $selectedOption) {
                 $linkedType = strtoupper((string) ($selectedOption['linked_service_type'] ?? ''));
@@ -686,26 +736,67 @@ class CartController extends Controller
                     continue;
                 }
                 $linkedDeposit = max(0, (float) ($selectedOption['linked_deposit_amount'] ?? 0));
-                $candidates[] = ['item_id' => $itemId, 'type' => $linkedType, 'deposit_amount' => $linkedDeposit];
+                $candidates[] = [
+                    'item_id' => $itemId,
+                    'type' => $linkedType,
+                    'deposit_amount' => $linkedDeposit,
+                    'scope' => 'addon',
+                    'option_id' => isset($selectedOption['id']) ? (int) $selectedOption['id'] : null,
+                    'label' => (string) ($selectedOption['label'] ?? 'Add-on'),
+                ];
             }
         }
 
         $premiumCandidates = array_values(array_filter($candidates, fn (array $row) => $row['type'] === 'PREMIUM'));
         if (! empty($premiumCandidates)) {
             foreach ($premiumCandidates as $row) {
-                $result[(int) $row['item_id']] += (float) $row['deposit_amount'];
+                $itemId = (int) $row['item_id'];
+                $deposit = (float) $row['deposit_amount'];
+                $result[$itemId] += $deposit;
+                if (($row['scope'] ?? 'main') === 'addon') {
+                    $addonResult[$itemId] += $deposit;
+                    $addonDepositItems[$itemId][] = [
+                        'id' => $row['option_id'] ?? null,
+                        'label' => (string) ($row['label'] ?? 'Add-on'),
+                        'deposit_contribution' => round($deposit, 2),
+                    ];
+                } else {
+                    $mainResult[$itemId] += $deposit;
+                }
             }
-
-            return array_map(fn ($amount) => round((float) $amount, 2), $result);
+        } else {
+            $standardCandidates = array_values(array_filter($candidates, fn (array $row) => $row['type'] !== 'PREMIUM'));
+            if (! empty($standardCandidates)) {
+                $applied = $standardCandidates[0];
+                $appliedItemId = (int) ($applied['item_id'] ?? 0);
+                $appliedAmount = max(0, (float) ($applied['deposit_amount'] ?? 0));
+                $result[$appliedItemId] = $appliedAmount;
+                if (($applied['scope'] ?? 'main') === 'addon') {
+                    $addonResult[$appliedItemId] = $appliedAmount;
+                    $addonDepositItems[$appliedItemId][] = [
+                        'id' => $applied['option_id'] ?? null,
+                        'label' => (string) ($applied['label'] ?? 'Add-on'),
+                        'deposit_contribution' => round($appliedAmount, 2),
+                    ];
+                } else {
+                    $mainResult[$appliedItemId] = $appliedAmount;
+                }
+            }
         }
 
-        $standardCandidates = array_values(array_filter($candidates, fn (array $row) => $row['type'] !== 'PREMIUM'));
-        if (! empty($standardCandidates)) {
-            $appliedItemId = (int) ($standardCandidates[0]['item_id'] ?? 0);
-            $result[$appliedItemId] = max(0, (float) ($standardCandidates[0]['deposit_amount'] ?? 0));
-        }
+        $depositByItem = array_map(fn ($amount) => round((float) $amount, 2), $result);
+        $mainByItem = array_map(fn ($amount) => round((float) $amount, 2), $mainResult);
+        $addonByItem = array_map(fn ($amount) => round((float) $amount, 2), $addonResult);
 
-        return array_map(fn ($amount) => round((float) $amount, 2), $result);
+        return [
+            'deposit_by_cart_item' => $depositByItem,
+            'main_deposit_by_cart_item' => $mainByItem,
+            'addon_deposit_by_cart_item' => $addonByItem,
+            'addon_deposit_items_by_cart_item' => $addonDepositItems,
+            'main_deposit_total' => round((float) collect($mainByItem)->sum(), 2),
+            'addon_deposit_total' => round((float) collect($addonByItem)->sum(), 2),
+            'deposit_total' => round((float) collect($depositByItem)->sum(), 2),
+        ];
     }
 
     private function claimStatusesByCartItem(?int $customerId, array $cartItemIds): array

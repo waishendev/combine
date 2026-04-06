@@ -2477,7 +2477,7 @@ class PosController extends Controller
                 'stage_label' => match ((string) ($item->line_type ?? '')) {
                     'booking_deposit' => 'Booking Deposit Receipt',
                     'booking_settlement' => 'Final Settlement Receipt',
-                    'booking_addon' => 'Add-on Receipt',
+                    'booking_addon' => 'Booking Add-on Deposit Receipt',
                     default => 'Receipt',
                 },
                 'amount' => (float) ($item->line_total ?? 0),
