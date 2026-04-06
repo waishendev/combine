@@ -73,6 +73,10 @@ type BookingResponse = {
     online_booking_revenue?: number
     offline_booking_revenue?: number
     total_transactions?: number
+    booking_deposit_amount?: number
+    booking_settlement_amount?: number
+    addon_revenue?: number
+    package_purchase_amount?: number
   }
   rows?: BookingRow[]
   totals_page?: {
@@ -80,12 +84,20 @@ type BookingResponse = {
     gross_amount?: number
     discount?: number
     net_amount?: number
+    booking_deposit_amount?: number
+    booking_settlement_amount?: number
+    addon_revenue?: number
+    package_purchase_amount?: number
   }
   grand_totals?: {
     orders_count?: number
     gross_amount?: number
     discount?: number
     net_amount?: number
+    booking_deposit_amount?: number
+    booking_settlement_amount?: number
+    addon_revenue?: number
+    package_purchase_amount?: number
   }
   pagination?: Partial<Pagination>
 }
@@ -361,6 +373,7 @@ export default function SalesChannelReportPage({
                   <option value="all">All Types</option>
                   <option value="deposit">Deposit</option>
                   <option value="final_settlement">Final Settlement</option>
+                  <option value="addon">Add-on</option>
                   <option value="package_purchase">Package Purchase</option>
                 </select>
               )}
@@ -418,7 +431,7 @@ export default function SalesChannelReportPage({
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="text-sm font-semibold text-slate-700">Summary</div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {mode === 'ecommerce' ? (
             <>
               <SummaryCard label="Total Sales" value={`RM ${formatAmount(summary.total_sales ?? 0)}`} />
@@ -429,9 +442,10 @@ export default function SalesChannelReportPage({
           ) : (
             <>
               <SummaryCard label="Total Booking Revenue" value={`RM ${formatAmount(summary.total_booking_revenue ?? 0)}`} />
-              <SummaryCard label="Online Booking Revenue" value={`RM ${formatAmount(summary.online_booking_revenue ?? 0)}`} />
-              <SummaryCard label="Offline Booking Revenue" value={`RM ${formatAmount(summary.offline_booking_revenue ?? 0)}`} />
-              <SummaryCard label="Total Transactions" value={(summary.total_transactions ?? 0).toLocaleString()} />
+              <SummaryCard label="Booking Deposit Amount" value={`RM ${formatAmount(summary.booking_deposit_amount ?? 0)}`} />
+              <SummaryCard label="Booking Settlement Amount" value={`RM ${formatAmount(summary.booking_settlement_amount ?? 0)}`} />
+              <SummaryCard label="Add-on Revenue" value={`RM ${formatAmount(summary.addon_revenue ?? 0)}`} />
+              <SummaryCard label="Package Purchase Amount" value={`RM ${formatAmount(summary.package_purchase_amount ?? 0)}`} />
             </>
           )}
         </div>
@@ -539,9 +553,9 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.gross_amount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.discount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.net_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.booking_deposit_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.booking_settlement_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount((totalsPage.addon_revenue ?? 0) + (totalsPage.package_purchase_amount ?? 0))}</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                 </tr>
                 <tr className="bg-gray-100 font-bold">
@@ -554,9 +568,9 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2"></td>
                   <td className="border border-gray-300 px-4 py-2"></td>
                   <td className="border border-gray-300 px-4 py-2"></td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.gross_amount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.discount ?? 0)}</td>
-                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.net_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.booking_deposit_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.booking_settlement_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">RM {formatAmount((grandTotals.addon_revenue ?? 0) + (grandTotals.package_purchase_amount ?? 0))}</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                 </tr>
               </>

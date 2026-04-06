@@ -29,6 +29,15 @@ type CompleteModalState = {
   orderId: number;
 };
 
+const resolveOrderItemLabel = (item: OrderItemSummary) => {
+  const lineType = String(item.line_type ?? "").toLowerCase();
+  if (lineType === "booking_addon") return `Add-on - ${item.name || "Add-on"}`;
+  if (lineType === "booking_deposit") return item.name || "Booking Deposit";
+  if (lineType === "booking_settlement") return item.name || "Final Settlement";
+  if (lineType === "service_package") return item.name || "Service Package";
+  return item.name || "Item";
+};
+
 export function OrdersClient({ orders }: OrdersClientProps) {
   const router = useRouter();
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -407,6 +416,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       const canReview = item.can_review === true;
                       const disabled = isReviewed || !item.product_slug || !canReview;
                       const shouldShowVariant = item.product_type === "variant" || !!item.product_variant_id;
+                      const isProductLine = !item.line_type || item.line_type === "product";
                       const variantName = item.variant_name ?? "—";
                       const variantSkuSuffix = item.variant_sku ? ` (${item.variant_sku})` : "";
                       return (
@@ -415,21 +425,30 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                         >
                           <div className="flex items-center gap-3">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={getPrimaryProductImage(item)}
-                              alt={item.name ?? "Product image"}
-                              className="h-12 w-12 rounded-lg object-cover"
-                            />
+                            {isProductLine ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={getPrimaryProductImage(item)}
+                                alt={item.name ?? "Product image"}
+                                className="h-12 w-12 rounded-lg object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--muted)] bg-[var(--background)] text-[10px] font-semibold uppercase text-[var(--foreground)]/60">
+                                {String(item.line_type ?? "item").replaceAll("_", " ")}
+                              </div>
+                            )}
                             <div>
-                              <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
+                              <p className="text-sm font-semibold text-[var(--foreground)]">{resolveOrderItemLabel(item)}</p>
                               {shouldShowVariant && (
                                 <p className="text-xs text-[var(--foreground)]/60">
                                   Variant: {variantName}
                                   {variantSkuSuffix}
                                 </p>
                               )}
-                              <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>    
+                              {String(item.line_type ?? "").toLowerCase() === "service" ? (
+                                <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
+                              ) : null}
+                              <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
                             </div>
                           </div>
                           {(canReview || isReviewed) && (

@@ -25,6 +25,15 @@ const isWithinReturnWindow = (completedAt?: string | null, windowDays?: number |
   return windowEnds.getTime() >= Date.now();
 };
 
+const resolveOrderItemLabel = (item: { line_type?: string | null; name?: string }) => {
+  const lineType = String(item.line_type ?? "").toLowerCase();
+  if (lineType === "booking_addon") return `Add-on - ${item.name || "Add-on"}`;
+  if (lineType === "booking_deposit") return item.name || "Booking Deposit";
+  if (lineType === "booking_settlement") return item.name || "Final Settlement";
+  if (lineType === "service_package") return item.name || "Service Package";
+  return item.name || "Item";
+};
+
 export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
   const { id } = await params;
   const orderId = Number(id);
@@ -105,20 +114,29 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                 className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={getPrimaryProductImage(item)}
-                    alt={item.name ?? "Product image"}
-                    className="h-14 w-14 rounded-lg object-cover"
-                  />
+                  {!item.line_type || item.line_type === "product" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={getPrimaryProductImage(item)}
+                      alt={item.name ?? "Product image"}
+                      className="h-14 w-14 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--muted)] bg-[var(--background)] text-[10px] font-semibold uppercase text-[var(--foreground)]/60">
+                      {String(item.line_type).replaceAll("_", " ")}
+                    </div>
+                  )}
                   <div>
-                    <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">{resolveOrderItemLabel(item)}</p>
                     {(item.product_type === "variant" || item.product_variant_id) && (
                       <p className="text-xs text-[var(--foreground)]/60">
                         Variant: {item.variant_name ?? "—"}
                         {item.variant_sku ? ` (${item.variant_sku})` : ""}
                       </p>
                     )}
+                    {item.line_type === "service" ? (
+                      <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
+                    ) : null}
                     <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
 
                   </div>

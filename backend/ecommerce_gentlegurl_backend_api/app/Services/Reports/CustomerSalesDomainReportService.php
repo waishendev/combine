@@ -12,7 +12,7 @@ class CustomerSalesDomainReportService
     public const CHANNEL_ONLINE = 'online';
     public const CHANNEL_OFFLINE = 'offline';
 
-    private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'service_package'];
+    private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'];
 
     public function ecommerce(Carbon $start, Carbon $end, array $filters = []): array
     {
@@ -174,6 +174,7 @@ class CustomerSalesDomainReportService
             ->selectRaw('COUNT(oi.id) as transactions_count')
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'booking_deposit' THEN COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0)) ELSE 0 END), 0) as booking_deposit_amount")
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'booking_settlement' THEN COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0)) ELSE 0 END), 0) as booking_settlement_amount")
+            ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'booking_addon' THEN COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0)) ELSE 0 END), 0) as addon_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'service_package' THEN COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0)) ELSE 0 END), 0) as package_purchase_amount")
             ->selectRaw('COALESCE(SUM(COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))), 0) as total_revenue')
             ->selectRaw("COALESCE(MAX(COALESCE(o.placed_at, o.created_at)), MAX(o.created_at)) as last_transaction_date");
@@ -230,6 +231,7 @@ class CustomerSalesDomainReportService
             'transactions_count' => (int) ($row->transactions_count ?? 0),
             'booking_deposit_amount' => (float) ($row->booking_deposit_amount ?? 0),
             'booking_settlement_amount' => (float) ($row->booking_settlement_amount ?? 0),
+            'addon_revenue' => (float) ($row->addon_revenue ?? 0),
             'package_purchase_amount' => (float) ($row->package_purchase_amount ?? 0),
             'total_revenue' => (float) ($row->total_revenue ?? 0),
             'last_transaction_date' => $row->last_transaction_date,
@@ -250,6 +252,7 @@ class CustomerSalesDomainReportService
         return [
             'booking_deposit_amount' => (float) $rows->sum('booking_deposit_amount'),
             'booking_settlement_amount' => (float) $rows->sum('booking_settlement_amount'),
+            'addon_revenue' => (float) $rows->sum('addon_revenue'),
             'package_purchase_amount' => (float) $rows->sum('package_purchase_amount'),
             'total_revenue' => (float) $rows->sum('total_revenue'),
         ];

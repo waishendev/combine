@@ -305,9 +305,9 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
     if (!grandTotals) return []
     return [
       { label: 'Total', value: grandTotals.total_bookings, isMoney: false },
-      { label: 'Completed', value: grandTotals.completed_count, isMoney: false },
+      { label: 'Completed Bookings', value: grandTotals.completed_count, isMoney: false },
       { label: 'Notified Cancel', value: grandTotals.notified_cancellation_count, isMoney: false },
-      { label: 'Deposit', value: grandTotals.deposit_collected, isMoney: true },
+      { label: 'Deposit Collected', value: grandTotals.deposit_collected, isMoney: true },
     ]
   }, [grandTotals])
 

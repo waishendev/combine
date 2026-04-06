@@ -14,6 +14,9 @@ export type OrderItemSummary = {
   quantity: number;
   unit_price?: string | number;
   line_total?: string | number;
+  line_type?: string | null;
+  booking_id?: number | null;
+  service_package_id?: number | null;
   product_image?: string | null;
   cover_image_url?: string | null;
   review_id?: number | null;

@@ -53,6 +53,7 @@ type Cart = {
   subtotal: number
   grand_total: number
   booking_deposit_total?: number
+  booking_addon_total?: number
   booking_deposit_breakdown?: { premium_count?: number; standard_count?: number; deposit_total?: number; per_premium_amount?: number; standard_base_amount?: number }
   voucher?: {
     id?: number | null
@@ -76,6 +77,9 @@ type ServiceCartItem = {
   qty: number
   unit_price: number
   line_total: number
+  addon_duration_min?: number
+  addon_price?: number
+  addon_items?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
   service_type?: string | null
   deposit_contribution?: number
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null
@@ -117,6 +121,22 @@ type BookingServiceOption = {
   service_price?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
+}
+
+type BookingServiceQuestionOption = {
+  id: number
+  label: string
+  extra_duration_min: number
+  extra_price: number
+}
+
+type BookingServiceQuestion = {
+  id: number
+  title: string
+  description?: string | null
+  question_type: 'single_choice' | 'multi_choice'
+  is_required?: boolean
+  options: BookingServiceQuestionOption[]
 }
 
 type ServicePackageOption = {
@@ -162,6 +182,12 @@ type AppointmentDetail = {
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>
   service_total: number
+  add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  addon_total_duration_min?: number
+  addon_total_price?: number
+  addon_paid_online?: number
+  addon_paid_settlement?: number
+  addon_balance_due?: number
   deposit_contribution?: number
   deposit_paid: number
   linked_booking_deposit?: number
@@ -485,6 +511,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string }>>([])
   const [bookingSlotValue, setBookingSlotValue] = useState('')
   const [bookingNotes, setBookingNotes] = useState('')
+  const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
+  const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
   const [bookingModalError, setBookingModalError] = useState<string | null>(null)
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
@@ -1735,7 +1763,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     void loadRescheduleSlots()
   }, [appointmentDetail?.service?.id, appointmentRescheduleDate, appointmentRescheduleOpen, appointmentRescheduleStaffId])
 
-  const openBookingModal = useCallback((service: BookingServiceOption) => {
+  const openBookingModal = useCallback(async (service: BookingServiceOption) => {
     setBookingServiceDraft(service)
     const allowedStaffs = service.allowed_staffs ?? []
     const preferredStaff = currentUser.staff_id && allowedStaffs.some((staff) => staff.id === currentUser.staff_id)
@@ -1746,9 +1774,59 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setBookingSlots([])
     setBookingSlotValue('')
     setBookingNotes('')
+    setBookingQuestions([])
+    setBookingSelectedOptionIds([])
     setBookingModalError(null)
     setBookingModalOpen(true)
+
+    try {
+      const res = await fetch(`/api/proxy/booking/services/${service.id}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
+      const mappedQuestions: BookingServiceQuestion[] = questionsRaw
+        .map((raw) => {
+          if (!raw || typeof raw !== 'object') return null
+          const record = raw as Record<string, unknown>
+          const optionsRaw: unknown[] = Array.isArray(record.options) ? record.options : []
+          return {
+            id: Number(record.id ?? 0),
+            title: String(record.title ?? 'Question'),
+            description: typeof record.description === 'string' ? record.description : null,
+            question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
+            is_required: Boolean(record.is_required),
+            options: optionsRaw
+              .map((optionRaw) => {
+                if (!optionRaw || typeof optionRaw !== 'object') return null
+                const option = optionRaw as Record<string, unknown>
+                return {
+                  id: Number(option.id ?? 0),
+                  label: String(option.label ?? 'Add-on'),
+                  extra_duration_min: Number(option.extra_duration_min ?? 0),
+                  extra_price: Number(option.extra_price ?? 0),
+                }
+              })
+              .filter((option): option is BookingServiceQuestionOption => Boolean(option && option.id > 0)),
+          } as BookingServiceQuestion
+        })
+        .filter((question): question is BookingServiceQuestion => Boolean(question && question.id > 0 && question.options.length > 0))
+      setBookingQuestions(mappedQuestions)
+    } catch {
+      setBookingQuestions([])
+    }
   }, [currentUser.staff_id])
+
+  const bookingSelectedOptions = useMemo(() => {
+    const selected = new Set(bookingSelectedOptionIds)
+    return bookingQuestions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
+  }, [bookingQuestions, bookingSelectedOptionIds])
+  const bookingAddonDurationTotal = useMemo(
+    () => bookingSelectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0),
+    [bookingSelectedOptions],
+  )
+  const bookingAddonPriceTotal = useMemo(
+    () => bookingSelectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0),
+    [bookingSelectedOptions],
+  )
 
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
@@ -1769,6 +1847,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       setBookingModalError('Please select appointment slot/time.')
       return
     }
+    for (const question of bookingQuestions) {
+      if (!question.is_required) continue
+      const hasSelection = question.options.some((option) => bookingSelectedOptionIds.includes(option.id))
+      if (!hasSelection) {
+        setBookingModalError(`Please answer required question: ${question.title}`)
+        return
+      }
+    }
 
     setBookingSubmitting(true)
     const res = await fetch('/api/proxy/pos/cart/add-service', {
@@ -1778,6 +1864,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         booking_service_id: bookingServiceDraft.id,
         customer_id: selectedMember.id,
         assigned_staff_id: bookingAssignedStaffId,
+        selected_option_ids: bookingSelectedOptionIds,
         start_at: bookingSlotValue,
         notes: bookingNotes || null,
         staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
@@ -1797,7 +1884,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     setBookingModalOpen(false)
     setBookingModalError(null)
     setBookingSubmitting(false)
-  }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingServiceDraft, bookingSlotValue, selectedMember?.id, showMsg])
+  }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingQuestions, bookingSelectedOptionIds, bookingServiceDraft, bookingSlotValue, selectedMember?.id, showMsg])
 
 
   useEffect(() => {
@@ -3403,7 +3490,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <span className="text-sm font-bold text-gray-900">RM {displayPrice.toFixed(2)}</span>
                             <button
                               type="button"
-                              onClick={() => openBookingModal(service)}
+                              onClick={() => void openBookingModal(service)}
                               className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                             >
                               Add Service to Cart
@@ -3589,6 +3676,21 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     </div>
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
                       <p>Service Total: <span className="font-semibold">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</span></p>
+                      {appointmentDetail.add_ons?.length ? (
+                        <div className="mt-2 rounded border border-gray-200 bg-gray-50 px-2 py-2">
+                          <p className="font-semibold text-gray-800">Add-ons</p>
+                          {appointmentDetail.add_ons.map((addon, idx) => (
+                            <p key={`${addon.id ?? addon.name}-${idx}`} className="text-xs text-gray-700">
+                              {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +RM{Number(addon.extra_price ?? 0).toFixed(2)})
+                            </p>
+                          ))}
+                          <p className="mt-1 text-xs text-gray-700">Add-on total duration: +{Number(appointmentDetail.addon_total_duration_min ?? 0)} mins</p>
+                          <p className="text-xs text-gray-700">Add-on total price: RM {Number(appointmentDetail.addon_total_price ?? 0).toFixed(2)}</p>
+                          <p className="text-xs text-gray-700">Add-on paid online: RM {Number(appointmentDetail.addon_paid_online ?? 0).toFixed(2)}</p>
+                          <p className="text-xs text-gray-700">Add-on paid in settlement: RM {Number(appointmentDetail.addon_paid_settlement ?? 0).toFixed(2)}</p>
+                          <p className="text-xs font-semibold text-amber-700">Add-on balance due now: RM {Number(appointmentDetail.addon_balance_due ?? 0).toFixed(2)}</p>
+                        </div>
+                      ) : null}
                       <p>Deposit Contribution: <span className="font-semibold">RM {Number(appointmentDepositContributionForSettlement ?? 0).toFixed(2)}</span></p>
                       <p>Linked Booking Deposit: <span className="font-semibold">RM {Number(appointmentDetail.linked_booking_deposit_total ?? appointmentDetail.linked_booking_deposit ?? 0).toFixed(2)}</span></p>
                       <p>Package Applied / Offset: <span className="font-semibold">RM {Number(appointmentDetail.package_offset ?? 0).toFixed(2)}</span></p>
@@ -3855,6 +3957,19 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <h4 className="font-bold text-gray-900 text-sm mt-0.5">{serviceItem.service_name}</h4>
                         <p className="text-xs text-gray-600 mt-1">Qty: {serviceItem.qty}</p>
                         <p className="text-xs text-emerald-700">Type: {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
+                        {(serviceItem.addon_items?.length ?? 0) > 0 ? (
+                          <div className="mt-1 rounded border border-emerald-200 bg-white/70 px-2 py-1.5">
+                            <p className="text-[11px] font-semibold text-emerald-800">Add-ons</p>
+                            {serviceItem.addon_items?.map((addon, idx) => (
+                              <p key={`${addon.id ?? addon.name}-${idx}`} className="text-[11px] text-emerald-700">
+                                {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +RM {Number(addon.extra_price ?? 0).toFixed(2)})
+                              </p>
+                            ))}
+                            <p className="mt-1 text-[11px] font-semibold text-emerald-800">
+                              Add-on total: +RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}
+                            </p>
+                          </div>
+                        ) : null}
                         {serviceItem.start_at ? (
                           <p className="text-xs text-gray-700">Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
                         ) : null}
@@ -3870,6 +3985,12 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                         <div className="font-semibold text-gray-700 text-sm">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
                         <div className="mt-1 text-xs text-gray-500">Deposit Contribution</div>
                         <div className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</div>
+                        {(serviceItem.addon_items?.length ?? 0) > 0 ? (
+                          <>
+                            <div className="mt-1 text-xs text-gray-500">Add-on Charge</div>
+                            <div className="font-semibold text-emerald-800">RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}</div>
+                          </>
+                        ) : null}
                         {serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed' ? (
                           <div className="mt-1 text-[11px] font-semibold text-emerald-700">Reserved from Package</div>
                         ) : null}
@@ -4386,12 +4507,23 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                       const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
                         ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
                         : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
+                      const chargeNow = Number(serviceItem.deposit_contribution ?? 0) + Number(serviceItem.addon_price ?? 0)
 
                       return (
                         <tr key={`checkout-service-${serviceItem.id}`} className="bg-emerald-50/60 hover:bg-emerald-50 transition-colors align-top">
                           <td className="px-4 py-3">
                             <p className="font-semibold text-gray-900">{serviceItem.service_name}</p>
                             <p className="text-[11px] text-emerald-700 font-semibold">BOOKING SERVICE · {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
+                            {(serviceItem.addon_items?.length ?? 0) > 0 ? (
+                              <div className="mt-1 space-y-0.5 rounded border border-emerald-200 bg-white/70 px-2 py-1.5">
+                                <p className="text-[11px] font-semibold text-emerald-800">Add-ons</p>
+                                {serviceItem.addon_items?.map((addon, idx) => (
+                                  <p key={`${addon.id ?? addon.name}-${idx}`} className="text-[11px] text-emerald-700">
+                                    {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +RM {Number(addon.extra_price ?? 0).toFixed(2)})
+                                  </p>
+                                ))}
+                              </div>
+                            ) : null}
                             {serviceItem.start_at ? <p className="text-xs text-gray-600 mt-0.5">{formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p> : null}
                             <p className="text-xs text-gray-500 mt-0.5">Qty: {serviceItem.qty}</p>
                             <p className="text-[11px] text-gray-500 mt-0.5">Service price ref: RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</p>
@@ -4400,10 +4532,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                             <p className="text-xs text-gray-700">{splitSummary}</p>
                           </td>
                           <td className="px-4 py-3">
-                            <p className="text-gray-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                            <div className="space-y-0.5">
+                              <p className="text-gray-700">Deposit: RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                              <p className="text-gray-700">Add-ons: RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}</p>
+                            </div>
                           </td>
                           <td className="px-4 py-3">
-                            <p className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
+                            <p className="font-bold text-emerald-700">RM {chargeNow.toFixed(2)}</p>
                           </td>
                         </tr>
                       )
@@ -4927,6 +5062,54 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   This service is temporarily unavailable because no eligible staff is assigned.
+                </div>
+              ) : null}
+              {bookingQuestions.length > 0 ? (
+                <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-xs font-semibold text-gray-700">Add-ons / Questions</p>
+                  {bookingQuestions.map((question) => (
+                    <div key={question.id} className="rounded border border-gray-200 bg-white p-2">
+                      <p className="text-xs font-semibold text-gray-800">
+                        {question.title}
+                        {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
+                      </p>
+                      {question.description ? <p className="text-[11px] text-gray-500">{question.description}</p> : null}
+                      <div className="mt-2 space-y-1">
+                        {question.options.map((option) => {
+                          const checked = bookingSelectedOptionIds.includes(option.id)
+                          const inputType = question.question_type === 'single_choice' ? 'radio' : 'checkbox'
+                          return (
+                            <label key={option.id} className="flex cursor-pointer items-center justify-between gap-2 text-xs text-gray-700">
+                              <span className="flex items-center gap-2">
+                                <input
+                                  type={inputType}
+                                  name={`booking-question-${question.id}`}
+                                  checked={checked}
+                                  onChange={() => {
+                                    setBookingSelectedOptionIds((prev) => {
+                                      if (question.question_type === 'single_choice') {
+                                        const withoutQuestion = prev.filter((id) => !question.options.some((opt) => opt.id === id))
+                                        return checked ? withoutQuestion : [...withoutQuestion, option.id]
+                                      }
+                                      return checked ? prev.filter((id) => id !== option.id) : [...prev, option.id]
+                                    })
+                                  }}
+                                />
+                                <span>{option.label}</span>
+                              </span>
+                              <span className="text-gray-500">
+                                +{Number(option.extra_duration_min ?? 0)} mins • +RM{Number(option.extra_price ?? 0).toFixed(2)}
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-xs text-gray-700">
+                    <p>Add-on total duration: +{bookingAddonDurationTotal} mins</p>
+                    <p>Add-on total price: +RM{bookingAddonPriceTotal.toFixed(2)}</p>
+                  </div>
                 </div>
               ) : null}
 
