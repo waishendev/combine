@@ -2752,6 +2752,7 @@ class PosController extends Controller
             'deposit_previously_collected' => $actualAppointmentDepositCollected > 0.0001,
             'deposit_previously_collected_amount' => round($actualAppointmentDepositCollected, 2),
             'package_offset' => round($packageOffset, 2),
+            'service_balance_due' => round($serviceBalanceDue, 2),
             'settlement_paid' => round($serviceSettlementPaid + $addonPaidSettlement, 2),
             'addon_paid_online' => round($addonPaid, 2),
             'addon_paid_settlement' => round($addonPaidSettlement, 2),
