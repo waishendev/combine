@@ -1007,6 +1007,13 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
     });
 });
 
+Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/booking/my-leave')->group(function () {
+    Route::get('/balances', [\App\Http\Controllers\Booking\MyLeaveController::class, 'indexBalances']);
+    Route::get('/requests', [\App\Http\Controllers\Booking\MyLeaveController::class, 'indexRequests']);
+    Route::post('/requests', [\App\Http\Controllers\Booking\MyLeaveController::class, 'store']);
+    Route::patch('/requests/{id}/cancel', [\App\Http\Controllers\Booking\MyLeaveController::class, 'cancel']);
+});
+
 Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')->group(function () {
     Route::get('/appointments', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'index']);
     Route::get('/appointments/{id}', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'show']);
@@ -1037,6 +1044,14 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::post('/categories/{id}/move-down', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveDown']);
     Route::put('/staff-schedules/bulk', [\App\Http\Controllers\Admin\Booking\StaffScheduleController::class, 'bulkUpdate']);
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
+    Route::get('/leave-requests', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'index'])
+        ->middleware('permission:booking.schedules.view');
+    Route::patch('/leave-requests/{id}/decision', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'decide'])
+        ->middleware('permission:booking.schedules.update');
+    Route::get('/leave-balances', [\App\Http\Controllers\Admin\Booking\LeaveBalanceController::class, 'index'])
+        ->middleware('permission:booking.schedules.view');
+    Route::put('/leave-balances/{staffId}', [\App\Http\Controllers\Admin\Booking\LeaveBalanceController::class, 'upsert'])
+        ->middleware('permission:booking.schedules.update');
     Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);
     Route::apiResource('/commission-tiers', \App\Http\Controllers\Admin\Booking\CommissionTierController::class)
         ->only(['index', 'store', 'update', 'destroy']);
