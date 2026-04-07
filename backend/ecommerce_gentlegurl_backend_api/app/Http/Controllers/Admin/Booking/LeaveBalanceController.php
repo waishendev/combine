@@ -7,6 +7,7 @@ use App\Models\Booking\BookingLeaveBalance;
 use App\Models\Staff;
 use App\Services\Booking\BookingLeaveService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class LeaveBalanceController extends Controller
 {
@@ -36,17 +37,45 @@ class LeaveBalanceController extends Controller
         $data = $request->validate([
             'leave_type' => ['required', 'in:annual,mc,off_day'],
             'entitled_days' => ['required', 'numeric', 'min:0', 'max:366'],
+            'remark' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $row = BookingLeaveBalance::query()->updateOrCreate(
-            [
-                'staff_id' => $staffId,
-                'leave_type' => $data['leave_type'],
-            ],
-            [
-                'entitled_days' => (float) $data['entitled_days'],
-            ]
-        );
+        $row = DB::transaction(function () use ($staffId, $data, $request) {
+            $existing = BookingLeaveBalance::query()
+                ->where('staff_id', $staffId)
+                ->where('leave_type', $data['leave_type'])
+                ->first();
+
+            $before = $existing ? [
+                'leave_type' => $existing->leave_type,
+                'entitled_days' => (float) $existing->entitled_days,
+            ] : null;
+
+            $row = BookingLeaveBalance::query()->updateOrCreate(
+                [
+                    'staff_id' => $staffId,
+                    'leave_type' => $data['leave_type'],
+                ],
+                [
+                    'entitled_days' => (float) $data['entitled_days'],
+                ]
+            );
+
+            $this->leaveService->logAction(
+                $staffId,
+                null,
+                'adjusted',
+                $before,
+                [
+                    'leave_type' => $row->leave_type,
+                    'entitled_days' => (float) $row->entitled_days,
+                ],
+                $data['remark'] ?? null,
+                $request->user()?->id
+            );
+
+            return $row;
+        });
 
         return $this->respond($row);
     }

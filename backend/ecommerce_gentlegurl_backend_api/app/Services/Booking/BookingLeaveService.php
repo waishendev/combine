@@ -3,6 +3,7 @@
 namespace App\Services\Booking;
 
 use App\Models\Booking\BookingLeaveBalance;
+use App\Models\Booking\BookingLeaveLog;
 use App\Models\Booking\BookingLeaveRequest;
 
 class BookingLeaveService
@@ -47,5 +48,26 @@ class BookingLeaveService
         $summary = collect($this->getBalanceSummaryForStaff($staffId));
 
         return (float) ($summary->firstWhere('leave_type', 'annual')['remaining_days'] ?? 0);
+    }
+
+
+    public function logAction(
+        int $staffId,
+        ?int $leaveRequestId,
+        string $actionType,
+        ?array $beforeValue,
+        ?array $afterValue,
+        ?string $remark,
+        ?int $createdBy
+    ): void {
+        BookingLeaveLog::query()->create([
+            'staff_id' => $staffId,
+            'leave_request_id' => $leaveRequestId,
+            'action_type' => $actionType,
+            'before_value' => $beforeValue,
+            'after_value' => $afterValue,
+            'remark' => $remark,
+            'created_by' => $createdBy,
+        ]);
     }
 }

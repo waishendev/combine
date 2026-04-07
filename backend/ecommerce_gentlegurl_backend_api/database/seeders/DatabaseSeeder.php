@@ -44,6 +44,7 @@ class DatabaseSeeder extends Seeder
             // // SelfPickupCompletedOrderSeeder::class,
             // // GuestCompletedOrderSeeder::class,
             // BookingTestingSeeder::class,
+            // BookingLeaveTestingSeeder::class,
             // ServicePackageTestingSeeder::class,
 
             //ReturnDemoSeeder::class,

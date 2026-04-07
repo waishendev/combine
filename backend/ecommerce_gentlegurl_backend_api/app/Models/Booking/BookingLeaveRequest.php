@@ -43,4 +43,9 @@ class BookingLeaveRequest extends Model
     {
         return $this->belongsTo(BookingStaffTimeoff::class, 'approved_timeoff_id');
     }
+
+    public function logs()
+    {
+        return $this->hasMany(BookingLeaveLog::class, 'leave_request_id');
+    }
 }

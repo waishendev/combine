@@ -5,12 +5,17 @@ namespace App\Http\Controllers\Admin\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLeaveRequest;
 use App\Models\Booking\BookingStaffTimeoff;
+use App\Services\Booking\BookingLeaveService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class LeaveRequestController extends Controller
 {
+    public function __construct(private readonly BookingLeaveService $leaveService)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = BookingLeaveRequest::query()->with(['staff:id,name', 'reviewer:id,name']);
@@ -40,6 +45,13 @@ class LeaveRequestController extends Controller
         }
 
         DB::transaction(function () use ($item, $data, $request) {
+            $before = [
+                'status' => $item->status,
+                'admin_remark' => $item->admin_remark,
+                'reviewed_by_user_id' => $item->reviewed_by_user_id,
+                'approved_timeoff_id' => $item->approved_timeoff_id,
+            ];
+
             if ($data['status'] === 'approved') {
                 $startAt = Carbon::parse($item->start_date)->startOfDay();
                 $endAt = Carbon::parse($item->end_date)->endOfDay();
@@ -59,6 +71,21 @@ class LeaveRequestController extends Controller
             $item->reviewed_by_user_id = $request->user()?->id;
             $item->reviewed_at = now();
             $item->save();
+
+            $this->leaveService->logAction(
+                (int) $item->staff_id,
+                (int) $item->id,
+                $data['status'] === 'approved' ? 'approved' : 'rejected',
+                $before,
+                [
+                    'status' => $item->status,
+                    'admin_remark' => $item->admin_remark,
+                    'reviewed_by_user_id' => $item->reviewed_by_user_id,
+                    'approved_timeoff_id' => $item->approved_timeoff_id,
+                ],
+                $item->admin_remark,
+                $request->user()?->id
+            );
         });
 
         return $this->respond($item->fresh(['staff:id,name', 'reviewer:id,name']));

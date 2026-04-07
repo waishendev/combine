@@ -7,6 +7,7 @@ use App\Models\Booking\BookingLeaveRequest;
 use App\Services\Booking\BookingLeaveService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MyLeaveController extends Controller
 {
@@ -78,15 +79,35 @@ class MyLeaveController extends Controller
             return $this->respondError('There is already an overlapping leave request.', 422);
         }
 
-        $created = BookingLeaveRequest::create([
-            'staff_id' => $staffId,
-            'leave_type' => $data['leave_type'],
-            'start_date' => $data['start_date'],
-            'end_date' => $data['end_date'],
-            'days' => $days,
-            'reason' => $data['reason'] ?? null,
-            'status' => 'pending',
-        ]);
+        $created = DB::transaction(function () use ($staffId, $data, $days, $request) {
+            $created = BookingLeaveRequest::create([
+                'staff_id' => $staffId,
+                'leave_type' => $data['leave_type'],
+                'start_date' => $data['start_date'],
+                'end_date' => $data['end_date'],
+                'days' => $days,
+                'reason' => $data['reason'] ?? null,
+                'status' => 'pending',
+            ]);
+
+            $this->leaveService->logAction(
+                $staffId,
+                (int) $created->id,
+                'created',
+                null,
+                [
+                    'status' => $created->status,
+                    'leave_type' => $created->leave_type,
+                    'start_date' => (string) $created->start_date,
+                    'end_date' => (string) $created->end_date,
+                    'days' => (float) $created->days,
+                ],
+                $created->reason,
+                $request->user()?->id
+            );
+
+            return $created;
+        });
 
         return $this->respond($created, null, true, 201);
     }
@@ -106,14 +127,34 @@ class MyLeaveController extends Controller
             return $this->respondError('Only pending or approved leave can be cancelled.', 422);
         }
 
-        if ($item->approvedTimeoff) {
-            $item->approvedTimeoff->delete();
-            $item->approved_timeoff_id = null;
-        }
+        DB::transaction(function () use ($item, $request) {
+            $before = [
+                'status' => $item->status,
+                'approved_timeoff_id' => $item->approved_timeoff_id,
+            ];
 
-        $item->status = 'cancelled';
-        $item->save();
+            if ($item->approvedTimeoff) {
+                $item->approvedTimeoff->delete();
+                $item->approved_timeoff_id = null;
+            }
 
-        return $this->respond($item);
+            $item->status = 'cancelled';
+            $item->save();
+
+            $this->leaveService->logAction(
+                (int) $item->staff_id,
+                (int) $item->id,
+                'cancelled',
+                $before,
+                [
+                    'status' => $item->status,
+                    'approved_timeoff_id' => $item->approved_timeoff_id,
+                ],
+                'Cancelled by staff.',
+                $request->user()?->id
+            );
+        });
+
+        return $this->respond($item->fresh());
     }
 }
