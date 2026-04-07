@@ -10,64 +10,42 @@ use App\Models\User;
 use App\Services\Booking\BookingLeaveService;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 class BookingLeaveTestingSeeder extends Seeder
 {
     public function run(): void
     {
-        $staffUsers = $this->seedStaffUsers();
+        $staffUsers = $this->resolveExistingStaffUsers();
+        if ($staffUsers === []) {
+            return;
+        }
+
         $this->seedBalances($staffUsers);
         $this->seedLeaveRequests($staffUsers);
     }
 
     /**
-     * @return array<int, array{staff:Staff,user:User}>
+     * @return array<int, array{staff:Staff,user:User|null}>
      */
-    private function seedStaffUsers(): array
+    private function resolveExistingStaffUsers(): array
     {
-        $profiles = [
-            ['code' => 'LM-STF-001', 'name' => 'Alicia Tan', 'email' => 'alicia.tan.leave@example.com', 'phone' => '60111234001', 'position' => 'Senior Stylist'],
-            ['code' => 'LM-STF-002', 'name' => 'Brandon Lee', 'email' => 'brandon.lee.leave@example.com', 'phone' => '60111234002', 'position' => 'Stylist'],
-            ['code' => 'LM-STF-003', 'name' => 'Carmen Lim', 'email' => 'carmen.lim.leave@example.com', 'phone' => '60111234003', 'position' => 'Nail Artist'],
-            ['code' => 'LM-STF-004', 'name' => 'Daniel Wong', 'email' => 'daniel.wong.leave@example.com', 'phone' => '60111234004', 'position' => 'Therapist'],
-        ];
+        $staffRows = Staff::query()
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->limit(5)
+            ->get();
 
-        $rows = [];
-        foreach ($profiles as $profile) {
-            $staff = Staff::query()->updateOrCreate(
-                ['code' => $profile['code']],
-                [
-                    'name' => $profile['name'],
-                    'email' => $profile['email'],
-                    'phone' => $profile['phone'],
-                    'position' => $profile['position'],
-                    'commission_rate' => 0,
-                    'service_commission_rate' => 0,
-                    'is_active' => true,
-                ]
-            );
-
-            $baseUsername = strtolower(str_replace(' ', '.', $profile['name']));
-            $user = User::query()->updateOrCreate(
-                ['email' => $profile['email']],
-                [
-                    'name' => $profile['name'],
-                    'username' => $baseUsername,
-                    'password' => Hash::make('Password123!'),
-                    'is_active' => true,
-                    'staff_id' => $staff->id,
-                ]
-            );
-
-            $rows[] = ['staff' => $staff, 'user' => $user];
-        }
-
-        return $rows;
+        return $staffRows
+            ->map(fn (Staff $staff) => [
+                'staff' => $staff,
+                'user' => User::query()->where('staff_id', $staff->id)->orderBy('id')->first(),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
-     * @param array<int, array{staff:Staff,user:User}> $staffUsers
+     * @param array<int, array{staff:Staff,user:User|null}> $staffUsers
      */
     private function seedBalances(array $staffUsers): void
     {
@@ -92,16 +70,17 @@ class BookingLeaveTestingSeeder extends Seeder
     }
 
     /**
-     * @param array<int, array{staff:Staff,user:User}> $staffUsers
+     * @param array<int, array{staff:Staff,user:User|null}> $staffUsers
      */
     private function seedLeaveRequests(array $staffUsers): void
     {
         $leaveService = app(BookingLeaveService::class);
         $today = Carbon::today();
+        $fallbackUserId = User::query()->orderBy('id')->value('id');
 
         foreach ($staffUsers as $index => $row) {
             $staffId = (int) $row['staff']->id;
-            $userId = (int) $row['user']->id;
+            $userId = $row['user']?->id ?? $fallbackUserId;
 
             $approvedStart = $today->copy()->subDays(14 + $index * 2)->toDateString();
             $approvedEnd = $today->copy()->subDays(13 + $index * 2)->toDateString();
