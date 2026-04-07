@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 type ReceiptItem = {
+  type?: string;
   sku?: string;
   name: string;
   variant_name?: string;
@@ -69,6 +70,12 @@ function formatDate(value?: string) {
   }).format(date);
 }
 
+function resolveItemLabel(item: ReceiptItem) {
+  const lineType = String(item.type ?? "").toLowerCase();
+  if (lineType === "booking_addon") return `Add-on - ${item.name}`;
+  return item.name;
+}
+
 export default async function PublicReceiptPage({ params }: Props) {
   const { token } = await params;
   const receipt = await getReceipt(token);
@@ -129,14 +136,14 @@ export default async function PublicReceiptPage({ params }: Props) {
             {receipt.items.map((item, index) => (
               <tr key={`${item.sku ?? item.name}-${index}`} className="border-t border-[var(--card-border)] text-sm">
                 <td className="px-4 py-3">
-                  <p className="font-semibold">{item.name}</p>
+                  <p className="font-semibold">{resolveItemLabel(item)}</p>
                   {item.sku ? <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku}</p> : null}
                   {item.variant_name ? (
                     <p className="text-xs text-[var(--foreground)]/70">Variant: {item.variant_name}</p>
                   ) : null}
                   {item.covered_by_package ? (
                     <>
-                      {/* <p className="text-xs font-semibold text-emerald-700">Covered by Package</p> */}
+                      <p className="text-xs font-semibold text-emerald-700">Covered by Package</p>
                       {item.package_applied_name ? (
                         <p className="text-xs text-emerald-700">Package Applied: {item.package_applied_name}</p>
                       ) : null}

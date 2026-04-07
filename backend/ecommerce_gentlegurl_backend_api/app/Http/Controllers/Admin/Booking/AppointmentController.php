@@ -44,7 +44,33 @@ class AppointmentController extends Controller
     public function show(int $id)
     {
         $booking = Booking::with(['service', 'staff', 'customer'])->findOrFail($id);
-        return $this->respond($booking);
+        $addonItems = $this->mapAddonItems($booking->addon_items_json);
+
+        return $this->respond(array_merge($booking->toArray(), [
+            'add_ons' => $addonItems,
+            'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
+            'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
+        ]));
+    }
+
+    private function mapAddonItems($rawItems): array
+    {
+        return collect(is_array($rawItems) ? $rawItems : [])
+            ->map(function ($item) {
+                if (!is_array($item)) {
+                    return null;
+                }
+
+                return [
+                    'id' => isset($item['id']) ? (int) $item['id'] : null,
+                    'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+                    'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
+                    'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 
     public function updateStatus(Request $request, int $id)

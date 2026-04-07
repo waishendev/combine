@@ -342,6 +342,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
     return { total, perItem };
   }, [cart?.deposit_total, cart?.items]);
+  const mainDepositTotal = Number.isFinite(Number(cart?.main_deposit_total))
+    ? Number(cart?.main_deposit_total ?? 0)
+    : (cart?.items ?? []).reduce((sum, item) => sum + Number(item.main_deposit_amount ?? 0), 0);
+  const addonDepositTotal = Number.isFinite(Number(cart?.addon_deposit_total))
+    ? Number(cart?.addon_deposit_total ?? 0)
+    : (cart?.items ?? []).reduce((sum, item) => sum + Number(item.addon_deposit_amount ?? 0), 0);
 
   return (
     <>
@@ -453,6 +459,20 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     ) : null}
                   </div>
 
+                  <div className="mt-2 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/40 p-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Deposit breakdown</p>
+                    <div className="mt-1 space-y-0.5 text-[11px]">
+                      <p className="flex items-center justify-between">
+                        <span className="text-[var(--text-muted)]">Main service deposit</span>
+                        <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {Number(item.main_deposit_amount ?? 0).toFixed(2)}</span>
+                      </p>
+                      <p className="flex items-center justify-between">
+                        <span className="text-[var(--text-muted)]">Add-on deposit</span>
+                        <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {Number(item.addon_deposit_amount ?? 0).toFixed(2)}</span>
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span
                       className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold tabular-nums ${
@@ -465,6 +485,21 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       {formatDuration(sec)} left
                     </span>
                   </div>
+                  {(item.selected_options?.length || 0) > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add-ons</p>
+                      {item.selected_options?.map((opt) => {
+                        const matchedAddon = (item.addon_deposit_items ?? []).find((addon) => Number(addon.id) === Number(opt.id));
+                        const addonDeposit = Number(matchedAddon?.deposit_contribution ?? 0);
+                        return (
+                          <div key={opt.id} className="rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1.5">
+                            <p className="text-[11px] font-medium text-[var(--foreground)]">{opt.label} <span className="text-[var(--text-muted)]">(Add-on)</span></p>
+                            <p className="text-[10px] text-[var(--text-muted)]">Deposit contribution: <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {addonDeposit.toFixed(2)}</span></p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
 
                   {isLoggedIn ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -755,8 +790,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
               <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Deposit</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {depositDisplay.total.toFixed(2)}</span>
+                  <span className="text-[var(--text-muted)]">Main service deposit</span>
+                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {mainDepositTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--text-muted)]">Add-on deposit</span>
+                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {addonDepositTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-muted)]">Packages</span>

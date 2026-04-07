@@ -48,6 +48,11 @@ function SlotPageContent() {
   const searchParams = useSearchParams();
   const serviceId = params.id;
   const staffId = searchParams.get("staff_id") || "";
+  const selectedOptionIdsParam = searchParams.get("selected_option_ids") || "";
+  const selectedOptionIds = useMemo(
+    () => selectedOptionIdsParam.split(",").map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0),
+    [selectedOptionIdsParam]
+  );
 
   const [date, setDate] = useState(todayInTimezone());
   const [slots, setSlots] = useState<BookingSlot[]>([]);
@@ -62,6 +67,10 @@ function SlotPageContent() {
     () => service?.staffs?.find((s) => String(s.id) === staffId),
     [service, staffId]
   );
+  const extraDuration = useMemo(
+    () => (service?.questions ?? []).flatMap((q) => q.options ?? []).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0),
+    [service?.questions, selectedOptionIds]
+  );
   const canLoad = Boolean(serviceId && staffId && date && selectedStaff);
 
   const loadSlots = useCallback(async () => {
@@ -71,7 +80,7 @@ function SlotPageContent() {
     setError(null);
 
     try {
-      const res = await getAvailability(serviceId, staffId, date);
+      const res = await getAvailability(serviceId, staffId, date, extraDuration);
       const payload = (res as AvailabilityPayload)?.data ?? (res as AvailabilityPayload);
       const visibleSlots = Array.isArray(payload?.visible_slots)
         ? payload.visible_slots
@@ -92,7 +101,7 @@ function SlotPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [canLoad, serviceId, staffId, date]);
+  }, [canLoad, serviceId, staffId, date, extraDuration]);
 
   useEffect(() => {
     const run = async () => {
@@ -247,6 +256,7 @@ function SlotPageContent() {
         service_id: Number(serviceId),
         staff_id: Number(staffId),
         start_at: slotStartAt,
+        selected_option_ids: selectedOptionIds,
       });
       setConfirmModal(null);
       const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
@@ -259,15 +269,16 @@ function SlotPageContent() {
     }
   };
 
-  const durationMin = service?.duration_minutes ?? 60;
+  const extraDurationMin = extraDuration;
+  const durationMin = (service?.duration_minutes ?? 60) + extraDurationMin;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 pb-28 sm:py-10 sm:pb-32">
-      <BookingProgress step={3} />
+      <BookingProgress step={5} />
 
       <div className="mb-6 sm:mb-8">
         <Link
-          href={`/booking/service/${serviceId}`}
+          href={`/booking/service/${serviceId}/staff?selected_option_ids=${selectedOptionIdsParam}`}
           className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-medium shadow-[var(--shadow)] transition-all hover:border-[var(--accent)] hover:shadow-md sm:px-5 sm:py-2.5"
         >
           <i className="fa-solid fa-arrow-left text-xs" />

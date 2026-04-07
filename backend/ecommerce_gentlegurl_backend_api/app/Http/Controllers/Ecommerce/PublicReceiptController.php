@@ -54,9 +54,8 @@ class PublicReceiptController extends Controller
         $canRenderServiceCoverageLines = $hasPackageCoverage;
         $isPackageCoveredReceipt = ! $hasDepositLine
             && ! $hasSettlementLine
-            && $mixedItems->isEmpty()
             && $hasPackageCoverage
-            && (float) ($order->grand_total ?? 0) <= 0.0001;
+            && $mixedItems->every(fn ($item) => in_array((string) ($item->line_type ?? ''), ['', 'booking_addon', 'service_package'], true));
 
         $packageOffset = $canRenderServiceCoverageLines
             ? (float) $packageCoveredServiceItems->sum(fn ($item) => (float) ($item->line_total ?? 0))
@@ -115,6 +114,9 @@ class PublicReceiptController extends Controller
                 }
                 if ($lineType === 'booking_settlement') {
                     return 'Final Settlement';
+                }
+                if ($lineType === 'booking_addon') {
+                    return $item->variant_name_snapshot ?: 'Booking Add-on Deposit';
                 }
                 return $item->variant_name_snapshot;
             })(),

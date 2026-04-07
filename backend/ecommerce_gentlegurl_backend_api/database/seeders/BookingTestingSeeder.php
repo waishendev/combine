@@ -35,6 +35,7 @@ class BookingTestingSeeder extends Seeder
         $services = $this->seedServices();
         $haircutService = $services['Haircut'];
         $this->seedServiceCategoriesAndPrimarySlots($services);
+        $this->seedServiceQuestionsAndOptions($services);
 
         $this->seedCommissionTiers();
         $this->seedServiceStaffMappings($services, [$staffOneId, $staffTwoId, $staffThreeId]);
@@ -63,6 +64,8 @@ class BookingTestingSeeder extends Seeder
             'booking_staff_schedules',
             'booking_service_staff',
             'booking_service_primary_slots',
+            'booking_service_question_options',
+            'booking_service_questions',
             'booking_service_category_service',
             'booking_service_categories',
             'booking_cart_items',
@@ -312,6 +315,77 @@ class BookingTestingSeeder extends Seeder
         }
 
         DB::table('booking_service_staff')->insert($rows);
+    }
+
+    private function seedServiceQuestionsAndOptions(array $services): void
+    {
+        if (!Schema::hasTable('booking_service_questions') || !Schema::hasTable('booking_service_question_options')) {
+            return;
+        }
+
+        $now = now();
+        $targetService = $services['Coloring'] ?? null;
+        if (! $targetService) {
+            return;
+        }
+
+        DB::table('booking_service_questions')
+            ->where('booking_service_id', $targetService->id)
+            ->delete();
+
+        $questionRows = [
+            [
+                'title' => 'Choose add-on design',
+                'description' => 'Optional artistry for this service.',
+                'question_type' => 'single_choice',
+                'sort_order' => 1,
+                'is_required' => false,
+                'is_active' => true,
+                'service_keys' => ['Treatment', 'Haircut'],
+            ],
+            [
+                'title' => 'Preparation add-ons',
+                'description' => 'Select one or more preparation options.',
+                'question_type' => 'multi_choice',
+                'sort_order' => 2,
+                'is_required' => false,
+                'is_active' => true,
+                'service_keys' => ['Haircut', 'Treatment'],
+            ],
+        ];
+
+        foreach ($questionRows as $row) {
+            $questionId = DB::table('booking_service_questions')->insertGetId([
+                'booking_service_id' => $targetService->id,
+                'title' => $row['title'],
+                'description' => $row['description'],
+                'question_type' => $row['question_type'],
+                'sort_order' => $row['sort_order'],
+                'is_required' => $row['is_required'],
+                'is_active' => $row['is_active'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            $selectedAddonServices = collect($row['service_keys'] ?? [])
+                ->map(fn ($serviceKey) => $services[$serviceKey] ?? null)
+                ->filter()
+                ->values();
+
+            foreach ($selectedAddonServices as $optionIndex => $addonService) {
+                DB::table('booking_service_question_options')->insert([
+                    'booking_service_question_id' => $questionId,
+                    'label' => (string) $addonService->name,
+                    'linked_booking_service_id' => (int) $addonService->id,
+                    'extra_duration_min' => max(0, (int) $addonService->duration_min),
+                    'extra_price' => max(0, (float) $addonService->service_price),
+                    'sort_order' => $optionIndex + 1,
+                    'is_active' => true,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+        }
     }
 
     private function seedSchedules(array $staffIds): void

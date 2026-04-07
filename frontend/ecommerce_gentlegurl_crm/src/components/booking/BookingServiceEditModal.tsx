@@ -6,6 +6,7 @@ import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceAllowedStaffPicker, {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
+import BookingServiceQuestionsBuilder, { emptyQuestion, emptyQuestionOption, type QuestionForm } from './BookingServiceQuestionsBuilder'
 import { mapBookingServiceApiItemToRow, type BookingServiceApiItem } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '../mediaAccept'
@@ -33,7 +34,9 @@ interface FormState {
   imageFile: File | null
   allowed_staff_ids: number[]
   primary_slots: string
+  questions: QuestionForm[]
 }
+type BookingServiceOption = { id: number; name: string; duration_min: number; service_price: number }
 
 const initialFormState: FormState = {
   name: '',
@@ -47,6 +50,7 @@ const initialFormState: FormState = {
   imageFile: null,
   allowed_staff_ids: [],
   primary_slots: '',
+  questions: [],
 }
 
 export default function BookingServiceEditModal({
@@ -62,6 +66,7 @@ export default function BookingServiceEditModal({
   const [loadedService, setLoadedService] = useState<BookingServiceRowData | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [staffOptions, setStaffOptions] = useState<BookingStaffOption[]>([])
+  const [bookingServiceOptions, setBookingServiceOptions] = useState<BookingServiceOption[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
@@ -129,6 +134,45 @@ export default function BookingServiceEditModal({
           primary_slots: Array.isArray((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots)
             ? ((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
             : '',
+          questions: Array.isArray((service as { questions?: unknown[] }).questions)
+            ? ((service as {
+                questions?: Array<{
+                  id?: number
+                  title?: string
+                  description?: string | null
+                  question_type?: 'single_choice' | 'multi_choice'
+                  sort_order?: number
+                  is_required?: boolean
+                  is_active?: boolean
+                  options?: Array<{
+                    id?: number
+                    label?: string
+                    linked_booking_service_id?: number | null
+                    extra_duration_min?: number
+                    extra_price?: number
+                    sort_order?: number
+                    is_active?: boolean
+                  }>
+                }>
+              }).questions ?? []).map((question, questionIndex) => ({
+                id: question?.id,
+                title: question?.title ?? '',
+                description: question?.description ?? '',
+                question_type: question?.question_type === 'multi_choice' ? 'multi_choice' : 'single_choice',
+                sort_order: String(question?.sort_order ?? questionIndex),
+                is_required: Boolean(question?.is_required),
+                is_active: question?.is_active !== false,
+                options: Array.isArray(question?.options) && question.options.length > 0
+                  ? question.options.map((option, optionIndex) => ({
+                    id: option?.id,
+                    label: option?.label ?? '',
+                    linked_booking_service_id: option?.linked_booking_service_id ? String(option?.linked_booking_service_id) : '',
+                    sort_order: String(option?.sort_order ?? optionIndex),
+                    is_active: option?.is_active !== false,
+                  }))
+                  : [emptyQuestionOption()],
+              }))
+            : [],
           allowed_staff_ids: Array.isArray((service as { allowed_staff_ids?: unknown }).allowed_staff_ids)
             ? ((service as { allowed_staff_ids?: unknown[] }).allowed_staff_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
             : Array.isArray((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs)
@@ -198,10 +242,57 @@ export default function BookingServiceEditModal({
     return () => { ignore = true }
   }, [])
 
+  useEffect(() => {
+    let ignore = false
+
+    const loadBookingServices = async () => {
+      try {
+        const res = await fetch('/api/proxy/admin/booking/services?per_page=200', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!ignore) setBookingServiceOptions([])
+          return
+        }
+        const json = await res.json().catch(() => null)
+        const payload = (json && typeof json === 'object' && 'data' in json)
+          ? (json as { data?: { data?: unknown[] } | unknown[] }).data
+          : null
+        const rows = Array.isArray((payload as { data?: unknown[] } | null)?.data)
+          ? ((payload as { data?: unknown[] }).data ?? [])
+          : Array.isArray(payload)
+            ? payload
+            : []
+
+        const mapped = rows
+          .map((row): BookingServiceOption | null => {
+            if (!row || typeof row !== 'object') return null
+            const maybe = row as Record<string, unknown>
+            const id = Number(maybe.id)
+            const name = String(maybe.name ?? '').trim()
+            if (!id || !name) return null
+            return {
+              id,
+              name,
+              duration_min: Math.max(0, Number(maybe.duration_min ?? 0)),
+              service_price: Math.max(0, Number(maybe.service_price ?? 0)),
+            }
+          })
+          .filter((row): row is BookingServiceOption => Boolean(row))
+          .filter((row) => row.id !== serviceId)
+
+        if (!ignore) setBookingServiceOptions(mapped)
+      } catch {
+        if (!ignore) setBookingServiceOptions([])
+      }
+    }
+
+    void loadBookingServices()
+    return () => { ignore = true }
+  }, [serviceId])
+
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
-    const { name, value, type } = event.target
+    const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -265,6 +356,13 @@ export default function BookingServiceEditModal({
       setError('Please assign at least 1 allowed staff')
       return
     }
+    const missingLinkedService = form.questions.some((question) =>
+      question.options.some((option) => !option.linked_booking_service_id.trim()),
+    )
+    if (missingLinkedService) {
+      setError('Each add-on option must select a linked booking service')
+      return
+    }
 
     setSubmitting(true)
     setError(null)
@@ -282,6 +380,20 @@ export default function BookingServiceEditModal({
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
+      form.questions.forEach((question, questionIndex) => {
+        fd.append(`questions[${questionIndex}][title]`, question.title.trim())
+        fd.append(`questions[${questionIndex}][description]`, question.description.trim())
+        fd.append(`questions[${questionIndex}][question_type]`, question.question_type)
+        fd.append(`questions[${questionIndex}][sort_order]`, String(Number(question.sort_order || questionIndex)))
+        fd.append(`questions[${questionIndex}][is_required]`, question.is_required ? '1' : '0')
+        fd.append(`questions[${questionIndex}][is_active]`, question.is_active ? '1' : '0')
+        question.options.forEach((option, optionIndex) => {
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][label]`, option.label.trim())
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][linked_booking_service_id]`, option.linked_booking_service_id.trim())
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(Number(option.sort_order || optionIndex)))
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')
+        })
+      })
       if (form.imageFile) {
         fd.append('image', form.imageFile)
       }
@@ -616,6 +728,22 @@ export default function BookingServiceEditModal({
                     disabled={disableForm}
                   />
                 </div>
+                <BookingServiceQuestionsBuilder
+                  value={form.questions}
+                  onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+                  bookingServiceOptions={bookingServiceOptions}
+                  disabled={disableForm}
+                />
+                {form.questions.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, questions: [emptyQuestion()] }))}
+                    disabled={disableForm}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Add first question
+                  </button>
+                ) : null}
 
                 <div>
                   <label

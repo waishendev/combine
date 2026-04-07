@@ -20,6 +20,15 @@ function formatDate(value?: string | null) {
   }).format(date);
 }
 
+function resolveLineLabel(item: NonNullable<PublicAccountOrder["items"]>[number]) {
+  const lineType = String(item.line_type ?? "").toLowerCase();
+  if (lineType === "booking_addon") return `Booking Add-on Deposit - ${item.name || "Add-on"}`;
+  if (lineType === "booking_deposit") return item.name || "Booking Deposit";
+  if (lineType === "booking_settlement") return item.name || "Final Settlement";
+  if (lineType === "service_package") return item.name || "Service Package";
+  return item.name || "Item";
+}
+
 export default function BookingAccountOrdersPage() {
   const [orders, setOrders] = useState<PublicAccountOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,7 +184,10 @@ export default function BookingAccountOrdersPage() {
                             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                           >
                             <div>
-                              <p className="text-sm font-semibold text-[var(--foreground)]">{item.name || "Item"}</p>
+                              <p className="text-sm font-semibold text-[var(--foreground)]">{resolveLineLabel(item)}</p>
+                              {item.line_type === "service" ? (
+                                <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
+                              ) : null}
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
                             </div>
                             <p className="text-sm font-semibold text-[var(--foreground)]">{money(item.line_total)}</p>

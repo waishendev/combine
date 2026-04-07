@@ -27,6 +27,7 @@ class ServicePackageTestingSeeder extends Seeder
 
         $this->seedStaffServiceCommissionRates();
         $packageIds = $this->seedServicePackages($serviceIds);
+        $this->seedServiceQuestionsAndOptions($serviceIds);
         $this->seedCustomerOwnershipAndBalances($customerId, $packageIds);
 
         $this->command?->info('Service package testing data seeded successfully.');
@@ -203,6 +204,64 @@ class ServicePackageTestingSeeder extends Seeder
                 'service_commission_rate' => 0.10,
                 'updated_at' => now(),
             ]);
+    }
+
+    /**
+     * @param int[] $serviceIds
+     */
+    private function seedServiceQuestionsAndOptions(array $serviceIds): void
+    {
+        if (!Schema::hasTable('booking_service_questions') || !Schema::hasTable('booking_service_question_options')) {
+            return;
+        }
+
+        $serviceId = (int) ($serviceIds[0] ?? 0);
+        if ($serviceId <= 0) {
+            return;
+        }
+
+        $now = now();
+
+        DB::table('booking_service_questions')
+            ->where('booking_service_id', $serviceId)
+            ->delete();
+
+        $questionId = DB::table('booking_service_questions')->insertGetId([
+            'booking_service_id' => $serviceId,
+            'title' => 'Package QA Add-ons',
+            'description' => 'Use this to verify package covers main service only, while add-ons remain chargeable.',
+            'question_type' => 'multi_choice',
+            'sort_order' => 1,
+            'is_required' => false,
+            'is_active' => true,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $addonServices = DB::table('booking_services')
+            ->where('id', '!=', $serviceId)
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->limit(2)
+            ->get(['id', 'name', 'duration_min', 'service_price']);
+
+        if ($addonServices->isEmpty()) {
+            return;
+        }
+
+        foreach ($addonServices as $index => $addonService) {
+            DB::table('booking_service_question_options')->insert([
+                'booking_service_question_id' => $questionId,
+                'label' => (string) ($addonService->name ?? ('Package QA Add-on ' . ($index + 1))),
+                'linked_booking_service_id' => (int) $addonService->id,
+                'extra_duration_min' => max(0, (int) ($addonService->duration_min ?? 0)),
+                'extra_price' => max(0, (float) ($addonService->service_price ?? 0)),
+                'sort_order' => $index + 1,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
     }
 
     /**

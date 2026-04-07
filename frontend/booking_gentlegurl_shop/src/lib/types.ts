@@ -22,6 +22,26 @@ export type Service = {
   image_path?: string | null;
   image_url?: string | null;
   primary_slots?: Array<{ id: number; start_time: string; sort_order: number; is_active: boolean }>;
+  questions?: BookingServiceQuestion[];
+};
+export type BookingServiceQuestion = {
+  id: number;
+  title: string;
+  description?: string | null;
+  question_type: "single_choice" | "multi_choice";
+  is_required: boolean;
+  sort_order: number;
+  options: BookingServiceQuestionOption[];
+};
+
+export type BookingServiceQuestionOption = {
+  id: number;
+  label: string;
+  linked_booking_service_id?: number | null;
+  extra_duration_min: number;
+  extra_price: number;
+  sort_order: number;
+  is_active: boolean;
 };
 
 export type Staff = {
@@ -58,9 +78,19 @@ export type BookingCartItem = {
   service_type: "premium" | "standard";
   start_at: string;
   end_at: string;
+  addon_duration_min?: number;
+  addon_price?: number;
+  selected_options?: BookingServiceQuestionOption[];
   expires_at: string;
   status: string;
   deposit_amount?: number | null;
+  main_deposit_amount?: number | null;
+  addon_deposit_amount?: number | null;
+  addon_deposit_items?: Array<{
+    id?: number | null;
+    label: string;
+    deposit_contribution: number;
+  }>;
   package_claim_status?: "reserved" | "consumed" | "released" | null;
 };
 
@@ -70,6 +100,9 @@ export type BookingCart = {
   items: BookingCartItem[];
   package_items: BookingCartPackageItem[];
   deposit_total: number;
+  main_deposit_total?: number;
+  addon_deposit_total?: number;
+  addon_total?: number;
   package_total: number;
   cart_total: number;
   next_expiry_at: string | null;
@@ -90,6 +123,14 @@ export type BookingRecord = {
   booking_code?: string | null;
   status: string;
   service_name: string;
+  add_ons?: Array<{
+    id?: number | null;
+    name: string;
+    extra_duration_min: number;
+    extra_price: number;
+  }>;
+  addon_total_duration_min?: number;
+  addon_total_price?: number;
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;

@@ -132,9 +132,16 @@ export async function getBookingServiceDetail(id: string) {
   return unwrapData<Service & { staffs?: Staff[] }>(response);
 }
 
-export async function getAvailability(serviceId: string, staffId: string, date: string) {
+export async function getAvailability(serviceId: string, staffId: string, date: string, extraDurationMin?: number) {
+  const qs = new URLSearchParams();
+  qs.set("service_id", serviceId);
+  qs.set("staff_id", staffId);
+  qs.set("date", date);
+  if (typeof extraDurationMin === "number" && extraDurationMin > 0) {
+    qs.set("extra_duration_min", String(extraDurationMin));
+  }
   return request<{ success?: boolean; message?: string; data?: { slots?: BookingSlot[] } }>(
-    `/booking/availability?service_id=${serviceId}&staff_id=${staffId}&date=${date}`,
+    `/booking/availability?${qs.toString()}`,
   );
 }
 
@@ -142,6 +149,7 @@ export async function addCartItem(payload: {
   service_id: number;
   staff_id: number;
   start_at: string;
+  selected_option_ids?: number[];
 }) {
   const response = await request<{ data: BookingCart } | BookingCart>("/booking/cart/add", {
     method: "POST",

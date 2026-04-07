@@ -87,6 +87,9 @@ class MyBookingController extends Controller
                     return null;
                 })(),
                 'service_name' => $booking->service?->name,
+                'add_ons' => $addonItems = $this->mapAddonItems($booking->addon_items_json),
+                'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
+                'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
                 'staff_name' => $booking->staff?->name,
                 'service' => $booking->service ? [
                     'id' => (int) $booking->service->id,
@@ -125,6 +128,26 @@ class MyBookingController extends Controller
         })->values();
 
         return $this->respond($payload);
+    }
+
+    private function mapAddonItems($rawItems): array
+    {
+        return collect(is_array($rawItems) ? $rawItems : [])
+            ->map(function ($item) {
+                if (!is_array($item)) {
+                    return null;
+                }
+
+                return [
+                    'id' => isset($item['id']) ? (int) $item['id'] : null,
+                    'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+                    'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
+                    'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 
     private function resolveBookingReceipts(int $bookingId): array

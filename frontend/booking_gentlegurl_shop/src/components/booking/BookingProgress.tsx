@@ -1,5 +1,5 @@
 export function BookingProgress({ step }: { step: number }) {
-  const steps = ["SERVICE", "STYLIST", "DATE & TIME"];
+  const steps = ["CATEGORY", "SERVICE", "ADD-ONS", "STYLIST", "DATE & TIME", "CHECKOUT"];
   const activeStep = Math.min(Math.max(step, 1), steps.length);
 
   return (
