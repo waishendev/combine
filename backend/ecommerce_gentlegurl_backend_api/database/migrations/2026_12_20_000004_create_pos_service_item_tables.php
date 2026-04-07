@@ -16,6 +16,10 @@ return new class extends Migration {
             $table->unsignedInteger('qty')->default(1);
             $table->foreignId('assigned_staff_id')->nullable()->constrained('staffs')->nullOnDelete();
             $table->decimal('commission_rate_used', 6, 4)->default(0);
+            $table->unsignedInteger('addon_duration_min')->default(0);
+            $table->decimal('addon_price', 12, 2)->default(0);
+            $table->json('selected_option_ids')->nullable();
+            $table->json('addon_items_json')->nullable();
             $table->timestamps();
         });
 
