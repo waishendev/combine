@@ -322,7 +322,10 @@ class PosController extends Controller
             return $this->respondError(__('Payment amount must be greater than 0.'), 422);
         }
 
-        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated) {
+        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary) {
+            $serviceBalanceDue = max(0, (float) ($summary['service_balance_due'] ?? 0));
+            $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
+
             $order = Order::query()->create([
                 'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                 'customer_id' => (int) $booking->customer_id,
@@ -342,22 +345,45 @@ class PosController extends Controller
                 'notes' => 'POS appointment settlement by staff #' . $request->user()->id . ' | booking_id=' . $booking->id,
             ]);
 
-            OrderItem::query()->create([
-                'order_id' => (int) $order->id,
-                'line_type' => 'booking_settlement',
-                'product_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
-                'display_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
-                'quantity' => 1,
-                'price_snapshot' => $amount,
-                'unit_price_snapshot' => $amount,
-                'line_total' => $amount,
-                'line_total_snapshot' => $amount,
-                'effective_unit_price' => $amount,
-                'effective_line_total' => $amount,
-                'locked' => true,
-                'booking_id' => (int) $booking->id,
-                'booking_service_id' => (int) $booking->service_id,
-            ]);
+            if ($serviceBalanceDue > 0) {
+                OrderItem::query()->create([
+                    'order_id' => (int) $order->id,
+                    'line_type' => 'booking_settlement',
+                    'product_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                    'display_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                    'quantity' => 1,
+                    'price_snapshot' => $serviceBalanceDue,
+                    'unit_price_snapshot' => $serviceBalanceDue,
+                    'line_total' => $serviceBalanceDue,
+                    'line_total_snapshot' => $serviceBalanceDue,
+                    'effective_unit_price' => $serviceBalanceDue,
+                    'effective_line_total' => $serviceBalanceDue,
+                    'locked' => true,
+                    'booking_id' => (int) $booking->id,
+                    'booking_service_id' => (int) $booking->service_id,
+                ]);
+            }
+
+            foreach ($addonSettlementItems as $addon) {
+                $addonAmount = max(0, (float) ($addon['balance_due'] ?? 0));
+                OrderItem::query()->create([
+                    'order_id' => (int) $order->id,
+                    'line_type' => 'booking_addon',
+                    'product_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
+                    'display_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
+                    'variant_name_snapshot' => 'Booking Add-on Settlement',
+                    'quantity' => 1,
+                    'price_snapshot' => $addonAmount,
+                    'unit_price_snapshot' => $addonAmount,
+                    'line_total' => $addonAmount,
+                    'line_total_snapshot' => $addonAmount,
+                    'effective_unit_price' => $addonAmount,
+                    'effective_line_total' => $addonAmount,
+                    'locked' => true,
+                    'booking_id' => (int) $booking->id,
+                    'booking_service_id' => (int) $booking->service_id,
+                ]);
+            }
 
             $receipt = $this->buildReceiptUrl($order, $request);
             return [$order, $receipt];
@@ -1722,6 +1748,7 @@ class PosController extends Controller
                         'line_total_snapshot' => $addonDepositAmount,
                         'effective_unit_price' => $addonDepositAmount,
                         'effective_line_total' => $addonDepositAmount,
+                        'variant_name_snapshot' => 'Booking Add-on Deposit',
                         'locked' => true,
                         'booking_id' => $booking->id,
                         'booking_service_id' => $serviceItem->booking_service_id,
@@ -2537,7 +2564,9 @@ class PosController extends Controller
                 'stage_label' => match ((string) ($item->line_type ?? '')) {
                     'booking_deposit' => 'Booking Deposit Receipt',
                     'booking_settlement' => 'Final Settlement Receipt',
-                    'booking_addon' => 'Booking Add-on Deposit Receipt',
+                    'booking_addon' => strcasecmp((string) ($item->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0
+                        ? 'Booking Add-on Settlement Receipt'
+                        : 'Booking Add-on Deposit Receipt',
                     default => 'Receipt',
                 },
                 'amount' => (float) ($item->line_total ?? 0),
@@ -2573,6 +2602,30 @@ class PosController extends Controller
         ])->values();
         $addonTotalDurationMin = (int) $addonItems->sum('extra_duration_min');
         $addonTotalPrice = round((float) ($booking->addon_price ?? $addonItems->sum('extra_price')), 2);
+        $addonPaidRows = OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_addon')
+            ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total', 'variant_name_snapshot']);
+        $addonPaidByName = $addonPaidRows
+            ->groupBy(fn (OrderItem $row) => (string) ($row->display_name_snapshot ?: $row->product_name_snapshot ?: 'Add-on'))
+            ->map(fn ($rows) => (float) $rows->sum(fn ($row) => (float) ($row->line_total ?? 0)));
+        $usedPaidByName = [];
+        $addonSettlementItems = $addonItems->map(function (array $addon) use ($addonPaidByName, &$usedPaidByName) {
+            $name = (string) ($addon['name'] ?? 'Add-on');
+            $totalPaidForName = (float) ($addonPaidByName->get($name) ?? 0);
+            $alreadyUsed = (float) ($usedPaidByName[$name] ?? 0);
+            $availablePaid = max(0, $totalPaidForName - $alreadyUsed);
+            $extraPrice = max(0, (float) ($addon['extra_price'] ?? 0));
+            $paidApplied = min($extraPrice, $availablePaid);
+            $usedPaidByName[$name] = $alreadyUsed + $paidApplied;
+            $balanceDue = max(0, $extraPrice - $paidApplied);
+
+            return [
+                ...$addon,
+                'paid_amount' => round($paidApplied, 2),
+                'balance_due' => round($balanceDue, 2),
+            ];
+        })->values();
         $actualAppointmentDepositCollected = (float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_deposit')
@@ -2653,14 +2706,14 @@ class PosController extends Controller
             $depositPaid = (int) $booking->id === $firstStandardBookingId ? $linkedBookingDeposit : 0.0;
         }
 
-        $settlementPaid = (float) OrderItem::query()
+        $serviceSettlementPaid = (float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_settlement')
             ->sum('line_total');
-        $addonPaid = (float) OrderItem::query()
-            ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_addon')
-            ->sum('line_total');
+        $addonPaid = (float) $addonSettlementItems->sum('paid_amount');
+        $addonPaidSettlement = (float) $addonPaidRows
+            ->filter(fn (OrderItem $row) => strcasecmp((string) ($row->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0)
+            ->sum(fn (OrderItem $row) => (float) ($row->line_total ?? 0));
 
         $packageUsage = CustomerServicePackageUsage::query()
             ->where('booking_id', (int) $booking->id)
@@ -2682,14 +2735,14 @@ class PosController extends Controller
         $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
         $packageOffset = $coveredByPackage ? $serviceTotal : 0.0;
         $serviceOutstandingBeforeSettlement = max(0, $serviceTotal - $depositPaid - $packageOffset);
-        $serviceBalanceDue = max(0, $serviceOutstandingBeforeSettlement - $settlementPaid);
-        $addonPaidSettlement = max(0, min($addonTotalPrice - $addonPaid, $settlementPaid - $serviceOutstandingBeforeSettlement));
-        $addonBalanceDue = max(0, $addonTotalPrice - $addonPaid - $addonPaidSettlement);
+        $serviceBalanceDue = max(0, $serviceOutstandingBeforeSettlement - $serviceSettlementPaid);
+        $addonBalanceDue = round((float) $addonSettlementItems->sum('balance_due'), 2);
         $balanceDue = max(0, $serviceBalanceDue + $addonBalanceDue);
 
         return [
             'service_total' => round($serviceTotal, 2),
             'add_ons' => $addonItems->all(),
+            'addon_settlement_items' => $addonSettlementItems->all(),
             'addon_total_duration_min' => $addonTotalDurationMin,
             'addon_total_price' => round($addonTotalPrice, 2),
             'deposit_contribution' => round($depositPaid, 2),
@@ -2699,7 +2752,7 @@ class PosController extends Controller
             'deposit_previously_collected' => $actualAppointmentDepositCollected > 0.0001,
             'deposit_previously_collected_amount' => round($actualAppointmentDepositCollected, 2),
             'package_offset' => round($packageOffset, 2),
-            'settlement_paid' => round($settlementPaid, 2),
+            'settlement_paid' => round($serviceSettlementPaid + $addonPaidSettlement, 2),
             'addon_paid_online' => round($addonPaid, 2),
             'addon_paid_settlement' => round($addonPaidSettlement, 2),
             'addon_balance_due' => round($addonBalanceDue, 2),

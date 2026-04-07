@@ -422,6 +422,7 @@ class CartController extends Controller
                             'line_total_snapshot' => $addonDepositAmount,
                             'effective_unit_price' => $addonDepositAmount,
                             'effective_line_total' => $addonDepositAmount,
+                            'variant_name_snapshot' => 'Booking Add-on Deposit',
                             'locked' => true,
                             'booking_id' => (int) $booking->id,
                             'booking_service_id' => (int) $item->service_id,
