@@ -1509,6 +1509,9 @@ class PosController extends Controller
             $depositByServiceItemId = collect($depositBreakdown['deposit_by_service_item'] ?? [])
                 ->mapWithKeys(fn ($amount, $id) => [(int) $id => (float) $amount])
                 ->all();
+            $depositAddonByServiceItemId = collect($depositBreakdown['deposit_by_service_item_addons'] ?? [])
+                ->mapWithKeys(fn ($rows, $id) => [(int) $id => is_array($rows) ? $rows : []])
+                ->all();
 
             foreach ($cart->items as $item) {
                 $variant = $item->variant;
@@ -1697,6 +1700,28 @@ class PosController extends Controller
                         'line_total_snapshot' => $depositContribution,
                         'effective_unit_price' => $depositContribution,
                         'effective_line_total' => $depositContribution,
+                        'locked' => true,
+                        'booking_id' => $booking->id,
+                        'booking_service_id' => $serviceItem->booking_service_id,
+                    ]);
+                }
+
+                foreach (($depositAddonByServiceItemId[(int) $serviceItem->id] ?? []) as $addonRow) {
+                    $addonDepositAmount = (float) ($addonRow['deposit_contribution'] ?? 0);
+                    $addonName = (string) ($addonRow['name'] ?? $addonRow['label'] ?? 'Add-on');
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'line_type' => 'booking_addon',
+                        'product_id' => null,
+                        'product_name_snapshot' => $addonName,
+                        'display_name_snapshot' => $addonName,
+                        'quantity' => 1,
+                        'price_snapshot' => $addonDepositAmount,
+                        'unit_price_snapshot' => $addonDepositAmount,
+                        'line_total' => $addonDepositAmount,
+                        'line_total_snapshot' => $addonDepositAmount,
+                        'effective_unit_price' => $addonDepositAmount,
+                        'effective_line_total' => $addonDepositAmount,
                         'locked' => true,
                         'booking_id' => $booking->id,
                         'booking_service_id' => $serviceItem->booking_service_id,
@@ -2119,11 +2144,20 @@ class PosController extends Controller
         $standardBaseAmount = 0.0;
         $standardBaseAppliedItemId = null;
         $depositByServiceItem = [];
+        $depositByServiceItemAddons = [];
         $candidates = [];
 
         foreach ($cart->serviceItems as $item) {
             $itemId = (int) $item->id;
             $depositByServiceItem[$itemId] = 0.0;
+            $depositByServiceItemAddons[$itemId] = collect((array) ($item->addon_items_json ?? []))
+                ->map(fn ($addon) => [
+                    'id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                    'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                    'deposit_contribution' => 0.0,
+                ])
+                ->values()
+                ->all();
             $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
             if (in_array($claimStatus, ['reserved', 'consumed'], true)) {
                 continue;
@@ -2139,7 +2173,13 @@ class PosController extends Controller
                     continue;
                 }
                 $addonDeposit = max(0, (float) ($addon['linked_deposit_amount'] ?? 0));
-                $candidates[] = ['service_item_id' => $itemId, 'type' => $addonType, 'deposit_amount' => $addonDeposit];
+                $candidates[] = [
+                    'service_item_id' => $itemId,
+                    'type' => $addonType,
+                    'deposit_amount' => $addonDeposit,
+                    'scope' => 'addon',
+                    'addon_id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                ];
             }
         }
 
@@ -2152,7 +2192,17 @@ class PosController extends Controller
                 if ($itemId <= 0) {
                     continue;
                 }
-                $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + (float) ($row['deposit_amount'] ?? 0), 2);
+                $depositAmount = (float) ($row['deposit_amount'] ?? 0);
+                $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + $depositAmount, 2);
+                if (($row['scope'] ?? 'main') === 'addon') {
+                    foreach ($depositByServiceItemAddons[$itemId] as &$addonRow) {
+                        if ((int) ($addonRow['id'] ?? 0) === (int) ($row['addon_id'] ?? 0)) {
+                            $addonRow['deposit_contribution'] = round($depositAmount, 2);
+                            break;
+                        }
+                    }
+                    unset($addonRow);
+                }
             }
         } else {
             $standardCandidates = collect($candidates)->filter(fn (array $row) => ($row['type'] ?? '') !== 'PREMIUM')->values();
@@ -2163,6 +2213,15 @@ class PosController extends Controller
                 $standardBaseAppliedItemId = (int) ($selectedStandard['service_item_id'] ?? 0) ?: null;
                 if ($standardBaseAppliedItemId) {
                     $depositByServiceItem[$standardBaseAppliedItemId] = round($standardBaseAmount, 2);
+                    if (($selectedStandard['scope'] ?? 'main') === 'addon') {
+                        foreach ($depositByServiceItemAddons[$standardBaseAppliedItemId] as &$addonRow) {
+                            if ((int) ($addonRow['id'] ?? 0) === (int) ($selectedStandard['addon_id'] ?? 0)) {
+                                $addonRow['deposit_contribution'] = round($standardBaseAmount, 2);
+                                break;
+                            }
+                        }
+                        unset($addonRow);
+                    }
                 }
             }
         }
@@ -2178,6 +2237,7 @@ class PosController extends Controller
             'standard_base_applied_item_id' => $standardBaseAppliedItemId,
             'deposit_total' => (float) $depositTotal,
             'deposit_by_service_item' => $depositByServiceItem,
+            'deposit_by_service_item_addons' => $depositByServiceItemAddons,
         ];
     }
 

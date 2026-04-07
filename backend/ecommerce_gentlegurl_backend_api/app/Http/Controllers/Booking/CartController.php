@@ -409,9 +409,6 @@ class CartController extends Controller
                 if ($order) {
                     foreach ($addonDepositItems as $addonDepositItem) {
                         $addonDepositAmount = (float) ($addonDepositItem['deposit_contribution'] ?? 0);
-                        if ($addonDepositAmount <= 0) {
-                            continue;
-                        }
                         $addonLabel = (string) ($addonDepositItem['label'] ?? 'Add-on');
                         OrderItem::query()->create([
                             'order_id' => (int) $order->id,
@@ -744,6 +741,11 @@ class CartController extends Controller
                     'option_id' => isset($selectedOption['id']) ? (int) $selectedOption['id'] : null,
                     'label' => (string) ($selectedOption['label'] ?? 'Add-on'),
                 ];
+                $addonDepositItems[$itemId][] = [
+                    'id' => isset($selectedOption['id']) ? (int) $selectedOption['id'] : null,
+                    'label' => (string) ($selectedOption['label'] ?? 'Add-on'),
+                    'deposit_contribution' => 0.0,
+                ];
             }
         }
 
@@ -755,11 +757,13 @@ class CartController extends Controller
                 $result[$itemId] += $deposit;
                 if (($row['scope'] ?? 'main') === 'addon') {
                     $addonResult[$itemId] += $deposit;
-                    $addonDepositItems[$itemId][] = [
-                        'id' => $row['option_id'] ?? null,
-                        'label' => (string) ($row['label'] ?? 'Add-on'),
-                        'deposit_contribution' => round($deposit, 2),
-                    ];
+                    foreach ($addonDepositItems[$itemId] as &$addonRow) {
+                        if ((int) ($addonRow['id'] ?? 0) === (int) ($row['option_id'] ?? 0)) {
+                            $addonRow['deposit_contribution'] = round($deposit, 2);
+                            break;
+                        }
+                    }
+                    unset($addonRow);
                 } else {
                     $mainResult[$itemId] += $deposit;
                 }
@@ -773,11 +777,13 @@ class CartController extends Controller
                 $result[$appliedItemId] = $appliedAmount;
                 if (($applied['scope'] ?? 'main') === 'addon') {
                     $addonResult[$appliedItemId] = $appliedAmount;
-                    $addonDepositItems[$appliedItemId][] = [
-                        'id' => $applied['option_id'] ?? null,
-                        'label' => (string) ($applied['label'] ?? 'Add-on'),
-                        'deposit_contribution' => round($appliedAmount, 2),
-                    ];
+                    foreach ($addonDepositItems[$appliedItemId] as &$addonRow) {
+                        if ((int) ($addonRow['id'] ?? 0) === (int) ($applied['option_id'] ?? 0)) {
+                            $addonRow['deposit_contribution'] = round($appliedAmount, 2);
+                            break;
+                        }
+                    }
+                    unset($addonRow);
                 } else {
                     $mainResult[$appliedItemId] = $appliedAmount;
                 }
