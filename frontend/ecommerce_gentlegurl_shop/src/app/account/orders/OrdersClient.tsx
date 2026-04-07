@@ -31,7 +31,7 @@ type CompleteModalState = {
 
 const resolveOrderItemLabel = (item: OrderItemSummary) => {
   const lineType = String(item.line_type ?? "").toLowerCase();
-  if (lineType === "booking_addon") return `Add-on - ${item.name || "Add-on"}`;
+  if (lineType === "booking_addon") return `Booking Add-on Deposit - ${item.name || "Add-on"}`;
   if (lineType === "booking_deposit") return item.name || "Booking Deposit";
   if (lineType === "booking_settlement") return item.name || "Final Settlement";
   if (lineType === "service_package") return item.name || "Service Package";
