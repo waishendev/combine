@@ -20,7 +20,7 @@ class BillplzService
      *
      * @return array<string, mixed>
      */
-    public function createBill(Order $order, string $type = WorkspaceType::ECOMMERCE): array
+    public function createBill(Order $order, string $type = WorkspaceType::ECOMMERCE, ?string $selectedGatewayCode = null, array $extraPayload = []): array
     {
         $config = $this->configResolver->resolve($type, $order->payment_method ?: 'billplz_fpx');
         $apiKey = $config['api_key'];
@@ -62,6 +62,14 @@ class BillplzService
             'reference_1_label' => 'OrderNo',
             'reference_1' => $order->order_number,
         ], fn($value) => $value !== null && $value !== '');
+
+        if ($selectedGatewayCode) {
+            $payload['payment_channel'] = $selectedGatewayCode;
+        }
+
+        if (! empty($extraPayload)) {
+            $payload = array_merge($payload, $extraPayload);
+        }
 
         $response = Http::asForm()
             ->withBasicAuth($apiKey, '')

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Booking;
 
 use App\Http\Controllers\Controller;
+use App\Models\BillplzPaymentGatewayOption;
 use App\Models\BankAccount;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
@@ -25,8 +26,9 @@ class PaymentController extends Controller
     {
         $type = WorkspaceType::fromRequest($request, WorkspaceType::BOOKING);
         $validated = $request->validate([
-            'payment_method' => ['nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card'],
+            'payment_method' => ['nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card'],
             'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
+            'billplz_gateway_option_id' => ['nullable', 'integer', 'exists:billplz_payment_gateway_options,id'],
         ]);
 
         $booking = Booking::with('customer')->findOrFail($id);
@@ -36,7 +38,14 @@ class PaymentController extends Controller
             return $this->respondError('Only HOLD/CONFIRMED booking can be paid.', 422);
         }
 
-        $paymentMethod = $validated['payment_method'] ?? 'manual_transfer';
+        $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
+        $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $type, $paymentMethod);
+        if ($paymentMethod === 'billplz_online_banking' && ! $selectedGatewayOption) {
+            return $this->respondError('Selected online banking option is not available.', 422);
+        }
+        if ($paymentMethod === 'billplz_credit_card' && ! $selectedGatewayOption) {
+            return $this->respondError('Credit card payment is not available.', 422);
+        }
 
         if ($paymentMethod === 'manual_transfer') {
             $bankAccountId = $validated['bank_account_id'] ?? null;
@@ -86,9 +95,10 @@ class PaymentController extends Controller
             ]);
         }
 
+        $gatewayKey = $paymentMethod === 'billplz_credit_card' ? 'billplz_card' : 'billplz_fpx';
         $gateway = PaymentGateway::query()
             ->where('type', $type)
-            ->where('key', $paymentMethod)
+            ->where('key', $gatewayKey)
             ->where('is_active', true)
             ->first();
 
@@ -96,7 +106,7 @@ class PaymentController extends Controller
             return $this->respondError('Selected payment gateway is not available.', 422);
         }
 
-        $billplz = $this->createBillplzBill($booking, $type, $paymentMethod, $gateway->config ?? []);
+        $billplz = $this->createBillplzBill($booking, $type, $paymentMethod, $gateway->config ?? [], $selectedGatewayOption);
 
         $payment = BookingPayment::create([
             'booking_id' => $booking->id,
@@ -107,6 +117,8 @@ class PaymentController extends Controller
             'raw_response' => [
                 'type' => $type,
                 'payment_method' => $paymentMethod,
+                'selected_gateway_code' => $selectedGatewayOption?->code,
+                'selected_gateway_name' => $selectedGatewayOption?->name,
                 'billplz' => $billplz,
                 'payment_url' => data_get($billplz, 'url'),
             ],
@@ -128,6 +140,39 @@ class PaymentController extends Controller
             ]),
             'payment_url' => $payment->raw_response['payment_url'] ?? null,
         ]);
+    }
+
+    protected function normalizeRequestedPaymentMethod(string $method): string
+    {
+        return match ($method) {
+            'billplz_fpx' => 'billplz_online_banking',
+            'billplz_card' => 'billplz_credit_card',
+            default => $method,
+        };
+    }
+
+    protected function resolveBillplzGatewayOption(array $validated, string $type, string $paymentMethod): ?BillplzPaymentGatewayOption
+    {
+        if ($paymentMethod === 'manual_transfer') {
+            return null;
+        }
+
+        if ($paymentMethod === 'billplz_online_banking') {
+            $optionId = (int) ($validated['billplz_gateway_option_id'] ?? 0);
+            return BillplzPaymentGatewayOption::query()
+                ->where('type', $type)
+                ->where('gateway_group', 'online_banking')
+                ->where('is_active', true)
+                ->find($optionId);
+        }
+
+        return BillplzPaymentGatewayOption::query()
+            ->where('type', $type)
+            ->where('gateway_group', 'credit_card')
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('sort_order')
+            ->first();
     }
 
     public function publicLookup(Request $request)
@@ -344,7 +389,7 @@ class PaymentController extends Controller
      * @param array<string,mixed> $gatewayConfig
      * @return array<string,mixed>
      */
-    private function createBillplzBill(Booking $booking, string $type, string $paymentMethod, array $gatewayConfig): array
+    private function createBillplzBill(Booking $booking, string $type, string $paymentMethod, array $gatewayConfig, ?BillplzPaymentGatewayOption $selectedGatewayOption = null): array
     {
         $resolvedConfig = $this->configResolver->resolve($type, $paymentMethod);
         $apiKey = data_get($gatewayConfig, 'api_key') ?: $resolvedConfig['api_key'];
@@ -388,6 +433,10 @@ class PaymentController extends Controller
             'reference_1_label' => 'BookingCode',
             'reference_1' => $booking->booking_code ?: (string) $booking->id,
         ], fn($value) => $value !== null && $value !== '');
+
+        if ($selectedGatewayOption?->code) {
+            $payload['payment_channel'] = $selectedGatewayOption->code;
+        }
 
         $response = Http::asForm()
             ->withBasicAuth((string) $apiKey, '')

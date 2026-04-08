@@ -16,6 +16,7 @@ use App\Http\Controllers\Ecommerce\HomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicAnnouncementController;
 use App\Http\Controllers\Ecommerce\DashboardController;
 use App\Http\Controllers\Ecommerce\BrandingController;
+use App\Http\Controllers\Ecommerce\BillplzPaymentGatewayOptionController;
 use App\Http\Controllers\Ecommerce\PublicBankAccountController;
 use App\Http\Controllers\Ecommerce\PublicCartController;
 use App\Http\Controllers\Ecommerce\PublicCheckoutController;
@@ -120,6 +121,7 @@ Route::get('/public/receipt/{token}/invoice', [PublicReceiptController::class, '
 // Backwards compatibility for previous callback URLs
 Route::post('/payment/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/payment/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
+Route::get('/payment-gateway-options', [BillplzPaymentGatewayOptionController::class, 'publicIndex']);
 
 // 🛍️ 公共商城接口
 Route::prefix('/public/shop')->group(function () {
@@ -618,6 +620,19 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.payment-gateways.update');
 
         Route::delete('/payment-gateways/{paymentGateway}', [PaymentGatewayController::class, 'destroy'])
+            ->middleware('permission:ecommerce.payment-gateways.delete');
+
+        Route::get('/billplz-payment-gateway-options', [BillplzPaymentGatewayOptionController::class, 'index'])
+            ->middleware('permission:ecommerce.payment-gateways.view');
+        Route::post('/billplz-payment-gateway-options', [BillplzPaymentGatewayOptionController::class, 'store'])
+            ->middleware('permission:ecommerce.payment-gateways.create');
+        Route::get('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'show'])
+            ->middleware('permission:ecommerce.payment-gateways.view');
+        Route::put('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'update'])
+            ->middleware('permission:ecommerce.payment-gateways.update');
+        Route::post('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'update'])
+            ->middleware('permission:ecommerce.payment-gateways.update');
+        Route::delete('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'destroy'])
             ->middleware('permission:ecommerce.payment-gateways.delete');
 
         Route::post('/cart/merge', [CartMergeController::class, 'merge'])

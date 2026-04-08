@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\Ecommerce\OrderReserveService;
+use App\Support\WorkspaceType;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
 use App\Services\BillplzService;
 use App\Models\BillplzBill;
+use App\Models\BillplzPaymentGatewayOption;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Support\FrontendUrlResolver;
 use Carbon\Carbon;
@@ -405,6 +407,10 @@ class PublicOrderHistoryController extends Controller
 
     public function pay(Request $request, Order $order)
     {
+        $validated = $request->validate([
+            'payment_method' => ['nullable', 'string', 'in:billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card'],
+            'billplz_gateway_option_id' => ['nullable', 'integer', 'exists:billplz_payment_gateway_options,id'],
+        ]);
         $customer = $request->user('customer');
 
         if ($order->customer_id !== $customer->id) {
@@ -428,10 +434,45 @@ class PublicOrderHistoryController extends Controller
                 'redirect_url' => $order->payment_url,
             ]);
         }
+        $type = WorkspaceType::fromRequest($request);
 
         try {
-            $billplzUrl = DB::transaction(function () use ($order) {
-                $billResponse = $this->billplzService->createBill($order);
+            $billplzUrl = DB::transaction(function () use ($order, $validated, $type) {
+                $requestedMethod = match ((string) ($validated['payment_method'] ?? $order->payment_method)) {
+                    'billplz_fpx' => 'billplz_online_banking',
+                    'billplz_card' => 'billplz_credit_card',
+                    default => (string) ($validated['payment_method'] ?? $order->payment_method),
+                };
+                $selectedOption = null;
+                if ($requestedMethod === 'billplz_online_banking') {
+                    $selectedOption = BillplzPaymentGatewayOption::query()
+                        ->where('type', $type)
+                        ->where('gateway_group', 'online_banking')
+                        ->where('is_active', true)
+                        ->find((int) ($validated['billplz_gateway_option_id'] ?? 0));
+                } elseif ($requestedMethod === 'billplz_credit_card') {
+                    $selectedOption = BillplzPaymentGatewayOption::query()
+                        ->where('type', $type)
+                        ->where('gateway_group', 'credit_card')
+                        ->where('is_active', true)
+                        ->orderByDesc('is_default')
+                        ->orderBy('sort_order')
+                        ->first();
+                }
+
+                $order->payment_method = $requestedMethod;
+                $order->requested_payment_method = $requestedMethod;
+                $order->selected_gateway_code = $selectedOption?->code;
+                $order->selected_gateway_name = $selectedOption?->name;
+                $order->billplz_gateway_option_id = $selectedOption?->id;
+                $order->save();
+
+                $billResponse = $this->billplzService->createBill(
+                    $order,
+                    $type,
+                    $selectedOption?->code,
+                    (array) data_get($selectedOption?->meta, 'billplz_payload', []),
+                );
                 $billplzId = data_get($billResponse, 'id');
                 $billplzUrl = data_get($billResponse, 'url');
 

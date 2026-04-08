@@ -19,11 +19,15 @@ class Order extends Model
         'status',
         'payment_status',
         'payment_method',
+        'requested_payment_method',
         'payment_provider',
         'payment_reference',
         'payment_url',
         'payment_meta',
         'payment_gateway_id',
+        'selected_gateway_code',
+        'selected_gateway_name',
+        'billplz_gateway_option_id',
         'bank_account_id',
         'subtotal',
         'discount_total',
@@ -145,6 +149,11 @@ class Order extends Model
     public function bankAccount()
     {
         return $this->belongsTo(BankAccount::class);
+    }
+
+    public function billplzGatewayOption()
+    {
+        return $this->belongsTo(\App\Models\BillplzPaymentGatewayOption::class, 'billplz_gateway_option_id');
     }
 
     public function pickupStore()

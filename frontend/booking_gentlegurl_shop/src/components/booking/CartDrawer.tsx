@@ -8,6 +8,7 @@ import {
   getBookingBankAccounts,
   getBookingCart,
   getBookingPaymentGateways,
+  getBillplzPaymentGatewayOptions,
   getMe,
   getServicePackageAvailableFor,
   payBooking,
@@ -17,6 +18,7 @@ import {
   removePackageCartItem,
   type PublicBookingBankAccount,
   type PublicBookingPaymentGateway,
+  type BillplzPaymentGatewayOption,
 } from "@/lib/apiClient";
 import { BookingCart } from "@/lib/types";
 
@@ -73,8 +75,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [availableMap, setAvailableMap] = useState<Record<number, number>>({});
   const [gateways, setGateways] = useState<PublicBookingPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBookingBankAccount[]>([]);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_fpx" | "billplz_card">("manual_transfer");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_online_banking" | "billplz_credit_card">("manual_transfer");
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
+  const [onlineBankingOptions, setOnlineBankingOptions] = useState<BillplzPaymentGatewayOption[]>([]);
+  const [selectedBillplzGatewayOptionId, setSelectedBillplzGatewayOptionId] = useState<number | null>(null);
 
   const loadCart = useCallback(async () => {
     try {
@@ -110,13 +114,30 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           setCustomerId(null);
         });
 
-      Promise.all([getBookingPaymentGateways(), getBookingBankAccounts()])
-        .then(([gatewayData, bankData]) => {
+      Promise.all([
+        getBookingPaymentGateways(),
+        getBookingBankAccounts(),
+        getBillplzPaymentGatewayOptions({ type: "booking", gateway_group: "online_banking" }),
+        getBillplzPaymentGatewayOptions({ type: "booking", gateway_group: "credit_card" }),
+      ])
+        .then(([gatewayData, bankData, onlineOptions, cardOptions]) => {
           const activeGateways = gatewayData.filter((g) => g.is_active !== false);
-          setGateways(activeGateways);
+          const normalizedGateways = activeGateways
+            .filter((gateway) => {
+              if (gateway.key === "billplz_fpx") return onlineOptions.length > 0;
+              if (gateway.key === "billplz_card") return cardOptions.length > 0;
+              return true;
+            })
+            .map((gateway) => ({
+              ...gateway,
+              key: gateway.key === "billplz_fpx" ? "billplz_online_banking" : gateway.key === "billplz_card" ? "billplz_credit_card" : gateway.key,
+            }));
+          setGateways(normalizedGateways as PublicBookingPaymentGateway[]);
           setBankAccounts(bankData || []);
+          setOnlineBankingOptions(onlineOptions);
+          setSelectedBillplzGatewayOptionId(onlineOptions.find((o) => o.is_default)?.id ?? onlineOptions[0]?.id ?? null);
 
-          const firstMethod = (activeGateways.find((g) => g.key === "manual_transfer")?.key || activeGateways[0]?.key || "manual_transfer") as "manual_transfer" | "billplz_fpx" | "billplz_card";
+          const firstMethod = (normalizedGateways.find((g) => g.key === "manual_transfer")?.key || normalizedGateways[0]?.key || "manual_transfer") as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card";
           setSelectedPaymentMethod(firstMethod);
 
           const defaultBank = (bankData || []).find((b) => b.is_default) || (bankData || [])[0] || null;
@@ -217,6 +238,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         setMessage("Please select a bank account for manual transfer.");
         return;
       }
+      if (selectedPaymentMethod === "billplz_online_banking" && !selectedBillplzGatewayOptionId) {
+        setMessage("Please select an online banking option.");
+        return;
+      }
 
       const checkoutResponse = await checkoutCart(
         {
@@ -229,6 +254,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           billing_email: billingSameAsContact ? guestEmail.trim() || undefined : billingEmail.trim() || undefined,
           payment_method: selectedPaymentMethod,
           bank_account_id: selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
+          billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
         },
       );
 
@@ -236,7 +262,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       const orderNo = checkoutResponse?.order_no;
       if (orderId) {
         if (selectedPaymentMethod !== "manual_transfer") {
-          const payResponse = await payPublicOrder(orderId, { payment_method: selectedPaymentMethod });
+          const payResponse = await payPublicOrder(orderId, {
+            payment_method: selectedPaymentMethod,
+            billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
+          });
           const redirectUrl = payResponse?.data?.redirect_url;
           if (redirectUrl) {
             window.location.href = redirectUrl;
@@ -272,6 +301,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       const paymentResponse = await payBooking(bookingId, {
         payment_method: selectedPaymentMethod,
         bank_account_id: selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
+        billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
       });
 
       const paymentData = paymentResponse?.data;
@@ -308,8 +338,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   }, [isOpen]);
 
   const paymentOptions = gateways
-    .filter((gateway) => ["manual_transfer", "billplz_fpx", "billplz_card"].includes(gateway.key))
-    .map((gateway) => ({ key: gateway.key as "manual_transfer" | "billplz_fpx" | "billplz_card", name: gateway.name }));
+    .filter((gateway) => ["manual_transfer", "billplz_online_banking", "billplz_credit_card"].includes(gateway.key))
+    .map((gateway) => ({ key: gateway.key as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card", name: gateway.name }));
 
   const itemCount = (cart?.items?.length || 0) + (cart?.package_items?.length || 0);
   const hasItems = itemCount > 0;
@@ -782,6 +812,34 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                             ) : null}
                           </div>
                         </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {selectedPaymentMethod === "billplz_online_banking" ? (
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Online Banking</p>
+                  <div className="space-y-2">
+                    {onlineBankingOptions.map((option) => (
+                      <label
+                        key={option.id}
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm transition-all ${
+                          selectedBillplzGatewayOptionId === option.id
+                            ? "border-[var(--accent-strong)] bg-[var(--muted)]/40 ring-2 ring-[var(--accent)]/20"
+                            : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/40"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="booking_billplz_online_option"
+                          className="h-4 w-4 accent-[var(--accent-strong)]"
+                          checked={selectedBillplzGatewayOptionId === option.id}
+                          onChange={() => setSelectedBillplzGatewayOptionId(option.id)}
+                        />
+                        {option.logo_url ? <img src={option.logo_url} alt={option.name} className="h-6 w-6 object-contain" /> : null}
+                        <span className="text-[var(--foreground)]">{option.name}</span>
                       </label>
                     ))}
                   </div>

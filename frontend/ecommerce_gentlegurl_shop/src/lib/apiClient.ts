@@ -274,6 +274,15 @@ export type PublicPaymentGateway = {
   config?: Record<string, unknown> | null;
 };
 
+export type BillplzPaymentGatewayOption = {
+  id: number;
+  name: string;
+  code: string;
+  logo_url?: string | null;
+  is_default?: boolean;
+  sort_order?: number;
+};
+
 export type CustomerVoucher = {
   id: number;
   status: "active" | "used" | "expired" | string;
@@ -711,6 +720,7 @@ export type CheckoutPayload = {
   billing_postcode?: string;
   store_location_id?: number | null;
   bank_account_id?: number | null;
+  billplz_gateway_option_id?: number | null;
   voucher_code?: string | null;
   customer_voucher_id?: number | null;
 };
@@ -901,6 +911,20 @@ export async function getPaymentGateways(): Promise<PublicPaymentGateway[]> {
   );
 
   return response.data?.payment_gateways ?? [];
+}
+
+export async function getBillplzPaymentGatewayOptions(params: {
+  type: "ecommerce" | "booking";
+  gateway_group: "online_banking" | "credit_card";
+}): Promise<BillplzPaymentGatewayOption[]> {
+  const search = new URLSearchParams({
+    type: params.type,
+    gateway_group: params.gateway_group,
+  });
+  const response = await get<{ data?: BillplzPaymentGatewayOption[] }>(`/payment-gateway-options?${search.toString()}`, {
+    headers: { Accept: "application/json" },
+  });
+  return response.data ?? [];
 }
 
 export async function getStoreLocations(): Promise<PublicStoreLocation[]> {

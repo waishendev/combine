@@ -18,6 +18,7 @@ use App\Services\Ecommerce\ShippingService;
 use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
+use App\Models\BillplzPaymentGatewayOption;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
 use App\Services\Ecommerce\OrderReserveService;
@@ -163,7 +164,8 @@ class PublicCheckoutController extends Controller
             );
         }
 
-        $paymentMethod = $validated['payment_method'] ?? 'manual_transfer';
+        $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
+        $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $type, $paymentMethod);
         $shippingName = $validated['shipping_name'] ?? data_get($validated, 'customer.name') ?? $customer?->name;
         $shippingPhone = $validated['shipping_phone'] ?? data_get($validated, 'customer.phone') ?? $customer?->phone;
         $shippingAddressLine1 = $validated['shipping_address_line1'] ?? ($validated['shipping_address'] ?? null);
@@ -199,7 +201,7 @@ class PublicCheckoutController extends Controller
         $billplzId = null;
 
         try {
-            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry, $type) {
+            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry, $type, $selectedGatewayOption) {
                 $this->orderReserveService->reserveStockForItems($calculation['items']);
 
                 $order = Order::create([
@@ -208,8 +210,12 @@ class PublicCheckoutController extends Controller
                     'status' => 'pending',
                     'payment_status' => 'unpaid',
                     'payment_method' => $paymentMethod,
+                    'requested_payment_method' => $paymentMethod,
                     'payment_provider' => $paymentProvider,
                     'payment_gateway_id' => null,
+                    'selected_gateway_code' => $selectedGatewayOption?->code,
+                    'selected_gateway_name' => $selectedGatewayOption?->name,
+                    'billplz_gateway_option_id' => $selectedGatewayOption?->id,
                     'bank_account_id' => $bankAccount?->id,
                     'pickup_or_shipping' => $shippingMethod,
                     'pickup_store_id' => $validated['store_location_id'] ?? null,
@@ -317,7 +323,12 @@ class PublicCheckoutController extends Controller
                 $billplzId = null;
 
                 if ($paymentProvider === 'billplz') {
-                    $billResponse = $this->billplzService->createBill($order, $type);
+                    $billResponse = $this->billplzService->createBill(
+                        $order,
+                        $type,
+                        $selectedGatewayOption?->code,
+                        (array) data_get($selectedGatewayOption?->meta, 'billplz_payload', []),
+                    );
                     $billplzId = data_get($billResponse, 'id');
                     $billplzUrl = data_get($billResponse, 'url');
 
@@ -636,14 +647,70 @@ class PublicCheckoutController extends Controller
                 'string',
             ],
             'session_token' => ['nullable', 'string', 'max:100'],
-            'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card'],
+            'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card'],
             'bank_account_id' => [
                 $requirePaymentMethod ? 'required_if:payment_method,manual_transfer' : 'nullable',
                 'nullable',
                 'integer',
                 'exists:bank_accounts,id',
             ],
+            'billplz_gateway_option_id' => ['nullable', 'integer', 'exists:billplz_payment_gateway_options,id'],
         ]);
+    }
+
+    protected function normalizeRequestedPaymentMethod(string $method): string
+    {
+        return match ($method) {
+            'billplz_fpx' => 'billplz_online_banking',
+            'billplz_card' => 'billplz_credit_card',
+            default => $method,
+        };
+    }
+
+    protected function resolveBillplzGatewayOption(array $validated, string $type, string $paymentMethod): ?BillplzPaymentGatewayOption
+    {
+        if ($paymentMethod === 'manual_transfer') {
+            return null;
+        }
+
+        if ($paymentMethod === 'billplz_online_banking') {
+            $optionId = (int) ($validated['billplz_gateway_option_id'] ?? 0);
+            if (! $optionId) {
+                throw ValidationException::withMessages([
+                    'billplz_gateway_option_id' => __('Please select an online banking option.'),
+                ])->status(422);
+            }
+
+            $option = BillplzPaymentGatewayOption::query()
+                ->where('type', $type)
+                ->where('gateway_group', 'online_banking')
+                ->where('is_active', true)
+                ->find($optionId);
+
+            if (! $option) {
+                throw ValidationException::withMessages([
+                    'billplz_gateway_option_id' => __('Selected online banking option is not available.'),
+                ])->status(422);
+            }
+
+            return $option;
+        }
+
+        $cardOption = BillplzPaymentGatewayOption::query()
+            ->where('type', $type)
+            ->where('gateway_group', 'credit_card')
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('sort_order')
+            ->first();
+
+        if (! $cardOption) {
+            throw ValidationException::withMessages([
+                'payment_method' => __('Credit card payment is not available at the moment.'),
+            ])->status(422);
+        }
+
+        return $cardOption;
     }
 
     protected function normalizeShippingMethod(string $shippingMethod): string
