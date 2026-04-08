@@ -45,7 +45,14 @@ const extractArray = <T,>(payload: unknown): T[] => {
   return []
 }
 
-const formatDate = (date: Date) => date.toISOString().slice(0, 10)
+const formatDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+
+const parseYmdLocal = (value: string): Date => {
+  const [y, m, d] = value.split('-').map((v) => Number(v))
+  return new Date(y, (m || 1) - 1, d || 1)
+}
+
 
 export default function BookingLeaveCalendarPage() {
   const now = new Date()
@@ -109,8 +116,8 @@ export default function BookingLeaveCalendarPage() {
   const leaveByDate = useMemo(() => {
     const map = new Map<string, LeaveRow[]>()
     rows.forEach((row) => {
-      const start = new Date(row.start_date)
-      const end = new Date(row.end_date)
+      const start = parseYmdLocal(row.start_date)
+      const end = parseYmdLocal(row.end_date)
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const key = formatDate(new Date(d))
         const list = map.get(key) ?? []

@@ -63,8 +63,13 @@ class BookingLeaveTestingSeeder extends Seeder
             );
 
             BookingLeaveBalance::query()->updateOrCreate(
-                ['staff_id' => $staffId, 'leave_type' => 'off_day'],
-                ['entitled_days' => 8]
+                ['staff_id' => $staffId, 'leave_type' => 'emergency'],
+                ['entitled_days' => 6]
+            );
+
+            BookingLeaveBalance::query()->updateOrCreate(
+                ['staff_id' => $staffId, 'leave_type' => 'unpaid'],
+                ['entitled_days' => 0]
             );
         }
     }
@@ -125,6 +130,68 @@ class BookingLeaveTestingSeeder extends Seeder
                 'Seeded approved leave request.',
                 $userId
             );
+
+
+            $calendarEmergencyDate = $today->copy()->addDays($index + 1)->toDateString();
+            $calendarEmergency = BookingLeaveRequest::query()->updateOrCreate(
+                [
+                    'staff_id' => $staffId,
+                    'leave_type' => 'emergency',
+                    'start_date' => $calendarEmergencyDate,
+                    'end_date' => $calendarEmergencyDate,
+                ],
+                [
+                    'day_type' => 'half_day_am',
+                    'days' => 0.5,
+                    'reason' => 'Seeded approved emergency half-day for calendar.',
+                    'status' => 'approved',
+                    'admin_remark' => 'Approved seeded half-day emergency leave.',
+                    'reviewed_by_user_id' => $userId,
+                    'reviewed_at' => now(),
+                ]
+            );
+
+            $calendarOffDayDate = $today->copy()->addDays(7 + $index)->toDateString();
+            $calendarOffDay = BookingLeaveRequest::query()->updateOrCreate(
+                [
+                    'staff_id' => $staffId,
+                    'leave_type' => 'off_day',
+                    'start_date' => $calendarOffDayDate,
+                    'end_date' => $calendarOffDayDate,
+                ],
+                [
+                    'day_type' => 'full_day',
+                    'days' => 1,
+                    'reason' => 'Seeded off day for calendar visibility.',
+                    'status' => 'approved',
+                    'admin_remark' => 'Admin off day (seeded).',
+                    'reviewed_by_user_id' => $userId,
+                    'reviewed_at' => now(),
+                ]
+            );
+
+            foreach ([$calendarEmergency, $calendarOffDay] as $calendarItem) {
+                [$calendarStartAt, $calendarEndAt] = $leaveService->resolveTimeoffWindow(
+                    $staffId,
+                    Carbon::parse((string) $calendarItem->start_date)->startOfDay(),
+                    Carbon::parse((string) $calendarItem->end_date)->startOfDay(),
+                    (string) $calendarItem->day_type
+                );
+
+                $calendarTimeoff = BookingStaffTimeoff::query()->updateOrCreate(
+                    ['reason' => sprintf('Leave request #%d (%s %s)', $calendarItem->id, $calendarItem->leave_type, $calendarItem->day_type)],
+                    [
+                        'staff_id' => $staffId,
+                        'start_at' => $calendarStartAt,
+                        'end_at' => $calendarEndAt,
+                    ]
+                );
+
+                if ((int) $calendarItem->approved_timeoff_id !== (int) $calendarTimeoff->id) {
+                    $calendarItem->approved_timeoff_id = $calendarTimeoff->id;
+                    $calendarItem->save();
+                }
+            }
 
             $pending = BookingLeaveRequest::query()->updateOrCreate(
                 [
