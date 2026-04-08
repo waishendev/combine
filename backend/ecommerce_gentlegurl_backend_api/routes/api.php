@@ -1052,6 +1052,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.view');
     Route::put('/leave-balances/{staffId}', [\App\Http\Controllers\Admin\Booking\LeaveBalanceController::class, 'upsert'])
         ->middleware('permission:booking.schedules.update');
+    Route::get('/leave-logs', [\App\Http\Controllers\Admin\Booking\LeaveLogController::class, 'index'])
+        ->middleware('permission:booking.leave.logs.view');
     Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);
     Route::apiResource('/commission-tiers', \App\Http\Controllers\Admin\Booking\CommissionTierController::class)
         ->only(['index', 'store', 'update', 'destroy']);

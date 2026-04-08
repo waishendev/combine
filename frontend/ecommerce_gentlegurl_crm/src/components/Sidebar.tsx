@@ -542,6 +542,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/booking/leave-balances',
             requiredPermission: 'booking.schedules.view',
           },
+          {
+            key: 'booking-leave-logs',
+            label: 'Leave Logs',
+            href: '/booking/leave-logs',
+            requiredPermission: 'booking.leave.logs.view',
+          },
           // {
           //   key: 'booking-blocks',
           //   label: 'Blocks',

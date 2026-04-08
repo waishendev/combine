@@ -117,6 +117,7 @@ class PermissionSeeder extends Seeder
                 'blocks.delete',
                 'reports.view',
                 'logs.view',
+                'leave.logs.view',
                 'settings.view',
                 'settings.update',
                 'seo.view',
