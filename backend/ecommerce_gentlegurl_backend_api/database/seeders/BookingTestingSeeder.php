@@ -6,6 +6,8 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\StaffCommissionTier;
+use App\Models\Role;
+use App\Models\User;
 use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\Voucher;
 use Carbon\Carbon;
@@ -30,6 +32,7 @@ class BookingTestingSeeder extends Seeder
         }
 
         [$staffOneId, $staffTwoId, $staffThreeId] = $this->resolveStaffIds();
+        $this->ensureStaffUsersCanLogin([$staffOneId, $staffTwoId, $staffThreeId]);
         $customerId = $this->resolveCustomerId();
 
         $services = $this->seedServices();
@@ -121,6 +124,39 @@ class BookingTestingSeeder extends Seeder
 
         return array_values(array_slice($staffIds, 0, 3));
     }
+
+    private function ensureStaffUsersCanLogin(array $staffIds): void
+    {
+        $staffRoleId = Role::query()
+            ->whereRaw('LOWER(name) = ?', ['staff'])
+            ->value('id');
+
+        foreach ($staffIds as $index => $staffId) {
+            $staff = DB::table('staffs')->where('id', (int) $staffId)->first();
+            if (! $staff) {
+                continue;
+            }
+
+            $email = (string) ($staff->email ?: sprintf('booking.seed.staff.%d@example.com', $index + 1));
+            $username = (string) ($staff->email ? strtok($email, '@') : sprintf('booking.seed.staff.%d', $index + 1));
+
+            $user = User::query()->updateOrCreate(
+                ['email' => $email],
+                [
+                    'name' => (string) ($staff->name ?: sprintf('Booking Seed Staff %d', $index + 1)),
+                    'username' => $username,
+                    'password' => Hash::make('Password123!'),
+                    'is_active' => true,
+                    'staff_id' => (int) $staffId,
+                ]
+            );
+
+            if ($staffRoleId) {
+                $user->roles()->syncWithoutDetaching([(int) $staffRoleId]);
+            }
+        }
+    }
+
 
     private function resolveCustomerId(): int
     {

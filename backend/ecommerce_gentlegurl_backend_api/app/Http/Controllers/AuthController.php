@@ -42,7 +42,7 @@ class AuthController extends Controller
             'last_login_ip' => $request->ip(),
         ])->save();
 
-        return $this->respond($this->transformUser($user->fresh(['roles.permissions'])));
+        return $this->respond($this->transformUser($user->fresh(['roles.permissions', 'staff'])));
     }
 
     public function logout(Request $request)
@@ -60,13 +60,15 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         /** @var User $user */
-        $user = $request->user()->loadMissing('roles.permissions');
+        $user = $request->user()->loadMissing('roles.permissions', 'staff');
 
         return $this->respond([
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'username' => $user->username,
+            'staff_id' => $user->staff_id,
+            'staff_name' => $user->staff?->name,
             'roles' => $user->roles->pluck('name')->values()->toArray(),
             'permissions' => $user->getAllPermissions()->toArray(),
         ]);
@@ -78,7 +80,7 @@ class AuthController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        return $this->respond($this->transformUser($user->loadMissing('roles.permissions')));
+        return $this->respond($this->transformUser($user->loadMissing('roles.permissions', 'staff')));
     }
 
     public function loginWithToken(Request $request)
@@ -131,6 +133,8 @@ class AuthController extends Controller
             'email' => $user->email,
             'username' => $user->username,
             'is_active' => $user->is_active,
+            'staff_id' => $user->staff_id,
+            'staff_name' => $user->staff?->name,
             'roles' => $user->roles->map(fn ($role) => [
                 'id' => $role->id,
                 'name' => $role->name,

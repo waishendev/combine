@@ -525,6 +525,29 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/booking/staff-schedules',
             requiredPermission: 'booking.schedules.view',
           },
+          {
+            key: 'booking-my-leave',
+            label: 'My Leave',
+            href: '/booking/my-leave',
+          },
+          {
+            key: 'booking-leave-requests',
+            label: 'Leave Requests',
+            href: '/booking/leave-requests',
+            requiredPermission: 'booking.schedules.view',
+          },
+          {
+            key: 'booking-leave-balances',
+            label: 'Leave Balances',
+            href: '/booking/leave-balances',
+            requiredPermission: 'booking.schedules.view',
+          },
+          {
+            key: 'booking-leave-logs',
+            label: 'Leave Logs',
+            href: '/booking/leave-logs',
+            requiredPermission: 'booking.leave.logs.view',
+          },
           // {
           //   key: 'booking-blocks',
           //   label: 'Blocks',

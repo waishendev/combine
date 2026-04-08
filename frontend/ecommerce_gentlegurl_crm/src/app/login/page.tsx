@@ -6,6 +6,14 @@ import { useRouter } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { getWorkspace, getWorkspaceLanding, setWorkspace, type Workspace } from '@/lib/workspace'
 
+
+type MePayload = {
+  data?: {
+    staff_id?: number | null
+    permissions?: string[]
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -27,9 +35,29 @@ export default function LoginPage() {
 
       await new Promise((resolve) => setTimeout(resolve, 100))
 
+      let landing = getWorkspaceLanding(selectedWorkspace)
+
+      if (selectedWorkspace === 'booking') {
+        try {
+          const me = await apiFetch<MePayload>('/api/me')
+          const staffId = me?.data?.staff_id ?? null
+          const permissions = Array.isArray(me?.data?.permissions) ? me.data.permissions : []
+
+          if (staffId) {
+            landing = '/booking/my-leave'
+          } else if (permissions.includes('booking.appointments.view')) {
+            landing = '/booking/appointments'
+          } else {
+            landing = '/dashboard'
+          }
+        } catch {
+          landing = '/dashboard'
+        }
+      }
+
       setWorkspace(selectedWorkspace)
       router.refresh()
-      router.replace(getWorkspaceLanding(selectedWorkspace))
+      router.replace(landing)
     } catch (err) {
       if (err instanceof Error) {
         if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
