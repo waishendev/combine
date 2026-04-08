@@ -467,6 +467,15 @@ class PublicOrderHistoryController extends Controller
                 $order->billplz_gateway_option_id = $selectedOption?->id;
                 $order->save();
 
+                if (str_starts_with($requestedMethod, 'billplz_') && ! $selectedOption) {
+                    Log::warning('Order pay fallback to generic Billplz flow due to missing/invalid gateway option.', [
+                        'order_id' => $order->id,
+                        'payment_method' => $requestedMethod,
+                        'billplz_gateway_option_id' => data_get($validated, 'billplz_gateway_option_id'),
+                        'type' => $type,
+                    ]);
+                }
+
                 $billResponse = $this->billplzService->createBill(
                     $order,
                     $type,

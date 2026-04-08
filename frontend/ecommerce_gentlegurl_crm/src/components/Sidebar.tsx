@@ -410,6 +410,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/bank-accounts',
             requiredPermission: 'ecommerce.bank-accounts.view',
           },
+          {
+            key: 'billplz-payment-options',
+            label: 'Billplz Payment Options',
+            href: '/billplz-payment-options',
+            requiredPermission: 'ecommerce.payment-gateways.view',
+          },
         ],
       },
   

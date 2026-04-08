@@ -166,6 +166,13 @@ class PublicCheckoutController extends Controller
 
         $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
         $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $type, $paymentMethod);
+        if (str_starts_with($paymentMethod, 'billplz_') && ! $selectedGatewayOption) {
+            Log::warning('Billplz payment option missing; falling back to generic Billplz flow.', [
+                'payment_method' => $paymentMethod,
+                'billplz_gateway_option_id' => data_get($validated, 'billplz_gateway_option_id'),
+                'type' => $type,
+            ]);
+        }
         $shippingName = $validated['shipping_name'] ?? data_get($validated, 'customer.name') ?? $customer?->name;
         $shippingPhone = $validated['shipping_phone'] ?? data_get($validated, 'customer.phone') ?? $customer?->phone;
         $shippingAddressLine1 = $validated['shipping_address_line1'] ?? ($validated['shipping_address'] ?? null);

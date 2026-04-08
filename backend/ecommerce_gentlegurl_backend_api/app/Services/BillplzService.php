@@ -6,6 +6,7 @@ use App\Models\Ecommerce\Order;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\WorkspaceType;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class BillplzService
@@ -87,6 +88,46 @@ class BillplzService
             throw new RuntimeException('Failed to create Billplz bill: ' . $message);
         }
 
-        return $response->json();
+        $responseData = (array) $response->json();
+        $originalUrl = (string) data_get($responseData, 'url', '');
+        $resolvedUrl = $this->resolvePaymentUrl($originalUrl, $selectedGatewayCode, $extraPayload);
+
+        if ($resolvedUrl !== '' && $resolvedUrl !== $originalUrl) {
+            $responseData['url'] = $resolvedUrl;
+        }
+
+        Log::info('Billplz bill created with routing context', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'payment_method' => $order->payment_method,
+            'selected_gateway_code' => $selectedGatewayCode,
+            'billplz_gateway_option_id' => $order->billplz_gateway_option_id,
+            'bill_payload' => $payload,
+            'billplz_original_url' => $originalUrl,
+            'billplz_final_url' => data_get($responseData, 'url'),
+        ]);
+
+        return $responseData;
+    }
+
+    private function resolvePaymentUrl(string $url, ?string $selectedGatewayCode, array $extraPayload): string
+    {
+        if ($url === '' || ! $selectedGatewayCode) {
+            return $url;
+        }
+
+        $query = [
+            'payment_channel' => $selectedGatewayCode,
+            'preferred_gateway' => $selectedGatewayCode,
+        ];
+
+        $extraQuery = data_get($extraPayload, 'redirect_query', []);
+        if (is_array($extraQuery) && ! empty($extraQuery)) {
+            $query = array_merge($query, $extraQuery);
+        }
+
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        return $url . $separator . http_build_query($query);
     }
 }

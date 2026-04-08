@@ -13,6 +13,7 @@ use App\Services\Payments\BillplzConfigResolver;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class PaymentController extends Controller
@@ -45,6 +46,14 @@ class PaymentController extends Controller
         }
         if ($paymentMethod === 'billplz_credit_card' && ! $selectedGatewayOption && $this->hasActiveBillplzOptions($type, 'credit_card')) {
             return $this->respondError('Credit card payment is not available.', 422);
+        }
+        if (str_starts_with($paymentMethod, 'billplz_') && ! $selectedGatewayOption) {
+            Log::warning('Booking pay fallback to generic Billplz flow due to missing/invalid gateway option.', [
+                'booking_id' => $booking->id,
+                'payment_method' => $paymentMethod,
+                'billplz_gateway_option_id' => data_get($validated, 'billplz_gateway_option_id'),
+                'type' => $type,
+            ]);
         }
 
         if ($paymentMethod === 'manual_transfer') {
@@ -464,7 +473,43 @@ class PaymentController extends Controller
             abort(response()->json(['success' => false, 'message' => 'Failed to create Billplz bill: ' . ($message ?: $response->body()), 'data' => null], 422));
         }
 
-        return (array) $response->json();
+        $responseData = (array) $response->json();
+        $originalUrl = (string) data_get($responseData, 'url', '');
+        $finalUrl = $this->resolvePaymentUrl($originalUrl, $selectedGatewayOption?->code, (array) data_get($selectedGatewayOption?->meta, 'billplz_payload', []));
+        if ($finalUrl !== '' && $finalUrl !== $originalUrl) {
+            $responseData['url'] = $finalUrl;
+        }
+
+        Log::info('Booking Billplz bill created with routing context', [
+            'booking_id' => $booking->id,
+            'payment_method' => $paymentMethod,
+            'billplz_gateway_option_id' => $selectedGatewayOption?->id,
+            'selected_gateway_code' => $selectedGatewayOption?->code,
+            'bill_payload' => $payload,
+            'billplz_original_url' => $originalUrl,
+            'billplz_final_url' => data_get($responseData, 'url'),
+        ]);
+
+        return $responseData;
+    }
+
+    private function resolvePaymentUrl(string $url, ?string $selectedGatewayCode, array $extraPayload): string
+    {
+        if ($url === '' || ! $selectedGatewayCode) {
+            return $url;
+        }
+
+        $query = [
+            'payment_channel' => $selectedGatewayCode,
+            'preferred_gateway' => $selectedGatewayCode,
+        ];
+
+        $extraQuery = data_get($extraPayload, 'redirect_query', []);
+        if (is_array($extraQuery) && ! empty($extraQuery)) {
+            $query = array_merge($query, $extraQuery);
+        }
+
+        return $url . (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
     }
 
     private function authorizeBooking(Request $request, Booking $booking): void
