@@ -68,7 +68,6 @@ export default function BookingMyLeavePage() {
 
   const remainingAnnual = useMemo(() => balances.find((b) => b.leave_type === 'annual')?.remaining_days ?? 0, [balances])
   const isEmergency = form.leave_type === 'emergency'
-  const isSingleDaySelection = form.start_date !== '' && form.start_date === form.end_date
 
   const loadAll = async () => {
     setLoading(true)
@@ -162,8 +161,8 @@ export default function BookingMyLeavePage() {
             onChange={(e) => setForm((prev) => ({ ...prev, day_type: e.target.value as DayType }))}
           >
             <option value="full_day">Full Day</option>
-            <option value="half_day_am" disabled={!isEmergency || !isSingleDaySelection}>Half Day (Morning)</option>
-            <option value="half_day_pm" disabled={!isEmergency || !isSingleDaySelection}>Half Day (Afternoon)</option>
+            <option value="half_day_am" disabled={!isEmergency}>Half Day (Morning)</option>
+            <option value="half_day_pm" disabled={!isEmergency}>Half Day (Afternoon)</option>
           </select>
 
           <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" type="date" value={form.start_date} onChange={(e) => setForm((prev) => ({ ...prev, start_date: e.target.value, day_type: (prev.end_date && prev.end_date !== e.target.value) ? 'full_day' : prev.day_type }))} required />
