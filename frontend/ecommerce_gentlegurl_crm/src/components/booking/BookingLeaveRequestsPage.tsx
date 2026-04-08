@@ -8,7 +8,7 @@ type DayType = 'full_day' | 'half_day_am' | 'half_day_pm'
 type LeaveRow = {
   id: number
   staff_id: number
-  leave_type: 'annual' | 'mc' | 'off_day'
+  leave_type: 'annual' | 'mc' | 'emergency' | 'unpaid' | 'off_day'
   day_type: DayType
   start_date: string
   end_date: string
@@ -17,6 +17,22 @@ type LeaveRow = {
   reason: string | null
   admin_remark: string | null
   staff?: { id: number; name: string }
+}
+
+type StaffOption = { staff_id: number; staff_name: string }
+
+const LEAVE_LABEL: Record<LeaveRow['leave_type'], string> = {
+  annual: 'Annual Leave',
+  mc: 'Medical Leave (MC)',
+  emergency: 'Emergency Leave',
+  unpaid: 'Unpaid Leave',
+  off_day: 'Off Day',
+}
+
+const DAY_TYPE_LABEL: Record<DayType, string> = {
+  full_day: 'Full Day',
+  half_day_am: 'Half Day (Morning)',
+  half_day_pm: 'Half Day (Afternoon)',
 }
 
 const extractArray = <T,>(payload: unknown): T[] => {
@@ -32,9 +48,11 @@ const extractArray = <T,>(payload: unknown): T[] => {
 
 export default function BookingLeaveRequestsPage() {
   const [rows, setRows] = useState<LeaveRow[]>([])
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [filter, setFilter] = useState<LeaveStatus | ''>('pending')
   const [remarks, setRemarks] = useState<Record<number, string>>({})
   const [error, setError] = useState<string | null>(null)
+  const [offDayForm, setOffDayForm] = useState({ staff_id: '', start_date: '', end_date: '', reason: '' })
 
   const loadRows = async () => {
     setError(null)
@@ -48,10 +66,21 @@ export default function BookingLeaveRequestsPage() {
     setRows(extractArray<LeaveRow>(await res.json().catch(() => ({}))))
   }
 
+  const loadStaffOptions = async () => {
+    const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
+    if (!res.ok) return
+    const list = extractArray<StaffOption>(await res.json().catch(() => ({})))
+    setStaffOptions(list)
+  }
+
   useEffect(() => {
     void loadRows()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
+
+  useEffect(() => {
+    void loadStaffOptions()
+  }, [])
 
   const decide = async (id: number, status: 'approved' | 'rejected') => {
     const res = await fetch(`/api/proxy/admin/booking/leave-requests/${id}/decision`, {
@@ -67,68 +96,112 @@ export default function BookingLeaveRequestsPage() {
     await loadRows()
   }
 
+  const createOffDay = async () => {
+    if (!offDayForm.staff_id || !offDayForm.start_date || !offDayForm.end_date) {
+      setError('Please complete staff and date fields for Off Day.')
+      return
+    }
+
+    const res = await fetch('/api/proxy/admin/booking/off-days', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        staff_id: Number(offDayForm.staff_id),
+        start_date: offDayForm.start_date,
+        end_date: offDayForm.end_date,
+        reason: offDayForm.reason || null,
+      }),
+    })
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({})) as { message?: string }
+      setError(payload.message ?? 'Failed to create off day.')
+      return
+    }
+
+    setOffDayForm({ staff_id: '', start_date: '', end_date: '', reason: '' })
+    await loadRows()
+  }
+
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-lg font-semibold">All Leave Requests</h3>
-        <select className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={filter} onChange={(e) => setFilter(e.target.value as LeaveStatus | '')}>
-          <option value="">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+    <div className="space-y-4">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-lg font-semibold">Create Off Day (Admin)</h3>
+        <p className="text-xs text-slate-500 mt-1">Off Day is admin-managed and blocks booking availability without deducting leave balance.</p>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-2">
+          <select className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={offDayForm.staff_id} onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value }))}>
+            <option value="">Select Staff</option>
+            {staffOptions.map((row) => <option key={row.staff_id} value={row.staff_id}>{row.staff_name}</option>)}
+          </select>
+          <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" type="date" value={offDayForm.start_date} onChange={(e) => setOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))} />
+          <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" type="date" value={offDayForm.end_date} onChange={(e) => setOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))} />
+          <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Reason (optional)" value={offDayForm.reason} onChange={(e) => setOffDayForm((prev) => ({ ...prev, reason: e.target.value }))} />
+          <button type="button" className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white" onClick={createOffDay}>Create Off Day</button>
+        </div>
       </div>
-      {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
-      <div className="mt-3 overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left">
-              <th className="px-2 py-2">Staff</th>
-              <th className="px-2 py-2">Type</th>
-              <th className="px-2 py-2">Day Type</th>
-              <th className="px-2 py-2">Date Range</th>
-              <th className="px-2 py-2">Days</th>
-              <th className="px-2 py-2">Reason</th>
-              <th className="px-2 py-2">Status</th>
-              <th className="px-2 py-2">Admin Remark</th>
-              <th className="px-2 py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-b border-slate-100 align-top">
-                <td className="px-2 py-2">{row.staff?.name ?? `Staff #${row.staff_id}`}</td>
-                <td className="px-2 py-2">{row.leave_type}</td>
-                <td className="px-2 py-2">{row.day_type.replaceAll('_', ' ')}</td>
-                <td className="px-2 py-2">{row.start_date} → {row.end_date}</td>
-                <td className="px-2 py-2">{row.days.toFixed(2)}</td>
-                <td className="px-2 py-2">{row.reason || '-'}</td>
-                <td className="px-2 py-2">{row.status}</td>
-                <td className="px-2 py-2">
-                  <textarea
-                    className="w-52 rounded-md border border-slate-300 px-2 py-1 text-xs"
-                    rows={2}
-                    value={remarks[row.id] ?? row.admin_remark ?? ''}
-                    onChange={(e) => setRemarks((prev) => ({ ...prev, [row.id]: e.target.value }))}
-                    disabled={row.status !== 'pending'}
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  {row.status === 'pending' ? (
-                    <div className="flex gap-2">
-                      <button type="button" className="rounded bg-emerald-600 px-2 py-1 text-xs text-white" onClick={() => decide(row.id, 'approved')}>Approve</button>
-                      <button type="button" className="rounded bg-rose-600 px-2 py-1 text-xs text-white" onClick={() => decide(row.id, 'rejected')}>Reject</button>
-                    </div>
-                  ) : '-'}
-                </td>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold">All Leave Requests</h3>
+          <select className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={filter} onChange={(e) => setFilter(e.target.value as LeaveStatus | '')}>
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left">
+                <th className="px-2 py-2">Staff</th>
+                <th className="px-2 py-2">Type</th>
+                <th className="px-2 py-2">Day Type</th>
+                <th className="px-2 py-2">Date Range</th>
+                <th className="px-2 py-2">Days</th>
+                <th className="px-2 py-2">Reason</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2">Admin Remark</th>
+                <th className="px-2 py-2">Action</th>
               </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr><td colSpan={9} className="px-2 py-6 text-center text-slate-500">No leave requests found.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-b border-slate-100 align-top">
+                  <td className="px-2 py-2">{row.staff?.name ?? `Staff #${row.staff_id}`}</td>
+                  <td className="px-2 py-2">{LEAVE_LABEL[row.leave_type]}</td>
+                  <td className="px-2 py-2">{DAY_TYPE_LABEL[row.day_type]}</td>
+                  <td className="px-2 py-2">{row.start_date} → {row.end_date}</td>
+                  <td className="px-2 py-2">{row.days.toFixed(2)}</td>
+                  <td className="px-2 py-2">{row.reason || '-'}</td>
+                  <td className="px-2 py-2">{row.status}</td>
+                  <td className="px-2 py-2">
+                    <textarea
+                      className="w-52 rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      rows={2}
+                      value={remarks[row.id] ?? row.admin_remark ?? ''}
+                      onChange={(e) => setRemarks((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                      disabled={row.status !== 'pending'}
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    {row.status === 'pending' ? (
+                      <div className="flex gap-2">
+                        <button type="button" className="rounded bg-emerald-600 px-2 py-1 text-xs text-white" onClick={() => decide(row.id, 'approved')}>Approve</button>
+                        <button type="button" className="rounded bg-rose-600 px-2 py-1 text-xs text-white" onClick={() => decide(row.id, 'rejected')}>Reject</button>
+                      </div>
+                    ) : '-'}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr><td colSpan={9} className="px-2 py-6 text-center text-slate-500">No leave requests found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

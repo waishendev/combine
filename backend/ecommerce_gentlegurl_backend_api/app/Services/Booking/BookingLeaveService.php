@@ -15,7 +15,7 @@ class BookingLeaveService
      */
     public function getBalanceSummaryForStaff(int $staffId): array
     {
-        $types = ['annual', 'mc', 'off_day'];
+        $types = ['annual', 'mc', 'emergency', 'unpaid'];
 
         $entitlements = BookingLeaveBalance::query()
             ->where('staff_id', $staffId)
@@ -25,6 +25,7 @@ class BookingLeaveService
         $usedByType = BookingLeaveRequest::query()
             ->where('staff_id', $staffId)
             ->where('status', 'approved')
+            ->whereIn('leave_type', ['annual', 'mc', 'emergency'])
             ->selectRaw('leave_type, COALESCE(SUM(days), 0) as used_days')
             ->groupBy('leave_type')
             ->pluck('used_days', 'leave_type');
@@ -47,9 +48,14 @@ class BookingLeaveService
 
     public function getRemainingAnnualDays(int $staffId): float
     {
+        return $this->getRemainingDaysByType($staffId, 'annual');
+    }
+
+    public function getRemainingDaysByType(int $staffId, string $leaveType): float
+    {
         $summary = collect($this->getBalanceSummaryForStaff($staffId));
 
-        return (float) ($summary->firstWhere('leave_type', 'annual')['remaining_days'] ?? 0);
+        return (float) ($summary->firstWhere('leave_type', $leaveType)['remaining_days'] ?? 0);
     }
 
     public function calculateRequestedDays(Carbon $startDate, Carbon $endDate, string $dayType): float

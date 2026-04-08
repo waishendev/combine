@@ -35,7 +35,7 @@ class LeaveBalanceController extends Controller
         Staff::query()->findOrFail($staffId);
 
         $data = $request->validate([
-            'leave_type' => ['required', 'in:annual,mc,off_day'],
+            'leave_type' => ['required', 'in:annual,mc,emergency,unpaid'],
             'entitled_days' => ['required', 'numeric', 'min:0', 'max:366'],
             'remark' => ['nullable', 'string', 'max:1000'],
         ]);

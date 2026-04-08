@@ -158,14 +158,14 @@ class BookingLeaveTestingSeeder extends Seeder
             $rejected = BookingLeaveRequest::query()->updateOrCreate(
                 [
                     'staff_id' => $staffId,
-                    'leave_type' => 'off_day',
+                    'leave_type' => 'emergency',
                     'start_date' => $today->copy()->subDays(4 + $index)->toDateString(),
                     'end_date' => $today->copy()->subDays(4 + $index)->toDateString(),
                 ],
                 [
-                    'day_type' => 'full_day',
-                    'days' => 1,
-                    'reason' => 'Personal errand (seeded rejected)',
+                    'day_type' => 'half_day_pm',
+                    'days' => 0.5,
+                    'reason' => 'Personal errand (seeded rejected emergency half-day)',
                     'status' => 'rejected',
                     'admin_remark' => 'Rejected due to full roster coverage.',
                     'reviewed_by_user_id' => $userId,
@@ -179,7 +179,7 @@ class BookingLeaveTestingSeeder extends Seeder
                 (int) $rejected->id,
                 'rejected',
                 ['status' => 'pending'],
-                ['status' => 'rejected', 'day_type' => 'full_day', 'total_days' => (float) $rejected->days],
+                ['status' => 'rejected', 'day_type' => 'half_day_pm', 'total_days' => (float) $rejected->days],
                 $rejected->admin_remark,
                 $userId
             );

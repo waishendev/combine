@@ -10,7 +10,7 @@ return new class extends Migration {
         Schema::create('booking_leave_balances', function (Blueprint $table) {
             $table->id();
             $table->foreignId('staff_id')->constrained('staffs')->cascadeOnDelete();
-            $table->enum('leave_type', ['annual', 'mc', 'off_day']);
+            $table->enum('leave_type', ['annual', 'mc', 'emergency', 'unpaid', 'off_day']);
             $table->decimal('entitled_days', 6, 2)->default(0);
             $table->timestamps();
 
@@ -20,7 +20,7 @@ return new class extends Migration {
         Schema::create('booking_leave_requests', function (Blueprint $table) {
             $table->id();
             $table->foreignId('staff_id')->constrained('staffs')->cascadeOnDelete();
-            $table->enum('leave_type', ['annual', 'mc', 'off_day']);
+            $table->enum('leave_type', ['annual', 'mc', 'emergency', 'unpaid', 'off_day']);
             $table->enum('day_type', ['full_day', 'half_day_am', 'half_day_pm'])->default('full_day');
             $table->date('start_date');
             $table->date('end_date');

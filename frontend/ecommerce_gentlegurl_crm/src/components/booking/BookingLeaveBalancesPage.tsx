@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-type LeaveType = 'annual' | 'mc' | 'off_day'
+type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid'
 
 type LeaveItem = { leave_type: LeaveType; entitled_days: number; used_days: number; remaining_days: number }
 type StaffBalance = { staff_id: number; staff_name: string; balances: LeaveItem[] }
@@ -78,7 +78,7 @@ export default function BookingLeaveBalancesPage() {
                 <tbody>
                   {row.balances.map((item) => (
                     <tr key={item.leave_type} className="border-b border-slate-100">
-                      <td className="px-2 py-2">{item.leave_type}</td>
+                      <td className="px-2 py-2">{item.leave_type.replaceAll('_', ' ')}</td>
                       <td className="px-2 py-2">
                         <input
                           type="number"

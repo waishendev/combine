@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 
-type LeaveType = 'annual' | 'mc' | 'off_day'
+type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid'
 type DayType = 'full_day' | 'half_day_am' | 'half_day_pm'
 type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
@@ -15,7 +15,7 @@ type LeaveBalance = {
 
 type LeaveRequest = {
   id: number
-  leave_type: LeaveType
+  leave_type: LeaveType | 'off_day'
   start_date: string
   end_date: string
   day_type: DayType
@@ -26,10 +26,18 @@ type LeaveRequest = {
   created_at: string
 }
 
-const LEAVE_LABEL: Record<LeaveType, string> = {
+const LEAVE_LABEL: Record<LeaveRequest['leave_type'], string> = {
   annual: 'Annual Leave',
   mc: 'Medical Leave (MC)',
+  emergency: 'Emergency Leave',
+  unpaid: 'Unpaid Leave',
   off_day: 'Off Day',
+}
+
+const DAY_TYPE_LABEL: Record<DayType, string> = {
+  full_day: 'Full Day',
+  half_day_am: 'Half Day (Morning)',
+  half_day_pm: 'Half Day (Afternoon)',
 }
 
 const STATUS_CLASS: Record<LeaveStatus, string> = {
@@ -59,6 +67,7 @@ export default function BookingMyLeavePage() {
   const [form, setForm] = useState({ leave_type: 'annual' as LeaveType, day_type: 'full_day' as DayType, start_date: '', end_date: '', reason: '' })
 
   const remainingAnnual = useMemo(() => balances.find((b) => b.leave_type === 'annual')?.remaining_days ?? 0, [balances])
+  const isEmergency = form.leave_type === 'emergency'
   const isSingleDaySelection = form.start_date !== '' && form.start_date === form.end_date
 
   const loadAll = async () => {
@@ -87,6 +96,12 @@ export default function BookingMyLeavePage() {
   useEffect(() => {
     void loadAll()
   }, [])
+
+  useEffect(() => {
+    if (!isEmergency && form.day_type !== 'full_day') {
+      setForm((prev) => ({ ...prev, day_type: 'full_day' }))
+    }
+  }, [form.day_type, isEmergency])
 
   const applyLeave = async (e: FormEvent) => {
     e.preventDefault()
@@ -126,10 +141,9 @@ export default function BookingMyLeavePage() {
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-lg font-semibold">Apply Leave / MC / Off Day</h3>
+        <h3 className="text-lg font-semibold">Apply Leave</h3>
         <p className="text-sm text-slate-500 mt-1">Annual leave remaining: {remainingAnnual.toFixed(2)} day(s)</p>
-        <p className="text-xs text-slate-500 mt-1">Half day is only available for single-date leave requests.</p>
-        <form className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3" onSubmit={applyLeave}>
+        <form className="mt-4 grid grid-cols-1 md:grid-cols-5 gap-3" onSubmit={applyLeave}>
           <select
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={form.leave_type}
@@ -137,21 +151,26 @@ export default function BookingMyLeavePage() {
           >
             <option value="annual">Annual Leave</option>
             <option value="mc">Medical Leave (MC)</option>
-            <option value="off_day">Off Day</option>
+            <option value="emergency">Emergency Leave</option>
+            <option value="unpaid">Unpaid Leave</option>
           </select>
+
           <select
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={form.day_type}
+            disabled={!isEmergency}
             onChange={(e) => setForm((prev) => ({ ...prev, day_type: e.target.value as DayType }))}
           >
             <option value="full_day">Full Day</option>
-            <option value="half_day_am" disabled={!isSingleDaySelection}>Half Day AM</option>
-            <option value="half_day_pm" disabled={!isSingleDaySelection}>Half Day PM</option>
+            <option value="half_day_am" disabled={!isEmergency || !isSingleDaySelection}>Half Day (Morning)</option>
+            <option value="half_day_pm" disabled={!isEmergency || !isSingleDaySelection}>Half Day (Afternoon)</option>
           </select>
-          <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" type="date" value={form.start_date} onChange={(e) => setForm((prev) => ({ ...prev, start_date: e.target.value, day_type: prev.end_date && prev.end_date !== e.target.value ? 'full_day' : prev.day_type }))} required />
-          <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" type="date" value={form.end_date} onChange={(e) => setForm((prev) => ({ ...prev, end_date: e.target.value, day_type: prev.start_date && prev.start_date !== e.target.value ? 'full_day' : prev.day_type }))} required />
+
+          <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" type="date" value={form.start_date} onChange={(e) => setForm((prev) => ({ ...prev, start_date: e.target.value, day_type: (prev.end_date && prev.end_date !== e.target.value) ? 'full_day' : prev.day_type }))} required />
+          <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" type="date" value={form.end_date} onChange={(e) => setForm((prev) => ({ ...prev, end_date: e.target.value, day_type: (prev.start_date && prev.start_date !== e.target.value) ? 'full_day' : prev.day_type }))} required />
           <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Reason (optional)" value={form.reason} onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))} />
-          <button type="submit" disabled={saving} className="md:col-span-4 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
+
+          <button type="submit" disabled={saving} className="md:col-span-5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
             {saving ? 'Submitting...' : 'Submit Request'}
           </button>
         </form>
@@ -208,7 +227,7 @@ export default function BookingMyLeavePage() {
                 <tr key={row.id} className="border-b border-slate-100">
                   <td className="px-2 py-2">{new Date(row.created_at).toLocaleDateString()}</td>
                   <td className="px-2 py-2">{LEAVE_LABEL[row.leave_type]}</td>
-                  <td className="px-2 py-2">{row.day_type.replaceAll('_', ' ')}</td>
+                  <td className="px-2 py-2">{DAY_TYPE_LABEL[row.day_type]}</td>
                   <td className="px-2 py-2">{row.start_date} → {row.end_date}</td>
                   <td className="px-2 py-2">{row.days.toFixed(2)}</td>
                   <td className="px-2 py-2"><span className={`rounded-full px-2 py-1 text-xs font-medium ${STATUS_CLASS[row.status]}`}>{row.status}</span></td>

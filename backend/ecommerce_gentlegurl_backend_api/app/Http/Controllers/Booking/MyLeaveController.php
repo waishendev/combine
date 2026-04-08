@@ -48,7 +48,7 @@ class MyLeaveController extends Controller
         }
 
         $data = $request->validate([
-            'leave_type' => ['required', 'in:annual,mc,off_day'],
+            'leave_type' => ['required', 'in:annual,mc,emergency,unpaid'],
             'day_type' => ['required', 'in:full_day,half_day_am,half_day_pm'],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
@@ -62,14 +62,20 @@ class MyLeaveController extends Controller
             return $this->respondError('Multi-day leave currently supports full day only.', 422);
         }
 
+
+        if ($data['leave_type'] !== 'emergency' && $data['day_type'] !== 'full_day') {
+            return $this->respondError('Only Emergency Leave supports half-day requests.', 422);
+        }
+
         $days = $this->leaveService->calculateRequestedDays($startDate, $endDate, (string) $data['day_type']);
 
-        if ($data['leave_type'] === 'annual') {
-            $remaining = $this->leaveService->getRemainingAnnualDays($staffId);
+        if (in_array($data['leave_type'], ['annual', 'mc', 'emergency'], true)) {
+            $remaining = $this->leaveService->getRemainingDaysByType($staffId, (string) $data['leave_type']);
             if ($days > $remaining) {
-                return $this->respondError('Annual leave exceeds remaining balance.', 422, [
+                return $this->respondError('Leave exceeds remaining balance.', 422, [
                     'requested_days' => $days,
                     'remaining_days' => $remaining,
+                    'leave_type' => $data['leave_type'],
                 ]);
             }
         }
