@@ -543,6 +543,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             requiredPermission: 'booking.schedules.view',
           },
           {
+            key: 'booking-leave-calendar',
+            label: 'Leave Calendar',
+            href: '/booking/leave-calendar',
+            requiredPermission: 'booking.schedules.view',
+          },
+          {
             key: 'booking-leave-logs',
             label: 'Leave Logs',
             href: '/booking/leave-logs',

@@ -28,6 +28,18 @@ class LeaveRequestController extends Controller
             $query->where('staff_id', (int) $request->input('staff_id'));
         }
 
+        if ($request->filled('leave_type')) {
+            $query->where('leave_type', (string) $request->input('leave_type'));
+        }
+
+        if ($request->filled('from_date')) {
+            $query->whereDate('end_date', '>=', (string) $request->input('from_date'));
+        }
+
+        if ($request->filled('to_date')) {
+            $query->whereDate('start_date', '<=', (string) $request->input('to_date'));
+        }
+
         return $this->respond($query->orderByDesc('created_at')->paginate((int) $request->input('per_page', 30)));
     }
 
