@@ -166,6 +166,19 @@ class PublicCheckoutController extends Controller
 
         $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
         $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $type, $paymentMethod);
+        if (
+            $paymentMethod === 'billplz_online_banking'
+            && $selectedGatewayOption
+            && strtoupper((string) $selectedGatewayOption->code) !== 'MB2U0227'
+        ) {
+            Log::warning('Online banking direct routing hotfix currently only supports Maybank (MB2U0227); fallback to generic Billplz.', [
+                'payment_method' => $paymentMethod,
+                'billplz_gateway_option_id' => $selectedGatewayOption->id,
+                'selected_gateway_code' => $selectedGatewayOption->code,
+                'type' => $type,
+            ]);
+            $selectedGatewayOption = null;
+        }
         if (str_starts_with($paymentMethod, 'billplz_') && ! $selectedGatewayOption) {
             Log::warning('Billplz payment option missing; falling back to generic Billplz flow.', [
                 'payment_method' => $paymentMethod,

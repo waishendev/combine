@@ -51,6 +51,8 @@ class BillplzService
             throw new RuntimeException('Please provide a contact phone or email for the payment.');
         }
 
+        $isDirectOnlineBanking = $order->payment_method === 'billplz_online_banking' && $selectedGatewayCode;
+
         $payload = array_filter([
             'collection_id' => $collectionId,
             'email' => $email,
@@ -60,13 +62,11 @@ class BillplzService
             'description' => 'Order ' . $order->order_number,
             'callback_url' => $callbackUrl,
             'redirect_url' => $redirectUrl,
-            'reference_1_label' => 'OrderNo',
-            'reference_1' => $order->order_number,
+            'reference_1_label' => $isDirectOnlineBanking ? 'Bank Code' : 'OrderNo',
+            'reference_1' => $isDirectOnlineBanking ? $selectedGatewayCode : $order->order_number,
+            'reference_2_label' => $isDirectOnlineBanking ? 'OrderNo' : null,
+            'reference_2' => $isDirectOnlineBanking ? $order->order_number : null,
         ], fn($value) => $value !== null && $value !== '');
-
-        if ($selectedGatewayCode) {
-            $payload['payment_channel'] = $selectedGatewayCode;
-        }
 
         if (! empty($extraPayload)) {
             $payload = array_merge($payload, $extraPayload);
@@ -90,7 +90,7 @@ class BillplzService
 
         $responseData = (array) $response->json();
         $originalUrl = (string) data_get($responseData, 'url', '');
-        $resolvedUrl = $this->resolvePaymentUrl($originalUrl, $selectedGatewayCode, $extraPayload);
+        $resolvedUrl = $this->resolvePaymentUrl($originalUrl, (bool) $isDirectOnlineBanking);
 
         if ($resolvedUrl !== '' && $resolvedUrl !== $originalUrl) {
             $responseData['url'] = $resolvedUrl;
@@ -100,7 +100,9 @@ class BillplzService
             'order_id' => $order->id,
             'order_number' => $order->order_number,
             'payment_method' => $order->payment_method,
+            'selected_gateway_option_id' => $order->billplz_gateway_option_id,
             'selected_gateway_code' => $selectedGatewayCode,
+            'is_direct_online_banking' => $isDirectOnlineBanking,
             'billplz_gateway_option_id' => $order->billplz_gateway_option_id,
             'bill_payload' => $payload,
             'billplz_original_url' => $originalUrl,
@@ -110,24 +112,14 @@ class BillplzService
         return $responseData;
     }
 
-    private function resolvePaymentUrl(string $url, ?string $selectedGatewayCode, array $extraPayload): string
+    private function resolvePaymentUrl(string $url, bool $isDirectOnlineBanking): string
     {
-        if ($url === '' || ! $selectedGatewayCode) {
+        if ($url === '' || ! $isDirectOnlineBanking) {
             return $url;
-        }
-
-        $query = [
-            'payment_channel' => $selectedGatewayCode,
-            'preferred_gateway' => $selectedGatewayCode,
-        ];
-
-        $extraQuery = data_get($extraPayload, 'redirect_query', []);
-        if (is_array($extraQuery) && ! empty($extraQuery)) {
-            $query = array_merge($query, $extraQuery);
         }
 
         $separator = str_contains($url, '?') ? '&' : '?';
 
-        return $url . $separator . http_build_query($query);
+        return $url . $separator . http_build_query(['auto_submit' => 'true']);
     }
 }

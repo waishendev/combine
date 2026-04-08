@@ -20,11 +20,12 @@ class BillplzPaymentGatewayOptionSeeder extends Seeder
         // NOTE: These are placeholder/demo channel codes for local/UAT testing.
         // Replace with the confirmed Billplz production payment channel codes before go-live.
         $banks = [
-            ['code' => 'demo_maybank2u', 'name' => 'Maybank2U', 'is_default' => true, 'sort_order' => 1],
-            ['code' => 'demo_cimb_clicks', 'name' => 'CIMB Clicks', 'is_default' => false, 'sort_order' => 2],
-            ['code' => 'demo_public_bank', 'name' => 'Public Bank', 'is_default' => false, 'sort_order' => 3],
-            ['code' => 'demo_rhb_now', 'name' => 'RHB Now', 'is_default' => false, 'sort_order' => 4],
-            ['code' => 'demo_hong_leong_connect', 'name' => 'Hong Leong Connect', 'is_default' => false, 'sort_order' => 5],
+            // HOTFIX scope: enable Maybank direct routing first.
+            ['code' => 'MB2U0227', 'name' => 'Maybank2u', 'is_default' => true, 'is_active' => true, 'sort_order' => 1],
+            ['code' => 'demo_cimb_clicks', 'name' => 'CIMB Clicks', 'is_default' => false, 'is_active' => false, 'sort_order' => 2],
+            ['code' => 'demo_public_bank', 'name' => 'Public Bank', 'is_default' => false, 'is_active' => false, 'sort_order' => 3],
+            ['code' => 'demo_rhb_now', 'name' => 'RHB Now', 'is_default' => false, 'is_active' => false, 'sort_order' => 4],
+            ['code' => 'demo_hong_leong_connect', 'name' => 'Hong Leong Connect', 'is_default' => false, 'is_active' => false, 'sort_order' => 5],
         ];
 
         foreach ($banks as $bank) {
@@ -36,7 +37,7 @@ class BillplzPaymentGatewayOptionSeeder extends Seeder
                 ],
                 [
                     'name' => $bank['name'],
-                    'is_active' => true,
+                    'is_active' => (bool) $bank['is_active'],
                     'is_default' => (bool) $bank['is_default'],
                     'sort_order' => (int) $bank['sort_order'],
                     'description' => 'Demo seed data. Replace with real Billplz bank code in production.',
@@ -51,9 +52,11 @@ class BillplzPaymentGatewayOptionSeeder extends Seeder
         BillplzPaymentGatewayOption::query()
             ->where('type', $type)
             ->where('gateway_group', 'online_banking')
-            ->where('code', '!=', 'demo_maybank2u')
-            ->where('is_default', true)
-            ->update(['is_default' => false]);
+            ->where('code', '!=', 'MB2U0227')
+            ->update([
+                'is_default' => false,
+                'is_active' => false,
+            ]);
     }
 
     private function seedCreditCard(string $type): void

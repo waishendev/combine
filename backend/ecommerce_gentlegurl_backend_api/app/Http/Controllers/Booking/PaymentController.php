@@ -442,6 +442,8 @@ class PaymentController extends Controller
             abort(response()->json(['success' => false, 'message' => 'Please provide a contact phone or email for the payment.', 'data' => null], 422));
         }
 
+        $isDirectOnlineBanking = $paymentMethod === 'billplz_online_banking' && ! empty($selectedGatewayOption?->code);
+
         $payload = array_filter([
             'collection_id' => $collectionId,
             'email' => $contactEmail,
@@ -451,13 +453,11 @@ class PaymentController extends Controller
             'description' => 'Booking ' . ($booking->booking_code ?: $booking->id),
             'callback_url' => $callbackUrl,
             'redirect_url' => $redirectUrl,
-            'reference_1_label' => 'BookingCode',
-            'reference_1' => $booking->booking_code ?: (string) $booking->id,
+            'reference_1_label' => $isDirectOnlineBanking ? 'Bank Code' : 'BookingCode',
+            'reference_1' => $isDirectOnlineBanking ? $selectedGatewayOption?->code : ($booking->booking_code ?: (string) $booking->id),
+            'reference_2_label' => $isDirectOnlineBanking ? 'BookingCode' : null,
+            'reference_2' => $isDirectOnlineBanking ? ($booking->booking_code ?: (string) $booking->id) : null,
         ], fn($value) => $value !== null && $value !== '');
-
-        if ($selectedGatewayOption?->code) {
-            $payload['payment_channel'] = $selectedGatewayOption->code;
-        }
 
         $response = Http::asForm()
             ->withBasicAuth((string) $apiKey, '')
@@ -475,7 +475,7 @@ class PaymentController extends Controller
 
         $responseData = (array) $response->json();
         $originalUrl = (string) data_get($responseData, 'url', '');
-        $finalUrl = $this->resolvePaymentUrl($originalUrl, $selectedGatewayOption?->code, (array) data_get($selectedGatewayOption?->meta, 'billplz_payload', []));
+        $finalUrl = $this->resolvePaymentUrl($originalUrl, $isDirectOnlineBanking);
         if ($finalUrl !== '' && $finalUrl !== $originalUrl) {
             $responseData['url'] = $finalUrl;
         }
@@ -485,6 +485,7 @@ class PaymentController extends Controller
             'payment_method' => $paymentMethod,
             'billplz_gateway_option_id' => $selectedGatewayOption?->id,
             'selected_gateway_code' => $selectedGatewayOption?->code,
+            'is_direct_online_banking' => $isDirectOnlineBanking,
             'bill_payload' => $payload,
             'billplz_original_url' => $originalUrl,
             'billplz_final_url' => data_get($responseData, 'url'),
@@ -493,23 +494,13 @@ class PaymentController extends Controller
         return $responseData;
     }
 
-    private function resolvePaymentUrl(string $url, ?string $selectedGatewayCode, array $extraPayload): string
+    private function resolvePaymentUrl(string $url, bool $isDirectOnlineBanking): string
     {
-        if ($url === '' || ! $selectedGatewayCode) {
+        if ($url === '' || ! $isDirectOnlineBanking) {
             return $url;
         }
 
-        $query = [
-            'payment_channel' => $selectedGatewayCode,
-            'preferred_gateway' => $selectedGatewayCode,
-        ];
-
-        $extraQuery = data_get($extraPayload, 'redirect_query', []);
-        if (is_array($extraQuery) && ! empty($extraQuery)) {
-            $query = array_merge($query, $extraQuery);
-        }
-
-        return $url . (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
+        return $url . (str_contains($url, '?') ? '&' : '?') . http_build_query(['auto_submit' => 'true']);
     }
 
     private function authorizeBooking(Request $request, Booking $booking): void
