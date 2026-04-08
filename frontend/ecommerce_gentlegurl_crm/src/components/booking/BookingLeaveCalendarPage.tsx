@@ -47,10 +47,31 @@ const extractArray = <T,>(payload: unknown): T[] => {
 
 const formatDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/
 
-const parseYmdLocal = (value: string): Date => {
-  const [y, m, d] = value.split('-').map((v) => Number(v))
-  return new Date(y, (m || 1) - 1, d || 1)
+const toBusinessDateKey = (value: string): string | null => {
+  const matched = value.match(DATE_ONLY_PATTERN)
+  if (!matched) return null
+  return `${matched[1]}-${matched[2]}-${matched[3]}`
+}
+
+const parseYmdLocal = (value: string): Date | null => {
+  const key = toBusinessDateKey(value)
+  if (!key) return null
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+const formatDateRange = (startDate: string, endDate: string): string => {
+  const startKey = toBusinessDateKey(startDate)
+  const endKey = toBusinessDateKey(endDate)
+
+  if (!startKey && !endKey) return '-'
+  if (!startKey) return endKey ?? '-'
+  if (!endKey) return startKey
+  if (startKey === endKey) return startKey
+
+  return `${startKey} → ${endKey}`
 }
 
 
@@ -118,6 +139,8 @@ export default function BookingLeaveCalendarPage() {
     rows.forEach((row) => {
       const start = parseYmdLocal(row.start_date)
       const end = parseYmdLocal(row.end_date)
+      if (!start || !end) return
+
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const key = formatDate(new Date(d))
         const list = map.get(key) ?? []
@@ -203,7 +226,7 @@ export default function BookingLeaveCalendarPage() {
               <div key={`detail-${item.id}-${item.staff_id}`} className="rounded border border-slate-200 p-2">
                 <div className="font-medium">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
                 <div className="text-slate-600">{LEAVE_LABEL[item.leave_type]} • {item.day_type === 'full_day' ? 'Full Day' : (item.day_type === 'half_day_am' ? 'Half Day (Morning)' : 'Half Day (Afternoon)')}</div>
-                <div className="text-slate-500">{item.start_date} → {item.end_date}</div>
+                <div className="text-slate-500">{formatDateRange(item.start_date, item.end_date)}</div>
                 {item.reason && <div className="text-slate-500">Reason: {item.reason}</div>}
               </div>
             ))}
