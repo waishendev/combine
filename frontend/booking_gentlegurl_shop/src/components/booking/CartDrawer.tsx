@@ -123,15 +123,16 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         .then(([gatewayData, bankData, onlineOptions, cardOptions]) => {
           const activeGateways = gatewayData.filter((g) => g.is_active !== false);
           const normalizedGateways = activeGateways
-            .filter((gateway) => {
-              if (gateway.key === "billplz_fpx") return onlineOptions.length > 0;
-              if (gateway.key === "billplz_card") return cardOptions.length > 0;
-              return true;
-            })
             .map((gateway) => ({
               ...gateway,
               key: gateway.key === "billplz_fpx" ? "billplz_online_banking" : gateway.key === "billplz_card" ? "billplz_credit_card" : gateway.key,
             }));
+          if (process.env.NODE_ENV !== "production") {
+            console.info("[Booking CartDrawer] payment gateways response:", gatewayData);
+            console.info("[Booking CartDrawer] billplz online options response:", onlineOptions);
+            console.info("[Booking CartDrawer] billplz credit options response:", cardOptions);
+            console.info("[Booking CartDrawer] payment gateways after normalization:", normalizedGateways);
+          }
           setGateways(normalizedGateways as PublicBookingPaymentGateway[]);
           setBankAccounts(bankData || []);
           setOnlineBankingOptions(onlineOptions);
@@ -239,8 +240,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         return;
       }
       if (selectedPaymentMethod === "billplz_online_banking" && !selectedBillplzGatewayOptionId) {
-        setMessage("Please select an online banking option.");
-        return;
+        if (onlineBankingOptions.length > 0) {
+          setMessage("Please select an online banking option.");
+          return;
+        }
       }
 
       const checkoutResponse = await checkoutCart(
@@ -821,28 +824,34 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               {selectedPaymentMethod === "billplz_online_banking" ? (
                 <div>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Online Banking</p>
-                  <div className="space-y-2">
-                    {onlineBankingOptions.map((option) => (
-                      <label
-                        key={option.id}
-                        className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm transition-all ${
-                          selectedBillplzGatewayOptionId === option.id
-                            ? "border-[var(--accent-strong)] bg-[var(--muted)]/40 ring-2 ring-[var(--accent)]/20"
-                            : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/40"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="booking_billplz_online_option"
-                          className="h-4 w-4 accent-[var(--accent-strong)]"
-                          checked={selectedBillplzGatewayOptionId === option.id}
-                          onChange={() => setSelectedBillplzGatewayOptionId(option.id)}
-                        />
-                        {option.logo_url ? <img src={option.logo_url} alt={option.name} className="h-6 w-6 object-contain" /> : null}
-                        <span className="text-[var(--foreground)]">{option.name}</span>
-                      </label>
-                    ))}
-                  </div>
+                  {onlineBankingOptions.length === 0 ? (
+                    <p className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 text-sm text-[var(--text-muted)]">
+                      No banks configured yet. We&apos;ll continue with Billplz generic online banking flow.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {onlineBankingOptions.map((option) => (
+                        <label
+                          key={option.id}
+                          className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm transition-all ${
+                            selectedBillplzGatewayOptionId === option.id
+                              ? "border-[var(--accent-strong)] bg-[var(--muted)]/40 ring-2 ring-[var(--accent)]/20"
+                              : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/40"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="booking_billplz_online_option"
+                            className="h-4 w-4 accent-[var(--accent-strong)]"
+                            checked={selectedBillplzGatewayOptionId === option.id}
+                            onChange={() => setSelectedBillplzGatewayOptionId(option.id)}
+                          />
+                          {option.logo_url ? <img src={option.logo_url} alt={option.name} className="h-6 w-6 object-contain" /> : null}
+                          <span className="text-[var(--foreground)]">{option.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : null}
 

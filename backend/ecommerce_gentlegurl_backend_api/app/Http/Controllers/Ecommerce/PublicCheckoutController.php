@@ -675,7 +675,15 @@ class PublicCheckoutController extends Controller
 
         if ($paymentMethod === 'billplz_online_banking') {
             $optionId = (int) ($validated['billplz_gateway_option_id'] ?? 0);
+            $hasActiveOnlineOptions = BillplzPaymentGatewayOption::query()
+                ->where('type', $type)
+                ->where('gateway_group', 'online_banking')
+                ->where('is_active', true)
+                ->exists();
             if (! $optionId) {
+                if (! $hasActiveOnlineOptions) {
+                    return null;
+                }
                 throw ValidationException::withMessages([
                     'billplz_gateway_option_id' => __('Please select an online banking option.'),
                 ])->status(422);
@@ -688,6 +696,9 @@ class PublicCheckoutController extends Controller
                 ->find($optionId);
 
             if (! $option) {
+                if (! $hasActiveOnlineOptions) {
+                    return null;
+                }
                 throw ValidationException::withMessages([
                     'billplz_gateway_option_id' => __('Selected online banking option is not available.'),
                 ])->status(422);
@@ -703,12 +714,6 @@ class PublicCheckoutController extends Controller
             ->orderByDesc('is_default')
             ->orderBy('sort_order')
             ->first();
-
-        if (! $cardOption) {
-            throw ValidationException::withMessages([
-                'payment_method' => __('Credit card payment is not available at the moment.'),
-            ])->status(422);
-        }
 
         return $cardOption;
     }

@@ -40,10 +40,10 @@ class PaymentController extends Controller
 
         $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
         $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $type, $paymentMethod);
-        if ($paymentMethod === 'billplz_online_banking' && ! $selectedGatewayOption) {
+        if ($paymentMethod === 'billplz_online_banking' && ! $selectedGatewayOption && $this->hasActiveBillplzOptions($type, 'online_banking')) {
             return $this->respondError('Selected online banking option is not available.', 422);
         }
-        if ($paymentMethod === 'billplz_credit_card' && ! $selectedGatewayOption) {
+        if ($paymentMethod === 'billplz_credit_card' && ! $selectedGatewayOption && $this->hasActiveBillplzOptions($type, 'credit_card')) {
             return $this->respondError('Credit card payment is not available.', 422);
         }
 
@@ -159,6 +159,9 @@ class PaymentController extends Controller
 
         if ($paymentMethod === 'billplz_online_banking') {
             $optionId = (int) ($validated['billplz_gateway_option_id'] ?? 0);
+            if ($optionId <= 0) {
+                return null;
+            }
             return BillplzPaymentGatewayOption::query()
                 ->where('type', $type)
                 ->where('gateway_group', 'online_banking')
@@ -173,6 +176,15 @@ class PaymentController extends Controller
             ->orderByDesc('is_default')
             ->orderBy('sort_order')
             ->first();
+    }
+
+    protected function hasActiveBillplzOptions(string $type, string $gatewayGroup): bool
+    {
+        return BillplzPaymentGatewayOption::query()
+            ->where('type', $type)
+            ->where('gateway_group', $gatewayGroup)
+            ->where('is_active', true)
+            ->exists();
     }
 
     public function publicLookup(Request $request)

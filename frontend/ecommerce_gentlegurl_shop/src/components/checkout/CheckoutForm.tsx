@@ -492,15 +492,8 @@ export default function CheckoutForm() {
       getBillplzPaymentGatewayOptions({ type: "ecommerce", gateway_group: "credit_card" }),
     ])
       .then(([gateways, onlineOptions, cardOptions]) => {
-        const hasOnlineBanking = onlineOptions.length > 0;
-        const hasCreditCard = cardOptions.length > 0;
         const activeGateways = gateways
           .filter((gateway) => gateway.is_active)
-          .filter((gateway) => {
-            if (gateway.key === "billplz_fpx") return hasOnlineBanking;
-            if (gateway.key === "billplz_card") return hasCreditCard;
-            return true;
-          })
           .map((gateway) => ({
             ...gateway,
             key:
@@ -510,6 +503,12 @@ export default function CheckoutForm() {
                   ? "billplz_credit_card"
                   : gateway.key,
           }));
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[Checkout] payment gateways response:", gateways);
+          console.info("[Checkout] billplz online options response:", onlineOptions);
+          console.info("[Checkout] billplz credit card options response:", cardOptions);
+          console.info("[Checkout] payment gateways after normalization:", activeGateways);
+        }
         setPaymentGateways(activeGateways);
         setOnlineBankingOptions(onlineOptions);
         setSelectedBillplzGatewayOptionId(
@@ -627,8 +626,10 @@ export default function CheckoutForm() {
       return;
     }
     if (paymentMethod === "billplz_online_banking" && !selectedBillplzGatewayOptionId) {
-      setError("Please choose an online banking option.");
-      return;
+      if (onlineBankingOptions.length > 0) {
+        setError("Please choose an online banking option.");
+        return;
+      }
     }
 
     if (shippingMethod === "self_pickup" && !selectedStoreId) {
@@ -1569,26 +1570,32 @@ export default function CheckoutForm() {
                     {gateway.key === "billplz_online_banking" && paymentMethod === "billplz_online_banking" && (
                       <div className="rounded border border-[var(--muted)]/70 bg-[var(--muted)]/20 p-3 text-xs text-[var(--foreground)]">
                         <p className="mb-2 font-medium text-[var(--foreground)]">Choose Online Banking Bank</p>
-                        <div className="space-y-2">
-                          {onlineBankingOptions.map((option) => (
-                            <label
-                              key={option.id}
-                              className="flex items-center gap-2 rounded border border-transparent p-2 hover:border-[var(--accent)]/60"
-                            >
-                              <input
-                                type="radio"
-                                name="billplz_online_banking_option"
-                                value={option.id}
-                                checked={selectedBillplzGatewayOptionId === option.id}
-                                onChange={() => setSelectedBillplzGatewayOptionId(option.id)}
-                              />
-                              {option.logo_url ? (
-                                <Image src={option.logo_url} alt={option.name} width={20} height={20} className="h-5 w-5 object-contain" />
-                              ) : null}
-                              <span>{option.name}</span>
-                            </label>
-                          ))}
-                        </div>
+                        {onlineBankingOptions.length === 0 ? (
+                          <p className="text-[var(--foreground)]/70">
+                            No banks configured yet. We&apos;ll continue with Billplz generic online banking flow.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {onlineBankingOptions.map((option) => (
+                              <label
+                                key={option.id}
+                                className="flex items-center gap-2 rounded border border-transparent p-2 hover:border-[var(--accent)]/60"
+                              >
+                                <input
+                                  type="radio"
+                                  name="billplz_online_banking_option"
+                                  value={option.id}
+                                  checked={selectedBillplzGatewayOptionId === option.id}
+                                  onChange={() => setSelectedBillplzGatewayOptionId(option.id)}
+                                />
+                                {option.logo_url ? (
+                                  <Image src={option.logo_url} alt={option.name} width={20} height={20} className="h-5 w-5 object-contain" />
+                                ) : null}
+                                <span>{option.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
