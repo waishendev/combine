@@ -2,6 +2,7 @@ import { getOrCreateBookingGuestToken } from "./bookingGuestToken";
 import { 
   AddressPayload, 
   AuthUser, 
+  BookingServiceCategory,
   BookingCart, 
   BookingPolicy,
   BookingRecord, 

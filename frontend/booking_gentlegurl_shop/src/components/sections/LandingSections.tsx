@@ -160,6 +160,41 @@ export function StaticSections() {
       <section className="space-y-6">
         <div className="mb-8 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
+            GALLERY
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+            Click to view services and pricing
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {gallery.map((image, idx) => (
+            <button
+              key={`gallery-${image.src}-${idx}`}
+              type="button"
+              onClick={() => setGalleryLightboxIndex(idx)}
+              className="group flex w-full cursor-zoom-in flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-3 text-left shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
+              aria-label="Open image zoom"
+            >
+              <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
+                <Image
+                  src={image.src}
+                  alt={image.alt}
+                  fill
+                  className="object-cover transition duration-300 group-hover:scale-[1.02]"
+                  sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw"
+                  priority={idx < 4}
+                />
+              </div>
+              <p className="text-sm text-[var(--foreground)]/70 text-center">{image.caption}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-6">
+        <div className="mb-8 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
             Service Menu
           </p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
