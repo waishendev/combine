@@ -442,7 +442,7 @@ class PaymentController extends Controller
             abort(response()->json(['success' => false, 'message' => 'Please provide a contact phone or email for the payment.', 'data' => null], 422));
         }
 
-        $isDirectOnlineBanking = $paymentMethod === 'billplz_online_banking' && ! empty($selectedGatewayOption?->code);
+        $isDirectChannel = in_array($paymentMethod, ['billplz_online_banking', 'billplz_credit_card'], true) && ! empty($selectedGatewayOption?->code);
 
         $payload = array_filter([
             'collection_id' => $collectionId,
@@ -453,10 +453,10 @@ class PaymentController extends Controller
             'description' => 'Booking ' . ($booking->booking_code ?: $booking->id),
             'callback_url' => $callbackUrl,
             'redirect_url' => $redirectUrl,
-            'reference_1_label' => $isDirectOnlineBanking ? 'Bank Code' : 'BookingCode',
-            'reference_1' => $isDirectOnlineBanking ? $selectedGatewayOption?->code : ($booking->booking_code ?: (string) $booking->id),
-            'reference_2_label' => $isDirectOnlineBanking ? 'BookingCode' : null,
-            'reference_2' => $isDirectOnlineBanking ? ($booking->booking_code ?: (string) $booking->id) : null,
+            'reference_1_label' => $isDirectChannel ? 'Bank Code' : 'BookingCode',
+            'reference_1' => $isDirectChannel ? $selectedGatewayOption?->code : ($booking->booking_code ?: (string) $booking->id),
+            'reference_2_label' => $isDirectChannel ? 'BookingCode' : null,
+            'reference_2' => $isDirectChannel ? ($booking->booking_code ?: (string) $booking->id) : null,
         ], fn($value) => $value !== null && $value !== '');
 
         $response = Http::asForm()
@@ -475,7 +475,7 @@ class PaymentController extends Controller
 
         $responseData = (array) $response->json();
         $originalUrl = (string) data_get($responseData, 'url', '');
-        $finalUrl = $this->resolvePaymentUrl($originalUrl, $isDirectOnlineBanking);
+        $finalUrl = $this->resolvePaymentUrl($originalUrl, $isDirectChannel);
         if ($finalUrl !== '' && $finalUrl !== $originalUrl) {
             $responseData['url'] = $finalUrl;
         }
@@ -485,18 +485,19 @@ class PaymentController extends Controller
             'payment_method' => $paymentMethod,
             'billplz_gateway_option_id' => $selectedGatewayOption?->id,
             'selected_gateway_code' => $selectedGatewayOption?->code,
-            'is_direct_online_banking' => $isDirectOnlineBanking,
+            'is_direct_channel' => $isDirectChannel,
             'bill_payload' => $payload,
             'billplz_original_url' => $originalUrl,
             'billplz_final_url' => data_get($responseData, 'url'),
+            'fallback_to_generic' => ! $isDirectChannel,
         ]);
 
         return $responseData;
     }
 
-    private function resolvePaymentUrl(string $url, bool $isDirectOnlineBanking): string
+    private function resolvePaymentUrl(string $url, bool $isDirectChannel): string
     {
-        if ($url === '' || ! $isDirectOnlineBanking) {
+        if ($url === '' || ! $isDirectChannel) {
             return $url;
         }
 
