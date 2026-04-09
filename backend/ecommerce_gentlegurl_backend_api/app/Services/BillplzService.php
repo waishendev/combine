@@ -105,6 +105,7 @@ class BillplzService
             'is_direct_channel' => $isDirectChannel,
             'billplz_gateway_option_id' => $order->billplz_gateway_option_id,
             'bill_payload' => $payload,
+            'billplz_response' => $responseData,
             'billplz_original_url' => $originalUrl,
             'billplz_final_url' => data_get($responseData, 'url'),
             'fallback_to_generic' => ! $isDirectChannel,

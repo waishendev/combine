@@ -65,19 +65,29 @@ class BillplzPaymentGatewayOptionSeeder extends Seeder
             [
                 'type' => $type,
                 'gateway_group' => 'credit_card',
-                'code' => 'billplz_card_default',
+                // Billplz published card gateway code (must be validated against active account gateways).
+                'code' => 'BP-BILLPLZ1',
             ],
             [
                 'name' => 'Credit Card',
                 'is_active' => true,
                 'is_default' => true,
                 'sort_order' => 1,
-                'description' => 'Demo seed data. Replace with real Billplz credit card channel code in production.',
+                'description' => 'Billplz card gateway code. Confirm active status in your Billplz account.',
                 'meta' => [
-                    'seeded_demo' => true,
-                    'note' => 'Replace demo code with real Billplz card channel code before production use.',
+                    'seeded_demo' => false,
+                    'note' => 'Use active Billplz card gateway code for this account/workspace.',
                 ],
             ]
         );
+
+        BillplzPaymentGatewayOption::query()
+            ->where('type', $type)
+            ->where('gateway_group', 'credit_card')
+            ->where('code', '!=', 'BP-BILLPLZ1')
+            ->update([
+                'is_default' => false,
+                'is_active' => false,
+            ]);
     }
 }
