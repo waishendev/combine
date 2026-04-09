@@ -508,7 +508,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
   const [bookingAssignedStaffId, setBookingAssignedStaffId] = useState<number | null>(null)
   const [bookingDate, setBookingDate] = useState('')
-  const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string }>>([])
+  const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids: number[] }>>([])
   const [bookingSlotValue, setBookingSlotValue] = useState('')
   const [bookingNotes, setBookingNotes] = useState('')
   const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
@@ -1765,11 +1765,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   const openBookingModal = useCallback(async (service: BookingServiceOption) => {
     setBookingServiceDraft(service)
-    const allowedStaffs = service.allowed_staffs ?? []
-    const preferredStaff = currentUser.staff_id && allowedStaffs.some((staff) => staff.id === currentUser.staff_id)
-      ? currentUser.staff_id
-      : (allowedStaffs[0]?.id ?? null)
-    setBookingAssignedStaffId(preferredStaff)
+    setBookingAssignedStaffId(null)
     setBookingDate('')
     setBookingSlots([])
     setBookingSlotValue('')
@@ -1813,7 +1809,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     } catch {
       setBookingQuestions([])
     }
-  }, [currentUser.staff_id])
+  }, [])
 
   const bookingSelectedOptions = useMemo(() => {
     const selected = new Set(bookingSelectedOptionIds)
@@ -1827,6 +1823,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     () => bookingSelectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0),
     [bookingSelectedOptions],
   )
+  const bookingAvailableStaffs = useMemo(() => {
+    if (!bookingServiceDraft) return []
+    if (!bookingSlotValue) return []
+    const selectedSlot = bookingSlots.find((slot) => slot.start_at === bookingSlotValue)
+    if (!selectedSlot) return []
+    const availableSet = new Set(selectedSlot.available_staff_ids)
+    return (bookingServiceDraft.allowed_staffs ?? []).filter((staff) => availableSet.has(staff.id))
+  }, [bookingServiceDraft, bookingSlotValue, bookingSlots])
 
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
@@ -1889,9 +1893,10 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
 
   useEffect(() => {
     const loadSlots = async () => {
-      if (!bookingModalOpen || !bookingServiceDraft?.id || !bookingAssignedStaffId || !bookingDate) {
+      if (!bookingModalOpen || !bookingServiceDraft?.id || !bookingDate) {
         setBookingSlots([])
         setBookingSlotValue('')
+        setBookingAssignedStaffId(null)
         return
       }
 
@@ -1899,12 +1904,14 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
       try {
         const params = new URLSearchParams({
           service_id: String(bookingServiceDraft.id),
-          staff_id: String(bookingAssignedStaffId),
           date: bookingDate,
         })
-        const res = await fetch(`/api/proxy/booking/availability?${params.toString()}`, { cache: 'no-store' })
+        if (bookingAddonDurationTotal > 0) {
+          params.set('extra_duration_min', String(bookingAddonDurationTotal))
+        }
+        const res = await fetch(`/api/proxy/booking/availability/bulk?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
-        const rows: unknown[] = Array.isArray(json?.data?.slots) ? json.data.slots : []
+        const rows: unknown[] = Array.isArray(json?.data?.time_slots) ? json.data.time_slots : []
         const slots = rows
           .map((row: unknown) => {
             if (!row || typeof row !== 'object') return null
@@ -1912,19 +1919,47 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
             const startAt = String(maybe.start_at ?? '')
             const endAt = String(maybe.end_at ?? '')
             if (!startAt || !endAt) return null
-            return { start_at: startAt, end_at: endAt }
+            const staffAvailabilityRaw = Array.isArray(maybe.staff_availability) ? maybe.staff_availability : []
+            const availableStaffIds = staffAvailabilityRaw
+              .map((item) => {
+                if (!item || typeof item !== 'object') return null
+                const row = item as Record<string, unknown>
+                if (!Boolean(row.is_available)) return null
+                const staffId = Number(row.staff_id ?? 0)
+                return Number.isFinite(staffId) && staffId > 0 ? staffId : null
+              })
+              .filter((value): value is number => Boolean(value))
+            if (!availableStaffIds.length) return null
+            return { start_at: startAt, end_at: endAt, available_staff_ids: availableStaffIds }
           })
-          .filter((row): row is { start_at: string; end_at: string } => Boolean(row))
+          .filter((row): row is { start_at: string; end_at: string; available_staff_ids: number[] } => Boolean(row))
 
         setBookingSlots(slots)
         setBookingSlotValue((prev) => slots.some((slot) => slot.start_at === prev) ? prev : '')
+        setBookingAssignedStaffId((prev) => {
+          if (!prev) return null
+          const selectedSlot = slots.find((slot) => slot.start_at === bookingSlotValue)
+          if (!selectedSlot) return null
+          return selectedSlot.available_staff_ids.includes(prev) ? prev : null
+        })
       } finally {
         setBookingSlotsLoading(false)
       }
     }
 
     void loadSlots()
-  }, [bookingAssignedStaffId, bookingDate, bookingModalOpen, bookingServiceDraft?.id])
+  }, [bookingAddonDurationTotal, bookingDate, bookingModalOpen, bookingServiceDraft?.id, bookingSlotValue])
+
+  useEffect(() => {
+    if (!bookingSlotValue) {
+      setBookingAssignedStaffId(null)
+      return
+    }
+    setBookingAssignedStaffId((prev) => {
+      if (!prev) return prev
+      return bookingAvailableStaffs.some((staff) => staff.id === prev) ? prev : null
+    })
+  }, [bookingAvailableStaffs, bookingSlotValue])
 
   const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
     let staffs = activeStaffs
@@ -5114,20 +5149,6 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               ) : null}
 
               <div>
-                <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
-                <select
-                  value={bookingAssignedStaffId ?? ''}
-                  onChange={(e) => setBookingAssignedStaffId(Number(e.target.value) || null)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select staff</option>
-                  {(bookingServiceDraft.allowed_staffs ?? []).map((staff) => (
-                    <option key={staff.id} value={staff.id}>{staff.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
                 <label className="text-xs font-semibold text-gray-600">Appointment Date</label>
                 <input
                   type="date"
@@ -5140,8 +5161,11 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                 <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
                 <select
                   value={bookingSlotValue}
-                  onChange={(e) => setBookingSlotValue(e.target.value)}
-                  disabled={!bookingAssignedStaffId || !bookingDate || bookingSlotsLoading}
+                  onChange={(e) => {
+                    setBookingSlotValue(e.target.value)
+                    setBookingAssignedStaffId(null)
+                  }}
+                  disabled={!bookingDate || bookingSlotsLoading}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
                 >
                   <option value="">{bookingSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
@@ -5151,6 +5175,23 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
+                <select
+                  value={bookingAssignedStaffId ?? ''}
+                  onChange={(e) => setBookingAssignedStaffId(Number(e.target.value) || null)}
+                  disabled={!bookingSlotValue}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                >
+                  <option value="">{!bookingSlotValue ? 'Select slot first' : 'Select staff'}</option>
+                  {bookingAvailableStaffs.map((staff) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
+                {bookingSlotValue && bookingAvailableStaffs.length === 0 ? (
+                  <p className="mt-1 text-xs text-amber-700">No staff available for the selected slot.</p>
+                ) : null}
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600">Notes (optional)</label>
