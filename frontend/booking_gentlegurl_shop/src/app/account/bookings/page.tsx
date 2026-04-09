@@ -222,7 +222,13 @@ export default function MyBookingsPage() {
                       }
 
                       try {
-                        const resp = await payBooking(booking.id, { payment_method: method as "billplz_fpx" | "billplz_card" | "manual_transfer" });
+                        const normalizedMethod =
+                          method === "billplz_fpx"
+                            ? "billplz_online_banking"
+                            : method === "billplz_card"
+                              ? "billplz_credit_card"
+                              : method;
+                        const resp = await payBooking(booking.id, { payment_method: normalizedMethod as "billplz_online_banking" | "billplz_credit_card" | "manual_transfer" });
                         const redirectUrl = resp?.data?.payment_url || booking.latest_payment?.payment_url;
                         if (redirectUrl) {
                           window.location.href = redirectUrl;

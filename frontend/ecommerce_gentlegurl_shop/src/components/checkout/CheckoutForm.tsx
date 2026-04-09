@@ -16,6 +16,7 @@ import {
   CustomerAddress,
   CustomerVoucher,
   PublicBankAccount,
+  BillplzPaymentGatewayOption,
   PublicPaymentGateway,
   PublicStoreLocation,
   createCustomerAddress,
@@ -24,6 +25,7 @@ import {
   getCustomerAddresses,
   getBankAccounts,
   getPaymentGateways,
+  getBillplzPaymentGatewayOptions,
   getStoreLocations,
   getCustomerVouchers,
   getPromotions,
@@ -114,6 +116,8 @@ export default function CheckoutForm() {
   const [paymentGateways, setPaymentGateways] = useState<PublicPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBankAccount[]>([]);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
+  const [onlineBankingOptions, setOnlineBankingOptions] = useState<BillplzPaymentGatewayOption[]>([]);
+  const [selectedBillplzGatewayOptionId, setSelectedBillplzGatewayOptionId] = useState<number | null>(null);
   const [storeLocations, setStoreLocations] = useState<PublicStoreLocation[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [shippingPreview, setShippingPreview] = useState<CheckoutPreviewResponse | null>(null);
@@ -482,10 +486,34 @@ export default function CheckoutForm() {
 
   useEffect(() => {
     setIsLoadingPaymentGateways(true);
-    getPaymentGateways()
-      .then((gateways) => {
-        const activeGateways = gateways.filter((gateway) => gateway.is_active);
+    Promise.all([
+      getPaymentGateways(),
+      getBillplzPaymentGatewayOptions({ type: "ecommerce", gateway_group: "online_banking" }),
+      getBillplzPaymentGatewayOptions({ type: "ecommerce", gateway_group: "credit_card" }),
+    ])
+      .then(([gateways, onlineOptions, cardOptions]) => {
+        const activeGateways = gateways
+          .filter((gateway) => gateway.is_active)
+          .map((gateway) => ({
+            ...gateway,
+            key:
+              gateway.key === "billplz_fpx"
+                ? "billplz_online_banking"
+                : gateway.key === "billplz_card"
+                  ? "billplz_credit_card"
+                  : gateway.key,
+          }));
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[Checkout] payment gateways response:", gateways);
+          console.info("[Checkout] billplz online options response:", onlineOptions);
+          console.info("[Checkout] billplz credit card options response:", cardOptions);
+          console.info("[Checkout] payment gateways after normalization:", activeGateways);
+        }
         setPaymentGateways(activeGateways);
+        setOnlineBankingOptions(onlineOptions);
+        setSelectedBillplzGatewayOptionId(
+          onlineOptions.find((option) => option.is_default)?.id ?? onlineOptions[0]?.id ?? null,
+        );
 
         if (activeGateways.length > 0) {
           const defaultGateway = activeGateways.find((gateway) => gateway.is_default) ?? activeGateways[0];
@@ -498,6 +526,7 @@ export default function CheckoutForm() {
       })
       .catch(() => {
         setPaymentGateways([]);
+        setOnlineBankingOptions([]);
         setPaymentMethod((prev) => prev || "manual_transfer");
       })
       .finally(() => setIsLoadingPaymentGateways(false));
@@ -596,6 +625,12 @@ export default function CheckoutForm() {
       setError("Please choose a bank account for manual transfer.");
       return;
     }
+    if (paymentMethod === "billplz_online_banking" && !selectedBillplzGatewayOptionId) {
+      if (onlineBankingOptions.length > 0) {
+        setError("Please choose an online banking option.");
+        return;
+      }
+    }
 
     if (shippingMethod === "self_pickup" && !selectedStoreId) {
       setError("Please choose a store location for self pickup.");
@@ -685,6 +720,8 @@ export default function CheckoutForm() {
         customer_voucher_id: selectedVoucherId ?? undefined,
         store_location_id: shippingMethod === "self_pickup" ? selectedStoreId ?? undefined : undefined,
         bank_account_id: paymentMethod === "manual_transfer" ? selectedBankId ?? undefined : undefined,
+        billplz_gateway_option_id:
+          paymentMethod === "billplz_online_banking" ? selectedBillplzGatewayOptionId ?? undefined : undefined,
       };
       if (!billingSameAsShipping) {
         payload.billing_name = billingForm.billing_name;
@@ -705,8 +742,7 @@ export default function CheckoutForm() {
       setVoucherCode("");
       setSelectedVoucherId(null);
 
-      const isBillplzMethod =
-        order.payment_method === "billplz_fpx" || order.payment_method === "billplz_card";
+      const isBillplzMethod = String(order.payment_method || "").startsWith("billplz_");
       const paymentUrl = order.payment_url ?? order.payment?.billplz_url;
 
       if (isBillplzMethod) {
@@ -1529,6 +1565,38 @@ export default function CheckoutForm() {
                           </p>
                         )}
                       </>
+                    )}
+
+                    {gateway.key === "billplz_online_banking" && paymentMethod === "billplz_online_banking" && (
+                      <div className="rounded border border-[var(--muted)]/70 bg-[var(--muted)]/20 p-3 text-xs text-[var(--foreground)]">
+                        <p className="mb-2 font-medium text-[var(--foreground)]">Choose Online Banking Bank</p>
+                        {onlineBankingOptions.length === 0 ? (
+                          <p className="text-[var(--foreground)]/70">
+                            No banks configured yet. We&apos;ll continue with Billplz generic online banking flow.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {onlineBankingOptions.map((option) => (
+                              <label
+                                key={option.id}
+                                className="flex items-center gap-2 rounded border border-transparent p-2 hover:border-[var(--accent)]/60"
+                              >
+                                <input
+                                  type="radio"
+                                  name="billplz_online_banking_option"
+                                  value={option.id}
+                                  checked={selectedBillplzGatewayOptionId === option.id}
+                                  onChange={() => setSelectedBillplzGatewayOptionId(option.id)}
+                                />
+                                {option.logo_url ? (
+                                  <Image src={option.logo_url} alt={option.name} width={20} height={20} className="h-5 w-5 object-contain" />
+                                ) : null}
+                                <span>{option.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))

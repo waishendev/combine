@@ -41,6 +41,15 @@ export type PublicBookingPaymentGateway = {
   is_default?: boolean;
 };
 
+export type BillplzPaymentGatewayOption = {
+  id: number;
+  name: string;
+  code: string;
+  logo_url?: string | null;
+  is_default?: boolean;
+  sort_order?: number;
+};
+
 class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -202,8 +211,9 @@ export async function checkoutCart(payload?: {
   billing_name?: string;
   billing_phone?: string;
   billing_email?: string;
-  payment_method?: "manual_transfer" | "billplz_fpx" | "billplz_card";
+  payment_method?: "manual_transfer" | "billplz_online_banking" | "billplz_credit_card";
   bank_account_id?: number;
+  billplz_gateway_option_id?: number;
 }) {
   const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string }>(`/booking/cart/checkout`, {
     method: "POST",
@@ -213,7 +223,7 @@ export async function checkoutCart(payload?: {
   return unwrapData<{ status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string }>(response);
 }
 
-export async function payPublicOrder(orderId: number, payload?: { payment_method?: "billplz_fpx" | "billplz_card" }) {
+export async function payPublicOrder(orderId: number, payload?: { payment_method?: "billplz_online_banking" | "billplz_credit_card"; billplz_gateway_option_id?: number }) {
   return request<{ data?: { redirect_url?: string } }>(`/public/shop/orders/${orderId}/pay`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
@@ -259,13 +269,26 @@ export async function getBookingPaymentGateways() {
 }
 
 export async function payBooking(bookingId: string | number, payload?: {
-  payment_method?: "manual_transfer" | "billplz_fpx" | "billplz_card";
+  payment_method?: "manual_transfer" | "billplz_online_banking" | "billplz_credit_card";
   bank_account_id?: number;
+  billplz_gateway_option_id?: number;
 }) {
   return request<{ data?: { payment_url?: string; status?: string; provider?: string; payment_method?: string; manual_bank_account?: PublicBookingBankAccount; payment_result_url?: string; order_id?: number; order_no?: string } }>(`/booking/${bookingId}/pay?type=booking`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
+}
+
+export async function getBillplzPaymentGatewayOptions(params: {
+  type: "ecommerce" | "booking";
+  gateway_group: "online_banking" | "credit_card";
+}) {
+  const qs = new URLSearchParams({
+    type: params.type,
+    gateway_group: params.gateway_group,
+  });
+  const response = await request<{ data?: BillplzPaymentGatewayOption[] } | BillplzPaymentGatewayOption[]>(`/payment-gateway-options?${qs.toString()}`);
+  return unwrapData<BillplzPaymentGatewayOption[]>(response) ?? [];
 }
 
 export async function loginCustomer(payload: { email: string; password: string }) {

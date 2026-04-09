@@ -12,6 +12,7 @@ use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingSetting;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\ServicePackage;
+use App\Models\BillplzPaymentGatewayOption;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Services\Booking\BookingAvailabilityService;
@@ -257,8 +258,9 @@ class CartController extends Controller
             'billing_name' => ['nullable', 'string', 'max:255'],
             'billing_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
             'billing_email' => ['nullable', 'email', 'max:255'],
-            'payment_method' => ['nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card'],
+            'payment_method' => ['nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card'],
             'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
+            'billplz_gateway_option_id' => ['nullable', 'integer', 'exists:billplz_payment_gateway_options,id'],
         ]);
 
         if (empty($validated['guest_name']) || empty($validated['guest_phone'])) {
@@ -303,7 +305,14 @@ class CartController extends Controller
             $addonTotal = 0.0;
             $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $activeItemIds = $activeItems->pluck('id')->all();
-            $paymentMethod = (string) ($validated['payment_method'] ?? 'manual_transfer');
+            $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
+            $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $paymentMethod);
+            if ($paymentMethod === 'billplz_online_banking' && ! $selectedGatewayOption && $this->hasActiveBillplzOptions('online_banking')) {
+                return $this->respondError('Selected online banking option is not available.', 422);
+            }
+            if ($paymentMethod === 'billplz_credit_card' && ! $selectedGatewayOption && $this->hasActiveBillplzOptions('credit_card')) {
+                return $this->respondError('Credit card payment is not available.', 422);
+            }
             $order = null;
 
             if ($customer) {
@@ -313,7 +322,11 @@ class CartController extends Controller
                     'status' => 'pending',
                     'payment_status' => 'unpaid',
                     'payment_method' => $paymentMethod,
+                    'requested_payment_method' => $paymentMethod,
                     'payment_provider' => str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual',
+                    'selected_gateway_code' => $selectedGatewayOption?->code,
+                    'selected_gateway_name' => $selectedGatewayOption?->name,
+                    'billplz_gateway_option_id' => $selectedGatewayOption?->id,
                     'bank_account_id' => $paymentMethod === 'manual_transfer'
                         ? (int) ($validated['bank_account_id'] ?? 0) ?: null
                         : null,
@@ -837,6 +850,51 @@ class CartController extends Controller
         }
 
         return $map;
+    }
+
+    private function normalizeRequestedPaymentMethod(string $method): string
+    {
+        return match ($method) {
+            'billplz_fpx' => 'billplz_online_banking',
+            'billplz_card' => 'billplz_credit_card',
+            default => $method,
+        };
+    }
+
+    private function resolveBillplzGatewayOption(array $validated, string $paymentMethod): ?BillplzPaymentGatewayOption
+    {
+        if ($paymentMethod === 'manual_transfer') {
+            return null;
+        }
+
+        if ($paymentMethod === 'billplz_online_banking') {
+            $optionId = (int) ($validated['billplz_gateway_option_id'] ?? 0);
+            if ($optionId <= 0) {
+                return null;
+            }
+            return BillplzPaymentGatewayOption::query()
+                ->where('type', 'booking')
+                ->where('gateway_group', 'online_banking')
+                ->where('is_active', true)
+                ->find($optionId);
+        }
+
+        return BillplzPaymentGatewayOption::query()
+            ->where('type', 'booking')
+            ->where('gateway_group', 'credit_card')
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('sort_order')
+            ->first();
+    }
+
+    private function hasActiveBillplzOptions(string $gatewayGroup): bool
+    {
+        return BillplzPaymentGatewayOption::query()
+            ->where('type', 'booking')
+            ->where('gateway_group', $gatewayGroup)
+            ->where('is_active', true)
+            ->exists();
     }
 
     private function getSettings(): BookingSetting

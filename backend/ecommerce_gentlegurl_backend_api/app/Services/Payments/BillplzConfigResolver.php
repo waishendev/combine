@@ -19,6 +19,12 @@ class BillplzConfigResolver
      */
     public function resolve(string $type = WorkspaceType::ECOMMERCE, string $preferredKey = 'billplz_fpx'): array
     {
+        if ($preferredKey === 'billplz_online_banking') {
+            $preferredKey = 'billplz_fpx';
+        } elseif ($preferredKey === 'billplz_credit_card') {
+            $preferredKey = 'billplz_card';
+        }
+
         $configs = PaymentGateway::query()
             ->where('type', $type)
             ->whereIn('key', ['billplz_fpx', 'billplz_card'])

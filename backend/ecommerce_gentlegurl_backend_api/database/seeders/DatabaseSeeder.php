@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             StaffRbacSeeder::class,
             AddServicePackagePermissionsSeeder::class,
             PaymentGatewaySeeder::class,
+            BillplzPaymentGatewayOptionSeeder::class,
 
             // upper all should open , no command to avoid error seed
 

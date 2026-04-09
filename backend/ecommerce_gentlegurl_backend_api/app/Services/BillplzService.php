@@ -6,6 +6,7 @@ use App\Models\Ecommerce\Order;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\WorkspaceType;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class BillplzService
@@ -20,7 +21,7 @@ class BillplzService
      *
      * @return array<string, mixed>
      */
-    public function createBill(Order $order, string $type = WorkspaceType::ECOMMERCE): array
+    public function createBill(Order $order, string $type = WorkspaceType::ECOMMERCE, ?string $selectedGatewayCode = null, array $extraPayload = []): array
     {
         $config = $this->configResolver->resolve($type, $order->payment_method ?: 'billplz_fpx');
         $apiKey = $config['api_key'];
@@ -50,6 +51,8 @@ class BillplzService
             throw new RuntimeException('Please provide a contact phone or email for the payment.');
         }
 
+        $isDirectChannel = in_array($order->payment_method, ['billplz_online_banking', 'billplz_credit_card'], true) && $selectedGatewayCode;
+
         $payload = array_filter([
             'collection_id' => $collectionId,
             'email' => $email,
@@ -59,9 +62,15 @@ class BillplzService
             'description' => 'Order ' . $order->order_number,
             'callback_url' => $callbackUrl,
             'redirect_url' => $redirectUrl,
-            'reference_1_label' => 'OrderNo',
-            'reference_1' => $order->order_number,
+            'reference_1_label' => $isDirectChannel ? 'Bank Code' : 'OrderNo',
+            'reference_1' => $isDirectChannel ? $selectedGatewayCode : $order->order_number,
+            'reference_2_label' => $isDirectChannel ? 'OrderNo' : null,
+            'reference_2' => $isDirectChannel ? $order->order_number : null,
         ], fn($value) => $value !== null && $value !== '');
+
+        if (! empty($extraPayload)) {
+            $payload = array_merge($payload, $extraPayload);
+        }
 
         $response = Http::asForm()
             ->withBasicAuth($apiKey, '')
@@ -79,6 +88,40 @@ class BillplzService
             throw new RuntimeException('Failed to create Billplz bill: ' . $message);
         }
 
-        return $response->json();
+        $responseData = (array) $response->json();
+        $originalUrl = (string) data_get($responseData, 'url', '');
+        $resolvedUrl = $this->resolvePaymentUrl($originalUrl, (bool) $isDirectChannel);
+
+        if ($resolvedUrl !== '' && $resolvedUrl !== $originalUrl) {
+            $responseData['url'] = $resolvedUrl;
+        }
+
+        Log::info('Billplz bill created with routing context', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'payment_method' => $order->payment_method,
+            'selected_gateway_option_id' => $order->billplz_gateway_option_id,
+            'selected_gateway_code' => $selectedGatewayCode,
+            'is_direct_channel' => $isDirectChannel,
+            'billplz_gateway_option_id' => $order->billplz_gateway_option_id,
+            'bill_payload' => $payload,
+            'billplz_response' => $responseData,
+            'billplz_original_url' => $originalUrl,
+            'billplz_final_url' => data_get($responseData, 'url'),
+            'fallback_to_generic' => ! $isDirectChannel,
+        ]);
+
+        return $responseData;
+    }
+
+    private function resolvePaymentUrl(string $url, bool $isDirectChannel): string
+    {
+        if ($url === '' || ! $isDirectChannel) {
+            return $url;
+        }
+
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        return $url . $separator . http_build_query(['auto_submit' => 'true']);
     }
 }
