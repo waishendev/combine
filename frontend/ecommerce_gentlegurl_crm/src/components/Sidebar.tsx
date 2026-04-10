@@ -10,6 +10,7 @@ type SidebarProps = {
   collapsed: boolean
   overlayMode: boolean
   permissions: string[]
+  staffId?: number | null
   onToggleSidebar?: () => void
 }
 
@@ -30,7 +31,7 @@ type MenuChild = {
   children?: MenuChild[]
 }
 
-export default function Sidebar({ collapsed, overlayMode, permissions, onToggleSidebar }: SidebarProps) {
+export default function Sidebar({ collapsed, overlayMode, permissions, staffId, onToggleSidebar }: SidebarProps) {
   const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
 
@@ -531,11 +532,41 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             href: '/booking/staff-schedules',
             requiredPermission: 'booking.schedules.view',
           },
+          // {
+          //   key: 'booking-blocks',
+          //   label: 'Blocks',
+          //   href: '/booking/blocks',
+          //   requiredPermission: 'booking.blocks.view',
+          // },
           {
-            key: 'booking-my-leave',
-            label: 'My Leave',
-            href: '/booking/my-leave',
+            key: 'booking-commission-tiers',
+            label: 'Commission Tiers',
+            href: '/booking/commission-tiers',
           },
+          {
+            key: 'booking-commissions',
+            label: 'Commissions',
+            href: '/booking/commissions',
+          },
+        ],
+      },
+
+      ...(staffId
+        ? ([
+            {
+              key: 'booking-my-leave',
+              label: 'My Leave',
+              icon: 'fa-solid fa-calendar-minus',
+              href: '/booking/my-leave',
+            },
+          ] as const)
+        : []),
+
+      {
+        key: 'staff-leave-management',
+        label: 'Staff Leave Management',
+        icon: 'fa-solid fa-user-clock',
+        children: [
           {
             key: 'booking-leave-requests',
             label: 'Leave Requests',
@@ -559,25 +590,18 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
             label: 'Leave Logs',
             href: '/booking/leave-logs',
             requiredPermission: 'booking.leave.logs.view',
-          },
-          // {
-          //   key: 'booking-blocks',
-          //   label: 'Blocks',
-          //   href: '/booking/blocks',
-          //   requiredPermission: 'booking.blocks.view',
-          // },
-          {
-            key: 'booking-commission-tiers',
-            label: 'Commission Tiers',
-            href: '/booking/commission-tiers',
-          },
-          {
-            key: 'booking-commissions',
-            label: 'Commissions',
-            href: '/booking/commissions',
-          },
+          }
         ],
       },
+
+
+
+
+
+
+
+
+
 
       {
         key: 'booking-landing-page',

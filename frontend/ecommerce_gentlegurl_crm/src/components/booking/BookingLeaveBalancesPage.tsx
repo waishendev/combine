@@ -18,7 +18,8 @@ const LEAVE_LABEL: Record<LeaveType, string> = {
   unpaid: 'Unpaid',
 }
 
-const LEAVE_TYPES: LeaveType[] = ['annual', 'mc', 'emergency', 'unpaid']
+const LEAVE_TYPES: LeaveType[] = ['annual', 'mc', 'emergency']
+const ADJUSTABLE_LEAVE_TYPES: LeaveType[] = ['annual', 'mc', 'emergency']
 
 type LeaveBalanceFilterValues = {
   staffId: string
@@ -423,9 +424,9 @@ export default function BookingLeaveBalancesPage() {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Staff</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600  tracking-wider">Staff</th>
               {LEAVE_TYPES.map((t) => (
-                <th key={`head-${t}`} className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                <th key={`head-${t}`} className="px-4 py-2 font-semibold text-left text-gray-600  tracking-wider">
                   {LEAVE_LABEL[t]}
                 </th>
               ))}
@@ -442,7 +443,6 @@ export default function BookingLeaveBalancesPage() {
                   <tr key={row.staff_id} className="align-top">
                     <td className="px-4 py-2">
                       <div className="font-medium text-slate-900">{row.staff_name}</div>
-                      <div className="text-xs text-slate-500">ID: {row.staff_id}</div>
                     </td>
 
                     {LEAVE_TYPES.map((t) => {
@@ -458,17 +458,21 @@ export default function BookingLeaveBalancesPage() {
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          className="rounded bg-emerald-600 px-3 py-1 text-xs text-white"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700"
                           onClick={() => openAdjustModal(row, 'add')}
+                          aria-label="ADD"
+                          title="ADD"
                         >
-                          ADD
+                          <i className="fa-solid fa-plus" />
                         </button>
                         <button
                           type="button"
-                          className="rounded bg-rose-600 px-3 py-1 text-xs text-white"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-rose-600 text-white hover:bg-rose-700"
                           onClick={() => openAdjustModal(row, 'reduce')}
+                          aria-label="REDUCE"
+                          title="REDUCE"
                         >
-                          REDUCE
+                          <i className="fa-solid fa-minus" />
                         </button>
                       </div>
                     </td>
@@ -521,7 +525,7 @@ export default function BookingLeaveBalancesPage() {
                   value={adjustForm.leave_type}
                   onChange={(e) => setAdjustForm((p) => ({ ...p, leave_type: e.target.value as LeaveType }))}
                 >
-                  {LEAVE_TYPES.map((t) => <option key={`lt-${t}`} value={t}>{LEAVE_LABEL[t]}</option>)}
+                  {ADJUSTABLE_LEAVE_TYPES.map((t) => <option key={`lt-${t}`} value={t}>{LEAVE_LABEL[t]}</option>)}
                 </select>
               </div>
 

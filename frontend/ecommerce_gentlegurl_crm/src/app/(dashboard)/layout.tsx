@@ -15,6 +15,7 @@ type ProfileResponse = {
     name?: string
     email?: string | null
     username?: string
+    staff_id?: number | null
     permissions?: unknown
   } | null
 }
@@ -28,6 +29,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [userEmail, setUserEmail] = useState('')
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [permissions, setPermissions] = useState<string[]>([])
+  const [staffId, setStaffId] = useState<number | null>(null)
 
   useEffect(() => {
     const authCookieNames = [
@@ -118,6 +120,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
         if (isActive) {
           setUserEmail(data?.data?.email ?? '')
+          setStaffId(typeof data?.data?.staff_id === 'number' ? data.data.staff_id : (data?.data?.staff_id ?? null))
           const permissionsData = data.data?.permissions
           const perms = Array.isArray(permissionsData)
             ? permissionsData.filter((perm): perm is string => typeof perm === 'string')
@@ -194,7 +197,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         permissions={permissions}
       />
       <div className="flex h-screen pt-16">
-        <Sidebar collapsed={collapsed} overlayMode={overlaySidebar} permissions={permissions} onToggleSidebar={toggleSidebar} />
+        <Sidebar
+          collapsed={collapsed}
+          overlayMode={overlaySidebar}
+          permissions={permissions}
+          staffId={staffId}
+          onToggleSidebar={toggleSidebar}
+        />
         <main className="flex-1 overflow-y-auto bg-slate-100">{children}</main>
       </div>
     </LogoLoader>

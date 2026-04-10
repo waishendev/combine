@@ -34,6 +34,12 @@ const LEAVE_CLASS: Record<LeaveType, string> = {
   off_day: 'bg-slate-200 text-slate-700',
 }
 
+const DAY_TYPE_LABEL: Record<DayType, string> = {
+  full_day: 'Full Day',
+  half_day_am: 'Half Day (morning)',
+  half_day_pm: 'Half Day (afternoon)',
+}
+
 const extractArray = <T,>(payload: unknown): T[] => {
   if (!payload || typeof payload !== 'object') return []
   const root = payload as { data?: unknown }
@@ -83,6 +89,9 @@ export default function BookingLeaveCalendarPage() {
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [rows, setRows] = useState<LeaveRow[]>([])
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [isOffDayModalOpen, setIsOffDayModalOpen] = useState(false)
+  const [offDayForm, setOffDayForm] = useState({ staff_id: '', start_date: '', end_date: '', reason: '' })
 
   const loadStaffOptions = async () => {
     const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
@@ -109,6 +118,40 @@ export default function BookingLeaveCalendarPage() {
     }
 
     setRows(extractArray<LeaveRow>(await res.json().catch(() => ({}))))
+  }
+
+  const closeOffDayModal = () => {
+    setError(null)
+    setIsOffDayModalOpen(false)
+  }
+
+  const createOffDay = async () => {
+    setError(null)
+    if (!offDayForm.staff_id || !offDayForm.start_date || !offDayForm.end_date) {
+      setError('Please complete staff and date fields for Off Day.')
+      return
+    }
+
+    const res = await fetch('/api/proxy/admin/booking/off-days', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        staff_id: Number(offDayForm.staff_id),
+        start_date: offDayForm.start_date,
+        end_date: offDayForm.end_date,
+        reason: offDayForm.reason || null,
+      }),
+    })
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({})) as { message?: string }
+      setError(payload.message ?? 'Failed to create off day.')
+      return
+    }
+
+    setOffDayForm({ staff_id: '', start_date: '', end_date: '', reason: '' })
+    setIsOffDayModalOpen(false)
+    await loadRows()
   }
 
   useEffect(() => {
@@ -155,8 +198,109 @@ export default function BookingLeaveCalendarPage() {
 
   return (
     <div className="space-y-4">
+      {isOffDayModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeOffDayModal}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+              <h2 className="text-lg font-semibold">Create Off Days</h2>
+              <button
+                onClick={closeOffDayModal}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                aria-label="Close"
+                type="button"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-slate-500">
+                Off Day is admin-managed and blocks booking availability without deducting leave balance.
+              </p>
+
+              {error && <p className="text-sm text-rose-600">{error}</p>}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    value={offDayForm.staff_id}
+                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value }))}
+                  >
+                    <option value="">Select Staff</option>
+                    {staffOptions.map((row) => (
+                      <option key={row.staff_id} value={row.staff_id}>
+                        {row.staff_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    type="date"
+                    value={offDayForm.start_date}
+                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End date</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    type="date"
+                    value={offDayForm.end_date}
+                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Reason"
+                    value={offDayForm.reason}
+                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-300 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
+                onClick={closeOffDayModal}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                onClick={createOffDay}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
+          <button
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+            onClick={() => { setError(null); setIsOffDayModalOpen(true) }}
+            type="button"
+          >
+            <i className="fa-solid fa-plus" />
+            Create Off Days
+          </button>
+
           <div>
             <label className="mb-1 block text-xs text-slate-500">Staff</label>
             <select className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)}>
@@ -202,14 +346,20 @@ export default function BookingLeaveCalendarPage() {
               >
                 <div className="text-xs font-semibold text-slate-700">{cell.date.getDate()}</div>
                 <div className="mt-1 space-y-1">
-                  {items.slice(0, 3).map((item) => (
-                    <div key={`${item.id}-${item.staff_id}`} className={`rounded px-1 py-0.5 text-[10px] ${LEAVE_CLASS[item.leave_type]}`}>
-                      <span className="font-medium">{item.staff?.name ?? `#${item.staff_id}`}</span>
-                      <span className="ml-1">{LEAVE_LABEL[item.leave_type]}</span>
-                      {item.day_type !== 'full_day' && <span className="ml-1">{item.day_type === 'half_day_am' ? 'AM' : 'PM'}</span>}
+                  {items.slice(0, 2).map((item) => (
+                    <div key={`${item.id}-${item.staff_id}`} className="rounded border border-slate-200 bg-white px-1.5 py-1">
+                      <div className="truncate text-[10px] font-semibold text-slate-900">
+                        {item.staff?.name ?? `Staff #${item.staff_id}`}
+                      </div>
+                      <div className="mt-0.5">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${LEAVE_CLASS[item.leave_type]}`}>
+                          {LEAVE_LABEL[item.leave_type]}
+                          {item.day_type !== 'full_day' ? ` - ${DAY_TYPE_LABEL[item.day_type]}` : ''}
+                        </span>
+                      </div>
                     </div>
                   ))}
-                  {items.length > 3 && <div className="text-[10px] text-slate-500">+{items.length - 3} more</div>}
+                  {items.length > 2 && <div className="text-[10px] text-slate-500">+{items.length - 2} more</div>}
                 </div>
               </button>
             )
@@ -219,15 +369,29 @@ export default function BookingLeaveCalendarPage() {
 
       {selectedDate && (
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h4 className="font-semibold">Details for {selectedDate}</h4>
-          <div className="mt-2 space-y-2 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="font-semibold">Details for {selectedDate}</h4>
+          </div>
+
+          <div className="mt-3 space-y-3 text-sm">
             {selectedItems.length === 0 && <p className="text-slate-500">No leave records on this date.</p>}
             {selectedItems.map((item) => (
-              <div key={`detail-${item.id}-${item.staff_id}`} className="rounded border border-slate-200 p-2">
-                <div className="font-medium">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
-                <div className="text-slate-600">{LEAVE_LABEL[item.leave_type]} • {item.day_type === 'full_day' ? 'Full Day' : (item.day_type === 'half_day_am' ? 'Half Day (Morning)' : 'Half Day (Afternoon)')}</div>
-                <div className="text-slate-500">{formatDateRange(item.start_date, item.end_date)}</div>
-                {item.reason && <div className="text-slate-500">Reason: {item.reason}</div>}
+              <div key={`detail-${item.id}-${item.staff_id}`} className="rounded border border-slate-200 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-slate-900">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
+                  </div>
+                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${LEAVE_CLASS[item.leave_type]}`}>
+                    {LEAVE_LABEL[item.leave_type]}
+                    {item.day_type !== 'full_day' ? ` - ${DAY_TYPE_LABEL[item.day_type]}` : ''}
+                  </span>
+                </div>
+
+                {item.reason && (
+                  <div className="mt-2 rounded bg-slate-50 py-2 text-xs text-slate-700">
+                    <span className="font-medium">Reason:</span> {item.reason}
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -116,7 +116,6 @@ export default function BookingLeaveRequestsPage() {
 
   const [loading, setLoading] = useState(true)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
-  const [isOffDayModalOpen, setIsOffDayModalOpen] = useState(false)
   const [decisionTarget, setDecisionTarget] = useState<{ row: LeaveRow; action: 'approved' | 'rejected' } | null>(null)
   const [isDeciding, setIsDeciding] = useState(false)
 
@@ -126,7 +125,6 @@ export default function BookingLeaveRequestsPage() {
   const [currentPage, setCurrentPage] = useState(1)
 
   const [decisionRemark, setDecisionRemark] = useState('')
-  const [offDayForm, setOffDayForm] = useState({ staff_id: '', start_date: '', end_date: '', reason: '' })
 
   const loadRows = async () => {
     setLoading(true)
@@ -196,34 +194,6 @@ export default function BookingLeaveRequestsPage() {
     }
   }
 
-  const createOffDay = async () => {
-    if (!offDayForm.staff_id || !offDayForm.start_date || !offDayForm.end_date) {
-      setError('Please complete staff and date fields for Off Day.')
-      return
-    }
-
-    const res = await fetch('/api/proxy/admin/booking/off-days', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        staff_id: Number(offDayForm.staff_id),
-        start_date: offDayForm.start_date,
-        end_date: offDayForm.end_date,
-        reason: offDayForm.reason || null,
-      }),
-    })
-
-    if (!res.ok) {
-      const payload = await res.json().catch(() => ({})) as { message?: string }
-      setError(payload.message ?? 'Failed to create off day.')
-      return
-    }
-
-    setOffDayForm({ staff_id: '', start_date: '', end_date: '', reason: '' })
-    setIsOffDayModalOpen(false)
-    await loadRows()
-  }
-
   const activeFilters = useMemo(() => {
     return (Object.entries(filters) as [keyof typeof filters, string][])
       .filter(([, v]) => Boolean(v))
@@ -261,11 +231,6 @@ export default function BookingLeaveRequestsPage() {
   const closeFilterModal = () => {
     setError(null)
     setIsFilterModalOpen(false)
-  }
-
-  const closeOffDayModal = () => {
-    setError(null)
-    setIsOffDayModalOpen(false)
   }
 
   const closeDecisionModal = () => {
@@ -348,99 +313,6 @@ export default function BookingLeaveRequestsPage() {
                 disabled={loading}
               >
                 Apply filter
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isOffDayModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeOffDayModal}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Create Off Days</h2>
-              <button
-                onClick={closeOffDayModal}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-                type="button"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <p className="text-xs text-slate-500">
-                Off Day is admin-managed and blocks booking availability without deducting leave balance.
-              </p>
-
-              {error && <p className="text-sm text-rose-600">{error}</p>}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    value={offDayForm.staff_id}
-                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value }))}
-                  >
-                    <option value="">Select Staff</option>
-                    {staffOptions.map((row) => (
-                      <option key={row.staff_id} value={row.staff_id}>
-                        {row.staff_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    type="date"
-                    value={offDayForm.start_date}
-                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">End date</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    type="date"
-                    value={offDayForm.end_date}
-                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Reason"
-                    value={offDayForm.reason}
-                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-gray-300 px-5 py-3">
-              <button
-                type="button"
-                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
-                onClick={closeOffDayModal}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                onClick={createOffDay}
-                disabled={loading}
-              >
-                Create
               </button>
             </div>
           </div>
@@ -532,15 +404,6 @@ export default function BookingLeaveRequestsPage() {
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <button
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-            onClick={() => { setError(null); setIsOffDayModalOpen(true) }}
-            type="button"
-          >
-            <i className="fa-solid fa-plus" />
-            Create Off Days
-          </button>
-
-          <button
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
             onClick={() => setIsFilterModalOpen(true)}
             disabled={loading}
@@ -593,7 +456,7 @@ export default function BookingLeaveRequestsPage() {
         </div>
       )}
 
-      {!isFilterModalOpen && !isOffDayModalOpen && !decisionTarget && error && (
+      {!isFilterModalOpen && !decisionTarget && error && (
         <p className="text-sm text-rose-600">{error}</p>
       )}
 
@@ -601,13 +464,13 @@ export default function BookingLeaveRequestsPage() {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Staff</th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Type</th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Day Type</th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Date Range</th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Days</th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Reason</th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Status</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Staff</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Type</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Day Type</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Date Range</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Days</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Reason</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Status</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Actions</th>
             </tr>
           </thead>

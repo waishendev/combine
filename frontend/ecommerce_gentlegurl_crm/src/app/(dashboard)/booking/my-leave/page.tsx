@@ -26,7 +26,7 @@ export default async function Page() {
 
       {!hasStaffProfile ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          This account is not linked to a staff profile, so personal leave records are unavailable.
+          This account is not a staff account, so leave records are not available.
         </div>
       ) : (
         <BookingMyLeavePage />
