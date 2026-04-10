@@ -2,6 +2,7 @@ import { getOrCreateBookingGuestToken } from "./bookingGuestToken";
 import { 
   AddressPayload, 
   AuthUser, 
+  BookingLandingPage,
   BookingServiceCategory,
   BookingCart, 
   BookingPolicy,
@@ -121,6 +122,11 @@ export async function verifyCustomerEmail(payload: {
   const queryString = query.toString();
   const url = `/public/shop/auth/email/verify/${payload.id}/${payload.hash}${queryString ? `?${queryString}` : ""}`;
   return request<{ success?: boolean; message?: string }>(url);
+}
+
+export async function getBookingLandingPage() {
+  const response = await request<{ data: BookingLandingPage } | BookingLandingPage>(`/booking/landing-page`);
+  return unwrapData<BookingLandingPage>(response);
 }
 
 export async function getBookingServiceCategories() {

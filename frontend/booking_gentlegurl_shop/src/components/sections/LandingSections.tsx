@@ -9,15 +9,23 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { addPackageCartItem, getServicePackages } from "@/lib/apiClient";
 import { SERVICE_PACKAGES_SECTION_ID } from "@/lib/landingAnchors";
-import type { ServicePackage } from "@/lib/types";
+import type { ServicePackage, LandingSections, LandingGalleryItem } from "@/lib/types";
 
-export function Hero() {
+type HeroProps = {
+  hero: LandingSections["hero"];
+};
+
+export function Hero({ hero }: HeroProps) {
+  if (!hero.is_active) return null;
+
   return (
     <section className="mx-auto max-w-6xl px-4 py-20 text-center">
-      <p className="text-sm uppercase tracking-[0.25em] text-[var(--text-muted)]">Premium Salon Booking</p>
-      <h1 className="mt-4 text-5xl font-semibold tracking-tight text-[var(--foreground)]">Beauty appointments, made effortless.</h1>
-      <p className="mx-auto mt-6 max-w-2xl text-lg text-[var(--text-muted)]">Discover signature services, reserve your slot instantly, and arrive confident with our trusted professional team.</p>
-      <Link href="/booking" className="mt-8 inline-flex rounded-full bg-[var(--accent-strong)] px-8 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-stronger)] transition-colors">Book Appointment</Link>
+      <p className="text-sm uppercase tracking-[0.25em] text-[var(--text-muted)]">{hero.label}</p>
+      <h1 className="mt-4 text-5xl font-semibold tracking-tight text-[var(--foreground)]">{hero.title}</h1>
+      <p className="mx-auto mt-6 max-w-2xl text-lg text-[var(--text-muted)]">{hero.subtitle}</p>
+      <Link href={hero.cta_link || "/booking"} className="mt-8 inline-flex rounded-full bg-[var(--accent-strong)] px-8 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-stronger)] transition-colors">
+        {hero.cta_label}
+      </Link>
     </section>
   );
 }
@@ -40,23 +48,30 @@ export function ServicesPreview({ services }: { services: Service[] }) {
   );
 }
 
-export function StaticSections() {
+export function DynamicSections({ sections }: { sections: LandingSections }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
 
-  const gallery = Array.from({ length: 6 }).map((_, index) => ({
-    src: "/images/dummy.webp",
-    alt: `Service menu ${index + 1}`,
-    caption: "DUMMY TEXT",
-  }));
+  const galleryItems = sections.gallery?.items ?? [];
+  const menuItems = sections.service_menu?.items ?? [];
+  const allImages = [...galleryItems, ...menuItems];
 
-  const [galleryLightboxIndex, setGalleryLightboxIndex] = useState<number | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxSource, setLightboxSource] = useState<"gallery" | "menu">("gallery");
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
   const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [packagesError, setPackagesError] = useState<string | null>(null);
   const [packagesMessage, setPackagesMessage] = useState<string | null>(null);
+
+  const openLightbox = (idx: number, source: "gallery" | "menu") => {
+    setLightboxSource(source);
+    setLightboxIndex(idx);
+  };
+
+  const activeLightboxImages: LandingGalleryItem[] =
+    lightboxSource === "gallery" ? galleryItems : menuItems;
 
   const getTextAlignClass = (align: "left" | "center" | "right" | undefined) => {
     if (align === "center") return "text-center";
@@ -96,16 +111,46 @@ export function StaticSections() {
     );
   };
 
+  const renderImageGrid = (
+    items: LandingGalleryItem[],
+    source: "gallery" | "menu",
+    keyPrefix: string,
+  ) => (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {items.map((image, idx) => (
+        <button
+          key={`${keyPrefix}-${idx}`}
+          type="button"
+          onClick={() => openLightbox(idx, source)}
+          className="group flex w-full cursor-zoom-in flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-3 text-left shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
+          aria-label="Open image zoom"
+        >
+          <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
+            <Image
+              src={image.src || "/images/dummy.webp"}
+              alt={image.caption || `Image ${idx + 1}`}
+              fill
+              className="object-cover transition duration-300 group-hover:scale-[1.02]"
+              sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw"
+              priority={idx < 4}
+            />
+          </div>
+          <p className="text-sm text-[var(--foreground)]/70 text-center">{image.caption}</p>
+        </button>
+      ))}
+    </div>
+  );
+
   useEffect(() => {
-    if (galleryLightboxIndex === null) return;
+    if (lightboxIndex === null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setGalleryLightboxIndex(null);
+        setLightboxIndex(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [galleryLightboxIndex]);
+  }, [lightboxIndex]);
 
   useEffect(() => {
     const run = async () => {
@@ -155,96 +200,60 @@ export function StaticSections() {
     }
   };
 
+  const faqItems = sections.faqs?.items ?? [];
+  const noteItems = sections.notes?.items ?? [];
+
   return (
     <div className="mx-auto max-w-6xl space-y-12 px-4 py-16 sm:px-6 lg:px-8">
-      <section className="space-y-6">
-        <div className="mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
-            GALLERY
-          </p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-            Click to view services and pricing
-          </h2>
-        </div>
+      {/* Gallery Section */}
+      {sections.gallery?.is_active && galleryItems.length > 0 && (
+        <section className="space-y-6">
+          <div className="mb-8 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
+              {sections.gallery.heading?.label ?? "GALLERY"}
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+              {sections.gallery.heading?.title ?? "Click to view services and pricing"}
+            </h2>
+          </div>
+          {renderImageGrid(galleryItems, "gallery", "gallery")}
+        </section>
+      )}
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {gallery.map((image, idx) => (
-            <button
-              key={`gallery-${image.src}-${idx}`}
-              type="button"
-              onClick={() => setGalleryLightboxIndex(idx)}
-              className="group flex w-full cursor-zoom-in flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-3 text-left shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
-              aria-label="Open image zoom"
-            >
-              <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
-                <Image
-                  src={image.src}
-                  alt={image.alt}
-                  fill
-                  className="object-cover transition duration-300 group-hover:scale-[1.02]"
-                  sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw"
-                  priority={idx < 4}
-                />
-              </div>
-              <p className="text-sm text-[var(--foreground)]/70 text-center">{image.caption}</p>
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* Service Menu Section */}
+      {sections.service_menu?.is_active && menuItems.length > 0 && (
+        <section className="space-y-6">
+          <div className="mb-8 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
+              {sections.service_menu.heading?.label ?? "Service Menu"}
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+              {sections.service_menu.heading?.title ?? "Click to view services and pricing"}
+            </h2>
+          </div>
+          {renderImageGrid(menuItems, "menu", "menu")}
+        </section>
+      )}
 
-      <section className="space-y-6">
-        <div className="mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
-            Service Menu
-          </p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-            Click to view services and pricing
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {gallery.map((image, idx) => (
-            <button
-              key={`${image.src}-${idx}`}
-              type="button"
-              onClick={() => setGalleryLightboxIndex(idx)}
-              className="group flex w-full cursor-zoom-in flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-3 text-left shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
-              aria-label="Open image zoom"
-            >
-              <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
-                <Image
-                  src={image.src}
-                  alt={image.alt}
-                  fill
-                  className="object-cover transition duration-300 group-hover:scale-[1.02]"
-                  sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw"
-                  priority={idx < 4}
-                />
-              </div>
-              <p className="text-sm text-[var(--foreground)]/70 text-center">{image.caption}</p>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {galleryLightboxIndex !== null && (
+      {/* Lightbox */}
+      {lightboxIndex !== null && activeLightboxImages.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="relative w-full max-w-5xl">
             <button
               type="button"
-              onClick={() => setGalleryLightboxIndex(null)}
+              onClick={() => setLightboxIndex(null)}
               className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
               aria-label="Close image preview"
             >
               <span aria-hidden>✕</span>
             </button>
-            {gallery.length > 1 && (
+            {activeLightboxImages.length > 1 && (
               <>
                 <button
                   type="button"
                   onClick={() =>
-                    setGalleryLightboxIndex((prev) =>
-                      prev === null ? prev : (prev - 1 + gallery.length) % gallery.length,
+                    setLightboxIndex((prev) =>
+                      prev === null ? prev : (prev - 1 + activeLightboxImages.length) % activeLightboxImages.length,
                     )
                   }
                   className="absolute left-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
@@ -255,8 +264,8 @@ export function StaticSections() {
                 <button
                   type="button"
                   onClick={() =>
-                    setGalleryLightboxIndex((prev) =>
-                      prev === null ? prev : (prev + 1) % gallery.length,
+                    setLightboxIndex((prev) =>
+                      prev === null ? prev : (prev + 1) % activeLightboxImages.length,
                     )
                   }
                   className="absolute right-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
@@ -268,23 +277,23 @@ export function StaticSections() {
             )}
 
             <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-2xl">
-              {gallery.map((image, index) => (
+              {activeLightboxImages.map((image, index) => (
                 <div
-                  key={`${image.src}-lightbox-${index}`}
+                  key={`lightbox-${index}`}
                   className={`absolute inset-0 transition-all duration-500 ease-out will-change-transform ${
-                    index === galleryLightboxIndex
+                    index === lightboxIndex
                       ? "translate-x-0 opacity-100"
                       : "pointer-events-none translate-x-6 opacity-0"
                   }`}
-                  aria-hidden={index !== galleryLightboxIndex}
+                  aria-hidden={index !== lightboxIndex}
                 >
                   <Image
-                    src={image.src}
-                    alt={image.alt}
+                    src={image.src || "/images/dummy.webp"}
+                    alt={image.caption || `Image ${index + 1}`}
                     fill
                     className="object-contain"
                     sizes="100vw"
-                    priority={index === galleryLightboxIndex}
+                    priority={index === lightboxIndex}
                   />
                 </div>
               ))}
@@ -293,6 +302,7 @@ export function StaticSections() {
         </div>
       )}
 
+      {/* Service Packages (still dynamic from API) */}
       {!packagesLoading && packages.length > 0 ? (
         <section id={SERVICE_PACKAGES_SECTION_ID} className="scroll-mt-24 space-y-6">
           {renderSectionHeading({ label: "Packages", title: "Service Packages", align: "left" }, "accent")}
@@ -338,31 +348,13 @@ export function StaticSections() {
         </section>
       ) : null}
 
+      {/* FAQ Section */}
+      {sections.faqs?.is_active && faqItems.length > 0 && (
         <section className="space-y-6">
-          {renderSectionHeading({ label: "FAQ", title: "You might be wondering", align: "left" }, "accent")}
+          {renderSectionHeading(sections.faqs.heading ?? { label: "FAQ", title: "You might be wondering", align: "left" }, "accent")}
 
           <div className="grid gap-4 sm:grid-cols-2 items-start">
-            {[
-              {
-                question: "How long does a booking slot last?",
-                answer:
-                  "DUMMY DATA: Each booking includes service time plus buffer time for setup and cleanup.",
-              },
-              {
-                question: "Can I reschedule my appointment?",
-                answer: "DUMMY DATA: Yes, rescheduling is allowed subject to availability.",
-              },
-              {
-                question: "Do I need to pay a deposit?",
-                answer:
-                  "DUMMY DATA:\n• A small deposit may be required to confirm the booking.\n• Deposit is applied to the final total.",
-              },
-              {
-                question: "What should I prepare before arriving?",
-                answer:
-                  "DUMMY DATA:\n• Arrive 5 minutes early\n• Have your reference photos ready\n• Let us know allergies or sensitivities",
-              },
-            ].map((item, index) => {
+            {faqItems.map((item, index) => {
               const faqId = `faq-${index}`;
               const isOpen = openFaqId === faqId;
               const hasBulletPoints = item.answer.includes("•") || item.answer.includes("-");
@@ -418,20 +410,17 @@ export function StaticSections() {
             })}
           </div>
         </section>
+      )}
 
-        {/* Policy / Notes (copied layout from ServicesPageLayout) */}
+      {/* Policy / Notes */}
+      {sections.notes?.is_active && noteItems.length > 0 && (
         <section className="space-y-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-6 shadow-[0_22px_70px_-40px_rgba(17,24,39,0.45)]">
-          {renderSectionHeading({ label: "Notes", title: "Policy & care", align: "left" }, "muted")}
+          {renderSectionHeading(sections.notes.heading ?? { label: "Notes", title: "Policy & care", align: "left" }, "muted")}
 
           <ul className="grid gap-3 sm:grid-cols-2">
-            {[
-              "DUMMY DATA: Please arrive 5 minutes early to ensure your slot starts smoothly.",
-              "DUMMY DATA: Cancellations within 24 hours may forfeit the deposit.",
-              "DUMMY DATA: Late arrivals may reduce service time to avoid impacting the next booking.",
-              "DUMMY DATA: Follow recommended aftercare for best results.",
-            ].map((note) => (
+            {noteItems.map((note, idx) => (
               <li
-                key={note}
+                key={idx}
                 className="flex items-center gap-3 rounded-xl bg-[var(--background-soft)]/70 p-4 text-sm text-[var(--foreground)]/80"
               >
                 <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/70 text-white">
@@ -442,7 +431,10 @@ export function StaticSections() {
             ))}
           </ul>
         </section>
-      </div>
-  
+      )}
+    </div>
   );
 }
+
+/** @deprecated Use DynamicSections instead. Kept for backward compatibility. */
+export const StaticSections = DynamicSections;

@@ -50,6 +50,7 @@ class PermissionSeeder extends Seeder
             'booking' => 'Booking',
             'booking.payment-gateways' => 'Booking Payment Gateways',
             'booking.bank-accounts' => 'Booking Manual Bank Accounts',
+            'booking.landing-page' => 'Booking Landing Page',
         ];
 
         $groupModels = [];
@@ -132,7 +133,8 @@ class PermissionSeeder extends Seeder
                 'payment-gateways.create',
                 'payment-gateways.update',
                 'payment-gateways.delete',
-
+                'landing-page.view',
+                'landing-page.update',
             ],
         ];
 

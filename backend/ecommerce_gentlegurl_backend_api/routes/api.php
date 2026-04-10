@@ -993,6 +993,7 @@ $protectedRoutes = function () {
 Route::middleware(['api.session', 'auth:web,sanctum'])->group($protectedRoutes);
 
 Route::prefix('/booking')->middleware('api.session')->group(function () {
+    Route::get('/landing-page', [\App\Http\Controllers\Booking\LandingPageController::class, 'show']);
     Route::get('/service-categories', [\App\Http\Controllers\Booking\ServiceController::class, 'categories']);
     Route::get('/services', [\App\Http\Controllers\Booking\ServiceController::class, 'index']);
     Route::get('/services/{id}', [\App\Http\Controllers\Booking\ServiceController::class, 'show']);
@@ -1030,6 +1031,13 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/booking/my-leav
 });
 
 Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')->group(function () {
+    Route::get('/landing-page', [\App\Http\Controllers\Booking\LandingPageController::class, 'adminShow'])
+        ->middleware('permission:booking.landing-page.view');
+    Route::put('/landing-page', [\App\Http\Controllers\Booking\LandingPageController::class, 'update'])
+        ->middleware('permission:booking.landing-page.update');
+    Route::post('/landing-page/upload-image', [\App\Http\Controllers\Booking\LandingPageController::class, 'uploadImage'])
+        ->middleware('permission:booking.landing-page.update');
+
     Route::get('/appointments', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'index']);
     Route::get('/appointments/{id}', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'show']);
     Route::patch('/appointments/{id}/status', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'updateStatus']);

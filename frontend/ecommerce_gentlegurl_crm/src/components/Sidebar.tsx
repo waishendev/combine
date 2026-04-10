@@ -580,6 +580,14 @@ export default function Sidebar({ collapsed, overlayMode, permissions, onToggleS
       },
 
       {
+        key: 'booking-landing-page',
+        label: 'Landing Page',
+        icon: 'fa-solid fa-palette',
+        href: '/booking/landing-page',
+        requiredPermission: 'booking.landing-page.view',
+      },
+
+      {
         key: 'booking-payment-gateway',
         label: 'Payment Gateway',
         icon: 'fa-solid fa-credit-card',

@@ -44,6 +44,7 @@ class DatabaseSeeder extends Seeder
             LoyaltyDemoCustomerSeederTesting::class,
             // // SelfPickupCompletedOrderSeeder::class,
             // // GuestCompletedOrderSeeder::class,
+            BookingLandingPageSeeder::class,
             BookingTestingSeeder::class,
             BookingLeaveTestingSeeder::class,
             ServicePackageTestingSeeder::class,

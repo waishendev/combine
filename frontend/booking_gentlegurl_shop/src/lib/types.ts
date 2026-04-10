@@ -281,3 +281,56 @@ export type BookingPolicy = {
     deposit_refundable: boolean;
   };
 };
+
+export type LandingHeading = {
+  label: string;
+  title: string;
+  align: "left" | "center" | "right";
+};
+
+export type LandingGalleryItem = {
+  src: string;
+  caption: string;
+};
+
+export type LandingFaqItem = {
+  question: string;
+  answer: string;
+};
+
+export type LandingSections = {
+  hero: {
+    is_active: boolean;
+    label: string;
+    title: string;
+    subtitle: string;
+    cta_label: string;
+    cta_link: string;
+  };
+  gallery: {
+    is_active: boolean;
+    heading: LandingHeading;
+    items: LandingGalleryItem[];
+  };
+  service_menu: {
+    is_active: boolean;
+    heading: LandingHeading;
+    items: LandingGalleryItem[];
+  };
+  faqs: {
+    is_active: boolean;
+    heading: LandingHeading;
+    items: LandingFaqItem[];
+  };
+  notes: {
+    is_active: boolean;
+    heading: LandingHeading;
+    items: string[];
+  };
+};
+
+export type BookingLandingPage = {
+  id: number | null;
+  slug: string;
+  sections: LandingSections;
+};
