@@ -37,11 +37,11 @@ export default async function ShopMenuPage() {
           href="/shop-menu"
           className="text-blue-600 hover:underline"
         >
-          Shop Menu
+          {t('catalog.shopMenu')}
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        Shop Menu
+        {t('catalog.shopMenu')}
       </h2>
       <ShopMenuTable
         permissions={user.permissions}

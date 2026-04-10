@@ -91,6 +91,7 @@
   "common.close": "Close",
   "common.cancel": "Cancel",
   "common.delete": "Delete",
+  "common.deleteError": "Failed to delete",
   "common.creating": "Creating...",
   "common.create": "Create",
   "common.edit": "Edit",
@@ -177,6 +178,7 @@
   "role.detailTitle": "Role Details",
   "common.permissions": "Permissions",
 
+  "booking.categoriesTitle": "Service Categories",
   "booking.allowedStaffDetailTitle": "Services",
   "booking.viewAllowedStaff": "View allowed staff",
   "booking.allowedStaffListHeading": "Staff",
@@ -282,6 +284,7 @@
   "previous": "Previous",
   "next": "Next",
 
+  "catalog.shopMenu": "Shop Menu",
   "catalog.servicesMenu": "Services Menu",
   "catalog.servicesPages": "Services Pages"
 }

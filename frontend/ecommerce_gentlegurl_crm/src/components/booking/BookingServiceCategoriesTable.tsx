@@ -1,21 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import TableEmptyState from './TableEmptyState'
-import TableLoadingRow from './TableLoadingRow'
-import PaginationControls from './PaginationControls'
-import ServicesMenuRow, { ServicesMenuRowData } from './ServicesMenuRow'
-import ServicesMenuCreateModal from './ServicesMenuCreateModal'
-import ServicesMenuEditModal from './ServicesMenuEditModal'
-import ServicesMenuDeleteModal from './ServicesMenuDeleteModal'
+import TableEmptyState from '@/components/TableEmptyState'
+import TableLoadingRow from '@/components/TableLoadingRow'
+import PaginationControls from '@/components/PaginationControls'
+import BookingServiceCategoryRow, {
+  type BookingServiceCategoryRowData,
+} from './BookingServiceCategoryRow'
+import BookingServiceCategoryCreateModal from './BookingServiceCategoryCreateModal'
+import BookingServiceCategoryEditModal from './BookingServiceCategoryEditModal'
+import BookingServiceCategoryDeleteModal from './BookingServiceCategoryDeleteModal'
 import {
-  type ServicesMenuApiItem,
-  mapServicesMenuApiItemToRow,
-} from './servicesMenuUtils'
+  mapBookingServiceCategoryApiItemToRow,
+  type BookingServiceCategoryApiItem,
+} from './bookingServiceCategoryUtils'
 import { useI18n } from '@/lib/i18n'
 
-interface ServicesMenuTableProps {
+interface BookingServiceCategoriesTableProps {
   permissions: string[]
 }
 
@@ -26,15 +28,13 @@ type Meta = {
   total: number
 }
 
-type ServicesMenuApiResponse = {
-  data?: ServicesMenuApiItem[] | {
+type CategoriesApiResponse = {
+  data?: BookingServiceCategoryApiItem[] | {
     current_page?: number
-    data?: ServicesMenuApiItem[]
+    data?: BookingServiceCategoryApiItem[]
     last_page?: number
     per_page?: number
     total?: number
-    from?: number
-    to?: number
     [key: string]: unknown
   }
   meta?: Partial<Meta>
@@ -42,23 +42,21 @@ type ServicesMenuApiResponse = {
   message?: string
 }
 
-export default function ServicesMenuTable({
-  permissions,
-}: ServicesMenuTableProps) {
+export default function BookingServiceCategoriesTable({ permissions }: BookingServiceCategoriesTableProps) {
   const { t } = useI18n()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [rows, setRows] = useState<ServicesMenuRowData[]>([])
+  const [rows, setRows] = useState<BookingServiceCategoryRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortColumn, setSortColumn] = useState<keyof ServicesMenuRowData | null>(null)
+  const [sortColumn, setSortColumn] = useState<keyof BookingServiceCategoryRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-  const [editingServicesMenuId, setEditingServicesMenuId] = useState<number | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<ServicesMenuRowData | null>(null)
-  const [movingServicesMenuId, setMovingServicesMenuId] = useState<number | null>(null)
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<BookingServiceCategoryRowData | null>(null)
+  const [movingCategoryId, setMovingCategoryId] = useState<number | null>(null)
 
-  const canCreate = permissions.includes('ecommerce.services-menu.create')
-  const canUpdate = permissions.includes('ecommerce.services-menu.update')
-  const canDelete = permissions.includes('ecommerce.services-menu.delete')
+  const canCreate = permissions.includes('booking.services.create')
+  const canUpdate = permissions.includes('booking.services.update')
+  const canDelete = permissions.includes('booking.services.delete')
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -98,18 +96,17 @@ export default function ServicesMenuTable({
     )
   }
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const fetchServicesMenus = async () => {
+  const refreshList = useCallback(
+    async (signal?: AbortSignal) => {
       setLoading(true)
       try {
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
 
-        const res = await fetch(`/api/proxy/ecommerce/services-menu-items?${qs.toString()}`, {
+        const res = await fetch(`/api/proxy/admin/booking/categories?${qs.toString()}`, {
           cache: 'no-store',
-          signal: controller.signal,
+          signal,
         })
 
         if (!res.ok) {
@@ -118,48 +115,40 @@ export default function ServicesMenuTable({
           return
         }
 
-        const response: ServicesMenuApiResponse = await res
-          .json()
-          .catch(() => ({} as ServicesMenuApiResponse))
+        const response: CategoriesApiResponse = await res.json().catch(() => ({}))
         if (response?.success === false && response?.message === 'Unauthorized') {
           window.location.replace('/dashboard')
           return
         }
 
-        // Handle nested data structure: { data: { data: [...], current_page: 1, ... } }
-        let servicesMenuItems: ServicesMenuApiItem[] = []
+        let items: BookingServiceCategoryApiItem[] = []
         let paginationData: Partial<Meta> = {}
 
         if (response?.data) {
           if (Array.isArray(response.data)) {
-            // Direct array format
-            servicesMenuItems = response.data
+            items = response.data
           } else if (typeof response.data === 'object' && 'data' in response.data) {
-            // Nested format: { data: { data: [...], current_page: 1, ... } }
-            const nestedData = response.data as {
-              data?: ServicesMenuApiItem[]
+            const nested = response.data as {
+              data?: BookingServiceCategoryApiItem[]
               current_page?: number
               last_page?: number
               per_page?: number
               total?: number
             }
-            servicesMenuItems = Array.isArray(nestedData.data) ? nestedData.data : []
+            items = Array.isArray(nested.data) ? nested.data : []
             paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
+              current_page: nested.current_page,
+              last_page: nested.last_page,
+              per_page: nested.per_page,
+              total: nested.total,
             }
           }
         }
-
-        // Fallback to meta if available
         if (response?.meta) {
           paginationData = { ...paginationData, ...response.meta }
         }
 
-        const list: ServicesMenuRowData[] = servicesMenuItems.map((item) => mapServicesMenuApiItemToRow(item))
-
+        const list = items.map((item) => mapBookingServiceCategoryApiItemToRow(item))
         setRows(list)
         setMeta({
           current_page: Number(paginationData.current_page ?? currentPage) || 1,
@@ -167,23 +156,25 @@ export default function ServicesMenuTable({
           per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
           total: Number(paginationData.total ?? list.length) || list.length,
         })
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+      } catch (e) {
+        if (!(e instanceof DOMException && e.name === 'AbortError')) {
           setRows([])
           setMeta((prev) => ({ ...prev, total: 0 }))
         }
       } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false)
-        }
+        setLoading(false)
       }
-    }
+    },
+    [currentPage, pageSize],
+  )
 
-    fetchServicesMenus()
+  useEffect(() => {
+    const controller = new AbortController()
+    void refreshList(controller.signal)
     return () => controller.abort()
-  }, [currentPage, pageSize])
+  }, [refreshList])
 
-  const handleSort = (column: keyof ServicesMenuRowData) => {
+  const handleSort = (column: keyof BookingServiceCategoryRowData) => {
     if (sortColumn === column) {
       if (sortDirection === 'asc') {
         setSortDirection('desc')
@@ -195,7 +186,6 @@ export default function ServicesMenuTable({
       }
       return
     }
-
     setSortColumn(column)
     setSortDirection('asc')
   }
@@ -203,7 +193,7 @@ export default function ServicesMenuTable({
   const sortedRows = useMemo(() => {
     if (!sortColumn || !sortDirection) return rows
 
-    const compare = (a: ServicesMenuRowData, b: ServicesMenuRowData) => {
+    const compare = (a: BookingServiceCategoryRowData, b: BookingServiceCategoryRowData) => {
       const valueA = a[sortColumn]
       const valueB = b[sortColumn]
 
@@ -240,46 +230,35 @@ export default function ServicesMenuTable({
   }
 
   const colCount = showActions ? 5 : 4
-
   const totalPages = meta.last_page || 1
 
-  const handleServicesMenuCreated = (servicesMenu: ServicesMenuRowData) => {
+  const handleCategoryCreated = (category: BookingServiceCategoryRowData) => {
     setRows((prev) => {
       if (currentPage !== 1) return prev
-      const filtered = prev.filter((item) => item.id !== servicesMenu.id)
-      const next = [servicesMenu, ...filtered]
+      const filtered = prev.filter((item) => item.id !== category.id)
+      const next = [category, ...filtered]
       return next.length > pageSize ? next.slice(0, pageSize) : next
     })
-
     setMeta((prevMeta) => {
       const perPage = prevMeta.per_page || pageSize || 1
       const total = (prevMeta.total || 0) + 1
-      const last_page = Math.max(
-        prevMeta.last_page || 1,
-        Math.ceil(total / perPage),
-      )
-
-      return {
-        ...prevMeta,
-        total,
-        last_page,
-      }
+      const last_page = Math.max(prevMeta.last_page || 1, Math.ceil(total / perPage))
+      return { ...prevMeta, total, last_page }
     })
   }
 
-  const handleServicesMenuUpdated = (servicesMenu: ServicesMenuRowData) => {
+  const handleCategoryUpdated = (category: BookingServiceCategoryRowData) => {
     setRows((prev) => {
-      const index = prev.findIndex((item) => item.id === servicesMenu.id)
+      const index = prev.findIndex((item) => item.id === category.id)
       if (index === -1) return prev
       const next = [...prev]
-      next[index] = servicesMenu
+      next[index] = category
       return next
     })
   }
 
-  const handleServicesMenuDeleted = (servicesMenuId: number) => {
-    setRows((prev) => prev.filter((item) => item.id !== servicesMenuId))
-
+  const handleCategoryDeleted = (categoryId: number) => {
+    setRows((prev) => prev.filter((item) => item.id !== categoryId))
     setMeta((prevMeta) => {
       const perPage = prevMeta.per_page || pageSize || 1
       const total = Math.max((prevMeta.total || 0) - 1, 0)
@@ -290,21 +269,20 @@ export default function ServicesMenuTable({
         last_page,
         current_page: Math.min(prevMeta.current_page || 1, last_page),
       }
-
       if ((prevMeta.current_page || 1) > last_page) {
         setCurrentPage(last_page)
       }
-
       return nextMeta
     })
   }
 
-  const swapServicesMenuAdjacent = (
-    prev: ServicesMenuRowData[],
-    rowId: number,
+  /** Update list in-memory after move-up/down — no full refetch (avoids loading flash). */
+  const swapAdjacentInRows = (
+    prev: BookingServiceCategoryRowData[],
+    categoryId: number,
     direction: 'up' | 'down',
-  ): ServicesMenuRowData[] | null => {
-    const idx = prev.findIndex((r) => r.id === rowId)
+  ): BookingServiceCategoryRowData[] | null => {
+    const idx = prev.findIndex((r) => r.id === categoryId)
     if (idx === -1) return null
     const next = [...prev]
     if (direction === 'up') {
@@ -325,88 +303,37 @@ export default function ServicesMenuTable({
     return next
   }
 
-  const handleMoveUp = async (servicesMenu: ServicesMenuRowData) => {
-    if (movingServicesMenuId === servicesMenu.id) return
-    setMovingServicesMenuId(servicesMenu.id)
-
+  const runMove = async (method: 'move-up' | 'move-down', category: BookingServiceCategoryRowData) => {
+    if (movingCategoryId === category.id) return
+    setMovingCategoryId(category.id)
+    const direction = method === 'move-up' ? 'up' : 'down'
     try {
-      const res = await fetch(
-        `/api/proxy/ecommerce/services-menu-items/${servicesMenu.id}/move-up`,
-        {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Accept-Language': 'en',
-          },
-        },
-      )
-
+      const res = await fetch(`/api/proxy/admin/booking/categories/${category.id}/${method}`, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+      })
       const data = await res.json().catch(() => null)
-      if (data && typeof data === 'object') {
-        if (data?.success === false && data?.message === 'Unauthorized') {
-          window.location.replace('/dashboard')
-          return
-        }
-      }
-
-      if (!res.ok) {
-        console.error('Failed to move services menu up')
+      if (data && typeof data === 'object' && data?.success === false && data?.message === 'Unauthorized') {
+        window.location.replace('/dashboard')
         return
       }
-
-      setRows((prev) => swapServicesMenuAdjacent(prev, servicesMenu.id, 'up') ?? prev)
-    } catch (err) {
-      console.error(err)
+      if (!res.ok) return
+      setRows((prev) => swapAdjacentInRows(prev, category.id, direction) ?? prev)
+    } catch {
+      /* ignore */
     } finally {
-      setMovingServicesMenuId(null)
-    }
-  }
-
-  const handleMoveDown = async (servicesMenu: ServicesMenuRowData) => {
-    if (movingServicesMenuId === servicesMenu.id) return
-    setMovingServicesMenuId(servicesMenu.id)
-
-    try {
-      const res = await fetch(
-        `/api/proxy/ecommerce/services-menu-items/${servicesMenu.id}/move-down`,
-        {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Accept-Language': 'en',
-          },
-        },
-      )
-
-      const data = await res.json().catch(() => null)
-      if (data && typeof data === 'object') {
-        if (data?.success === false && data?.message === 'Unauthorized') {
-          window.location.replace('/dashboard')
-          return
-        }
-      }
-
-      if (!res.ok) {
-        console.error('Failed to move services menu down')
-        return
-      }
-
-      setRows((prev) => swapServicesMenuAdjacent(prev, servicesMenu.id, 'down') ?? prev)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setMovingServicesMenuId(null)
+      setMovingCategoryId(null)
     }
   }
 
   return (
     <div>
       {isCreateModalOpen && (
-        <ServicesMenuCreateModal
+        <BookingServiceCategoryCreateModal
           onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={(servicesMenu) => {
+          onSuccess={(category) => {
             setIsCreateModalOpen(false)
-            handleServicesMenuCreated(servicesMenu)
+            handleCategoryCreated(category)
           }}
         />
       )}
@@ -426,11 +353,11 @@ export default function ServicesMenuTable({
         </div>
 
         <div className="flex items-center gap-3">
-          <label htmlFor="pageSize" className="text-sm text-gray-700">
+          <label htmlFor="categoryPageSize" className="text-sm text-gray-700">
             {t('common.show')}
           </label>
           <select
-            id="pageSize"
+            id="categoryPageSize"
             value={pageSize}
             onChange={(e) => handlePageSizeChange(Number(e.target.value))}
             className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
@@ -489,47 +416,35 @@ export default function ServicesMenuTable({
                 const sortOrders = sortedRows
                   .map((r) => r.sortOrder)
                   .filter((so): so is number => so !== null)
-                const minSortOrder =
-                  sortOrders.length > 0 ? Math.min(...sortOrders) : null
-                const maxSortOrder =
-                  sortOrders.length > 0 ? Math.max(...sortOrders) : null
+                const minSortOrder = sortOrders.length > 0 ? Math.min(...sortOrders) : null
+                const maxSortOrder = sortOrders.length > 0 ? Math.max(...sortOrders) : null
 
-                return sortedRows.map((servicesMenu) => {
+                return sortedRows.map((category) => {
                   const isFirst =
-                    servicesMenu.sortOrder !== null &&
-                    servicesMenu.sortOrder === minSortOrder
+                    category.sortOrder !== null && category.sortOrder === minSortOrder
                   const isLast =
-                    servicesMenu.sortOrder !== null &&
-                    servicesMenu.sortOrder === maxSortOrder
+                    category.sortOrder !== null && category.sortOrder === maxSortOrder
 
                   return (
-                    <ServicesMenuRow
-                      key={servicesMenu.id}
-                      servicesMenu={servicesMenu}
+                    <BookingServiceCategoryRow
+                      key={category.id}
+                      category={category}
                       showActions={showActions}
                       canUpdate={canUpdate}
                       canDelete={canDelete}
                       isFirst={isFirst}
                       isLast={isLast}
                       onEdit={() => {
-                        if (canUpdate) {
-                          setEditingServicesMenuId(servicesMenu.id)
-                        }
+                        if (canUpdate) setEditingCategoryId(category.id)
                       }}
                       onDelete={() => {
-                        if (canDelete) {
-                          setDeleteTarget(servicesMenu)
-                        }
+                        if (canDelete) setDeleteTarget(category)
                       }}
                       onMoveUp={() => {
-                        if (canUpdate) {
-                          handleMoveUp(servicesMenu)
-                        }
+                        if (canUpdate) void runMove('move-up', category)
                       }}
                       onMoveDown={() => {
-                        if (canUpdate) {
-                          handleMoveDown(servicesMenu)
-                        }
+                        if (canUpdate) void runMove('move-down', category)
                       }}
                     />
                   )
@@ -542,24 +457,24 @@ export default function ServicesMenuTable({
         </table>
       </div>
 
-      {editingServicesMenuId !== null && (
-        <ServicesMenuEditModal
-          servicesMenuId={editingServicesMenuId}
-          onClose={() => setEditingServicesMenuId(null)}
-          onSuccess={(servicesMenu) => {
-            setEditingServicesMenuId(null)
-            handleServicesMenuUpdated(servicesMenu)
+      {editingCategoryId !== null && (
+        <BookingServiceCategoryEditModal
+          categoryId={editingCategoryId}
+          onClose={() => setEditingCategoryId(null)}
+          onSuccess={(category) => {
+            setEditingCategoryId(null)
+            handleCategoryUpdated(category)
           }}
         />
       )}
 
       {deleteTarget && (
-        <ServicesMenuDeleteModal
-          servicesMenu={deleteTarget}
+        <BookingServiceCategoryDeleteModal
+          category={deleteTarget}
           onClose={() => setDeleteTarget(null)}
-          onSuccess={(servicesMenuId) => {
+          onSuccess={(categoryId) => {
             setDeleteTarget(null)
-            handleServicesMenuDeleted(servicesMenuId)
+            handleCategoryDeleted(categoryId)
           }}
         />
       )}

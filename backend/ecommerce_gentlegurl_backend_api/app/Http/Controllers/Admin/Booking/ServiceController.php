@@ -277,7 +277,8 @@ class ServiceController extends Controller
                 'title' => (string) ($questionPayload['title'] ?? ''),
                 'description' => $questionPayload['description'] ?? null,
                 'question_type' => (string) ($questionPayload['question_type'] ?? 'single_choice'),
-                'sort_order' => (int) ($questionPayload['sort_order'] ?? $index),
+                // Order is defined by the request array; ignore client-provided sort_order values.
+                'sort_order' => $index,
                 'is_required' => (bool) ($questionPayload['is_required'] ?? false),
                 'is_active' => (bool) ($questionPayload['is_active'] ?? true),
             ]);
@@ -290,7 +291,7 @@ class ServiceController extends Controller
                     'linked_booking_service_id' => $linkedServiceId ?: null,
                     'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : max(0, (int) ($optionPayload['extra_duration_min'] ?? 0)),
                     'extra_price' => $linkedService ? max(0, (float) $linkedService->service_price) : max(0, (float) ($optionPayload['extra_price'] ?? 0)),
-                    'sort_order' => (int) ($optionPayload['sort_order'] ?? $optionIndex),
+                    'sort_order' => $optionIndex,
                     'is_active' => (bool) ($optionPayload['is_active'] ?? true),
                 ]);
             }

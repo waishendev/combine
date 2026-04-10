@@ -6,7 +6,7 @@ import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceAllowedStaffPicker, {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
-import BookingServiceQuestionsBuilder, { emptyQuestion, emptyQuestionOption, type QuestionForm } from './BookingServiceQuestionsBuilder'
+import BookingServiceQuestionsBuilder, { emptyQuestionOption, type QuestionForm } from './BookingServiceQuestionsBuilder'
 import { mapBookingServiceApiItemToRow, type BookingServiceApiItem } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '../mediaAccept'
@@ -384,13 +384,13 @@ export default function BookingServiceEditModal({
         fd.append(`questions[${questionIndex}][title]`, question.title.trim())
         fd.append(`questions[${questionIndex}][description]`, question.description.trim())
         fd.append(`questions[${questionIndex}][question_type]`, question.question_type)
-        fd.append(`questions[${questionIndex}][sort_order]`, String(Number(question.sort_order || questionIndex)))
+        fd.append(`questions[${questionIndex}][sort_order]`, String(questionIndex))
         fd.append(`questions[${questionIndex}][is_required]`, question.is_required ? '1' : '0')
         fd.append(`questions[${questionIndex}][is_active]`, question.is_active ? '1' : '0')
         question.options.forEach((option, optionIndex) => {
           fd.append(`questions[${questionIndex}][options][${optionIndex}][label]`, option.label.trim())
           fd.append(`questions[${questionIndex}][options][${optionIndex}][linked_booking_service_id]`, option.linked_booking_service_id.trim())
-          fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(Number(option.sort_order || optionIndex)))
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(optionIndex))
           fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')
         })
       })
@@ -481,7 +481,7 @@ export default function BookingServiceEditModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-6xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">Edit Booking Service</h2>
           <button
@@ -568,26 +568,6 @@ export default function BookingServiceEditModal({
               <div className="space-y-4 w-full lg:w-1/2">
                 <div>
                   <label
-                    htmlFor="edit-service_type"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Service Type <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    id="edit-service_type"
-                    name="service_type"
-                    value={form.service_type}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    disabled={disableForm}
-                  >
-                    <option value="standard">Standard</option>
-                    <option value="premium">Premium</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
                     htmlFor="edit-name"
                     className="block text-sm font-medium text-gray-700 mb-1"
                   >
@@ -623,89 +603,113 @@ export default function BookingServiceEditModal({
                     disabled={disableForm}
                   />
                 </div>
+              </div>
+            </div>
 
-                <div>
-                  <label
-                    htmlFor="edit-duration_min"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Duration (min) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="edit-duration_min"
-                    name="duration_min"
-                    type="number"
-                    min={1}
-                    value={form.duration_min}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="30"
-                    disabled={disableForm}
-                  />
-                </div>
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+              <div>
+                <label
+                  htmlFor="service_type"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Service Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="service_type"
+                  name="service_type"
+                  value={form.service_type}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={disableForm}
+                >
+                  <option value="standard">Standard</option>
+                  <option value="premium">Premium</option>
+                </select>
+              </div>
 
-                <div>
-                  <label
-                    htmlFor="edit-service_price"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Service Price <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="edit-service_price"
-                    name="service_price"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.service_price}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0"
-                    disabled={disableForm}
-                  />
-                </div>
+              <div>
+                <label
+                  htmlFor="edit-duration_min"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Duration (min) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="edit-duration_min"
+                  name="duration_min"
+                  type="number"
+                  min={1}
+                  value={form.duration_min}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="30"
+                  disabled={disableForm}
+                />
+              </div>
 
-                <div>
-                  <label
-                    htmlFor="edit-deposit_amount"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Deposit Amount <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="edit-deposit_amount"
-                    name="deposit_amount"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.deposit_amount}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0"
-                    disabled={disableForm}
-                  />
-                </div>
+              <div>
+                <label
+                  htmlFor="edit-service_price"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Service Price <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="edit-service_price"
+                  name="service_price"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.service_price}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0"
+                  disabled={disableForm}
+                />
+              </div>
 
-                <div>
-                  <label
-                    htmlFor="edit-buffer_min"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Buffer (min) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="edit-buffer_min"
-                    name="buffer_min"
-                    type="number"
-                    min={0}
-                    value={form.buffer_min}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="15"
-                    disabled={disableForm}
-                  />
-                </div>
+              <div>
+                <label
+                  htmlFor="edit-deposit_amount"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Deposit Amount <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="edit-deposit_amount"
+                  name="deposit_amount"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.deposit_amount}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0"
+                  disabled={disableForm}
+                />
+              </div>
 
+              <div>
+                <label
+                  htmlFor="edit-buffer_min"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Buffer (min) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="edit-buffer_min"
+                  name="buffer_min"
+                  type="number"
+                  min={0}
+                  value={form.buffer_min}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="15"
+                  disabled={disableForm}
+                />
+              </div>
+
+              <div className="min-w-0">
                 <BookingServiceAllowedStaffPicker
                   staffOptions={staffOptions}
                   value={form.allowed_staff_ids}
@@ -713,58 +717,48 @@ export default function BookingServiceEditModal({
                   disabled={disableForm}
                   loading={staffLoading}
                 />
-                <div>
-                  <label htmlFor="edit-primary_slots" className="block text-sm font-medium text-gray-700 mb-1">
-                    Primary slot times (HH:mm, comma-separated)
-                  </label>
-                  <input
-                    id="edit-primary_slots"
-                    name="primary_slots"
-                    type="text"
-                    value={form.primary_slots}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="12:00, 15:00, 18:00"
-                    disabled={disableForm}
-                  />
-                </div>
-                <BookingServiceQuestionsBuilder
-                  value={form.questions}
-                  onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
-                  bookingServiceOptions={bookingServiceOptions}
+              </div>
+
+              <div>
+                <label htmlFor="edit-primary_slots" className="block text-sm font-medium text-gray-700 mb-1">
+                  Primary slot times (HH:mm, comma-separated)
+                </label>
+                <input
+                  id="edit-primary_slots"
+                  name="primary_slots"
+                  type="text"
+                  value={form.primary_slots}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="12:00, 15:00, 18:00"
                   disabled={disableForm}
                 />
-                {form.questions.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => setForm((prev) => ({ ...prev, questions: [emptyQuestion()] }))}
-                    disabled={disableForm}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Add first question
-                  </button>
-                ) : null}
-
-                <div>
-                  <label
-                    htmlFor="edit-isActive"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Status
-                  </label>
-                  <select
-                    id="edit-isActive"
-                    name="is_active"
-                    value={form.is_active}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    disabled={disableForm}
-                  >
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
-                  </select>
-                </div>
               </div>
+              <div>
+                <label htmlFor="edit-isActive" className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  id="edit-isActive"
+                  name="is_active"
+                  value={form.is_active}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={disableForm}
+                >
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 w-full">
+              <BookingServiceQuestionsBuilder
+                value={form.questions}
+                onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+                bookingServiceOptions={bookingServiceOptions}
+                disabled={disableForm}
+              />
             </div>
 
             {error && (

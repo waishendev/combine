@@ -381,6 +381,32 @@ export default function ShopMenuTable({
     })
   }
 
+  const swapShopMenuAdjacent = (
+    prev: ShopMenuRowData[],
+    rowId: number,
+    direction: 'up' | 'down',
+  ): ShopMenuRowData[] | null => {
+    const idx = prev.findIndex((r) => r.id === rowId)
+    if (idx === -1) return null
+    const next = [...prev]
+    if (direction === 'up') {
+      if (idx === 0) return null
+      const j = idx - 1
+      const a = next[idx]
+      const b = next[j]
+      next[j] = { ...a, sortOrder: b.sortOrder }
+      next[idx] = { ...b, sortOrder: a.sortOrder }
+      return next
+    }
+    if (idx >= next.length - 1) return null
+    const j = idx + 1
+    const a = next[idx]
+    const b = next[j]
+    next[idx] = { ...b, sortOrder: a.sortOrder }
+    next[j] = { ...a, sortOrder: b.sortOrder }
+    return next
+  }
+
   const handleMoveUp = async (shopMenu: ShopMenuRowData) => {
     if (movingShopMenuId === shopMenu.id) return
     setMovingShopMenuId(shopMenu.id)
@@ -410,7 +436,7 @@ export default function ShopMenuTable({
         return
       }
 
-      await fetchShopMenus()
+      setRows((prev) => swapShopMenuAdjacent(prev, shopMenu.id, 'up') ?? prev)
     } catch (err) {
       console.error(err)
     } finally {
@@ -447,7 +473,7 @@ export default function ShopMenuTable({
         return
       }
 
-      await fetchShopMenus()
+      setRows((prev) => swapShopMenuAdjacent(prev, shopMenu.id, 'down') ?? prev)
     } catch (err) {
       console.error(err)
     } finally {
