@@ -22,6 +22,16 @@ class PromotionController extends Controller
             $query->where('promotion_type', $request->string('promotion_type'));
         }
 
+        if ($request->filled('search')) {
+            $search = trim((string) $request->string('search'));
+            if ($search !== '') {
+                $query->where(function ($sub) use ($search) {
+                    $sub->where('name', 'like', '%' . $search . '%')
+                        ->orWhere('title', 'like', '%' . $search . '%');
+                });
+            }
+        }
+
         $promotions = $query
             ->orderByDesc('priority')
             ->orderByDesc('id')

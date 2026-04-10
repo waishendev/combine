@@ -286,5 +286,7 @@
 
   "catalog.shopMenu": "Shop Menu",
   "catalog.servicesMenu": "Services Menu",
-  "catalog.servicesPages": "Services Pages"
+  "catalog.servicesPages": "Services Pages",
+
+  "marketing.promotions": "Promotions"
 }
