@@ -42,6 +42,30 @@ const ACTION_BADGE: Record<ActionType, string> = {
   adjusted: 'bg-violet-100 text-violet-700',
 }
 
+const readNumberField = (value: unknown, key: string): number | null => {
+  if (!value || typeof value !== 'object') return null
+  const v = (value as Record<string, unknown>)[key]
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+const getAdjustedLabelAndBadge = (row: LeaveLogRow): { label: string; badge: string } => {
+  if (row.action_type !== 'adjusted') {
+    return { label: ACTION_LABEL[row.action_type], badge: ACTION_BADGE[row.action_type] }
+  }
+
+  // Try to infer direction from before/after entitled days
+  const beforeEntitled = readNumberField(row.before_value, 'entitled_days')
+  const afterEntitled = readNumberField(row.after_value, 'entitled_days')
+  if (beforeEntitled != null && afterEntitled != null) {
+    const delta = afterEntitled - beforeEntitled
+    if (delta > 0) return { label: 'ADD', badge: 'bg-emerald-100 text-emerald-700' }
+    if (delta < 0) return { label: 'REDUCE', badge: 'bg-rose-100 text-rose-700' }
+  }
+
+  return { label: 'ADJUST', badge: ACTION_BADGE.adjusted }
+}
+
 const extractPaginated = (payload: unknown): { rows: LeaveLogRow[]; meta: PaginationMeta } => {
   const emptyMeta = { current_page: 1, last_page: 1, per_page: 20, total: 0 }
   if (!payload || typeof payload !== 'object') return { rows: [], meta: emptyMeta }
@@ -196,7 +220,14 @@ export default function BookingLeaveLogsPage() {
                 <td className="px-2 py-2">{row.staff?.name ?? `Staff #${row.staff_id}`}</td>
                 <td className="px-2 py-2">{row.leave_request_id ?? '-'}</td>
                 <td className="px-2 py-2">
-                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${ACTION_BADGE[row.action_type]}`}>{ACTION_LABEL[row.action_type]}</span>
+                  {(() => {
+                    const view = getAdjustedLabelAndBadge(row)
+                    return (
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium ${view.badge}`}>
+                        {view.label}
+                      </span>
+                    )
+                  })()}
                 </td>
                 <td className="px-2 py-2">{row.remark || '-'}</td>
                 <td className="px-2 py-2">{row.creator?.name ?? '-'}</td>

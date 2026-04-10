@@ -5,6 +5,7 @@ namespace App\Models\Booking;
 use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use DateTimeInterface;
 
 class BookingLeaveRequest extends Model
 {
@@ -48,5 +49,16 @@ class BookingLeaveRequest extends Model
     public function logs()
     {
         return $this->hasMany(BookingLeaveLog::class, 'leave_request_id');
+    }
+
+        /**
+     * Prepare a date for array / JSON serialization.
+     *
+     * @param  \DateTimeInterface  $date
+     * @return string
+     */
+    protected function serializeDate(DateTimeInterface $date)
+    {
+        return $date->format('Y-m-d H:i:s');
     }
 }

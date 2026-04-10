@@ -79,4 +79,61 @@ class LeaveBalanceController extends Controller
 
         return $this->respond($row);
     }
+
+    public function adjust(Request $request, int $staffId)
+    {
+        Staff::query()->findOrFail($staffId);
+
+        $data = $request->validate([
+            'leave_type' => ['required', 'in:annual,mc,emergency,unpaid'],
+            'delta_days' => ['required', 'numeric', 'min:-366', 'max:366', 'not_in:0'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $row = DB::transaction(function () use ($staffId, $data, $request) {
+            $existing = BookingLeaveBalance::query()
+                ->where('staff_id', $staffId)
+                ->where('leave_type', $data['leave_type'])
+                ->first();
+
+            $before = $existing ? [
+                'leave_type' => $existing->leave_type,
+                'entitled_days' => (float) $existing->entitled_days,
+            ] : [
+                'leave_type' => (string) $data['leave_type'],
+                'entitled_days' => 0.0,
+            ];
+
+            $current = $existing ? (float) $existing->entitled_days : 0.0;
+            $next = $current + (float) $data['delta_days'];
+            $next = max(0.0, min(366.0, $next));
+
+            $row = BookingLeaveBalance::query()->updateOrCreate(
+                [
+                    'staff_id' => $staffId,
+                    'leave_type' => $data['leave_type'],
+                ],
+                [
+                    'entitled_days' => $next,
+                ]
+            );
+
+            $this->leaveService->logAction(
+                $staffId,
+                null,
+                'adjusted',
+                $before,
+                [
+                    'leave_type' => $row->leave_type,
+                    'entitled_days' => (float) $row->entitled_days,
+                ],
+                $data['remark'] ?? null,
+                $request->user()?->id
+            );
+
+            return $row;
+        });
+
+        return $this->respond($row);
+    }
 }
