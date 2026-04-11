@@ -5,6 +5,7 @@ namespace App\Services\Reports;
 use App\Models\Ecommerce\PaymentGateway;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -15,23 +16,39 @@ class SalesVisualDailyReportService
 {
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'];
 
+    /**
+     * Apply the same order-inclusion logic used by POS Summary so that online booking orders
+     * (which may have status=pending + payment_status=paid) are counted.
+     */
+    private function applyOrderScope(Builder $q, string $alias = 'o'): Builder
+    {
+        return $q
+            ->where(function (Builder $w) use ($alias) {
+                $w->where("{$alias}.status", 'completed')
+                    ->orWhere("{$alias}.payment_status", 'paid');
+            })
+            ->whereNotIn("{$alias}.status", ['cancelled', 'draft'])
+            ->where(function (Builder $w) use ($alias) {
+                $w->where("{$alias}.payment_status", '!=', 'refunded')
+                    ->orWhereNull("{$alias}.payment_status");
+            })
+            ->whereNull("{$alias}.refunded_at");
+    }
+
     public function ecommerceDay(Carbon $day): array
     {
         $start = $day->copy()->startOfDay();
         $end = $day->copy()->endOfDay();
-        $validPay = SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT;
-        $validOrd = SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT;
 
-        $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::ECOMMERCE, $start, $end, $validPay, $validOrd);
+        $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::ECOMMERCE, $start, $end);
 
         $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
 
-        // Catalog lines only (exclude booking_* lines so mixed orders do not leak into "other")
-        $itemAgg = DB::table('order_items as oi')
-            ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
+        $itemAgg = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'product' THEN $lineTotal ELSE 0 END), 0) as product")
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'service' THEN $lineTotal ELSE 0 END), 0) as service")
@@ -44,7 +61,7 @@ class SalesVisualDailyReportService
         ];
 
         $roster = $this->allStaffRoster();
-        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $validPay, $validOrd, $lineTotal));
+        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
@@ -88,21 +105,19 @@ class SalesVisualDailyReportService
     {
         $start = $day->copy()->startOfDay();
         $end = $day->copy()->endOfDay();
-        $validPay = SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT;
-        $validOrd = SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT;
 
-        $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::BOOKING, $start, $end, $validPay, $validOrd);
+        $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::BOOKING, $start, $end);
 
         $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
 
-        $bookingSub = DB::table('orders as o')
-            ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-            ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-            ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
-            ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
+        $bookingSub = $this->applyOrderScope(
+            DB::table('orders as o')
+                ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
+                ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
+                ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
+                ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
             ->selectRaw("$lineTotal as net_amount")
@@ -115,12 +130,20 @@ class SalesVisualDailyReportService
             ->first();
 
         $roster = $this->allStaffRoster();
-        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $validPay, $validOrd, $lineTotal));
+        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
         $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
         $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
+
+        $serviceConsumedQuery = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
+            ->where('oi.line_type', 'booking_settlement')
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as v");
 
         return [
             'date' => $day->toDateString(),
@@ -143,14 +166,7 @@ class SalesVisualDailyReportService
                 'message' => 'Point redemption detail is not wired for this view yet.',
             ],
             'service_consumed' => [
-                'amount' => round((float) DB::table('order_items as oi')
-                    ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                    ->whereBetween('o.created_at', [$start, $end])
-                    ->whereIn('o.payment_status', $validPay)
-                    ->whereIn('o.status', $validOrd)
-                    ->where('oi.line_type', 'booking_settlement')
-                    ->selectRaw("COALESCE(SUM($lineTotal), 0) as v")
-                    ->value('v'), 2),
+                'amount' => round((float) $serviceConsumedQuery->value('v'), 2),
                 'message' => 'Final settlement lines for booking orders on this day.',
             ],
             'staff' => [
@@ -170,31 +186,29 @@ class SalesVisualDailyReportService
     {
         $start = $day->copy()->startOfDay();
         $end = $day->copy()->endOfDay();
-        $validPay = SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT;
-        $validOrd = SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT;
 
-        $paymentBlock = $this->paymentMethodsForAllWorkspace($start, $end, $validPay, $validOrd);
+        $paymentBlock = $this->paymentMethodsForAllWorkspace($start, $end);
         $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
 
-        $itemEcommerce = DB::table('order_items as oi')
-            ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
+        $itemEcommerce = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'product' THEN $lineTotal ELSE 0 END), 0) as product")
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'service' THEN $lineTotal ELSE 0 END), 0) as service")
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'service_package' THEN $lineTotal ELSE 0 END), 0) as multi_package")
             ->first();
 
-        $bookingSub = DB::table('orders as o')
-            ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-            ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-            ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
-            ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
+        $bookingSub = $this->applyOrderScope(
+            DB::table('orders as o')
+                ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
+                ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
+                ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
+                ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
             ->selectRaw("$lineTotal as net_amount")
@@ -207,18 +221,18 @@ class SalesVisualDailyReportService
             ->first();
 
         $roster = $this->allStaffRoster();
-        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $validPay, $validOrd, $lineTotal));
+        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
         $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
         $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
 
-        $serviceConsumedAmount = round((float) DB::table('order_items as oi')
-            ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
+        $serviceConsumedAmount = round((float) $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->where('oi.line_type', 'booking_settlement')
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as v")
             ->value('v'), 2);
@@ -331,15 +345,15 @@ class SalesVisualDailyReportService
         return $out;
     }
 
-    private function ecommerceStaffProductSales(Carbon $start, Carbon $end, array $validPay, array $validOrd, string $lineTotal): array
+    private function ecommerceStaffProductSales(Carbon $start, Carbon $end, string $lineTotal): array
     {
-        $rows = DB::table('order_item_staff_splits as sps')
-            ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
-            ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->join('staffs as st', 'st.id', '=', 'sps.staff_id')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
+        $rows = $this->applyOrderScope(
+            DB::table('order_item_staff_splits as sps')
+                ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->join('staffs as st', 'st.id', '=', 'sps.staff_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->where('oi.line_type', 'product')
             ->groupBy('st.id', 'st.name')
             ->orderByDesc(DB::raw('product_sales'))
@@ -363,9 +377,7 @@ class SalesVisualDailyReportService
     private function paymentMethodsForWorkspace(
         string $workspaceType,
         Carbon $start,
-        Carbon $end,
-        array $validPay,
-        array $validOrd
+        Carbon $end
     ): array {
         $gateways = PaymentGateway::query()
             ->where('type', $workspaceType)
@@ -383,24 +395,8 @@ class SalesVisualDailyReportService
                 continue;
             }
 
-            $online = $this->sumOrderGrandTotalForGatewayKey(
-                $workspaceType,
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                $key,
-                true
-            );
-            $offline = $this->sumOrderGrandTotalForGatewayKey(
-                $workspaceType,
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                $key,
-                false
-            );
+            $online = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, $key, true);
+            $offline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, $key, false);
 
             $sumOnline += $online;
             $sumOffline += $offline;
@@ -418,24 +414,8 @@ class SalesVisualDailyReportService
 
         $hasCashGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
         if (! $hasCashGateway) {
-            $cashOnline = $this->sumOrderGrandTotalForGatewayKey(
-                $workspaceType,
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                'cash',
-                true
-            );
-            $cashOffline = $this->sumOrderGrandTotalForGatewayKey(
-                $workspaceType,
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                'cash',
-                false
-            );
+            $cashOnline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, 'cash', true);
+            $cashOffline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, 'cash', false);
             $sumOnline += $cashOnline;
             $sumOffline += $cashOffline;
             $syntheticHead[] = [
@@ -447,27 +427,10 @@ class SalesVisualDailyReportService
             ];
         }
 
-        // POS checkout uses payment_method=qrpay; it is not a PaymentGateway row — include it like cash.
         $hasQrpayGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
         if (! $hasQrpayGateway) {
-            $qrOnline = $this->sumOrderGrandTotalForGatewayKey(
-                $workspaceType,
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                'qrpay',
-                true
-            );
-            $qrOffline = $this->sumOrderGrandTotalForGatewayKey(
-                $workspaceType,
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                'qrpay',
-                false
-            );
+            $qrOnline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, 'qrpay', true);
+            $qrOffline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, 'qrpay', false);
             $sumOnline += $qrOnline;
             $sumOffline += $qrOffline;
             $syntheticHead[] = [
@@ -494,17 +457,15 @@ class SalesVisualDailyReportService
         string $workspaceType,
         Carbon $start,
         Carbon $end,
-        array $validPay,
-        array $validOrd,
         string $paymentKey,
         bool $online
     ): float {
         $methodVariants = SalesReportService::paymentMethodVariantsForMatch($paymentKey);
 
-        $q = DB::table('orders as o')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
+        $q = $this->applyOrderScope(
+            DB::table('orders as o')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
 
         if ($online) {
@@ -538,9 +499,7 @@ class SalesVisualDailyReportService
      */
     private function paymentMethodsForAllWorkspace(
         Carbon $start,
-        Carbon $end,
-        array $validPay,
-        array $validOrd
+        Carbon $end
     ): array {
         $ec = PaymentGateway::query()
             ->where('type', WorkspaceType::ECOMMERCE)
@@ -581,22 +540,8 @@ class SalesVisualDailyReportService
                 continue;
             }
 
-            $online = $this->sumOrderGrandTotalForGatewayKeyAll(
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                $key,
-                true
-            );
-            $offline = $this->sumOrderGrandTotalForGatewayKeyAll(
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                $key,
-                false
-            );
+            $online = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, $key, true);
+            $offline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, $key, false);
 
             $sumOnline += $online;
             $sumOffline += $offline;
@@ -614,22 +559,8 @@ class SalesVisualDailyReportService
 
         $hasCashGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
         if (! $hasCashGateway) {
-            $cashOnline = $this->sumOrderGrandTotalForGatewayKeyAll(
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                'cash',
-                true
-            );
-            $cashOffline = $this->sumOrderGrandTotalForGatewayKeyAll(
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                'cash',
-                false
-            );
+            $cashOnline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, 'cash', true);
+            $cashOffline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, 'cash', false);
             $sumOnline += $cashOnline;
             $sumOffline += $cashOffline;
             $syntheticHead[] = [
@@ -643,22 +574,8 @@ class SalesVisualDailyReportService
 
         $hasQrpayGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
         if (! $hasQrpayGateway) {
-            $qrOnline = $this->sumOrderGrandTotalForGatewayKeyAll(
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                'qrpay',
-                true 
-            );
-            $qrOffline = $this->sumOrderGrandTotalForGatewayKeyAll(
-                $start,
-                $end,
-                $validPay,
-                $validOrd,
-                'qrpay',
-                false
-            );
+            $qrOnline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, 'qrpay', true);
+            $qrOffline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, 'qrpay', false);
             $sumOnline += $qrOnline;
             $sumOffline += $qrOffline;
             $syntheticHead[] = [
@@ -684,17 +601,15 @@ class SalesVisualDailyReportService
     private function sumOrderGrandTotalForGatewayKeyAll(
         Carbon $start,
         Carbon $end,
-        array $validPay,
-        array $validOrd,
         string $paymentKey,
         bool $online
     ): float {
         $methodVariants = SalesReportService::paymentMethodVariantsForMatch($paymentKey);
 
-        $q = DB::table('orders as o')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
+        $q = $this->applyOrderScope(
+            DB::table('orders as o')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
 
         if ($online) {

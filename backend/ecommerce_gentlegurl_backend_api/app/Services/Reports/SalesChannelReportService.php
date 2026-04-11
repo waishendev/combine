@@ -3,6 +3,7 @@
 namespace App\Services\Reports;
 
 use Carbon\Carbon;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 class SalesChannelReportService
@@ -18,6 +19,25 @@ class SalesChannelReportService
     public const BOOKING_TYPE_PACKAGE_PURCHASE = 'package_purchase';
 
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'];
+
+    /**
+     * Mirror MyPosSummaryReportController::baseOrdersScopeQuery logic so that
+     * online booking orders (status=pending + payment_status=paid) are included.
+     */
+    private function applyOrderScope(Builder $q, string $alias = 'o'): Builder
+    {
+        return $q
+            ->where(function (Builder $w) use ($alias) {
+                $w->where("{$alias}.status", 'completed')
+                    ->orWhere("{$alias}.payment_status", 'paid');
+            })
+            ->whereNotIn("{$alias}.status", ['cancelled', 'draft'])
+            ->where(function (Builder $w) use ($alias) {
+                $w->where("{$alias}.payment_status", '!=', 'refunded')
+                    ->orWhereNull("{$alias}.payment_status");
+            })
+            ->whereNull("{$alias}.refunded_at");
+    }
 
     public function ecommerce(Carbon $start, Carbon $end, array $filters = []): array
     {
@@ -218,12 +238,12 @@ class SalesChannelReportService
         ?string $paymentMethod,
         ?string $status
     ) {
-        $query = DB::table('orders as o')
-            ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-            ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
-            ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
+        $query = $this->applyOrderScope(
+            DB::table('orders as o')
+                ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
+                ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->where('oi.line_type', 'product')
             ->groupBy('o.id', 'o.order_number', 'order_datetime', 'c.name', 'channel', 'o.payment_method', 'o.status')
             ->selectRaw('o.id as order_id')
@@ -261,14 +281,14 @@ class SalesChannelReportService
         ?string $paymentMethod,
         string $type
     ) {
-        $query = DB::table('orders as o')
-            ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-            ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-            ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
-            ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-            ->whereBetween('o.created_at', [$start, $end])
-            ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
-            ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
+        $query = $this->applyOrderScope(
+            DB::table('orders as o')
+                ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
+                ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
+                ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
+                ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
