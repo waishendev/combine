@@ -354,6 +354,15 @@ class PaymentController extends Controller
 
     public function callback(Request $request)
     {
+        $payload = $request->all();
+        $billplzPayload = $payload['billplz'] ?? $payload;
+
+        $isBillplzCallback = isset($billplzPayload['paid']) && isset($billplzPayload['id']) && ! $request->has('status');
+
+        if ($isBillplzCallback) {
+            return $this->handleBillplzCallback($request, $billplzPayload);
+        }
+
         $validated = $request->validate([
             'booking_id' => ['required', 'integer', 'exists:bookings,id'],
             'status' => ['required', 'in:PAID,FAILED'],
@@ -405,6 +414,86 @@ class PaymentController extends Controller
             'booking_status' => $booking->fresh()->status,
             'payment_status' => $booking->fresh()->payment_status,
         ]);
+    }
+
+    private function handleBillplzCallback(Request $request, array $billplzPayload)
+    {
+        $bookingId = $request->query('booking_id');
+        $billId = $billplzPayload['id'] ?? null;
+
+        if (! $bookingId) {
+            Log::warning('Booking Billplz callback missing booking_id', ['bill_id' => $billId, 'payload' => $billplzPayload]);
+            return response('missing booking_id', 400);
+        }
+
+        $booking = Booking::find($bookingId);
+        if (! $booking) {
+            Log::warning('Booking Billplz callback booking not found', ['booking_id' => $bookingId, 'bill_id' => $billId]);
+            return response('booking not found', 404);
+        }
+
+        $payment = BookingPayment::where('booking_id', $booking->id)->latest('id')->first();
+        if (! $payment) {
+            Log::warning('Booking Billplz callback payment not found', ['booking_id' => $bookingId, 'bill_id' => $billId]);
+            return response('payment not found', 404);
+        }
+
+        $paid = filter_var($billplzPayload['paid'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $state = $billplzPayload['state'] ?? null;
+        $transactionStatus = $billplzPayload['transaction_status'] ?? null;
+        $isPaymentConfirmed = $paid || $state === 'paid' || $transactionStatus === 'completed';
+
+        Log::info('Booking Billplz callback received', [
+            'booking_id' => $booking->id,
+            'bill_id' => $billId,
+            'paid' => $paid,
+            'state' => $state,
+            'is_confirmed' => $isPaymentConfirmed,
+        ]);
+
+        if ($isPaymentConfirmed && $booking->payment_status !== 'PAID') {
+            $payment->update([
+                'status' => 'PAID',
+                'ref' => $billId ?: $payment->ref,
+                'raw_response' => array_merge($payment->raw_response ?? [], ['billplz_callback' => $billplzPayload]),
+            ]);
+
+            $booking->update([
+                'payment_status' => 'PAID',
+                'status' => 'CONFIRMED',
+                'hold_expires_at' => null,
+            ]);
+
+            BookingLog::create([
+                'booking_id' => $booking->id,
+                'actor_type' => 'SYSTEM',
+                'actor_id' => null,
+                'action' => 'PAYMENT_CONFIRMED',
+                'meta' => ['payment_id' => $payment->id, 'ref' => $billId, 'provider' => 'billplz'],
+                'created_at' => now(),
+            ]);
+
+            Log::info('Booking Billplz callback confirmed payment', [
+                'booking_id' => $booking->id,
+                'booking_code' => $booking->booking_code,
+                'bill_id' => $billId,
+            ]);
+        } elseif (! $isPaymentConfirmed && $state === 'due') {
+            $payment->update([
+                'status' => 'FAILED',
+                'raw_response' => array_merge($payment->raw_response ?? [], ['billplz_callback' => $billplzPayload]),
+            ]);
+
+            $booking->update(['payment_status' => 'FAILED']);
+
+            Log::info('Booking Billplz callback payment failed', [
+                'booking_id' => $booking->id,
+                'bill_id' => $billId,
+                'state' => $state,
+            ]);
+        }
+
+        return response('OK', 200);
     }
 
     /**
