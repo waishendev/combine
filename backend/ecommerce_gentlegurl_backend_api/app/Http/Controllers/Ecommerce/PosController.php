@@ -142,7 +142,9 @@ class PosController extends Controller
     {
         $query = trim((string) $request->query('q', ''));
         $page = max(1, (int) $request->query('page', 1));
-        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
+        $hasRange = $request->filled('from_date') && $request->filled('to_date');
+        $perPageCap = $hasRange ? 500 : 100;
+        $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
         $builder = Booking::query()->with(['customer:id,name', 'service:id,name,service_price,price', 'staff:id,name']);
 
@@ -154,7 +156,10 @@ class PosController extends Controller
             });
         }
 
-        if ($request->filled('date')) {
+        if ($hasRange) {
+            $builder->whereDate('start_at', '>=', $request->string('from_date'))
+                ->whereDate('start_at', '<=', $request->string('to_date'));
+        } elseif ($request->filled('date')) {
             $builder->whereDate('start_at', $request->string('date'));
         }
         if ($request->filled('customer_id')) {
@@ -180,6 +185,7 @@ class PosController extends Controller
                 'service_names' => [(string) ($booking->service?->name ?? '-')],
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
                 'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+                'staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'status' => (string) $booking->status,
                 'deposit_contribution' => (float) $summary['deposit_contribution'],
