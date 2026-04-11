@@ -1589,8 +1589,15 @@ export default function CheckoutForm() {
                                   onChange={() => setSelectedBillplzGatewayOptionId(option.id)}
                                 />
                                 {option.logo_url ? (
-                                  <Image src={option.logo_url} alt={option.name} width={20} height={20} className="h-5 w-5 object-contain" />
-                                ) : null}
+                                  <Image src={option.logo_url} alt={option.name} width={24} height={24} className="h-6 w-6 shrink-0 object-contain" />
+                                ) : (
+                                  <span
+                                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-[var(--card-border)] bg-[var(--card)] text-[10px] font-semibold text-[var(--foreground)]/70"
+                                    aria-hidden
+                                  >
+                                    {option.name.trim().charAt(0).toUpperCase() || "?"}
+                                  </span>
+                                )}
                                 <span>{option.name}</span>
                               </label>
                             ))}

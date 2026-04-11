@@ -846,7 +846,16 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                             checked={selectedBillplzGatewayOptionId === option.id}
                             onChange={() => setSelectedBillplzGatewayOptionId(option.id)}
                           />
-                          {option.logo_url ? <img src={option.logo_url} alt={option.name} className="h-6 w-6 object-contain" /> : null}
+                          {option.logo_url ? (
+                            <img src={option.logo_url} alt={option.name} className="h-7 w-7 shrink-0 object-contain" />
+                          ) : (
+                            <span
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/30 text-[11px] font-semibold text-[var(--text-muted)]"
+                              aria-hidden
+                            >
+                              {option.name.trim().charAt(0).toUpperCase() || "?"}
+                            </span>
+                          )}
                           <span className="text-[var(--foreground)]">{option.name}</span>
                         </label>
                       ))}
