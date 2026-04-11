@@ -81,20 +81,20 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
           </button>
         )
       })}
-      {showSalesReport && (
-        <Link href="/reports/sales/visual" className={segmentClass(isSalesVisualRoute)}>
-          Sales report
-        </Link>
-      )}
       {showPos && (
         <>
           <Link href="/pos" className={segmentClass(isPosCheckout)}>
-            POS Checkout
+            POS
           </Link>
           <Link href="/pos/appointments" className={segmentClass(isPosAppointments)}>
             Appointments
           </Link>
         </>
+      )}
+      {showSalesReport && (
+        <Link href="/reports/sales/visual" className={segmentClass(isSalesVisualRoute)}>
+          Daily Sales report
+        </Link>
       )}
     </div>
   )
