@@ -151,6 +151,20 @@ const labelize = (value: string) =>
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
 
+/** Table display: match gateway / order `payment_method` keys to readable labels. */
+const PAYMENT_METHOD_TABLE_LABELS: Record<string, string> = {
+  billplz_online_banking: 'Online Banking (Billplz)',
+  billplz_fpx: 'Online Banking (Billplz)',
+  billplz_credit_card: 'Credit Card (Billplz)',
+  billplz_card: 'Credit Card (Billplz)',
+}
+
+const paymentMethodDisplayLabel = (raw: string) => {
+  const key = (raw ?? '').trim().toLowerCase()
+  if (!key) return '—'
+  return PAYMENT_METHOD_TABLE_LABELS[key] ?? labelize(raw)
+}
+
 /** Table header: only the first character is uppercase (no full-string caps). */
 const reportTableColumnHeader = (label: string) =>
   label ? `${label.charAt(0).toUpperCase()}${label.slice(1).toLowerCase()}` : label
@@ -510,7 +524,7 @@ export default function SalesChannelReportPage({
                     <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
                     <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
                     <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
-                    <td className="px-4 py-2 border border-gray-200">{labelize(row.payment_method)}</td>
+                    <td className="px-4 py-2 border border-gray-200">{paymentMethodDisplayLabel(row.payment_method)}</td>
                     <td className="px-4 py-2 border border-gray-200">{row.item_count}</td>
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.product_amount)}</td>
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
@@ -528,7 +542,7 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
                   <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
-                  <td className="px-4 py-2 border border-gray-200">{labelize(row.payment_method)}</td>
+                  <td className="px-4 py-2 border border-gray-200">{paymentMethodDisplayLabel(row.payment_method)}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.type)}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.booking_no ?? '—'}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.package_name ?? '—'}</td>

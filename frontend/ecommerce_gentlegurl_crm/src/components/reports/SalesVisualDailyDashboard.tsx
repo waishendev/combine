@@ -225,13 +225,13 @@ export default function SalesVisualDailyDashboard({ mode }: { mode: Mode }) {
                 <span className="font-semibold text-slate-900">{fmtRm(itemTypes.service)}</span>
               </li>
               <li className="flex justify-between gap-2">
-                <span className="text-slate-600">Multi package</span>
+                <span className="text-slate-600">Package</span>
                 <span className="font-semibold text-slate-900">{fmtRm(itemTypes.multi_package)}</span>
               </li>
-              <li className="flex justify-between gap-2">
+              {/* <li className="flex justify-between gap-2">
                 <span className="text-slate-600">Unlimited plan</span>
                 <span className="font-semibold text-slate-900">{fmtRm(itemTypes.unlimited_plan)}</span>
-              </li>
+              </li> */}
               {itemTypes.other != null && itemTypes.other > 0 ? (
                 <li className="flex justify-between gap-2">
                   <span className="text-slate-600">Other lines</span>
