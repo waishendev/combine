@@ -76,6 +76,7 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
   const [appointmentCheckoutConfirmationOpen, setAppointmentCheckoutConfirmationOpen] = useState(false)
+  const [appointmentCheckoutError, setAppointmentCheckoutError] = useState<string | null>(null)
   const [appointmentCashReceived, setAppointmentCashReceived] = useState('')
   const [appointmentQrProofFileName, setAppointmentQrProofFileName] = useState<string | null>(null)
   const [appointmentQrProofPreviewUrl, setAppointmentQrProofPreviewUrl] = useState<string | null>(null)
@@ -277,22 +278,23 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
     const dueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
     const cashReceivedAmount = Number(appointmentCashReceived || 0)
     if (dueAmount <= 0) {
-      showMsg('No balance due for this appointment.', 'warning')
+      setAppointmentCheckoutError('No balance due for this appointment.')
       return
     }
 
     if (appointmentPaymentMethod === 'cash') {
       if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < dueAmount) {
-        showMsg('Cash received must be equal or greater than settlement amount.', 'error')
+        setAppointmentCheckoutError('Cash received must be equal to or greater than the settlement amount.')
         return
       }
     }
 
     if (appointmentPaymentMethod === 'qrpay' && !appointmentQrProofFileName) {
-      showMsg('Please upload QR payment proof before checkout.', 'error')
+      setAppointmentCheckoutError('Please upload QR payment proof before confirming checkout.')
       return
     }
 
+    setAppointmentCheckoutError(null)
     setAppointmentActionLoading(true)
     try {
       const payload = {
@@ -306,11 +308,12 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        showMsg(json?.message ?? 'Unable to collect payment.', 'error')
+        setAppointmentCheckoutError(String(json?.message ?? 'Unable to collect payment.'))
         return
       }
 
       showMsg('Appointment payment collected.', 'success')
+      setAppointmentCheckoutError(null)
       setAppointmentCheckoutConfirmationOpen(false)
       setAppointmentSettlementResult({
         order_id: Number(json?.data?.order_id ?? 0),
@@ -582,6 +585,7 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
       URL.revokeObjectURL(appointmentQrProofPreviewUrl)
     }
     const url = URL.createObjectURL(file)
+    setAppointmentCheckoutError(null)
     setAppointmentQrProofFileName(file.name)
     setAppointmentQrProofPreviewUrl(url)
     event.currentTarget.value = ''
@@ -591,6 +595,7 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
     if (appointmentQrProofPreviewUrl) {
       URL.revokeObjectURL(appointmentQrProofPreviewUrl)
     }
+    setAppointmentCheckoutError(null)
     setAppointmentQrProofPreviewUrl(null)
     setAppointmentQrProofFileName(null)
   }
@@ -730,120 +735,151 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
         </div>
 
         <div className="space-y-5 xl:col-span-2 xl:min-h-0">
-          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex-shrink-0">Appointment Settlement</h3>
+          <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5 ">
+            <div className="flex-shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 sm:px-5">
+              <h3 className="text-base font-bold tracking-tight text-slate-900">Appointment Settlement</h3>
+              <p className="mt-0.5 text-xs text-slate-500">Select a booking on the left, then collect payment or update status.</p>
+            </div>
+
             {appointmentDetailLoading ? (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading appointment detail...</div>
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16">
+                <div className="h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" aria-hidden />
+                <p className="text-sm text-slate-500">Loading booking details…</p>
+              </div>
             ) : !appointmentDetail ? (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-                Select an appointment from the schedule on the left.
+              <div className="flex flex-1 flex-col items-center justify-center px-6 py-14 text-center">
+                <div className="rounded-full bg-slate-100 p-4 text-slate-400">
+                  <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <p className="mt-4 text-sm font-semibold text-slate-700">No appointment selected</p>
+                <p className="mt-1 max-w-[18rem] text-xs leading-relaxed text-slate-500">
+                  Tap a time slot or pick a date in the schedule. Settlement and actions will appear here.
+                </p>
               </div>
             ) : (
-              <div className="flex-1 space-y-3 overflow-y-auto">
-                <div className="rounded-lg border border-gray-200 p-3 text-sm">
-                  <p>
-                    <span className="font-semibold">Booking:</span> {appointmentDetail.booking_code}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Customer:</span> {appointmentDetail.customer?.name ?? '-'}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Staff:</span> {appointmentDetail.staff?.name ?? '-'}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Date/Time:</span>{' '}
-                    {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">Status:</span>
-                    <BookingStatusBadge status={appointmentDetail.status} label={appointmentDetail.status} showDot={false} />
-                  </div>
-                </div>
-                <div className="rounded-lg border border-gray-200 p-3 text-sm">
-                  <p>
-                    Service Total:{' '}
-                    <span className="font-semibold">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</span>
-                  </p>
-                  {appointmentDetail.add_ons?.length ? (
-                    <div className="mt-2 rounded border border-gray-200 bg-gray-50 px-2 py-2">
-                      <p className="font-semibold text-gray-800">Add-ons</p>
-                      {appointmentDetail.add_ons.map((addon, idx) => (
-                        <p key={`${addon.id ?? addon.name}-${idx}`} className="text-xs text-gray-700">
-                          {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +RM
-                          {Number(addon.extra_price ?? 0).toFixed(2)})
-                        </p>
-                      ))}
-                      <p className="mt-1 text-xs text-gray-700">
-                        Add-on total duration: +{Number(appointmentDetail.addon_total_duration_min ?? 0)} mins
-                      </p>
-                      <p className="text-xs text-gray-700">
-                        Add-on total price: RM {Number(appointmentDetail.addon_total_price ?? 0).toFixed(2)}
-                      </p>
-                      <p className="text-xs text-gray-700">
-                        Add-on paid online: RM {Number(appointmentDetail.addon_paid_online ?? 0).toFixed(2)}
-                      </p>
-                      <p className="text-xs text-gray-700">
-                        Add-on paid in settlement: RM {Number(appointmentDetail.addon_paid_settlement ?? 0).toFixed(2)}
-                      </p>
-                      <p className="text-xs font-semibold text-amber-700">
-                        Add-on balance due now: RM {Number(appointmentDetail.addon_balance_due ?? 0).toFixed(2)}
-                      </p>
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+                  {/* Booking summary */}
+                  <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1 font-mono text-xs font-semibold text-slate-800 ring-1 ring-slate-200">
+                        {appointmentDetail.booking_code}
+                      </span>
+                      <BookingStatusBadge status={appointmentDetail.status} label={appointmentDetail.status} showDot={false} />
                     </div>
-                  ) : null}
-                  <p>
-                    Deposit Contribution:{' '}
-                    <span className="font-semibold">RM {Number(appointmentDepositContributionForSettlement ?? 0).toFixed(2)}</span>
-                  </p>
-                  <p>
-                    Linked Booking Deposit:{' '}
-                    <span className="font-semibold">
-                      RM {Number(appointmentDetail.linked_booking_deposit_total ?? appointmentDetail.linked_booking_deposit ?? 0).toFixed(2)}
-                    </span>
-                  </p>
-                  <p>
-                    Package Applied / Offset:{' '}
-                    <span className="font-semibold">RM {Number(appointmentDetail.package_offset ?? 0).toFixed(2)}</span>
-                  </p>
-                  <p>
-                    Settlement Paid:{' '}
-                    <span className="font-semibold">RM {Number(appointmentDetail.settlement_paid ?? 0).toFixed(2)}</span>
-                  </p>
-                  <p>
-                    Amount Due Now:{' '}
-                    <span className="font-semibold text-emerald-700">
+                    <p className="mt-3 text-lg font-semibold text-slate-900">{appointmentDetail.customer?.name ?? '—'}</p>
+                    <p className="mt-1 text-sm text-slate-600">{appointmentDetail.service?.name ?? '—'}</p>
+                    <dl className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                      <div>
+                        <dt className="font-medium text-slate-500">Staff</dt>
+                        <dd className="mt-0.5 text-slate-800">{appointmentDetail.staff?.name ?? '—'}</dd>
+                      </div>
+                      <div className="sm:text-right">
+                        <dt className="font-medium text-slate-500 sm:text-right">Date &amp; time</dt>
+                        <dd className="mt-0.5 text-slate-800">
+                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  {/* Amount due — focal point */}
+                  <section className="overflow-hidden rounded-xl border-2 border-emerald-200/90 bg-gradient-to-br from-emerald-50 to-white px-4 py-4 shadow-sm">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/90">Amount due now</p>
+                    <p className="mt-1 text-3xl font-bold tabular-nums text-emerald-800">
                       RM {Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0).toFixed(2)}
-                    </span>
-                  </p>
-                  <p>
-                    Package Status:{' '}
-                    <span className="font-semibold">{appointmentDetail.package_status?.status ?? 'Not applied'}</span>
-                  </p>
-                  {appointmentIsFullyPackageCovered ? <p className="mt-1 font-semibold text-emerald-700">Covered by Package</p> : null}
-                  {appointmentPreviouslyCollectedDeposit > 0 ? (
-                    <>
-                      <p>
-                        Deposit Previously Collected:{' '}
-                        <span className="font-semibold">RM {appointmentPreviouslyCollectedDeposit.toFixed(2)}</span>
+                    </p>
+                    {appointmentIsFullyPackageCovered ? (
+                      <p className="mt-2 text-xs font-medium text-emerald-700">Fully covered by package</p>
+                    ) : null}
+                    {/* {appointmentPreviouslyCollectedDeposit > 0 ? (
+                      <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 ring-1 ring-amber-200/80">
+                        Deposit previously collected RM {appointmentPreviouslyCollectedDeposit.toFixed(2)} — adjust manually if needed.
                       </p>
-                      <p className="text-amber-700">Deposit was previously collected. Refund/offset manually if needed.</p>
-                    </>
-                  ) : null}
-                </div>
-                <div className="rounded-lg border border-gray-200 p-3 text-sm">
-                  {appointmentReschedulePolicyWarnings.length ? (
-                    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      {appointmentReschedulePolicyWarnings.map((warning, idx) => (
-                        <p key={`${warning}-${idx}`}>{warning}</p>
-                      ))}
-                    </div>
-                  ) : null}
-                  <p className="mb-2 font-semibold text-gray-900">Settlement Payment</p>
-                  <div className="grid gap-2">
-                    <p className="text-xs text-gray-500">Payment method is selected during checkout confirmation.</p>
-                    <div className="flex flex-wrap gap-2">
+                    ) : null} */}
+                  </section>
+
+                  {/* Line items */}
+                  <section className="rounded-xl border border-slate-200 bg-white">
+                    <h4 className="border-b border-slate-100 bg-slate-50/80 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      Charges &amp; credits
+                    </h4>
+                    <ul className="divide-y divide-slate-100 text-sm">
+                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <span className="text-slate-600">Service total</span>
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}
+                        </span>
+                      </li>
+                      {appointmentDetail.add_ons?.length ? (
+                        <li className="px-3 py-2">
+                          <p className="text-xs font-medium text-slate-500">Add-ons</p>
+                          <div className="mt-1.5 space-y-1 rounded-md bg-slate-50 px-2 py-2 text-xs text-slate-700">
+                            {appointmentDetail.add_ons.map((addon, idx) => (
+                              <p key={`${addon.id ?? addon.name}-${idx}`}>
+                                {addon.name} · +{Number(addon.extra_duration_min ?? 0)} min · +RM {Number(addon.extra_price ?? 0).toFixed(2)}
+                              </p>
+                            ))}
+                            <p className="border-t border-slate-200 pt-1 text-slate-600">
+                              Add-on balance due:{' '}
+                              <span className="font-semibold text-amber-800">
+                                RM {Number(appointmentDetail.addon_balance_due ?? 0).toFixed(2)}
+                              </span>
+                            </p>
+                          </div>
+                        </li>
+                      ) : null}
+                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <span className="text-slate-600">Deposit</span>
+                        <span className="font-medium tabular-nums text-slate-900">
+                          RM {Number(appointmentDepositContributionForSettlement ?? 0).toFixed(2)}
+                        </span>
+                      </li>
+                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <span className="text-slate-600">Add-on Booking Deposit</span>
+                        <span className="font-medium tabular-nums text-slate-900">
+                          RM {Number(appointmentDetail.linked_booking_deposit_total ?? appointmentDetail.linked_booking_deposit ?? 0).toFixed(2)}
+                        </span>
+                      </li>
+                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <span className="text-slate-600">Package offset</span>
+                        <span className="font-medium tabular-nums text-slate-900">
+                          - RM {Number(appointmentDetail.package_offset ?? 0).toFixed(2)}
+                        </span>
+                      </li>
+                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <span className="text-slate-600">Settlement</span>
+                        {appointmentDueAmountNow <= 0 ? (
+                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-900 ring-1 ring-emerald-200">
+                            Paid
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200">
+                            Unpaid
+                          </span>
+                        )}
+                      </li>
+                      {/* <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <span className="text-slate-600">Package status</span>
+                        <span className="font-medium text-slate-900">{appointmentDetail.package_status?.status ?? 'Not applied'}</span>
+                      </li> */}
+                    </ul>
+                  </section>
+
+                  {/* Actions */}
+                  <section className="rounded-xl border border-slate-200 bg-white p-3">
+                    {appointmentReschedulePolicyWarnings.length ? (
+                      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        {appointmentReschedulePolicyWarnings.map((warning, idx) => (
+                          <p key={`${warning}-${idx}`}>{warning}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Payment &amp; actions</p>
+                    <p className="mt-1 text-xs text-slate-500">Checkout opens cash or QRPay confirmation.</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         disabled={appointmentActionLoading || appointmentDueAmountNow <= 0}
@@ -851,9 +887,10 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                           const due = appointmentDueAmountNow
                           setAppointmentPaymentMethod('cash')
                           setAppointmentCashReceived(due > 0 ? due.toFixed(2) : '')
+                          setAppointmentCheckoutError(null)
                           setAppointmentCheckoutConfirmationOpen(true)
                         }}
-                        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                       >
                         Checkout
                       </button>
@@ -867,17 +904,20 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                         }
                         onClick={() => void applyAppointmentPackage()}
                         title={appointmentCheckoutCompleted ? 'Checkout already completed' : undefined}
-                        className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                        className="rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-50"
                       >
-                        {appointmentPackageApplied ? 'Package Applied' : 'Apply Package'}
+                        {appointmentPackageApplied ? 'Package applied' : 'Apply package'}
                       </button>
-                      {appointmentDetail.status === 'CONFIRMED' ? (
-                        <>
+                    </div>
+                    {appointmentDetail.status === 'CONFIRMED' ? (
+                      <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+                        <p className="text-[11px] font-medium text-slate-500">Booking</p>
+                        <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
                             disabled={appointmentActionLoading}
                             onClick={openAppointmentRescheduleModal}
-                            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                            className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
                           >
                             Reschedule
                           </button>
@@ -885,84 +925,96 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                             type="button"
                             disabled={!canMarkAppointmentCompleted}
                             onClick={() => void markAppointmentCompleted()}
-                            title={
-                              canMarkAppointmentCompleted ? 'Mark Completed' : 'Complete payment or apply package first'
-                            }
-                            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                            title={canMarkAppointmentCompleted ? 'Mark Completed' : 'Complete payment or apply package first'}
+                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
                           >
-                            Mark Completed
+                            Mark completed
                           </button>
+                        </div>
+                        <p className="pt-1 text-[11px] font-medium text-slate-500">Change status</p>
+                        <div className="flex flex-wrap gap-1.5">
                           <button
                             type="button"
                             disabled={appointmentActionLoading}
                             onClick={() => void updateAppointmentStatus('CANCELLED')}
-                            className="rounded-md bg-slate-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
-                            Mark Cancelled
+                            Cancelled
                           </button>
                           <button
                             type="button"
                             disabled={appointmentActionLoading}
                             onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')}
-                            className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
+                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-orange-800 hover:bg-orange-50 disabled:opacity-50"
                           >
-                            Late Cancellation
+                            Late cancel
                           </button>
                           <button
                             type="button"
                             disabled={appointmentActionLoading}
                             onClick={() => void updateAppointmentStatus('NO_SHOW')}
-                            className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-rose-800 hover:bg-rose-50 disabled:opacity-50"
                           >
-                            Mark No-show
+                            No-show
                           </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-gray-200 p-3 text-sm">
-                  <p className="mb-2 font-semibold text-gray-900">Payment History</p>
-                  {appointmentDetail.payment_history?.length ? (
-                    <div className="space-y-1">
-                      {appointmentDetail.payment_history.map((item, idx) => (
-                        <p key={`${item.order_number ?? 'pay'}-${idx}`} className="text-xs text-gray-600">
-                          {item.order_number} • {item.line_type} • RM {Number(item.amount ?? 0).toFixed(2)} •{' '}
-                          {(item.payment_method ?? '').toUpperCase()} •{' '}
-                          {item.paid_at ? new Date(item.paid_at).toLocaleString() : '-'}
-                        </p>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-500">No payment history yet.</p>
-                  )}
-                  {appointmentDetail.receipts?.length ? (
-                    <div className="mt-3 border-t border-gray-100 pt-3">
-                      <p className="mb-2 font-semibold text-gray-900">Receipts</p>
-                      <div className="space-y-1">
-                        {appointmentDetail.receipts.map((item, idx) => (
-                          <div
-                            key={`${item.order_id ?? 'receipt'}-${idx}`}
-                            className="flex flex-wrap items-center gap-2 text-xs text-gray-600"
-                          >
-                            <span>
-                              {item.stage_label ?? 'Receipt'} • {item.order_number ?? '-'} • RM {Number(item.amount ?? 0).toFixed(2)}
-                            </span>
-                            {item.receipt_public_url ? (
-                              <a
-                                href={item.receipt_public_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded border border-gray-300 px-2 py-0.5 font-medium text-blue-700 hover:bg-blue-50"
-                              >
-                                Open
-                              </a>
-                            ) : null}
-                          </div>
-                        ))}
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </section>
+
+                  {/* History */}
+                  <section className="rounded-xl border border-slate-200 bg-white">
+                    <h4 className="border-b border-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      Payment history
+                    </h4>
+                    {appointmentDetail.payment_history?.length ? (
+                      <ul className="max-h-40 divide-y divide-slate-100 overflow-y-auto text-xs">
+                        {appointmentDetail.payment_history.map((item, idx) => (
+                          <li key={`${item.order_number ?? 'pay'}-${idx}`} className="px-3 py-2 text-slate-700">
+                            <span className="font-mono text-[11px] text-slate-500">{item.order_number}</span>
+                            <span className="mx-1 text-slate-300">·</span>
+                            {item.line_type}
+                            <span className="float-right font-semibold tabular-nums text-slate-900">
+                              RM {Number(item.amount ?? 0).toFixed(2)}
+                            </span>
+                            <div className="mt-0.5 text-[11px] text-slate-500">
+                              {(item.payment_method ?? '').toUpperCase()}
+                              {item.paid_at ? ` · ${new Date(item.paid_at).toLocaleString()}` : ''}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="px-3 py-4 text-center text-xs text-slate-500">No payments recorded yet.</p>
+                    )}
+                    {appointmentDetail.receipts?.length ? (
+                      <div className="border-t border-slate-100">
+                        <h4 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Receipts</h4>
+                        <ul className="divide-y divide-slate-100 text-xs">
+                          {appointmentDetail.receipts.map((item, idx) => (
+                            <li
+                              key={`${item.order_id ?? 'receipt'}-${idx}`}
+                              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-slate-700"
+                            >
+                              <span>
+                                {item.stage_label ?? 'Receipt'} · {item.order_number ?? '—'} · RM {Number(item.amount ?? 0).toFixed(2)}
+                              </span>
+                              {item.receipt_public_url ? (
+                                <a
+                                  href={item.receipt_public_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-800 hover:bg-blue-100"
+                                >
+                                  Open
+                                </a>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </section>
                 </div>
               </div>
             )}
@@ -1082,7 +1134,10 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
               </div>
               <button
                 type="button"
-                onClick={() => setAppointmentCheckoutConfirmationOpen(false)}
+                onClick={() => {
+                  setAppointmentCheckoutError(null)
+                  setAppointmentCheckoutConfirmationOpen(false)
+                }}
                 className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1091,6 +1146,14 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
               </button>
             </div>
             <div className="space-y-4 px-6 py-5">
+              {appointmentCheckoutError ? (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+                >
+                  {appointmentCheckoutError}
+                </div>
+              ) : null}
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                 <p className="font-semibold text-gray-900">{appointmentDetail.booking_code}</p>
                 <p className="text-xs text-gray-600">{appointmentDetail.customer?.name ?? '-'}</p>
@@ -1113,7 +1176,10 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                     <input
                       type="radio"
                       checked={appointmentPaymentMethod === 'cash'}
-                      onChange={() => setAppointmentPaymentMethod('cash')}
+                      onChange={() => {
+                        setAppointmentCheckoutError(null)
+                        setAppointmentPaymentMethod('cash')
+                      }}
                       className="h-4 w-4"
                     />
                   </label>
@@ -1128,7 +1194,10 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                     <input
                       type="radio"
                       checked={appointmentPaymentMethod === 'qrpay'}
-                      onChange={() => setAppointmentPaymentMethod('qrpay')}
+                      onChange={() => {
+                        setAppointmentCheckoutError(null)
+                        setAppointmentPaymentMethod('qrpay')
+                      }}
                       className="h-4 w-4"
                     />
                   </label>
@@ -1142,7 +1211,10 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                     min="0"
                     step="0.01"
                     value={appointmentCashReceived}
-                    onChange={(e) => setAppointmentCashReceived(e.target.value)}
+                    onChange={(e) => {
+                      setAppointmentCheckoutError(null)
+                      setAppointmentCashReceived(e.target.value)
+                    }}
                     className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-3 font-semibold text-gray-900 focus:border-blue-500 focus:outline-none"
                     placeholder={appointmentDueAmount.toFixed(2)}
                   />
@@ -1215,7 +1287,10 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setAppointmentCheckoutConfirmationOpen(false)}
+                  onClick={() => {
+                    setAppointmentCheckoutError(null)
+                    setAppointmentCheckoutConfirmationOpen(false)
+                  }}
                   className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
