@@ -127,11 +127,16 @@ export default function SalesVisualWorkspaceClient({ canExport }: { canExport: b
       {mode === 'all' ? (
         <div className="space-y-12">
           <section>
-            <h4 className="text-base font-semibold text-slate-800 mb-3">Ecommerce</h4>
+            <h4 className="text-base font-semibold text-slate-800">Ecommerce</h4>
+            <p className="mb-3 text-xs text-slate-500">
+              Product-line orders only. Booking deposits and other booking lines appear under Booking below (same as POS rows with
+              booking line types).
+            </p>
             <SalesChannelReportPage mode="ecommerce" canExport={canExport} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace />
           </section>
           <section>
-            <h4 className="text-base font-semibold text-slate-800 mb-3">Booking</h4>
+            <h4 className="text-base font-semibold text-slate-800">Booking</h4>
+            <p className="mb-3 text-xs text-slate-500">Deposits, settlement, add-ons, and packages — one row per booking line.</p>
             <SalesChannelReportPage mode="booking" canExport={canExport} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace />
           </section>
         </div>

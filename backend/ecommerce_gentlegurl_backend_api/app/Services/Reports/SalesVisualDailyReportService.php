@@ -414,6 +414,8 @@ class SalesVisualDailyReportService
             ];
         }
 
+        $syntheticHead = [];
+
         $hasCashGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
         if (! $hasCashGateway) {
             $cashOnline = $this->sumOrderGrandTotalForGatewayKey(
@@ -436,14 +438,48 @@ class SalesVisualDailyReportService
             );
             $sumOnline += $cashOnline;
             $sumOffline += $cashOffline;
-            array_unshift($rows, [
+            $syntheticHead[] = [
                 'key' => 'cash',
                 'label' => 'Cash',
                 'online' => round($cashOnline, 2),
                 'offline' => round($cashOffline, 2),
                 'total' => round($cashOnline + $cashOffline, 2),
-            ]);
+            ];
         }
+
+        // POS checkout uses payment_method=qrpay; it is not a PaymentGateway row — include it like cash.
+        $hasQrpayGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
+        if (! $hasQrpayGateway) {
+            $qrOnline = $this->sumOrderGrandTotalForGatewayKey(
+                $workspaceType,
+                $start,
+                $end,
+                $validPay,
+                $validOrd,
+                'qrpay',
+                true
+            );
+            $qrOffline = $this->sumOrderGrandTotalForGatewayKey(
+                $workspaceType,
+                $start,
+                $end,
+                $validPay,
+                $validOrd,
+                'qrpay',
+                false
+            );
+            $sumOnline += $qrOnline;
+            $sumOffline += $qrOffline;
+            $syntheticHead[] = [
+                'key' => 'qrpay',
+                'label' => 'QR Pay',
+                'online' => round($qrOnline, 2),
+                'offline' => round($qrOffline, 2),
+                'total' => round($qrOnline + $qrOffline, 2),
+            ];
+        }
+
+        $rows = array_merge($syntheticHead, $rows);
 
         return [
             'rows' => $rows,
@@ -452,6 +488,23 @@ class SalesVisualDailyReportService
                 'offline' => round($sumOffline, 2),
             ],
         ];
+    }
+
+    /**
+     * Checkout stores Billplz rails as billplz_online_banking / billplz_credit_card while
+     * payment_gateways rows use billplz_fpx / billplz_card.
+     *
+     * @return list<string>
+     */
+    private function paymentMethodVariantsForGatewayKey(string $gatewayKey): array
+    {
+        $k = strtolower(trim($gatewayKey));
+
+        return match ($k) {
+            'billplz_fpx' => ['billplz_fpx', 'billplz_online_banking'],
+            'billplz_card' => ['billplz_card', 'billplz_credit_card'],
+            default => [$k],
+        };
     }
 
     private function sumOrderGrandTotalForGatewayKey(
@@ -463,11 +516,13 @@ class SalesVisualDailyReportService
         string $paymentKey,
         bool $online
     ): float {
+        $methodVariants = $this->paymentMethodVariantsForGatewayKey($paymentKey);
+
         $q = DB::table('orders as o')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
-            ->whereRaw('LOWER(TRIM(COALESCE(o.payment_method, \'\'))) = ?', [strtolower(trim($paymentKey))]);
+            ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
 
         if ($online) {
             $q->whereNull('o.created_by_user_id');
@@ -572,6 +627,8 @@ class SalesVisualDailyReportService
             ];
         }
 
+        $syntheticHead = [];
+
         $hasCashGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
         if (! $hasCashGateway) {
             $cashOnline = $this->sumOrderGrandTotalForGatewayKeyAll(
@@ -592,14 +649,45 @@ class SalesVisualDailyReportService
             );
             $sumOnline += $cashOnline;
             $sumOffline += $cashOffline;
-            array_unshift($rows, [
+            $syntheticHead[] = [
                 'key' => 'cash',
                 'label' => 'Cash',
                 'online' => round($cashOnline, 2),
                 'offline' => round($cashOffline, 2),
                 'total' => round($cashOnline + $cashOffline, 2),
-            ]);
+            ];
         }
+
+        $hasQrpayGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
+        if (! $hasQrpayGateway) {
+            $qrOnline = $this->sumOrderGrandTotalForGatewayKeyAll(
+                $start,
+                $end,
+                $validPay,
+                $validOrd,
+                'qrpay',
+                true 
+            );
+            $qrOffline = $this->sumOrderGrandTotalForGatewayKeyAll(
+                $start,
+                $end,
+                $validPay,
+                $validOrd,
+                'qrpay',
+                false
+            );
+            $sumOnline += $qrOnline;
+            $sumOffline += $qrOffline;
+            $syntheticHead[] = [
+                'key' => 'qrpay',
+                'label' => 'QR Pay',
+                'online' => round($qrOnline, 2),
+                'offline' => round($qrOffline, 2),
+                'total' => round($qrOnline + $qrOffline, 2),
+            ];
+        }
+
+        $rows = array_merge($syntheticHead, $rows);
 
         return [
             'rows' => $rows,
@@ -618,11 +706,13 @@ class SalesVisualDailyReportService
         string $paymentKey,
         bool $online
     ): float {
+        $methodVariants = $this->paymentMethodVariantsForGatewayKey($paymentKey);
+
         $q = DB::table('orders as o')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
-            ->whereRaw('LOWER(TRIM(COALESCE(o.payment_method, \'\'))) = ?', [strtolower(trim($paymentKey))]);
+            ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
 
         if ($online) {
             $q->whereNull('o.created_by_user_id');
