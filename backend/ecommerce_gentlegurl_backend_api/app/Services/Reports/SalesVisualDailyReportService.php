@@ -29,7 +29,7 @@ class SalesVisualDailyReportService
         // Catalog lines only (exclude booking_* lines so mixed orders do not leak into "other")
         $itemAgg = DB::table('order_items as oi')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
             ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
@@ -100,7 +100,7 @@ class SalesVisualDailyReportService
             ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
             ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
             ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
@@ -145,7 +145,7 @@ class SalesVisualDailyReportService
             'service_consumed' => [
                 'amount' => round((float) DB::table('order_items as oi')
                     ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                    ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+                    ->whereBetween('o.created_at', [$start, $end])
                     ->whereIn('o.payment_status', $validPay)
                     ->whereIn('o.status', $validOrd)
                     ->where('oi.line_type', 'booking_settlement')
@@ -178,7 +178,7 @@ class SalesVisualDailyReportService
 
         $itemEcommerce = DB::table('order_items as oi')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
             ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
@@ -192,7 +192,7 @@ class SalesVisualDailyReportService
             ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
             ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
             ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
@@ -216,7 +216,7 @@ class SalesVisualDailyReportService
 
         $serviceConsumedAmount = round((float) DB::table('order_items as oi')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
             ->where('oi.line_type', 'booking_settlement')
@@ -337,7 +337,7 @@ class SalesVisualDailyReportService
             ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->join('staffs as st', 'st.id', '=', 'sps.staff_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
             ->where('oi.line_type', 'product')
@@ -472,7 +472,7 @@ class SalesVisualDailyReportService
             $sumOffline += $qrOffline;
             $syntheticHead[] = [
                 'key' => 'qrpay',
-                'label' => 'QR Pay',
+                'label' => 'QR Pay (POS)',
                 'online' => round($qrOnline, 2),
                 'offline' => round($qrOffline, 2),
                 'total' => round($qrOnline + $qrOffline, 2),
@@ -490,23 +490,6 @@ class SalesVisualDailyReportService
         ];
     }
 
-    /**
-     * Checkout stores Billplz rails as billplz_online_banking / billplz_credit_card while
-     * payment_gateways rows use billplz_fpx / billplz_card.
-     *
-     * @return list<string>
-     */
-    private function paymentMethodVariantsForGatewayKey(string $gatewayKey): array
-    {
-        $k = strtolower(trim($gatewayKey));
-
-        return match ($k) {
-            'billplz_fpx' => ['billplz_fpx', 'billplz_online_banking'],
-            'billplz_card' => ['billplz_card', 'billplz_credit_card'],
-            default => [$k],
-        };
-    }
-
     private function sumOrderGrandTotalForGatewayKey(
         string $workspaceType,
         Carbon $start,
@@ -516,10 +499,10 @@ class SalesVisualDailyReportService
         string $paymentKey,
         bool $online
     ): float {
-        $methodVariants = $this->paymentMethodVariantsForGatewayKey($paymentKey);
+        $methodVariants = SalesReportService::paymentMethodVariantsForMatch($paymentKey);
 
         $q = DB::table('orders as o')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
             ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
@@ -680,7 +663,7 @@ class SalesVisualDailyReportService
             $sumOffline += $qrOffline;
             $syntheticHead[] = [
                 'key' => 'qrpay',
-                'label' => 'QR Pay',
+                'label' => 'QR Pay (POS)',
                 'online' => round($qrOnline, 2),
                 'offline' => round($qrOffline, 2),
                 'total' => round($qrOnline + $qrOffline, 2),
@@ -706,10 +689,10 @@ class SalesVisualDailyReportService
         string $paymentKey,
         bool $online
     ): float {
-        $methodVariants = $this->paymentMethodVariantsForGatewayKey($paymentKey);
+        $methodVariants = SalesReportService::paymentMethodVariantsForMatch($paymentKey);
 
         $q = DB::table('orders as o')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', $validPay)
             ->whereIn('o.status', $validOrd)
             ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);

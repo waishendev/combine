@@ -221,14 +221,14 @@ class SalesChannelReportService
         $query = DB::table('orders as o')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
             ->where('oi.line_type', 'product')
             ->groupBy('o.id', 'o.order_number', 'order_datetime', 'c.name', 'channel', 'o.payment_method', 'o.status')
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
-            ->selectRaw('COALESCE(o.placed_at, o.created_at) as order_datetime')
+            ->selectRaw('o.created_at as order_datetime')
             ->selectRaw('c.name as customer_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
@@ -245,7 +245,7 @@ class SalesChannelReportService
             $query->whereNotNull('o.created_by_user_id');
         }
         if ($paymentMethod !== null) {
-            $query->where('o.payment_method', $paymentMethod);
+            $query->whereIn('o.payment_method', SalesReportService::paymentMethodVariantsForMatch($paymentMethod));
         }
         if ($status !== null) {
             $query->where('o.status', $status);
@@ -266,13 +266,13 @@ class SalesChannelReportService
             ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
             ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
             ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+            ->whereBetween('o.created_at', [$start, $end])
             ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
-            ->selectRaw('COALESCE(o.placed_at, o.created_at) as order_datetime')
+            ->selectRaw('o.created_at as order_datetime')
             ->selectRaw('c.name as customer_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
@@ -291,7 +291,7 @@ class SalesChannelReportService
             $query->whereNotNull('o.created_by_user_id');
         }
         if ($paymentMethod !== null) {
-            $query->where('o.payment_method', $paymentMethod);
+            $query->whereIn('o.payment_method', SalesReportService::paymentMethodVariantsForMatch($paymentMethod));
         }
         if ($type !== self::BOOKING_TYPE_ALL) {
             $lineType = match ($type) {

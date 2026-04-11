@@ -13,6 +13,23 @@ class SalesReportService
     public const VALID_ORDER_STATUSES_FOR_REPORT = ['paid', 'packed', 'shipped', 'completed'];
     public const VALID_PAYMENT_STATUSES_FOR_REPORT = ['paid', 'refunded'];
 
+    /**
+     * Orders may store Billplz as billplz_online_banking / billplz_credit_card while payment_gateways use billplz_fpx / billplz_card.
+     * Accept either form when matching o.payment_method (visual payment rows, channel filters, exports).
+     *
+     * @return list<string>
+     */
+    public static function paymentMethodVariantsForMatch(string $key): array
+    {
+        $k = strtolower(trim($key));
+
+        return match ($k) {
+            'billplz_fpx', 'billplz_online_banking', 'online_banking' => ['billplz_fpx', 'billplz_online_banking'],
+            'billplz_card', 'billplz_credit_card', 'card' => ['billplz_card', 'billplz_credit_card'],
+            default => [$k],
+        };
+    }
+
     public function getOverview(Carbon $start, Carbon $end): array
     {
         $baseQuery = $this->baseOrdersQuery($start, $end);
