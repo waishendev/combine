@@ -9,6 +9,7 @@ import type {
 } from './promotionUtils'
 import { tierTemplate, toNumber } from './promotionUtils'
 import PromotionProductMultiSelect from './PromotionProductMultiSelect'
+import { useI18n } from '@/lib/i18n'
 
 interface PromotionFormContentProps {
   form: PromotionFormState
@@ -22,6 +23,12 @@ const inputClass =
   'w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600'
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1'
 
+const DISCOUNT_TYPES: TierDiscountType[] = [
+  'bundle_fixed_price',
+  'percentage_discount',
+  'fixed_discount',
+]
+
 export default function PromotionFormContent({
   form,
   setForm,
@@ -29,7 +36,14 @@ export default function PromotionFormContent({
   isReadOnly,
   formDisabled = false,
 }: PromotionFormContentProps) {
+  const { t } = useI18n()
   const locked = isReadOnly || formDisabled
+
+  const discountOptionLabel = (value: TierDiscountType) => {
+    const key = `promotions.discountType.${value}`
+    const translated = t(key)
+    return translated !== key ? translated : value.replace(/_/g, ' ')
+  }
 
   const updateTier = (index: number, updater: (current: TierApi) => TierApi) => {
     setForm((prev) => ({
@@ -102,8 +116,8 @@ export default function PromotionFormContent({
             }}
             className={inputClass}
           >
-            <option value="quantity">Quantity</option>
-            <option value="amount">Amount</option>
+            <option value="quantity">{t('promotions.trigger.quantity')}</option>
+            <option value="amount">{t('promotions.trigger.amount')}</option>
           </select>
         </div>
       </div>
@@ -189,9 +203,11 @@ export default function PromotionFormContent({
                   }
                   className={inputClass}
                 >
-                  <option value="bundle_fixed_price">bundle_fixed_price</option>
-                  <option value="percentage_discount">percentage_discount</option>
-                  <option value="fixed_discount">fixed_discount</option>
+                  {DISCOUNT_TYPES.map((dt) => (
+                    <option key={dt} value={dt}>
+                      {discountOptionLabel(dt)}
+                    </option>
+                  ))}
                 </select>
               </div>
 

@@ -1,5 +1,6 @@
 'use client'
 
+import { DiscountTypeText, TriggerTypeText } from './discountTypeUi'
 import {
   formatPromotionDateTime,
   type PromotionRowData,
@@ -35,10 +36,10 @@ export default function PromotionRow({
         {promotion.name}
       </td>
       <td className="px-4 py-2 text-sm text-left text-gray-700">
-        {promotion.tierDiscountPreview || '—'}
+        <DiscountTypeText type={promotion.tierDiscountPreview} />
       </td>
       <td className="px-4 py-2 text-sm text-left text-gray-700">
-        {promotion.triggerType}
+        <TriggerTypeText type={promotion.triggerType} />
       </td>
       <td className="px-4 py-2 text-sm text-left">
         <span

@@ -9,7 +9,7 @@ import PromotionRow from './PromotionRow'
 import PromotionFiltersWrapper from './PromotionFiltersWrapper'
 import PromotionCreateModal from './PromotionCreateModal'
 import PromotionEditModal from './PromotionEditModal'
-import PromotionViewModal from './PromotionViewModal'
+import PromotionViewDrawer from './PromotionViewDrawer'
 import PromotionDeleteModal from './PromotionDeleteModal'
 import {
   emptyPromotionFilters,
@@ -401,7 +401,7 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
       )}
 
       {viewingPromotionId !== null && (
-        <PromotionViewModal
+        <PromotionViewDrawer
           promotionId={viewingPromotionId}
           onClose={() => setViewingPromotionId(null)}
         />

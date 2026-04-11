@@ -288,5 +288,25 @@
   "catalog.servicesMenu": "Services Menu",
   "catalog.servicesPages": "Services Pages",
 
-  "marketing.promotions": "Promotions"
+  "marketing.promotions": "Promotions",
+
+  "promotions.discountType.bundle_fixed_price": "Bundle fixed price",
+  "promotions.discountType.percentage_discount": "Percentage",
+  "promotions.discountType.fixed_discount": "Fixed amount",
+  "promotions.trigger.quantity": "By quantity",
+  "promotions.trigger.amount": "By amount",
+
+  "promotions.viewDrawerTitle": "Promotion details",
+  "promotions.viewDrawerSubtitle": "Read-only summary of this promotion.",
+  "promotions.viewPromotionName": "Promotion name",
+  "promotions.viewTrigger": "Trigger",
+  "promotions.viewCreated": "Created",
+  "promotions.viewProductsHeading": "SELECTED PRODUCTS",
+  "promotions.viewSelectedSuffix": "selected",
+  "promotions.viewTiersHeading": "TIER RULES",
+  "promotions.viewTierPrefix": "Tier",
+  "promotions.viewQtyThreshold": "Quantity threshold",
+  "promotions.viewAmountThreshold": "Amount threshold",
+  "promotions.viewDiscountType": "Discount type",
+  "promotions.viewDiscountValue": "Discount value"
 }
