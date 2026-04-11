@@ -514,6 +514,16 @@ class PaymentController extends Controller
         $workspaceFrontend = rtrim((string) config("services.frontend_url_{$type}"), '/');
         $bookingRedirectBase = $workspaceFrontend ?: $frontendUrl;
 
+        Log::info('Booking Billplz redirect_url resolution', [
+            'workspace_type' => $type,
+            'config_key' => "services.frontend_url_{$type}",
+            'workspace_frontend_from_config' => $workspaceFrontend ?: '(empty)',
+            'gateway_config_frontend_url' => data_get($gatewayConfig, 'frontend_url') ?: '(empty)',
+            'resolver_frontend_url' => $resolvedConfig['frontend_url'] ?? '(empty)',
+            'final_frontendUrl_var' => $frontendUrl,
+            'final_redirect_base' => $bookingRedirectBase ?: '(empty)',
+        ]);
+
         if (! $apiKey || ! $collectionId) {
             abort(response()->json(['success' => false, 'message' => 'Billplz is not configured for booking workspace.', 'data' => null], 422));
         }
