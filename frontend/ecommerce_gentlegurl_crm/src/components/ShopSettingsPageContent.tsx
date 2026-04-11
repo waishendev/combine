@@ -102,6 +102,7 @@ type ShopSettingsResponse = {
     }
     return_window_days?: number
     return_tracking_submit_days?: number
+    booking_hold_minutes?: number
   }
 }
 
@@ -226,6 +227,10 @@ const defaultReturnSettings = {
   return_tracking_submit_days: 7,
 }
 
+const defaultBookingHoldSettings = {
+  booking_hold_minutes: 10,
+}
+
 type ShopSettingsPageContentProps = {
   canEdit: boolean
   forcedWorkspace?: Workspace
@@ -243,6 +248,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [pageReviewsSettings, setPageReviewsSettings] = useState(defaultPageReviewsSettings)
   const [productReviewsSettings, setProductReviewsSettings] = useState(defaultProductReviewsSettings)
   const [returnSettings, setReturnSettings] = useState(defaultReturnSettings)
+  const [bookingHoldSettings, setBookingHoldSettings] = useState(defaultBookingHoldSettings)
 
   const [contactSaveState, setContactSaveState] = useState<SaveState>('idle')
   const [homepageSaveState, setHomepageSaveState] = useState<SaveState>('idle')
@@ -252,6 +258,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [pageReviewsSaveState, setPageReviewsSaveState] = useState<SaveState>('idle')
   const [productReviewsSaveState, setProductReviewsSaveState] = useState<SaveState>('idle')
   const [returnSaveState, setReturnSaveState] = useState<SaveState>('idle')
+  const [bookingHoldSaveState, setBookingHoldSaveState] = useState<SaveState>('idle')
   const [contactFeedback, setContactFeedback] = useState<FeedbackState | null>(null)
   const [homepageFeedback, setHomepageFeedback] = useState<FeedbackState | null>(null)
   const [shippingFeedback, setShippingFeedback] = useState<FeedbackState | null>(null)
@@ -260,6 +267,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [pageReviewsFeedback, setPageReviewsFeedback] = useState<FeedbackState | null>(null)
   const [productReviewsFeedback, setProductReviewsFeedback] = useState<FeedbackState | null>(null)
   const [returnFeedback, setReturnFeedback] = useState<FeedbackState | null>(null)
+  const [bookingHoldFeedback, setBookingHoldFeedback] = useState<FeedbackState | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [workspaceType, setWorkspaceType] = useState<Workspace>(forcedWorkspace ?? 'ecommerce')
   const isBookingWorkspace = workspaceType === 'booking'
@@ -434,6 +442,11 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
         setReturnSettings({
           return_window_days: returnWindowDays,
           return_tracking_submit_days: trackingSubmitDays,
+        })
+
+        setBookingHoldSettings({
+          booking_hold_minutes:
+            payload.data?.booking_hold_minutes ?? defaultBookingHoldSettings.booking_hold_minutes,
         })
       } catch (err) {
         if (controller.signal.aborted) return
@@ -876,6 +889,39 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
       })
     } finally {
       setTimeout(() => setReturnSaveState('idle'), 2000)
+    }
+  }
+
+  const handleBookingHoldSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!canEdit) return
+    setBookingHoldSaveState('saving')
+    setError(null)
+    setBookingHoldFeedback(null)
+
+    try {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/BOOKING_HOLD_MINUTES'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: workspaceType,
+          value: Number(bookingHoldSettings.booking_hold_minutes) || defaultBookingHoldSettings.booking_hold_minutes,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save booking hold minutes')
+      }
+
+      setBookingHoldSaveState('saved')
+      setBookingHoldFeedback({ type: 'success', message: 'Booking hold minutes saved.' })
+    } catch (err) {
+      console.error(err)
+      setBookingHoldSaveState('error')
+      setError('Unable to save booking hold minutes.')
+      setBookingHoldFeedback({ type: 'error', message: 'Unable to save booking hold minutes.' })
+    } finally {
+      setTimeout(() => setBookingHoldSaveState('idle'), 2000)
     }
   }
 
@@ -1454,6 +1500,72 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
           </div>
         </form>
       </section>
+
+      {isBookingWorkspace && (
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+              <h3 className="text-2xl font-semibold text-slate-900 mt-1">Booking Hold Settings</h3>
+              <p className="text-sm text-slate-500 mt-2 max-w-2xl">
+                Configure how long a booking stays in HOLD status before it automatically expires. Customers must complete payment within this window.
+              </p>
+            </div>
+          </div>
+
+          <form className="mt-6 space-y-5" onSubmit={handleBookingHoldSubmit}>
+            {bookingHoldFeedback && (
+              <div
+                className={`rounded-lg border px-4 py-3 text-sm ${
+                  bookingHoldFeedback.type === 'success'
+                    ? 'border-green-200 bg-green-50 text-green-800'
+                    : 'border-rose-200 bg-rose-50 text-rose-800'
+                }`}
+              >
+                <div className="flex items-start">
+                  <i
+                    className={`fa-solid ${
+                      bookingHoldFeedback.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'
+                    } mr-2 mt-[2px]`}
+                  />
+                  <p>{bookingHoldFeedback.message}</p>
+                </div>
+              </div>
+            )}
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="block text-sm font-medium text-slate-800">Hold Duration (Minutes)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={bookingHoldSettings.booking_hold_minutes}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    setBookingHoldSettings((prev) => ({
+                      ...prev,
+                      booking_hold_minutes: Number(event.target.value),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="text-xs text-slate-500">
+                  Bookings in HOLD status will be marked as EXPIRED after this many minutes. The scheduler checks every minute.
+                </p>
+              </label>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={!canEdit || bookingHoldSaveState === 'saving'}
+                className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                {renderSaveLabel(bookingHoldSaveState)}
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
 
       {!isBookingWorkspace && (
       <>

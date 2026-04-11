@@ -51,5 +51,10 @@ class SettingSeeder extends Seeder
                 ],
             ]]
         );
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'BOOKING_HOLD_MINUTES'],
+            ['value' => 10]
+        );
     }
 }

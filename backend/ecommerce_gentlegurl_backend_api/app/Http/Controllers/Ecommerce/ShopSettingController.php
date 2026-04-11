@@ -31,6 +31,7 @@ class ShopSettingController extends Controller
                 'footer' => SettingService::get('footer', $this->defaultFooterSetting(), $type),
                 'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting(), $type),
                 'booking_policy' => SettingService::get('booking_policy', $this->defaultBookingPolicySetting(), $type),
+                'booking_hold_minutes' => (int) SettingService::get('BOOKING_HOLD_MINUTES', 10, $type),
             ];
 
             return response()->json([
@@ -119,6 +120,7 @@ class ShopSettingController extends Controller
             'ecommerce.return_window_days' => 7,
             'ecommerce.return_tracking_submit_days' => 7,
             'booking_policy' => $this->defaultBookingPolicySetting(),
+            'BOOKING_HOLD_MINUTES' => 10,
         ];
 
         $settingKey = $this->resolveSettingKey($key);
@@ -190,6 +192,10 @@ class ShopSettingController extends Controller
                 break;
             case 'booking_policy':
                 $data = $this->validateBookingPolicy($request);
+                break;
+
+            case 'BOOKING_HOLD_MINUTES':
+                $data = $this->validateBookingHoldMinutes($request);
                 break;
 
             default:
@@ -459,6 +465,15 @@ class ShopSettingController extends Controller
         ];
     }
 
+    protected function validateBookingHoldMinutes(Request $request): int
+    {
+        $validated = $request->validate([
+            'value' => ['required', 'integer', 'min:1', 'max:1440'],
+        ]);
+
+        return (int) $validated['value'];
+    }
+
     protected function defaultBookingPolicySetting(): array
     {
         return [
@@ -582,6 +597,7 @@ class ShopSettingController extends Controller
                 'footer',
                 'invoice_profile',
                 'booking_policy',
+                'BOOKING_HOLD_MINUTES',
             ];
         }
 
