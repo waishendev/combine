@@ -511,12 +511,15 @@ class PaymentController extends Controller
         $frontendUrl = rtrim((string) (data_get($gatewayConfig, 'frontend_url') ?: $resolvedConfig['frontend_url']), '/');
         $publicUrl = rtrim((string) (data_get($gatewayConfig, 'public_url') ?: $resolvedConfig['public_url']), '/');
 
+        $workspaceFrontend = rtrim((string) config("services.frontend_url_{$type}"), '/');
+        $bookingRedirectBase = $workspaceFrontend ?: $frontendUrl;
+
         if (! $apiKey || ! $collectionId) {
             abort(response()->json(['success' => false, 'message' => 'Billplz is not configured for booking workspace.', 'data' => null], 422));
         }
 
-        $redirectUrl = $frontendUrl
-            ? $frontendUrl . '/payment-result?' . http_build_query([
+        $redirectUrl = $bookingRedirectBase
+            ? $bookingRedirectBase . '/payment-result?' . http_build_query([
                 'order_id' => $booking->id,
                 'order_no' => $booking->booking_code,
                 'provider' => 'billplz',

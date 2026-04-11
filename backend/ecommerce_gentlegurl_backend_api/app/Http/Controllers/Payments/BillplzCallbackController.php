@@ -185,7 +185,8 @@ class BillplzCallbackController extends Controller
 
                 $workspaceType = $order->paymentGateway?->type ?? WorkspaceType::ECOMMERCE;
                 $resolvedConfig = $this->configResolver->resolve($workspaceType, $order->payment_method ?: 'billplz_fpx');
-                $frontendUrl = rtrim((string) ($resolvedConfig['frontend_url'] ?? ''), '/');
+                $workspaceFrontend = rtrim((string) config("services.frontend_url_{$workspaceType}"), '/');
+                $frontendUrl = $workspaceFrontend ?: rtrim((string) ($resolvedConfig['frontend_url'] ?? ''), '/');
                 if ($frontendUrl) {
                     return redirect()->away($frontendUrl . '/payment-result?' . $query);
                 }

@@ -34,9 +34,12 @@ class BillplzService
             throw new RuntimeException('Billplz is not configured.');
         }
 
+        $workspaceFrontend = rtrim((string) config("services.frontend_url_{$type}"), '/');
+        $redirectBase = $workspaceFrontend ?: $frontendUrl;
+
         $callbackUrl = $publicUrl ? "{$publicUrl}/api/public/payments/billplz/callback" : null;
-        $redirectUrl = $frontendUrl
-            ? $frontendUrl . '/payment-result?' . http_build_query([
+        $redirectUrl = $redirectBase
+            ? $redirectBase . '/payment-result?' . http_build_query([
                 'order_no' => $order->order_number,
                 'order_id' => $order->id,
                 'provider' => 'billplz',
