@@ -68,6 +68,97 @@
 **Expected**
 - CRUD 全部正常，update 后 items 会刷新。
 
+
+### Case C: CRUD API Example Payloads (for FE integration)
+
+> `{{base_url}}` should point to `/api` root, e.g. `http://localhost:8000/api`.
+
+#### Create (POST)
+`{{base_url}}/service-packages`
+
+```json
+{
+  "name": "10x Haircut Package",
+  "description": "Package for 10 sessions",
+  "is_active": true,
+  "selling_price": "520.00",
+  "total_sessions": 10,
+  "items": [
+    {
+      "booking_service_id": 1,
+      "quantity": 10
+    }
+  ]
+}
+```
+
+#### Update (PUT)
+`{{base_url}}/service-packages/{{service_package_id}}`
+
+```json
+{
+  "name": "10x Haircut Package (Updated)",
+  "description": "Updated package",
+  "is_active": true,
+  "selling_price": "520.00",
+  "total_sessions": 10,
+  "items": [
+    {
+      "booking_service_id": 1,
+      "quantity": 10
+    }
+  ]
+}
+```
+
+#### Show (GET)
+`{{base_url}}/service-packages/{{service_package_id}}`
+
+#### List (GET)
+`{{base_url}}/service-packages`
+
+**Expected response shape (Create/Update/Show/List item):**
+```json
+{
+  "data": {
+    "id": 2,
+    "name": "10x Haircut Package (Updated)",
+    "description": "Updated package",
+    "selling_price": "520.00",
+    "total_sessions": 10,
+    "valid_days": 365,
+    "is_active": true,
+    "items": [
+      {
+        "id": 5,
+        "service_package_id": 2,
+        "booking_service_id": 1,
+        "quantity": 10,
+        "booking_service": {
+          "id": 1,
+          "name": "Haircut",
+          "image_url": null
+        }
+      }
+    ]
+  },
+  "message": null,
+  "success": true
+}
+```
+
+### Case D: Service Dropdown Source (for package item selection)
+
+- API: `GET /api/admin/booking/services?page=1&per_page=200`
+- Purpose: provide dropdown options when selecting `booking_service_id` in package form.
+
+**Expected item fields:**
+- `id`
+- `name`
+- `is_package_eligible`
+- `price` / `service_price`
+- `image_url`
+
 ---
 
 ## 4) Customer Package / Balance / Usage 测试
