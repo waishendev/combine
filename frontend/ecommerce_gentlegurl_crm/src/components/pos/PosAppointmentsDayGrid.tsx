@@ -2,6 +2,11 @@
 
 import { useMemo } from 'react'
 
+import {
+  posAppointmentDayBlockClass,
+  posAppointmentDayBlockSubtextClass,
+  posAppointmentVisualTone,
+} from './posAppointmentHelpers'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 
 const SLOT_MINUTES = 15
@@ -278,6 +283,7 @@ export default function PosAppointmentsDayGrid({
                 const leftPct = lane * widthPct
                 const svc = (row.service_names ?? [])[0] ?? ''
                 const title = `${row.customer_name} · ${svc}`
+                const tone = posAppointmentVisualTone(row.status)
 
                 return (
                   <button
@@ -285,7 +291,7 @@ export default function PosAppointmentsDayGrid({
                     type="button"
                     title={title}
                     onClick={() => onBlockClick(id)}
-                    className="absolute overflow-hidden rounded-md border-2 border-indigo-900 bg-indigo-600 px-1 py-0.5 text-left text-[10px] font-semibold leading-tight text-white shadow-md ring-1 ring-indigo-950/30 transition hover:z-10 hover:bg-indigo-500 hover:ring-2 hover:ring-amber-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                    className={posAppointmentDayBlockClass(tone)}
                     style={{
                       top,
                       height,
@@ -294,7 +300,7 @@ export default function PosAppointmentsDayGrid({
                     }}
                   >
                     <span className="block truncate font-bold">{formatTimeLabel(row.appointment_start_at)}</span>
-                    <span className="block truncate text-[9px] font-medium text-indigo-50">
+                    <span className={posAppointmentDayBlockSubtextClass(tone)}>
                       {truncate(row.customer_name, 14)} · {truncate(svc, 18)}
                     </span>
                   </button>

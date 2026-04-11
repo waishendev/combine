@@ -171,7 +171,15 @@ class PosController extends Controller
         if ($request->filled('status')) {
             $builder->where('status', (string) $request->query('status'));
         } else {
-            $builder->whereIn('status', ['CONFIRMED', 'PENDING', 'IN_PROGRESS']);
+            // POS appointments (no status filter / "ALL"): show staff-facing bookings only.
+            // Omit HOLD and EXPIRED (and other internal states) from the calendar list.
+            $builder->whereIn('status', [
+                'CONFIRMED',
+                'COMPLETED',
+                'CANCELLED',
+                'NO_SHOW',
+                'LATE_CANCELLATION',
+            ]);
         }
 
         $paginator = $builder->orderBy('start_at')->paginate($perPage, ['*'], 'page', $page);

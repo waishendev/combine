@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHand
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
-import { extractPaged, formatDateTimeRange, formatTimeRange } from './posAppointmentHelpers'
+import { extractPaged, formatDateTimeRange, formatDurationFromRange, formatTimeRange } from './posAppointmentHelpers'
 import type { PosAppointmentCurrentUser, PosAppointmentDetail, PosAppointmentListItem } from './posAppointmentTypes'
 
 type StaffOption = {
@@ -617,15 +617,70 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
     return appointmentIsFullyPackageCovered && wasCollected ? amount : 0
   }, [appointmentDetail?.deposit_previously_collected, appointmentDetail?.deposit_previously_collected_amount, appointmentIsFullyPackageCovered])
 
+  const appointmentAddonTotal = useMemo(() => {
+    if (!appointmentDetail) return 0
+    if (appointmentDetail.addon_total_price != null && appointmentDetail.addon_total_price !== undefined) {
+      return Number(appointmentDetail.addon_total_price)
+    }
+    return (appointmentDetail.add_ons ?? []).reduce((sum, a) => sum + Number(a.extra_price ?? 0), 0)
+  }, [appointmentDetail])
+
+  const appointmentServiceAmount = useMemo(
+    () => Number(appointmentDetail?.service_total ?? 0),
+    [appointmentDetail?.service_total],
+  )
+
+  const appointmentSubtotalBeforeCredits = useMemo(
+    () => appointmentServiceAmount + appointmentAddonTotal,
+    [appointmentAddonTotal, appointmentServiceAmount],
+  )
+
+  const appointmentPackageOffsetAmount = useMemo(
+    () => Number(appointmentDetail?.package_offset ?? 0),
+    [appointmentDetail?.package_offset],
+  )
+
+  const appointmentLinkedDepositAmount = useMemo(
+    () => Number(appointmentDetail?.linked_booking_deposit_total ?? appointmentDetail?.linked_booking_deposit ?? 0),
+    [appointmentDetail?.linked_booking_deposit, appointmentDetail?.linked_booking_deposit_total],
+  )
+
+  const appointmentDepositTotalForBreakdown = useMemo(
+    () => Number(appointmentDepositContributionForSettlement) + appointmentLinkedDepositAmount,
+    [appointmentDepositContributionForSettlement, appointmentLinkedDepositAmount],
+  )
+
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
   const appointmentPackageApplied = ['reserved', 'consumed'].includes(
     String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
   )
   const appointmentCheckoutCompleted = appointmentSettlementPaid > 0
+  const appointmentShowApplyPackageButton = useMemo(
+    () =>
+      !appointmentPackageApplied &&
+      !appointmentCheckoutCompleted &&
+      !['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()),
+    [appointmentCheckoutCompleted, appointmentDetail?.package_status?.status, appointmentPackageApplied],
+  )
   const canMarkAppointmentCompleted = !appointmentActionLoading && (
     appointmentDueAmountNow <= 0 || appointmentPackageApplied
   )
+
+  const appointmentStatusUpper = String(appointmentDetail?.status ?? '').toUpperCase()
+  /** Cancelled / no-show / late cancel — no checkout or “complete visit” CTAs. */
+  const appointmentIsTerminalCancelled = ['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION'].includes(appointmentStatusUpper)
+
+  const showAppointmentCollectPayment =
+    appointmentDueAmountNow > 0 && !appointmentIsTerminalCancelled && appointmentStatusUpper !== 'COMPLETED'
+
+  const showAppointmentMarkCompletedBlock =
+    !appointmentIsTerminalCancelled && appointmentStatusUpper !== 'COMPLETED' && appointmentDueAmountNow <= 0
+
+  const showAppointmentPaymentCtaCard =
+    appointmentReschedulePolicyWarnings.length > 0 ||
+    showAppointmentCollectPayment ||
+    showAppointmentMarkCompletedBlock
 
   const appointmentDueAmount = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
   const appointmentCashReceivedAmount = Number(appointmentCashReceived || 0)
@@ -727,6 +782,7 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                     <option value="COMPLETED">COMPLETED</option>
                     <option value="CANCELLED">CANCELLED</option>
                     <option value="NO_SHOW">NO_SHOW</option>
+                    <option value="LATE_CANCELLATION">LATE_CANCELLATION</option>
                   </select>
                 </div>
               )}
@@ -738,7 +794,7 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
           <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5 ">
             <div className="flex-shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 sm:px-5">
               <h3 className="text-base font-bold tracking-tight text-slate-900">Appointment Settlement</h3>
-              <p className="mt-0.5 text-xs text-slate-500">Select a booking on the left, then collect payment or update status.</p>
+              <p className="mt-0.5 text-xs text-slate-500">Review the breakdown, collect payment, or update the booking.</p>
             </div>
 
             {appointmentDetailLoading ? (
@@ -760,207 +816,236 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
               </div>
             ) : (
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-5">
                   {/* Booking summary */}
-                  <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                  <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1 font-mono text-xs font-semibold text-slate-800 ring-1 ring-slate-200">
+                      <span className="inline-flex items-center rounded-md bg-slate-50 px-2.5 py-1 font-mono text-xs font-semibold text-slate-800 ring-1 ring-slate-200">
                         {appointmentDetail.booking_code}
                       </span>
-                      <BookingStatusBadge status={appointmentDetail.status} label={appointmentDetail.status} showDot={false} />
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <BookingStatusBadge status={appointmentDetail.status} label={appointmentDetail.status} showDot={false} />
+                        {String(appointmentDetail.status ?? '').toUpperCase() === 'CONFIRMED' ? (
+                          appointmentDueAmountNow <= 0 ? (
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-900 ring-1 ring-emerald-200">
+                              Paid
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-900 ring-1 ring-amber-200">
+                              Unpaid
+                            </span>
+                          )
+                        ) : null}
+                      </div>
                     </div>
-                    <p className="mt-3 text-lg font-semibold text-slate-900">{appointmentDetail.customer?.name ?? '—'}</p>
-                    <p className="mt-1 text-sm text-slate-600">{appointmentDetail.service?.name ?? '—'}</p>
-                    <dl className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
-                      <div>
-                        <dt className="font-medium text-slate-500">Staff</dt>
-                        <dd className="mt-0.5 text-slate-800">{appointmentDetail.staff?.name ?? '—'}</dd>
-                      </div>
-                      <div className="sm:text-right">
-                        <dt className="font-medium text-slate-500 sm:text-right">Date &amp; time</dt>
-                        <dd className="mt-0.5 text-slate-800">
-                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
-                        </dd>
-                      </div>
-                    </dl>
-                  </section>
+                    <p className="mt-3 text-lg font-semibold leading-snug text-slate-900">{appointmentDetail.customer?.name ?? '—'}</p>
 
-                  {/* Amount due — focal point */}
-                  <section className="overflow-hidden rounded-xl border-2 border-emerald-200/90 bg-gradient-to-br from-emerald-50 to-white px-4 py-4 shadow-sm">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/90">Amount due now</p>
-                    <p className="mt-1 text-3xl font-bold tabular-nums text-emerald-800">
-                      RM {Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0).toFixed(2)}
-                    </p>
-                    {appointmentIsFullyPackageCovered ? (
-                      <p className="mt-2 text-xs font-medium text-emerald-700">Fully covered by package</p>
-                    ) : null}
-                    {/* {appointmentPreviouslyCollectedDeposit > 0 ? (
-                      <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 ring-1 ring-amber-200/80">
-                        Deposit previously collected RM {appointmentPreviouslyCollectedDeposit.toFixed(2)} — adjust manually if needed.
-                      </p>
-                    ) : null} */}
-                  </section>
+                    <div className="mt-4 rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white px-3 py-3 shadow-sm ring-1 ring-indigo-100/80">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-900">Services</p>
+                      <p className="mt-1.5 text-sm font-semibold leading-snug text-slate-900">{appointmentDetail.service?.name ?? '—'}</p>
+                    </div>
 
-                  {/* Line items */}
-                  <section className="rounded-xl border border-slate-200 bg-white">
-                    <h4 className="border-b border-slate-100 bg-slate-50/80 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      Charges &amp; credits
-                    </h4>
-                    <ul className="divide-y divide-slate-100 text-sm">
-                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
-                        <span className="text-slate-600">Service total</span>
-                        <span className="font-semibold tabular-nums text-slate-900">
-                          RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}
-                        </span>
-                      </li>
-                      {appointmentDetail.add_ons?.length ? (
-                        <li className="px-3 py-2">
-                          <p className="text-xs font-medium text-slate-500">Add-ons</p>
-                          <div className="mt-1.5 space-y-1 rounded-md bg-slate-50 px-2 py-2 text-xs text-slate-700">
-                            {appointmentDetail.add_ons.map((addon, idx) => (
-                              <p key={`${addon.id ?? addon.name}-${idx}`}>
-                                {addon.name} · +{Number(addon.extra_duration_min ?? 0)} min · +RM {Number(addon.extra_price ?? 0).toFixed(2)}
-                              </p>
-                            ))}
-                            <p className="border-t border-slate-200 pt-1 text-slate-600">
-                              Add-on balance due:{' '}
-                              <span className="font-semibold text-amber-800">
-                                RM {Number(appointmentDetail.addon_balance_due ?? 0).toFixed(2)}
+                    {appointmentDetail.add_ons?.length ? (
+                      <div className="mt-3 rounded-lg border border-violet-100 bg-gradient-to-br from-violet-50/80 to-white px-3 py-3 shadow-sm ring-1 ring-violet-100/80">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-violet-900">Add-ons</p>
+                        <ul className="mt-2 space-y-2 text-sm text-slate-800">
+                          {appointmentDetail.add_ons.map((addon, idx) => (
+                            <li
+                              key={`${addon.id ?? addon.name}-${idx}`}
+                              className="flex flex-wrap items-baseline justify-between gap-2 rounded-md bg-white/80 px-2 py-1.5 ring-1 ring-violet-100"
+                            >
+                              <span className="min-w-0 font-medium">{addon.name}</span>
+                              <span className="shrink-0 text-xs tabular-nums text-violet-900/80">
+                                +RM {Number(addon.extra_price ?? 0).toFixed(2)}
                               </span>
-                            </p>
-                          </div>
-                        </li>
-                      ) : null}
-                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
-                        <span className="text-slate-600">Deposit</span>
-                        <span className="font-medium tabular-nums text-slate-900">
-                          RM {Number(appointmentDepositContributionForSettlement ?? 0).toFixed(2)}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+                      <div className="flex gap-3 text-sm">
+                        <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff</span>
+                        <span className="min-w-0 font-semibold text-slate-900">{appointmentDetail.staff?.name ?? '—'}</span>
+                      </div>
+                      <div className="flex gap-3 text-sm">
+                        <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule</span>
+                        <span className="min-w-0 text-slate-800">
+                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
                         </span>
-                      </li>
-                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
-                        <span className="text-slate-600">Add-on Booking Deposit</span>
+                      </div>
+                      <div className="flex gap-3 text-sm">
+                        <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</span>
                         <span className="font-medium tabular-nums text-slate-900">
-                          RM {Number(appointmentDetail.linked_booking_deposit_total ?? appointmentDetail.linked_booking_deposit ?? 0).toFixed(2)}
+                          {formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
                         </span>
-                      </li>
-                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
-                        <span className="text-slate-600">Package offset</span>
-                        <span className="font-medium tabular-nums text-slate-900">
-                          - RM {Number(appointmentDetail.package_offset ?? 0).toFixed(2)}
-                        </span>
-                      </li>
-                      <li className="flex items-center justify-between gap-3 px-3 py-2.5">
-                        <span className="text-slate-600">Settlement</span>
-                        {appointmentDueAmountNow <= 0 ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-900 ring-1 ring-emerald-200">
-                            Paid
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200">
-                            Unpaid
-                          </span>
-                        )}
-                      </li>
-                      {/* <li className="flex items-center justify-between gap-3 px-3 py-2.5">
-                        <span className="text-slate-600">Package status</span>
-                        <span className="font-medium text-slate-900">{appointmentDetail.package_status?.status ?? 'Not applied'}</span>
-                      </li> */}
-                    </ul>
+                      </div>
+                    </div>
                   </section>
 
-                  {/* Actions */}
-                  <section className="rounded-xl border border-slate-200 bg-white p-3">
+                  {/* Payment breakdown */}
+                  <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {appointmentDueAmountNow <= 0 &&
+                    (appointmentIsFullyPackageCovered || appointmentPreviouslyCollectedDeposit > 0) ? (
+                      <div className="border-b border-emerald-100 bg-emerald-50/70 px-4 py-2.5">
+                        {appointmentIsFullyPackageCovered ? (
+                          <p className="text-sm font-semibold text-emerald-900">Fully covered by package</p>
+                        ) : null}
+                        {appointmentPreviouslyCollectedDeposit > 0 ? (
+                          <p
+                            className={`text-[11px] leading-relaxed text-emerald-900/90 ${appointmentIsFullyPackageCovered ? 'mt-1' : ''}`}
+                          >
+                            Deposit previously collected RM {appointmentPreviouslyCollectedDeposit.toFixed(2)} — verify if adjustment is
+                            needed.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <h4 className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-600">
+                      Payment breakdown
+                    </h4>
+                    <div className="divide-y divide-slate-100 px-4 text-sm">
+                      <div className="flex items-center justify-between gap-3 py-3.5">
+                        <span className="text-slate-600">Service</span>
+                        <span className="font-medium tabular-nums text-slate-900">RM {appointmentServiceAmount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 py-3.5">
+                        <span className="text-slate-600">Add-ons</span>
+                        <span className="font-medium tabular-nums text-slate-900">
+                          {appointmentAddonTotal > 0 ? `RM ${appointmentAddonTotal.toFixed(2)}` : '—'}
+                        </span>
+                      </div>
+                      {/* <div className="flex items-center justify-between gap-3 border-t border-dashed border-slate-200 py-3.5">
+                        <span className="font-semibold text-slate-800">Subtotal</span>
+                        <span className="font-semibold tabular-nums text-slate-900">RM {appointmentSubtotalBeforeCredits.toFixed(2)}</span>
+                      </div> */}
+                      <div className="flex items-center justify-between gap-3 py-3.5">
+                        <span className="text-slate-600">Deposit</span>
+                        <span className="font-medium tabular-nums text-slate-800">
+                          {appointmentDepositTotalForBreakdown > 0 ? `− RM ${appointmentDepositTotalForBreakdown.toFixed(2)}` : '—'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 py-3.5">
+                        <span className="text-slate-600">Package offset</span>
+                        <span className="font-medium tabular-nums text-emerald-800">− RM {appointmentPackageOffsetAmount.toFixed(2)}</span>
+                      </div>
+
+                      <div className="-mx-4 flex items-center justify-between gap-3 border-t-2 border-slate-200 bg-emerald-50/50 px-4 py-4">
+                        <span className="text-base font-bold text-slate-900">Total Amount to Pay</span>
+                        <span className="text-xl font-bold tabular-nums text-emerald-800">RM {appointmentDueAmountNow.toFixed(2)}</span>
+                      </div>
+                    </div>
+                    {/* <p className="border-t border-slate-100 px-4 py-2.5 text-[11px] leading-relaxed text-slate-500">
+                      Package: {appointmentDetail.package_status?.status ?? 'Not applied'}
+                      {appointmentDueAmountNow > 0 ? ' · Final amount is calculated by the system.' : null}
+                    </p> */}
+                  </section>
+
+                  {/* Payment CTAs — hidden for cancelled / no-show / late cancellation */}
+                  {showAppointmentPaymentCtaCard ? (
+                  <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     {appointmentReschedulePolicyWarnings.length ? (
-                      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                         {appointmentReschedulePolicyWarnings.map((warning, idx) => (
                           <p key={`${warning}-${idx}`}>{warning}</p>
                         ))}
                       </div>
                     ) : null}
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Payment &amp; actions</p>
-                    <p className="mt-1 text-xs text-slate-500">Checkout opens cash or QRPay confirmation.</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        disabled={appointmentActionLoading || appointmentDueAmountNow <= 0}
-                        onClick={() => {
-                          const due = appointmentDueAmountNow
-                          setAppointmentPaymentMethod('cash')
-                          setAppointmentCashReceived(due > 0 ? due.toFixed(2) : '')
-                          setAppointmentCheckoutError(null)
-                          setAppointmentCheckoutConfirmationOpen(true)
-                        }}
-                        className="rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        Checkout
-                      </button>
-                      <button
-                        type="button"
-                        disabled={
-                          appointmentActionLoading ||
-                          appointmentPackageApplied ||
-                          appointmentCheckoutCompleted ||
-                          ['reserved', 'consumed'].includes(String(appointmentDetail.package_status?.status ?? '').toLowerCase())
-                        }
-                        onClick={() => void applyAppointmentPackage()}
-                        title={appointmentCheckoutCompleted ? 'Checkout already completed' : undefined}
-                        className="rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-50"
-                      >
-                        {appointmentPackageApplied ? 'Package applied' : 'Apply package'}
-                      </button>
-                    </div>
-                    {appointmentDetail.status === 'CONFIRMED' ? (
-                      <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
-                        <p className="text-[11px] font-medium text-slate-500">Booking</p>
-                        <div className="flex flex-wrap gap-2">
+
+                    {showAppointmentCollectPayment ? (
+                      <div className="space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Collect payment</p>
+                        <p className="text-xs text-slate-500">Checkout opens cash or QRPay confirmation.</p>
+                        <div className={`grid gap-2 ${appointmentShowApplyPackageButton ? 'grid-cols-2' : 'grid-cols-1'}`}>
                           <button
                             type="button"
-                            disabled={appointmentActionLoading}
-                            onClick={openAppointmentRescheduleModal}
-                            className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                            disabled={appointmentActionLoading || appointmentDueAmountNow <= 0}
+                            onClick={() => {
+                              const due = appointmentDueAmountNow
+                              setAppointmentPaymentMethod('cash')
+                              setAppointmentCashReceived(due > 0 ? due.toFixed(2) : '')
+                              setAppointmentCheckoutError(null)
+                              setAppointmentCheckoutConfirmationOpen(true)
+                            }}
+                            className="min-h-[44px] rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
                           >
-                            Reschedule
+                            Checkout
                           </button>
-                          <button
-                            type="button"
-                            disabled={!canMarkAppointmentCompleted}
-                            onClick={() => void markAppointmentCompleted()}
-                            title={canMarkAppointmentCompleted ? 'Mark Completed' : 'Complete payment or apply package first'}
-                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
-                          >
-                            Mark completed
-                          </button>
-                        </div>
-                        <p className="pt-1 text-[11px] font-medium text-slate-500">Change status</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          <button
-                            type="button"
-                            disabled={appointmentActionLoading}
-                            onClick={() => void updateAppointmentStatus('CANCELLED')}
-                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            Cancelled
-                          </button>
-                          <button
-                            type="button"
-                            disabled={appointmentActionLoading}
-                            onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')}
-                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-orange-800 hover:bg-orange-50 disabled:opacity-50"
-                          >
-                            Late cancel
-                          </button>
-                          <button
-                            type="button"
-                            disabled={appointmentActionLoading}
-                            onClick={() => void updateAppointmentStatus('NO_SHOW')}
-                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-rose-800 hover:bg-rose-50 disabled:opacity-50"
-                          >
-                            No-show
-                          </button>
+                          {appointmentShowApplyPackageButton ? (
+                            <button
+                              type="button"
+                              disabled={appointmentActionLoading}
+                              onClick={() => void applyAppointmentPackage()}
+                              className="min-h-[44px] rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:pointer-events-none disabled:opacity-50"
+                            >
+                              Apply package
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
+
+                    {showAppointmentMarkCompletedBlock ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Complete visit</p>
+                        <button
+                          type="button"
+                          disabled={!canMarkAppointmentCompleted || appointmentActionLoading}
+                          title={
+                            canMarkAppointmentCompleted ? 'Mark appointment as completed' : 'Complete payment or apply package first'
+                          }
+                          onClick={() => void markAppointmentCompleted()}
+                          className="flex min-h-[48px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
+                        >
+                          Mark as Completed
+                        </button>
+                      </div>
+                    ) : null}
                   </section>
+                  ) : null}
+
+                  {/* Booking actions — hidden after checkout (settlement recorded); Mark Completed lives under Collect payment / Complete visit */}
+                  {appointmentDetail.status === 'CONFIRMED' && !appointmentCheckoutCompleted ? (
+                    <section className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Booking actions</p>
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          disabled={appointmentActionLoading}
+                          onClick={openAppointmentRescheduleModal}
+                          className="min-h-[48px] rounded-xl border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-indigo-900 shadow-sm transition hover:bg-indigo-50 disabled:opacity-50"
+                        >
+                          Reschedule
+                        </button>
+                        <button
+                          type="button"
+                          disabled={appointmentActionLoading}
+                          onClick={() => void updateAppointmentStatus('CANCELLED')}
+                          className="min-h-[48px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-white disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={appointmentActionLoading}
+                          title="Customer did not attend the scheduled appointment (DNA / no-show)."
+                          onClick={() => void updateAppointmentStatus('NO_SHOW')}
+                          className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          No Show
+                        </button>
+                        <button
+                          type="button"
+                          disabled={appointmentActionLoading}
+                          onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')}
+                          className="min-h-[48px] rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm font-semibold text-orange-900 shadow-sm transition hover:bg-orange-50 disabled:opacity-50"
+                        >
+                          Late cancellation
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
 
                   {/* History */}
                   <section className="rounded-xl border border-slate-200 bg-white">

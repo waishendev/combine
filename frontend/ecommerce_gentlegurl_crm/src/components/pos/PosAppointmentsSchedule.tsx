@@ -2,6 +2,7 @@
 
 import { useMemo, type ReactNode } from 'react'
 
+import { posAppointmentMonthPreviewChipClass, posAppointmentVisualTone } from './posAppointmentHelpers'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 import PosAppointmentsDayGrid from './PosAppointmentsDayGrid'
 
@@ -109,7 +110,10 @@ export default function PosAppointmentsSchedule({
     const lines = list.slice(0, 3).map((row) => {
       const t = formatTimeLabel(row.appointment_start_at)
       const who = truncate(row.customer_name.trim() || '—', 10)
-      return `${t} · ${who}`
+      return {
+        text: `${t} · ${who}`,
+        tone: posAppointmentVisualTone(row.status),
+      }
     })
     const more = list.length > 3 ? list.length - 3 : 0
     return { lines, more }
@@ -191,6 +195,25 @@ export default function PosAppointmentsSchedule({
         )}
       </div>
 
+      <div
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[11px] text-slate-600 shadow-sm"
+        role="note"
+      >
+        <span className="font-semibold text-slate-700">Colour key :</span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-6 shrink-0 rounded border-2 border-indigo-900 bg-indigo-600" aria-hidden />
+          Confirmed, pending
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-6 shrink-0 rounded border-2 border-emerald-900 bg-emerald-600" aria-hidden />
+          Completed
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-6 shrink-0 rounded border-2 border-rose-900 bg-rose-600" aria-hidden />
+            Cancelled / no-show / late cancellation
+        </span>
+      </div>
+
       {viewMode === 'month' ? (
         <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
           <p className="mb-2 text-xs text-slate-500">
@@ -231,13 +254,13 @@ export default function PosAppointmentsSchedule({
                     {lines.length === 0 ? (
                       <span className="text-[10px] text-slate-400">—</span>
                     ) : (
-                      lines.map((line, i) => (
+                      lines.map((entry, i) => (
                         <span
                           key={i}
-                          className="line-clamp-2 rounded border border-indigo-400/90 bg-indigo-100 px-1 py-0.5 text-[9px] font-semibold leading-tight text-indigo-950 shadow-sm"
-                          title={line}
+                          className={posAppointmentMonthPreviewChipClass(entry.tone)}
+                          title={entry.text}
                         >
-                          {line}
+                          {entry.text}
                         </span>
                       ))
                     )}
