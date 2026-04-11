@@ -33,7 +33,6 @@ type VisualPayload = {
       name: string
       product_sales?: number
       total?: number
-      label?: string
     }>
     sales_activity_total?: number
     service_activity?: Array<{ staff_id: number; name: string; service_count: number }>
@@ -244,50 +243,20 @@ export default function SalesVisualDailyDashboard({ mode }: { mode: Mode }) {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-800">Redeemed with point</h3>
-          <p className="mt-3 text-sm text-slate-500">
-            {data?.points_redemption?.message ?? 'No product redeemed.'} / No service redeemed.
-          </p>
-        </div>
-
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-12">
-        {mode !== 'all' ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-8">
-            <h3 className="text-sm font-semibold text-slate-800">Service consumed</h3>
-            {loading ? (
-              <p className="mt-3 text-sm text-slate-500">Loading…</p>
-            ) : (
-              <p className="mt-3 text-sm text-slate-700">
-                <span className="font-semibold">{fmtRm(data?.service_consumed?.amount ?? 0)}</span>
-                {data?.service_consumed?.message ? (
-                  <span className="block text-xs text-slate-500">{data.service_consumed.message}</span>
-                ) : null}
-              </p>
-            )}
-          </div>
-        ) : null}
-
-        <div
-          className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${mode === 'all' ? 'lg:col-span-12' : 'lg:col-span-4'}`}
-        >
           <h3 className="text-sm font-semibold text-slate-800">Staff</h3>
-          <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sales activity</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ecommerce</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">Product sales (RM)</p>
               {loading ? (
                 <p className="mt-2 text-sm text-slate-500">Loading…</p>
               ) : staffSales.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-500">No staff-attributed sales.</p>
+                <p className="mt-2 text-sm text-slate-500">No staff configured.</p>
               ) : (
-                <ul className="mt-2 space-y-2 text-sm">
+                <ul className="mt-2 space-y-3 text-sm">
                   {staffSales.map((s) => (
                     <li key={s.staff_id}>
-                      <span className="text-slate-800">{s.name}</span>
-                      <div className="text-xs text-slate-500">
-                        {mode === 'ecommerce' ? '(Product sales)' : mode === 'all' ? (s.label ?? 'Ecommerce + booking') : (s.label ?? 'Booking lines')}
-                      </div>
+                      <div className="text-slate-800">{s.name}</div>
                       <div className="font-semibold text-slate-900">{fmtRm(s.total ?? s.product_sales ?? 0)}</div>
                     </li>
                   ))}
@@ -298,17 +267,18 @@ export default function SalesVisualDailyDashboard({ mode }: { mode: Mode }) {
               )}
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Service activity</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Services</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">Completed bookings this day</p>
               {loading ? (
                 <p className="mt-2 text-sm text-slate-500">Loading…</p>
               ) : staffSvc.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-500">No completed services this day.</p>
+                <p className="mt-2 text-sm text-slate-500">No staff configured.</p>
               ) : (
-                <ul className="mt-2 space-y-2 text-sm">
+                <ul className="mt-2 space-y-3 text-sm">
                   {staffSvc.map((s) => (
-                    <li key={s.staff_id} className="flex justify-between gap-2">
-                      <span className="text-slate-800">{s.name}</span>
-                      <span className="font-semibold text-slate-900">{s.service_count}×</span>
+                    <li key={s.staff_id}>
+                      <div className="text-slate-800">{s.name}</div>
+                      <div className="font-semibold text-slate-900">{s.service_count}×</div>
                     </li>
                   ))}
                   <li className="border-t border-slate-100 pt-2 font-semibold text-slate-900">

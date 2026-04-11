@@ -43,10 +43,13 @@ class SalesVisualDailyReportService
             'offline' => $paymentBlock['totals']['offline'],
         ];
 
-        $staffSales = $this->ecommerceStaffProductSales($start, $end, $validPay, $validOrd, $lineTotal);
-        $staffService = $this->completedBookingsByStaff($start, $end);
+        $roster = $this->allStaffRoster();
+        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $validPay, $validOrd, $lineTotal));
+        $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
+        $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $salesTotal = array_sum(array_column($staffSales, 'product_sales'));
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
+        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
 
         return [
             'date' => $day->toDateString(),
@@ -74,7 +77,7 @@ class SalesVisualDailyReportService
             ],
             'staff' => [
                 'sales_activity' => $staffSales,
-                'sales_activity_total' => round($salesTotal, 2),
+                'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
             ],
@@ -111,9 +114,13 @@ class SalesVisualDailyReportService
             ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
             ->first();
 
-        $staffSales = $this->bookingStaffSales($start, $end, $validPay, $validOrd, $lineTotal);
-        $staffService = $this->completedBookingsByStaff($start, $end);
-        $salesTotal = array_sum(array_column($staffSales, 'total_sales'));
+        $roster = $this->allStaffRoster();
+        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $validPay, $validOrd, $lineTotal));
+        $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
+        $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
+
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
+        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
 
         return [
             'date' => $day->toDateString(),
@@ -148,7 +155,7 @@ class SalesVisualDailyReportService
             ],
             'staff' => [
                 'sales_activity' => $staffSales,
-                'sales_activity_total' => round($salesTotal, 2),
+                'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
             ],
@@ -199,38 +206,13 @@ class SalesVisualDailyReportService
             ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
             ->first();
 
-        $ecStaff = $this->ecommerceStaffProductSales($start, $end, $validPay, $validOrd, $lineTotal);
-        $bkStaff = $this->bookingStaffSales($start, $end, $validPay, $validOrd, $lineTotal);
-        $mergedStaff = [];
-        foreach ($ecStaff as $row) {
-            $id = $row['staff_id'];
-            $mergedStaff[$id] = [
-                'staff_id' => $id,
-                'name' => $row['name'],
-                'product_sales' => $row['product_sales'],
-                'total' => $row['total'],
-                'label' => 'Ecommerce + booking',
-            ];
-        }
-        foreach ($bkStaff as $row) {
-            $id = $row['staff_id'];
-            if (! isset($mergedStaff[$id])) {
-                $mergedStaff[$id] = [
-                    'staff_id' => $id,
-                    'name' => $row['name'],
-                    'product_sales' => 0.0,
-                    'total' => 0.0,
-                    'label' => 'Ecommerce + booking',
-                ];
-            }
-            $mergedStaff[$id]['total'] = round((float) $mergedStaff[$id]['total'] + (float) $row['total'], 2);
-            $mergedStaff[$id]['product_sales'] = $mergedStaff[$id]['total'];
-        }
-        $staffSales = array_values($mergedStaff);
-        usort($staffSales, fn ($a, $b) => ($b['total'] ?? 0) <=> ($a['total'] ?? 0));
-        $salesTotal = array_sum(array_column($staffSales, 'total'));
+        $roster = $this->allStaffRoster();
+        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $validPay, $validOrd, $lineTotal));
+        $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
+        $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $staffService = $this->completedBookingsByStaff($start, $end);
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
+        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
 
         $serviceConsumedAmount = round((float) DB::table('order_items as oi')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
@@ -267,11 +249,86 @@ class SalesVisualDailyReportService
             ],
             'staff' => [
                 'sales_activity' => $staffSales,
-                'sales_activity_total' => round($salesTotal, 2),
+                'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
             ],
         ];
+    }
+
+    /** @return list<array{staff_id: int, name: string}> */
+    private function allStaffRoster(): array
+    {
+        return DB::table('staffs')
+            ->orderBy('name')
+            ->select('id', 'name')
+            ->get()
+            ->map(fn ($r) => [
+                'staff_id' => (int) $r->id,
+                'name' => (string) $r->name,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function keyRowsByStaffId(array $rows): array
+    {
+        $by = [];
+        foreach ($rows as $r) {
+            $id = (int) ($r['staff_id'] ?? 0);
+            if ($id > 0) {
+                $by[$id] = $r;
+            }
+        }
+
+        return $by;
+    }
+
+    /**
+     * @param  list<array{staff_id: int, name: string}>  $roster
+     * @param  array<int, array<string, mixed>>  $byId  keyed by staff_id from ecommerceStaffProductSales
+     * @return list<array{staff_id: int, name: string, product_sales: float, total: float}>
+     */
+    private function padStaffWithEcommerceProductSales(array $roster, array $byId): array
+    {
+        $out = [];
+        foreach ($roster as $s) {
+            $id = $s['staff_id'];
+            $amt = isset($byId[$id]) ? (float) ($byId[$id]['product_sales'] ?? $byId[$id]['total'] ?? 0) : 0.0;
+            $out[] = [
+                'staff_id' => $id,
+                'name' => $s['name'],
+                'product_sales' => round($amt, 2),
+                'total' => round($amt, 2),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array{staff_id: int, name: string}>  $roster
+     * @param  array<int, array<string, mixed>>  $byId  keyed by staff_id from completedBookingsByStaff
+     * @return list<array{staff_id: int, name: string, service_count: int}>
+     */
+    private function padStaffWithServiceCounts(array $roster, array $byId): array
+    {
+        $out = [];
+        foreach ($roster as $s) {
+            $id = $s['staff_id'];
+            $cnt = isset($byId[$id]) ? (int) ($byId[$id]['service_count'] ?? 0) : 0;
+            $out[] = [
+                'staff_id' => $id,
+                'name' => $s['name'],
+                'service_count' => $cnt,
+            ];
+        }
+
+        return $out;
     }
 
     private function ecommerceStaffProductSales(Carbon $start, Carbon $end, array $validPay, array $validOrd, string $lineTotal): array
@@ -296,33 +353,6 @@ class SalesVisualDailyReportService
             'name' => (string) $r->staff_name,
             'product_sales' => round((float) $r->product_sales, 2),
             'total' => round((float) $r->product_sales, 2),
-        ])->values()->all();
-    }
-
-    private function bookingStaffSales(Carbon $start, Carbon $end, array $validPay, array $validOrd, string $lineTotal): array
-    {
-        $rows = DB::table('order_items as oi')
-            ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->join('bookings as b', 'b.id', '=', 'oi.booking_id')
-            ->join('staffs as st', 'st.id', '=', 'b.staff_id')
-            ->whereNotNull('b.staff_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
-            ->whereIn('o.payment_status', $validPay)
-            ->whereIn('o.status', $validOrd)
-            ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
-            ->groupBy('st.id', 'st.name')
-            ->orderByDesc(DB::raw('total_sales'))
-            ->selectRaw('st.id as staff_id')
-            ->selectRaw('st.name as staff_name')
-            ->selectRaw("COALESCE(SUM($lineTotal), 0) as total_sales")
-            ->get();
-
-        return $rows->map(fn ($r) => [
-            'staff_id' => (int) $r->staff_id,
-            'name' => (string) $r->staff_name,
-            'product_sales' => round((float) $r->total_sales, 2),
-            'label' => 'Booking lines',
-            'total' => round((float) $r->total_sales, 2),
         ])->values()->all();
     }
 
