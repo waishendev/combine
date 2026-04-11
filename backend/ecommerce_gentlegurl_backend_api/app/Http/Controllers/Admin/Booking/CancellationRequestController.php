@@ -19,7 +19,7 @@ class CancellationRequestController extends Controller
     {
         $query = BookingCancellationRequest::query()
             ->with([
-                'booking:id,booking_code,status,start_at,service_id,staff_id,customer_id',
+                'booking:id,booking_code,status,start_at,end_at,service_id,staff_id,customer_id,addon_items_json',
                 'booking.customer:id,name',
                 'booking.service:id,name',
                 'booking.staff:id,name',
@@ -42,7 +42,7 @@ class CancellationRequestController extends Controller
     {
         $record = BookingCancellationRequest::query()
             ->with([
-                'booking:id,booking_code,status,start_at,service_id,staff_id,customer_id',
+                'booking:id,booking_code,status,start_at,end_at,service_id,staff_id,customer_id,addon_items_json',
                 'booking.customer:id,name,phone',
                 'booking.service:id,name',
                 'booking.staff:id,name',

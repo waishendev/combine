@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ecommerce;
 
+use App\Http\Controllers\Admin\Booking\CancellationRequestController;
 use App\Http\Controllers\Controller;
 use App\Mail\PosOrderReceiptMail;
 use App\Models\Ecommerce\Customer;
@@ -15,6 +16,7 @@ use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingServiceQuestionOption;
@@ -210,13 +212,41 @@ class PosController extends Controller
             ];
         })->values();
 
+        $pendingCancellationRequestsCount = BookingCancellationRequest::query()
+            ->where('status', 'pending')
+            ->count();
+
         return $this->respond([
             'data' => $rows,
             'current_page' => $paginator->currentPage(),
             'last_page' => $paginator->lastPage(),
             'per_page' => $paginator->perPage(),
             'total' => $paginator->total(),
+            'pending_cancellation_requests_count' => $pendingCancellationRequestsCount,
         ]);
+    }
+
+    /**
+     * POS: review cancellation requests (same rules as admin; requires auth + pos.checkout on route).
+     */
+    public function posCancellationRequestsIndex(Request $request)
+    {
+        $request->merge([
+            'status' => $request->query('status', 'pending'),
+            'per_page' => min(100, max(1, (int) $request->query('per_page', 50))),
+        ]);
+
+        return app(CancellationRequestController::class)->index($request);
+    }
+
+    public function posCancellationRequestApprove(Request $request, int $id)
+    {
+        return app(CancellationRequestController::class)->approve($request, $id);
+    }
+
+    public function posCancellationRequestReject(Request $request, int $id)
+    {
+        return app(CancellationRequestController::class)->reject($request, $id);
     }
 
     public function appointmentDetail(int $id)

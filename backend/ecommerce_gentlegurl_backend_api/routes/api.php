@@ -392,6 +392,11 @@ $protectedRoutes = function () {
         Route::get('/services/search', [PosController::class, 'serviceSearch']);
         Route::get('/service-packages/search', [PosController::class, 'packageSearch']);
         Route::get('/appointments', [PosController::class, 'appointmentSearch']);
+        Route::get('/cancellation-requests', [PosController::class, 'posCancellationRequestsIndex']);
+        Route::post('/cancellation-requests/{id}/approve', [PosController::class, 'posCancellationRequestApprove'])
+            ->middleware('permission:booking.appointments.update_status');
+        Route::post('/cancellation-requests/{id}/reject', [PosController::class, 'posCancellationRequestReject'])
+            ->middleware('permission:booking.appointments.update_status');
         Route::get('/appointments/{id}', [PosController::class, 'appointmentDetail']);
         Route::post('/appointments/{id}/status', [PosController::class, 'updateAppointmentStatus']);
         Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment']);
