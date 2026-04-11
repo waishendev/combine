@@ -10,6 +10,7 @@ use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\PaymentGateway;
 use App\Services\Payments\BillplzConfigResolver;
+use App\Support\BillplzBaseUrl;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -415,7 +416,9 @@ class PaymentController extends Controller
         $resolvedConfig = $this->configResolver->resolve($type, $paymentMethod);
         $apiKey = data_get($gatewayConfig, 'api_key') ?: $resolvedConfig['api_key'];
         $collectionId = data_get($gatewayConfig, 'collection_id') ?: $resolvedConfig['collection_id'];
-        $baseUrl = rtrim((string) (data_get($gatewayConfig, 'base_url') ?: $resolvedConfig['base_url']), '/');
+        $baseUrl = BillplzBaseUrl::normalize(
+            rtrim((string) (data_get($gatewayConfig, 'base_url') ?: $resolvedConfig['base_url']), '/')
+        );
         $frontendUrl = rtrim((string) (data_get($gatewayConfig, 'frontend_url') ?: $resolvedConfig['frontend_url']), '/');
         $publicUrl = rtrim((string) (data_get($gatewayConfig, 'public_url') ?: $resolvedConfig['public_url']), '/');
 
