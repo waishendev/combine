@@ -159,10 +159,16 @@ export default function SalesChannelReportPage({
   mode,
   canExport = false,
   defaultDatePreset = 'month',
+  paramPrefix,
+  isAllWorkspace = false,
 }: {
   mode: Mode
   canExport?: boolean
   defaultDatePreset?: 'month' | 'today'
+  /** When set (e.g. `ec_`), URL uses `{prefix}page` and `{prefix}per_page` instead of `page` / `per_page`. */
+  paramPrefix?: string
+  /** When true with `paramPrefix`, filter apply/reset also resets the sibling table pages (`ec_page` / `bk_page`). */
+  isAllWorkspace?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -172,9 +178,12 @@ export default function SalesChannelReportPage({
     [defaultDatePreset],
   )
 
+  const pageKey = paramPrefix ? `${paramPrefix}page` : 'page'
+  const perPageKey = paramPrefix ? `${paramPrefix}per_page` : 'per_page'
+
   const resolved = useMemo(() => {
-    const parsedPage = Number(searchParams.get('page'))
-    const parsedPerPage = Number(searchParams.get('per_page'))
+    const parsedPage = Number(searchParams.get(pageKey))
+    const parsedPerPage = Number(searchParams.get(perPageKey))
     return {
       dateFrom: searchParams.get('date_from') ?? defaultRange.from,
       dateTo: searchParams.get('date_to') ?? defaultRange.to,
@@ -185,7 +194,7 @@ export default function SalesChannelReportPage({
       page: Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : DEFAULT_PAGE,
       perPage: Number.isFinite(parsedPerPage) && parsedPerPage > 0 ? parsedPerPage : DEFAULT_PAGE_SIZE,
     }
-  }, [searchParams, defaultRange.from, defaultRange.to])
+  }, [searchParams, defaultRange.from, defaultRange.to, pageKey, perPageKey])
 
   const [inputs, setInputs] = useState(resolved)
   const [ecommerceRows, setEcommerceRows] = useState<EcommerceRow[]>([])
@@ -259,29 +268,47 @@ export default function SalesChannelReportPage({
   }
 
   const handleApply = () => {
-    updateQuery({
+    const patch: Record<string, string> = {
       date_from: inputs.dateFrom,
       date_to: inputs.dateTo,
       channel: inputs.channel,
       payment_method: inputs.paymentMethod,
       status: inputs.status,
       type: inputs.type,
-      page: '1',
-    })
+    }
+    if (paramPrefix) {
+      patch[pageKey] = '1'
+      if (isAllWorkspace) {
+        patch.ec_page = '1'
+        patch.bk_page = '1'
+      }
+    } else {
+      patch.page = '1'
+    }
+    updateQuery(patch)
     setIsFilterOpen(false)
   }
 
   const handleReset = () => {
     const range = defaultDatePreset === 'today' ? getTodayRange() : defaultRange
-    updateQuery({
+    const patch: Record<string, string> = {
       date_from: range.from,
       date_to: range.to,
       channel: 'all',
       payment_method: 'all',
       status: 'all',
       type: 'all',
-      page: '1',
-    })
+    }
+    if (paramPrefix) {
+      patch[pageKey] = '1'
+      if (isAllWorkspace) {
+        patch.ec_page = '1'
+        patch.bk_page = '1'
+      }
+    } else {
+      patch.page = '1'
+    }
+    updateQuery(patch)
     setIsFilterOpen(false)
   }
 
@@ -402,7 +429,7 @@ export default function SalesChannelReportPage({
           <select
             id="pageSize"
             value={resolved.perPage}
-            onChange={(event) => updateQuery({ per_page: event.target.value, page: '1' })}
+            onChange={(event) => updateQuery({ [perPageKey]: event.target.value, [pageKey]: '1' })}
             className="border border-gray-300 rounded px-2 py-1 text-sm"
           >
             {PAGE_SIZE_OPTIONS.map((option) => (
@@ -583,7 +610,7 @@ export default function SalesChannelReportPage({
         currentPage={pagination.current_page}
         totalPages={pagination.last_page}
         pageSize={pagination.per_page}
-        onPageChange={(page) => updateQuery({ page: String(page) })}
+        onPageChange={(page) => updateQuery({ [pageKey]: String(page) })}
         disabled={loading}
       />
     </div>

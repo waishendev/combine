@@ -25,9 +25,11 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
   const showPos = permissions.includes('pos.checkout')
+  const showSalesReport = permissions.includes('ecommerce.reports.sales.view')
   const isPosCheckout = pathname === '/pos'
   const isPosAppointments = pathname === '/pos/appointments' || pathname.startsWith('/pos/appointments/')
   const isPosRoute = pathname === '/pos' || pathname.startsWith('/pos/')
+  const isSalesVisualRoute = pathname === '/reports/sales/visual' || pathname.startsWith('/reports/sales/visual/')
 
   useEffect(() => {
     const handleWorkspaceChanged = () => {
@@ -43,6 +45,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
     router.prefetch('/dashboard')
     router.prefetch('/booking/appointments')
     router.prefetch('/pos/appointments')
+    router.prefetch('/reports/sales/visual')
   }, [router])
 
   const handleSwitch = (ws: Workspace) => {
@@ -78,6 +81,11 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
           </button>
         )
       })}
+      {showSalesReport && (
+        <Link href="/reports/sales/visual" className={segmentClass(isSalesVisualRoute)}>
+          Sales report
+        </Link>
+      )}
       {showPos && (
         <>
           <Link href="/pos" className={segmentClass(isPosCheckout)}>
