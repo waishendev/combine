@@ -25,6 +25,8 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
   const showPos = permissions.includes('pos.checkout')
+  const isPosCheckout = pathname === '/pos'
+  const isPosAppointments = pathname === '/pos/appointments' || pathname.startsWith('/pos/appointments/')
   const isPosRoute = pathname === '/pos' || pathname.startsWith('/pos/')
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   useEffect(() => {
     router.prefetch('/dashboard')
     router.prefetch('/booking/appointments')
+    router.prefetch('/pos/appointments')
   }, [router])
 
   const handleSwitch = (ws: Workspace) => {
@@ -76,9 +79,14 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
         )
       })}
       {showPos && (
-        <Link href="/pos" className={segmentClass(isPosRoute)}>
-          POS Checkout
-        </Link>
+        <>
+          <Link href="/pos" className={segmentClass(isPosCheckout)}>
+            POS Checkout
+          </Link>
+          <Link href="/pos/appointments" className={segmentClass(isPosAppointments)}>
+            Appointments
+          </Link>
+        </>
       )}
     </div>
   )

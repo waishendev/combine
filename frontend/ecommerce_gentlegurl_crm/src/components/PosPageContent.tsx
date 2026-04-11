@@ -203,7 +203,7 @@ type AppointmentDetail = {
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
 }
 
-type PosCatalogTab = 'products' | 'book-service' | 'service-packages' | 'appointments'
+type PosCatalogTab = 'products' | 'book-service' | 'service-packages'
 
 type ProductOption = {
   id: number
@@ -409,7 +409,14 @@ function extractPaged<T>(json: unknown): PageResponse<T> {
   }
 }
 
-export default function PosPageContent({ currentUser }: { currentUser: PosCurrentUser }) {
+type PosPageContentProps = {
+  currentUser: PosCurrentUser
+  /** When set, renders only POS appointment list + settlement (used by `/pos/appointments`). */
+  variant?: 'default' | 'appointments-only'
+}
+
+export default function PosPageContent({ currentUser, variant = 'default' }: PosPageContentProps) {
+  const isAppointmentsPage = variant === 'appointments-only'
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
   const productsGridRef = useRef<HTMLDivElement | null>(null)
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -2169,15 +2176,15 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
   }, [fetchActiveStaffs, fetchServicePackages, fetchServices])
 
   useEffect(() => {
-    if (catalogTab !== 'appointments') return
+    if (!isAppointmentsPage) return
     void fetchAppointments()
-  }, [appointmentCustomerFilter, appointmentDateFilter, appointmentQuery, appointmentStaffFilter, appointmentStatusFilter, catalogTab, fetchAppointments])
+  }, [appointmentCustomerFilter, appointmentDateFilter, appointmentQuery, appointmentStaffFilter, appointmentStatusFilter, fetchAppointments, isAppointmentsPage])
 
   useEffect(() => {
-    if (catalogTab !== 'appointments') return
+    if (!isAppointmentsPage) return
     void fetchAppointmentCustomers('')
     void fetchAppointmentStaffs('')
-  }, [catalogTab, fetchAppointmentCustomers, fetchAppointmentStaffs])
+  }, [fetchAppointmentCustomers, fetchAppointmentStaffs, isAppointmentsPage])
 
 
   const filteredServices = useMemo(() => {
@@ -3223,31 +3230,41 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
-          <p className="mt-2 text-sm text-gray-600 flex items-center gap-2">
-            <svg className="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-            </svg>
-            <span className="font-medium">Barcode Listener Active</span> - System is listening for barcode scans. Scan items to add them to cart automatically.
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+            {isAppointmentsPage ? 'POS Appointments' : 'POS Checkout'}
+          </h2>
+          {isAppointmentsPage ? (
+            <p className="mt-2 text-sm text-gray-600">
+              View today&apos;s appointments, collect settlement, and update status.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-gray-600 flex items-center gap-2">
+              <svg className="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              <span className="font-medium">Barcode Listener Active</span> - System is listening for barcode scans. Scan items to add them to cart automatically.
+            </p>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-5 xl:min-h-0">
         <div className="space-y-5 xl:col-span-3 xl:min-h-0">
           {/* Hidden barcode scanner input for listening */}
-          <input
-            ref={scannerInputRef}
-            type="text"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                void onScannerEnter()
-              }
-            }}
-            className="sr-only"
-            autoFocus
-          />
+          {!isAppointmentsPage ? (
+            <input
+              ref={scannerInputRef}
+              type="text"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void onScannerEnter()
+                }
+              }}
+              className="sr-only"
+              autoFocus
+            />
+          ) : null}
 
           {/* Products / Services Section */}
           <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
@@ -3255,8 +3272,8 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
-              POS Catalog
-              {catalogTab === 'products' && productLoading && (
+              {isAppointmentsPage ? 'Appointments' : 'POS Catalog'}
+              {!isAppointmentsPage && catalogTab === 'products' && productLoading && (
                 <svg className="h-4 w-4 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
@@ -3264,38 +3281,116 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
               )}
             </h3>
 
-            <div className="mb-4 inline-flex w-fit rounded-lg border border-gray-200 bg-gray-100 p-1">
-              <button
-                type="button"
-                onClick={() => setCatalogTab('products')}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'products' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                PRODUCTS
-              </button>
-              <button
-                type="button"
-                onClick={() => setCatalogTab('book-service')}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'book-service' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                BOOK SERVICE
-              </button>
-              <button
-                type="button"
-                onClick={() => setCatalogTab('service-packages')}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'service-packages' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                SERVICE PACKAGES
-              </button>
-              <button
-                type="button"
-                onClick={() => setCatalogTab('appointments')}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'appointments' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                APPOINTMENTS
-              </button>
-            </div>
+            {!isAppointmentsPage ? (
+              <div className="mb-4 inline-flex w-fit rounded-lg border border-gray-200 bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setCatalogTab('products')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'products' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  PRODUCTS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatalogTab('book-service')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'book-service' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  BOOK SERVICE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatalogTab('service-packages')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'service-packages' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  SERVICE PACKAGES
+                </button>
+              </div>
+            ) : null}
 
-            {catalogTab === 'products' ? (
+            {isAppointmentsPage ? (
+              <div className="flex min-h-0 flex-1 flex-col gap-3">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <input
+                    value={appointmentQuery}
+                    onChange={(e) => setAppointmentQuery(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    placeholder="Search booking no (e.g. BK-20260327233637-15FFBC)"
+                  />
+                  <input
+                    type="date"
+                    value={appointmentDateFilter}
+                    onChange={(e) => setAppointmentDateFilter(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  />
+                  <select
+                    value={appointmentCustomerFilter}
+                    onChange={(e) => setAppointmentCustomerFilter(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  >
+                    <option value="">{appointmentCustomerLoading ? 'Loading customers...' : 'All Customers'}</option>
+                    {appointmentCustomerOptions.map((customer) => (
+                      <option key={`appointment-customer-${customer.id}`} value={String(customer.id)}>
+                        {customer.name}{customer.phone ? ` · ${customer.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={appointmentStaffFilter}
+                    onChange={(e) => setAppointmentStaffFilter(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  >
+                    <option value="">{appointmentStaffLoading ? 'Loading staffs...' : 'All Staffs'}</option>
+                    {appointmentStaffOptions.map((staff) => (
+                      <option key={`appointment-staff-${staff.id}`} value={String(staff.id)}>
+                        {staff.name}{staff.code ? ` · ${staff.code}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={appointmentStatusFilter}
+                    onChange={(e) => setAppointmentStatusFilter(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  >
+                    <option value="">ALL</option>
+                    <option value="CONFIRMED">CONFIRMED</option>
+                    <option value="COMPLETED">COMPLETED</option>
+                    <option value="CANCELLED">CANCELLED</option>
+                    <option value="NO_SHOW">NO_SHOW</option>
+                  </select>
+                </div>
+                <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+                  {appointmentsLoading ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading appointments...</div>
+                  ) : appointments.length === 0 ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No appointments found.</div>
+                  ) : (
+                    appointments.map((appt) => (
+                      <div key={appt.id} className="rounded-lg border border-gray-200 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-0.5">
+                            <p className="text-sm font-semibold text-gray-900">{appt.booking_code}</p>
+                            <p className="text-xs text-gray-600">{appt.customer_name} • {(appt.service_names ?? []).join(', ')}</p>
+                            <p className="text-xs text-gray-500">{formatDateTimeRange(appt.appointment_start_at, appt.appointment_end_at)}</p>
+                            <p className="text-xs text-gray-500">Staff: {appt.staff_name ?? '-'}</p>
+                            <div className="flex items-center gap-2 pt-0.5 text-xs text-gray-500">
+                              <span>Status:</span>
+                              <BookingStatusBadge status={appt.status} label={appt.status} showDot={false} />
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void openAppointmentDetail(appt.id)}
+                            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                          >
+                            View / Open
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : catalogTab === 'products' ? (
               <>
             
             {/* Search + Category Filters */}
@@ -3550,99 +3645,7 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
                   )}
                 </div>
               </div>
-            ) : (
-              <div className="flex min-h-0 flex-1 flex-col gap-3">
-                <div className="grid gap-2 md:grid-cols-2">
-                  <input
-                    value={appointmentQuery}
-                    onChange={(e) => setAppointmentQuery(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="Search booking no (e.g. BK-20260327233637-15FFBC)"
-                  />
-                  <input
-                    type="date"
-                    value={appointmentDateFilter}
-                    onChange={(e) => setAppointmentDateFilter(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  />
-                  <select
-                    value={appointmentCustomerFilter}
-                    onChange={(e) => setAppointmentCustomerFilter(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  >
-                    <option value="">{appointmentCustomerLoading ? 'Loading customers...' : 'All Customers'}</option>
-                    {appointmentCustomerOptions.map((customer) => (
-                      <option key={`appointment-customer-${customer.id}`} value={String(customer.id)}>
-                        {customer.name}{customer.phone ? ` · ${customer.phone}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={appointmentStaffFilter}
-                    onChange={(e) => setAppointmentStaffFilter(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  >
-                    <option value="">{appointmentStaffLoading ? 'Loading staffs...' : 'All Staffs'}</option>
-                    {appointmentStaffOptions.map((staff) => (
-                      <option key={`appointment-staff-${staff.id}`} value={String(staff.id)}>
-                        {staff.name}{staff.code ? ` · ${staff.code}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={appointmentStatusFilter}
-                    onChange={(e) => setAppointmentStatusFilter(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  >
-                    <option value="">ALL</option>
-                    <option value="CONFIRMED">CONFIRMED</option>
-                    <option value="COMPLETED">COMPLETED</option>
-                    <option value="CANCELLED">CANCELLED</option>
-                    <option value="NO_SHOW">NO_SHOW</option>
-                  </select>
-                </div>
-                <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-                  {appointmentsLoading ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading appointments...</div>
-                  ) : appointments.length === 0 ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No appointments found.</div>
-                  ) : (
-                    appointments.map((appt) => (
-                      <div key={appt.id} className="rounded-lg border border-gray-200 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-0.5">
-                            <p className="text-sm font-semibold text-gray-900">{appt.booking_code}</p>
-                            <p className="text-xs text-gray-600">{appt.customer_name} • {(appt.service_names ?? []).join(', ')}</p>
-                            <p className="text-xs text-gray-500">{formatDateTimeRange(appt.appointment_start_at, appt.appointment_end_at)}</p>
-                            <p className="text-xs text-gray-500">Staff: {appt.staff_name ?? '-'}</p>
-                            <div className="flex items-center gap-2 pt-0.5 text-xs text-gray-500">
-                              <span>Status:</span>
-                              <BookingStatusBadge status={appt.status} label={appt.status} showDot={false} />
-                            </div>
-                            {/* <p className="text-xs text-gray-500">
-                              Deposit Contribution: RM {((Number(appt.package_offset ?? 0) >= Number(appt.service_total ?? 0) - 0.0001) ? 0 : Number(appt.deposit_contribution ?? appt.deposit_paid ?? 0)).toFixed(2)}
-                              {' • '}
-                              Linked Booking Deposit: RM {Number(appt.linked_booking_deposit_total ?? appt.linked_booking_deposit ?? 0).toFixed(2)}
-                              {' • '}
-                              Package: RM {Number(appt.package_offset ?? 0).toFixed(2)}
-                              {' • '}
-                              Due: RM {Number(appt.amount_due_now ?? appt.balance_due ?? 0).toFixed(2)}
-                            </p> */}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void openAppointmentDetail(appt.id)}
-                            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                          >
-                            View / Open
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -3650,13 +3653,13 @@ export default function PosPageContent({ currentUser }: { currentUser: PosCurren
         <div className="space-y-5 xl:col-span-2 xl:min-h-0">
 
             <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
-            {catalogTab === 'appointments' ? (
+            {isAppointmentsPage ? (
               <>
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex-shrink-0">Appointment Settlement</h3>
                 {appointmentDetailLoading ? (
                   <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading appointment detail...</div>
                 ) : !appointmentDetail ? (
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Open an appointment from the APPOINTMENTS tab.</div>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Select an appointment from the list on the left.</div>
                 ) : (
                   <div className="flex-1 space-y-3 overflow-y-auto">
                     <div className="rounded-lg border border-gray-200 p-3 text-sm">
