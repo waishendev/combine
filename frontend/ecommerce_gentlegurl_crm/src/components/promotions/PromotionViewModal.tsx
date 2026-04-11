@@ -88,17 +88,24 @@ export default function PromotionViewModal({
   }, [promotionId])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-lg bg-white shadow-xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={() => {
+          if (!loading) onClose()
+        }}
+      />
+      <div className="relative mx-4 max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-lg bg-white shadow-lg">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-300 bg-white px-5 py-4">
           <h2 className="text-lg font-semibold text-gray-900">
             Promotion details
           </h2>
           <button
             type="button"
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+            onClick={() => {
+              if (!loading) onClose()
+            }}
+            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
             aria-label={t('common.close')}
           >
             <i className="fa-solid fa-xmark" />
@@ -107,9 +114,12 @@ export default function PromotionViewModal({
 
         <div className="p-5">
           {error && !loading ? (
-            <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div
+              className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              role="alert"
+            >
               {error}
-            </p>
+            </div>
           ) : null}
 
           {loading || !form ? (
@@ -126,11 +136,11 @@ export default function PromotionViewModal({
           )}
         </div>
 
-        <div className="sticky bottom-0 flex justify-end border-t border-gray-200 bg-white px-5 py-3">
+        <div className="flex justify-end border-t border-gray-200 px-5 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
           >
             {t('common.close')}
           </button>

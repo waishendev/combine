@@ -2354,7 +2354,6 @@ class PosController extends Controller
 
         $promotions = Promotion::query()
             ->where('is_active', true)
-            ->whereNotNull('promotion_type')
             ->whereIn('id', \DB::table('promotion_products')->select('promotion_id')->distinct())
             ->with(['promotionProducts', 'promotionTiers'])
             ->get();
@@ -2435,7 +2434,7 @@ class PosController extends Controller
             $promotionSnapshot = [
                 'promotion_id' => (int) $promotion->id,
                 'promotion_name' => $promotion->name ?: $promotion->title,
-                'promotion_type' => $promotion->promotion_type,
+                'promotion_type' => $applicable->discount_type,
                 'trigger_type' => $promotion->trigger_type,
                 'selected_tier' => [
                     'tier_id' => (int) $applicable->id,
@@ -2462,7 +2461,7 @@ class PosController extends Controller
                 $base[$id]['promotion_applied'] = true;
                 $base[$id]['promotion_id'] = $promotion->id;
                 $base[$id]['promotion_name'] = $promotion->name ?: $promotion->title;
-                $base[$id]['promotion_type'] = $promotion->promotion_type;
+                $base[$id]['promotion_type'] = $applicable->discount_type;
                 $base[$id]['promotion_summary'] = $promotionSnapshot['summary'];
                 $base[$id]['promotion_snapshot'] = $promotionSnapshot;
                 $base[$id]['promotion_discount_amount'] = ($base[$id]['promotion_discount_amount'] ?? 0) + $portion;

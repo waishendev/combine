@@ -12,7 +12,6 @@ export type Promotion = {
   name?: string | null;
   title?: string | null;
   is_active: boolean;
-  promotion_type: string;
   trigger_type: 'quantity' | 'amount';
   promotion_products?: Array<{ product_id: number }>;
   promotion_tiers?: PromotionTier[];
@@ -55,7 +54,6 @@ export function calculatePromotionDiscounts(
   const activePromotions = promotions.filter(
     (promo) =>
       promo.is_active &&
-      promo.promotion_type &&
       promo.promotion_products &&
       promo.promotion_products.length > 0 &&
       promo.promotion_tiers &&
@@ -175,7 +173,7 @@ export function calculatePromotionDiscounts(
     promotionResults.push({
       promotion_id: promotion.id,
       promotion_name: promotion.name || promotion.title || 'Promotion',
-      promotion_type: promotion.promotion_type,
+      promotion_type: applicableTier.discount_type,
       discount_amount: discount,
       summary: `${summary} - ${applicableTier.discount_type}`,
       applied: true,

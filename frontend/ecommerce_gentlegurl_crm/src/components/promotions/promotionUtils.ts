@@ -17,6 +17,7 @@ export type ProductOption = {
   name: string
   disabled: boolean
   disabled_reason?: string | null
+  cover_image_url?: string | null
 }
 
 export type PromotionApiItem = {
@@ -24,7 +25,6 @@ export type PromotionApiItem = {
   name?: string
   title?: string
   is_active: boolean
-  promotion_type: TierDiscountType
   trigger_type: TriggerType
   created_at?: string
   promotion_products?: Array<{
@@ -37,7 +37,8 @@ export type PromotionApiItem = {
 export type PromotionRowData = {
   id: number
   name: string
-  promotionType: string
+  /** First tier’s discount_type (list preview). */
+  tierDiscountPreview: string
   triggerType: string
   isActive: boolean
   productCount: number
@@ -50,7 +51,6 @@ export type PromotionFormState = {
   name: string
   is_active: boolean
   trigger_type: TriggerType
-  promotion_type: TierDiscountType
   product_ids: number[]
   tiers: TierApi[]
 }
@@ -66,7 +66,6 @@ export const emptyPromotionForm = (): PromotionFormState => ({
   name: '',
   is_active: true,
   trigger_type: 'quantity',
-  promotion_type: 'bundle_fixed_price',
   product_ids: [],
   tiers: [tierTemplate()],
 })
@@ -85,7 +84,6 @@ export function promotionApiItemToFormState(
     name: promotion.name ?? promotion.title ?? '',
     is_active: Boolean(promotion.is_active),
     trigger_type: promotion.trigger_type ?? 'quantity',
-    promotion_type: promotion.promotion_type ?? 'bundle_fixed_price',
     product_ids: promotion.promotion_products?.map((row) => row.product_id) ?? [],
     tiers: (promotion.promotion_tiers?.length
       ? promotion.promotion_tiers
@@ -93,8 +91,7 @@ export function promotionApiItemToFormState(
     ).map((tier) => ({
       min_qty: tier.min_qty ?? null,
       min_amount: tier.min_amount ?? null,
-      discount_type:
-        tier.discount_type ?? promotion.promotion_type ?? 'bundle_fixed_price',
+      discount_type: tier.discount_type ?? 'bundle_fixed_price',
       discount_value: toNumber(tier.discount_value),
     })),
   }
@@ -103,10 +100,11 @@ export function promotionApiItemToFormState(
 export function mapPromotionApiItemToRow(
   item: PromotionApiItem,
 ): PromotionRowData {
+  const firstTier = item.promotion_tiers?.[0]
   return {
     id: item.id,
     name: item.name ?? item.title ?? '',
-    promotionType: item.promotion_type ?? '',
+    tierDiscountPreview: firstTier?.discount_type ?? '',
     triggerType: item.trigger_type ?? '',
     isActive: Boolean(item.is_active),
     productCount: item.promotion_products?.length ?? 0,

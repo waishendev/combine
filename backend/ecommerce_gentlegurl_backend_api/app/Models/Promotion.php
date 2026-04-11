@@ -14,7 +14,6 @@ class Promotion extends Model
         'name',
         'code',
         'description',
-        'promotion_type',
         'trigger_type',
         'priority',
         'starts_at',

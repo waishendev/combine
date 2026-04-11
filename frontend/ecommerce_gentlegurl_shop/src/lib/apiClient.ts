@@ -1142,7 +1142,6 @@ export type Promotion = {
   name?: string | null;
   title?: string | null;
   is_active: boolean;
-  promotion_type: string;
   trigger_type: 'quantity' | 'amount';
   promotion_products?: Array<{ product_id: number; product?: { id: number; name: string } }>;
   promotion_tiers?: Array<{

@@ -18,10 +18,6 @@ class PromotionController extends Controller
             $query->where('is_active', (bool) $request->boolean('is_active'));
         }
 
-        if ($request->filled('promotion_type')) {
-            $query->where('promotion_type', $request->string('promotion_type'));
-        }
-
         if ($request->filled('search')) {
             $search = trim((string) $request->string('search'));
             if ($search !== '') {
@@ -57,7 +53,6 @@ class PromotionController extends Controller
                 'code' => $data['code'] ?? null,
                 'description' => $data['description'] ?? null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
-                'promotion_type' => $data['promotion_type'],
                 'trigger_type' => $data['trigger_type'],
                 'priority' => (int) ($data['priority'] ?? 0),
                 'starts_at' => $data['starts_at'] ?? null,
@@ -91,7 +86,6 @@ class PromotionController extends Controller
                 'code' => $data['code'] ?? null,
                 'description' => $data['description'] ?? null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
-                'promotion_type' => $data['promotion_type'],
                 'trigger_type' => $data['trigger_type'],
                 'priority' => (int) ($data['priority'] ?? 0),
                 'starts_at' => $data['starts_at'] ?? null,
@@ -123,6 +117,11 @@ class PromotionController extends Controller
 
         $products = Product::query()
             ->where('is_active', true)
+            ->with(['images' => function ($query) {
+                $query->where('type', 'image')
+                    ->orderBy('sort_order')
+                    ->orderBy('id');
+            }])
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -131,9 +130,16 @@ class PromotionController extends Controller
             $usedByOther = $used && (int) $used->promotion_id !== (int) $editingPromotionId;
             $promotionName = $used ? ($used->name ?: $used->title) : null;
 
+            $cover = $product->images->first();
+            $coverUrl = null;
+            if ($cover) {
+                $coverUrl = $cover->thumbnail_url ?: $cover->url;
+            }
+
             return [
                 'id' => $product->id,
                 'name' => $product->name,
+                'cover_image_url' => $coverUrl,
                 'disabled' => $usedByOther,
                 'disabled_reason' => $usedByOther ? 'Already used in Promotion ' . $promotionName : null,
                 'promotion_id' => $used ? (int) $used->promotion_id : null,
@@ -154,7 +160,6 @@ class PromotionController extends Controller
             'content_html' => ['nullable', 'string'],
             'display_position' => ['nullable', 'string', 'max:50'],
             'is_active' => ['boolean'],
-            'promotion_type' => ['required', Rule::in(['bundle_fixed_price', 'percentage_discount', 'fixed_discount'])],
             'trigger_type' => ['required', Rule::in(['quantity', 'amount'])],
             'priority' => ['nullable', 'integer'],
             'starts_at' => ['nullable', 'date'],

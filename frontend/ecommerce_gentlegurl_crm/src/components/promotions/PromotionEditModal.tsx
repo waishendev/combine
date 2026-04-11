@@ -1,6 +1,12 @@
 'use client'
 
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import {
+  FormEvent,
+  useEffect,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 
 import PromotionFormContent from './PromotionFormContent'
 import {
@@ -93,7 +99,8 @@ export default function PromotionEditModal({
     }
   }, [promotionId])
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     if (!form) return
     const validationError = validatePromotionForm(form)
     if (validationError) {
@@ -114,7 +121,6 @@ export default function PromotionEditModal({
             name: form.name.trim(),
             is_active: form.is_active,
             trigger_type: form.trigger_type,
-            promotion_type: form.promotion_type,
             product_ids: form.product_ids,
             tiers: form.tiers.map((tier) => ({
               min_qty:
@@ -162,28 +168,38 @@ export default function PromotionEditModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-lg bg-white shadow-xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={() => {
+          if (!submitting && !loading) onClose()
+        }}
+      />
+      <div className="relative mx-4 max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-lg bg-white shadow-lg">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-300 bg-white px-5 py-4">
           <h2 className="text-lg font-semibold text-gray-900">
             {t('common.edit')} promotion
           </h2>
           <button
             type="button"
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+            onClick={() => {
+              if (!submitting && !loading) onClose()
+            }}
+            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
             aria-label={t('common.close')}
           >
             <i className="fa-solid fa-xmark" />
           </button>
         </div>
 
-        <div className="p-5">
+        <form onSubmit={(e) => void handleSubmit(e)} className="p-5">
           {error && !loading ? (
-            <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div
+              className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              role="alert"
+            >
               {error}
-            </p>
+            </div>
           ) : null}
 
           {loading || !form ? (
@@ -191,32 +207,33 @@ export default function PromotionEditModal({
           ) : (
             <PromotionFormContent
               form={form}
-              setForm={
-                setForm as Dispatch<SetStateAction<PromotionFormState>>
-              }
+              setForm={setForm as Dispatch<SetStateAction<PromotionFormState>>}
               products={products}
               isReadOnly={false}
+              formDisabled={submitting}
             />
           )}
-        </div>
 
-        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-gray-200 bg-white px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            type="button"
-            disabled={submitting || loading || !form}
-            onClick={() => void handleSubmit()}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {submitting ? 'Saving…' : t('common.save')}
-          </button>
-        </div>
+          <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                if (!submitting && !loading) onClose()
+              }}
+              disabled={submitting || loading || !form}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || loading || !form}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {submitting ? t('common.saving') : t('common.save')}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

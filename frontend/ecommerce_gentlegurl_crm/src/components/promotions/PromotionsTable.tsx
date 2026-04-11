@@ -138,10 +138,6 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
           )
         }
 
-        if (filters.promotionType) {
-          qs.set('promotion_type', filters.promotionType)
-        }
-
         const res = await fetch(
           `/api/proxy/ecommerce/promotions?${qs.toString()}`,
           {
@@ -316,7 +312,6 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
   const filterLabels: Record<keyof PromotionFilterValues, string> = {
     name: t('common.name'),
     isActive: t('common.status'),
-    promotionType: 'Promotion type',
   }
 
   const renderFilterValue = (key: keyof PromotionFilterValues, value: string) => {
@@ -507,7 +502,7 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
               {(
                 [
                   { key: 'name', label: t('common.name') },
-                  { key: 'promotionType', label: 'Type' },
+                  { key: 'tierDiscountPreview', label: 'Discount' },
                   { key: 'triggerType', label: 'Trigger' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'productCount', label: 'Products' },

@@ -8,20 +8,29 @@ import type {
   TriggerType,
 } from './promotionUtils'
 import { tierTemplate, toNumber } from './promotionUtils'
+import PromotionProductMultiSelect from './PromotionProductMultiSelect'
 
 interface PromotionFormContentProps {
   form: PromotionFormState
   setForm: React.Dispatch<React.SetStateAction<PromotionFormState>>
   products: ProductOption[]
   isReadOnly: boolean
+  formDisabled?: boolean
 }
+
+const inputClass =
+  'w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600'
+const labelClass = 'block text-sm font-medium text-gray-700 mb-1'
 
 export default function PromotionFormContent({
   form,
   setForm,
   products,
   isReadOnly,
+  formDisabled = false,
 }: PromotionFormContentProps) {
+  const locked = isReadOnly || formDisabled
+
   const updateTier = (index: number, updater: (current: TierApi) => TierApi) => {
     setForm((prev) => ({
       ...prev,
@@ -30,47 +39,54 @@ export default function PromotionFormContent({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2">
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-x-4 md:gap-y-4">
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Promotion name
+          <label htmlFor="promotion-name" className={labelClass}>
+            Promotion name <span className="text-red-500">*</span>
           </label>
           <input
-            className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
+            id="promotion-name"
+            type="text"
             value={form.name}
-            disabled={isReadOnly}
+            disabled={locked}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, name: event.target.value }))
             }
+            className={inputClass}
+            placeholder="Promotion name"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Active
-          </label>
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={form.is_active}
-              disabled={isReadOnly}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, is_active: event.target.checked }))
-              }
-            />
-            Enabled
-          </label>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Trigger type
+          <label htmlFor="promotion-is-active" className={labelClass}>
+            Status
           </label>
           <select
-            className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
+            id="promotion-is-active"
+            value={form.is_active ? 'true' : 'false'}
+            disabled={locked}
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                is_active: event.target.value === 'true',
+              }))
+            }
+            className={inputClass}
+          >
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        </div>
+
+        <div className="md:col-span-2">
+          <label htmlFor="promotion-trigger" className={labelClass}>
+            Trigger type <span className="text-red-500">*</span>
+          </label>
+          <select
+            id="promotion-trigger"
             value={form.trigger_type}
-            disabled={isReadOnly}
+            disabled={locked}
             onChange={(event) => {
               const trigger = event.target.value as TriggerType
               setForm((prev) => ({
@@ -84,89 +100,30 @@ export default function PromotionFormContent({
                 })),
               }))
             }}
+            className={inputClass}
           >
-            <option value="quantity">quantity</option>
-            <option value="amount">amount</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Promotion type
-          </label>
-          <select
-            className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-            value={form.promotion_type}
-            disabled={isReadOnly}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                promotion_type: event.target.value as TierDiscountType,
-              }))
-            }
-          >
-            <option value="bundle_fixed_price">bundle_fixed_price</option>
-            <option value="percentage_discount">percentage_discount</option>
-            <option value="fixed_discount">fixed_discount</option>
+            <option value="quantity">Quantity</option>
+            <option value="amount">Amount</option>
           </select>
         </div>
       </div>
 
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Products
-        </p>
-        <div className="max-h-44 overflow-auto rounded-lg border p-3">
-          <div className="grid gap-2 md:grid-cols-2">
-            {products.map((product) => {
-              const selected = form.product_ids.includes(product.id)
-              const disabled = !selected && product.disabled
-              return (
-                <label
-                  key={product.id}
-                  className={`rounded border px-3 py-2 text-sm ${
-                    disabled
-                      ? 'bg-gray-100 text-gray-400'
-                      : 'bg-white text-gray-800'
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      disabled={isReadOnly || disabled}
-                      onChange={(event) => {
-                        const checked = event.target.checked
-                        setForm((prev) => ({
-                          ...prev,
-                          product_ids: checked
-                            ? [...prev.product_ids, product.id]
-                            : prev.product_ids.filter((id) => id !== product.id),
-                        }))
-                      }}
-                    />
-                    <span>
-                      <span className="block">{product.name}</span>
-                      {product.disabled_reason ? (
-                        <span className="block text-xs text-amber-700">
-                          Already used in another promotion
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                </label>
-              )
-            })}
-          </div>
-        </div>
+        <PromotionProductMultiSelect
+          products={products}
+          selectedIds={form.product_ids}
+          onChange={(ids) => setForm((prev) => ({ ...prev, product_ids: ids }))}
+          disabled={locked}
+          isReadOnly={isReadOnly}
+        />
       </div>
 
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Tier rules
-          </p>
-          {!isReadOnly ? (
+      <div className="w-full">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-700">
+            Tier rules <span className="text-red-500">*</span>
+          </h3>
+          {!locked ? (
             <button
               type="button"
               onClick={() =>
@@ -175,91 +132,104 @@ export default function PromotionFormContent({
                   tiers: [...prev.tiers, tierTemplate()],
                 }))
               }
-              className="rounded border px-2.5 py-1 text-xs hover:bg-gray-100"
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
             >
               Add tier
             </button>
           ) : null}
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {form.tiers.map((tier, index) => (
             <div
               key={`tier-${index}`}
-              className="grid gap-2 rounded-lg border p-3 md:grid-cols-[1fr_1fr_1fr_auto]"
+              className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-[1fr_1fr_1fr_auto]"
             >
-              <input
-                type="number"
-                min={0}
-                step={form.trigger_type === 'quantity' ? 1 : 0.01}
-                disabled={isReadOnly}
-                value={
-                  form.trigger_type === 'quantity'
-                    ? (tier.min_qty ?? '')
-                    : (tier.min_amount ?? '')
-                }
-                onChange={(event) => {
-                  const value = toNumber(event.target.value)
-                  updateTier(index, (current) => ({
-                    ...current,
-                    min_qty: form.trigger_type === 'quantity' ? value : null,
-                    min_amount: form.trigger_type === 'amount' ? value : null,
-                  }))
-                }}
-                className="rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-                placeholder={
-                  form.trigger_type === 'quantity'
+              <div>
+                <label className={`${labelClass} text-xs`}>
+                  {form.trigger_type === 'quantity'
                     ? 'Quantity threshold'
-                    : 'Amount threshold'
-                }
-              />
+                    : 'Amount threshold'}
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={form.trigger_type === 'quantity' ? 1 : 0.01}
+                  disabled={locked}
+                  value={
+                    form.trigger_type === 'quantity'
+                      ? (tier.min_qty ?? '')
+                      : (tier.min_amount ?? '')
+                  }
+                  onChange={(event) => {
+                    const value = toNumber(event.target.value)
+                    updateTier(index, (current) => ({
+                      ...current,
+                      min_qty: form.trigger_type === 'quantity' ? value : null,
+                      min_amount: form.trigger_type === 'amount' ? value : null,
+                    }))
+                  }}
+                  className={inputClass}
+                  placeholder={
+                    form.trigger_type === 'quantity' ? 'e.g. 2' : 'e.g. 100'
+                  }
+                />
+              </div>
 
-              <select
-                disabled={isReadOnly}
-                value={tier.discount_type}
-                onChange={(event) =>
-                  updateTier(index, (current) => ({
-                    ...current,
-                    discount_type: event.target.value as TierDiscountType,
-                  }))
-                }
-                className="rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-              >
-                <option value="bundle_fixed_price">bundle_fixed_price</option>
-                <option value="percentage_discount">percentage_discount</option>
-                <option value="fixed_discount">fixed_discount</option>
-              </select>
-
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                disabled={isReadOnly}
-                value={tier.discount_value}
-                onChange={(event) =>
-                  updateTier(index, (current) => ({
-                    ...current,
-                    discount_value: toNumber(event.target.value),
-                  }))
-                }
-                className="rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-                placeholder="Discount value"
-              />
-
-              {!isReadOnly ? (
-                <button
-                  type="button"
-                  disabled={form.tiers.length <= 1}
-                  onClick={() =>
-                    setForm((prev) => ({
-                      ...prev,
-                      tiers: prev.tiers.filter((_, i) => i !== index),
+              <div>
+                <label className={`${labelClass} text-xs`}>Discount type</label>
+                <select
+                  disabled={locked}
+                  value={tier.discount_type}
+                  onChange={(event) =>
+                    updateTier(index, (current) => ({
+                      ...current,
+                      discount_type: event.target.value as TierDiscountType,
                     }))
                   }
-                  className="rounded border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+                  className={inputClass}
                 >
-                  Remove
-                </button>
+                  <option value="bundle_fixed_price">bundle_fixed_price</option>
+                  <option value="percentage_discount">percentage_discount</option>
+                  <option value="fixed_discount">fixed_discount</option>
+                </select>
+              </div>
+
+              <div>
+                <label className={`${labelClass} text-xs`}>Discount value</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  disabled={locked}
+                  value={tier.discount_value}
+                  onChange={(event) =>
+                    updateTier(index, (current) => ({
+                      ...current,
+                      discount_value: toNumber(event.target.value),
+                    }))
+                  }
+                  className={inputClass}
+                  placeholder="0"
+                />
+              </div>
+
+              {!locked ? (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    disabled={form.tiers.length <= 1}
+                    onClick={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        tiers: prev.tiers.filter((_, i) => i !== index),
+                      }))
+                    }
+                    className="h-[38px] w-full rounded-md border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 md:w-auto"
+                  >
+                    Remove
+                  </button>
+                </div>
               ) : null}
             </div>
           ))}

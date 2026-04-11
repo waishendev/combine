@@ -6,21 +6,13 @@ import { useI18n } from '@/lib/i18n'
 export interface PromotionFilterValues {
   name: string
   isActive: '' | 'active' | 'inactive'
-  promotionType: '' | TierDiscountTypeFilter
 }
-
-export type TierDiscountTypeFilter =
-  | ''
-  | 'bundle_fixed_price'
-  | 'percentage_discount'
-  | 'fixed_discount'
 
 export const promotionFiltersFormId = 'promotion-filters-form'
 
 export const emptyPromotionFilters: PromotionFilterValues = {
   name: '',
   isActive: '',
-  promotionType: '',
 }
 
 interface PromotionFiltersProps {
@@ -98,27 +90,6 @@ export default function PromotionFilters({
             <option value="">{t('common.all')}</option>
             <option value="active">{t('common.active')}</option>
             <option value="inactive">{t('common.inactive')}</option>
-          </select>
-        </div>
-
-        <div>
-          <label
-            htmlFor="promotion-filter-type"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            Promotion type
-          </label>
-          <select
-            id="promotion-filter-type"
-            name="promotionType"
-            value={values.promotionType}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">{t('common.all')}</option>
-            <option value="bundle_fixed_price">bundle_fixed_price</option>
-            <option value="percentage_discount">percentage_discount</option>
-            <option value="fixed_discount">fixed_discount</option>
           </select>
         </div>
       </div>
