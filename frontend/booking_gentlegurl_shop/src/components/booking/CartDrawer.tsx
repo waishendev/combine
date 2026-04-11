@@ -263,6 +263,37 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
       const orderId = checkoutResponse?.order_id;
       const orderNo = checkoutResponse?.order_no;
+      const bookingId = checkoutResponse?.booking_ids?.[0];
+
+      // Booking flow takes priority — when booking_ids exist, always use payBooking
+      // so that the booking backend (with correct redirect to booking frontend) is used.
+      if (bookingId) {
+        const paymentResponse = await payBooking(bookingId, {
+          payment_method: selectedPaymentMethod,
+          bank_account_id: selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
+          billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
+        });
+
+        const paymentData = paymentResponse?.data;
+        if (paymentData?.payment_url) {
+          window.location.href = paymentData.payment_url;
+          return;
+        }
+
+        onClose();
+        const bookingOrderNo = paymentData?.order_no;
+        const nextParams = new URLSearchParams({
+          order_id: String(paymentData?.order_id ?? bookingId),
+          payment_method: String(paymentData?.payment_method ?? selectedPaymentMethod),
+          provider: String(paymentData?.provider ?? "manual"),
+        });
+        if (bookingOrderNo) {
+          nextParams.set("order_no", bookingOrderNo);
+        }
+        router.push(`/payment-result?${nextParams.toString()}`);
+        return;
+      }
+
       if (orderId) {
         if (selectedPaymentMethod !== "manual_transfer") {
           const payResponse = await payPublicOrder(orderId, {
@@ -289,41 +320,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         return;
       }
 
-      const bookingId = checkoutResponse?.booking_ids?.[0];
-      if (!bookingId) {
-        const hasPackageOnlyCheckout = (checkoutResponse?.owned_package_ids?.length ?? 0) > 0;
-        if (hasPackageOnlyCheckout) {
-          onClose();
-          router.push("/account/orders");
-          return;
-        }
-        setMessage("Unable to create booking payment. Please try again.");
+      const hasPackageOnlyCheckout = (checkoutResponse?.owned_package_ids?.length ?? 0) > 0;
+      if (hasPackageOnlyCheckout) {
+        onClose();
+        router.push("/account/orders");
         return;
       }
 
-      const paymentResponse = await payBooking(bookingId, {
-        payment_method: selectedPaymentMethod,
-        bank_account_id: selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
-        billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
-      });
-
-      const paymentData = paymentResponse?.data;
-      if (paymentData?.payment_url) {
-        window.location.href = paymentData.payment_url;
-        return;
-      }
-
-      onClose();
-      const bookingOrderNo = paymentData?.order_no;
-      const nextParams = new URLSearchParams({
-        order_id: String(paymentData?.order_id ?? bookingId),
-        payment_method: String(paymentData?.payment_method ?? selectedPaymentMethod),
-        provider: String(paymentData?.provider ?? "manual"),
-      });
-      if (bookingOrderNo) {
-        nextParams.set("order_no", bookingOrderNo);
-      }
-      router.push(`/payment-result?${nextParams.toString()}`);
+      setMessage("Unable to create booking payment. Please try again.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Checkout failed. Please review your cart and try again.");
     }
