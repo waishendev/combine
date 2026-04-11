@@ -106,7 +106,21 @@ class PublicReceiptController extends Controller
 
         $displayItemsForResponse = $displayItems->map(fn ($item) => [
             'type' => (string) ($item->line_type ?: 'product'),
-            'name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
+            'name' => (function () use ($item) {
+                $lineType = (string) ($item->line_type ?: '');
+                $name = $item->display_name_snapshot ?: $item->product_name_snapshot;
+                if ($lineType === 'booking_addon') {
+                    $v = $item->variant_name_snapshot ?: 'Booking Add-on Deposit';
+                    if (strcasecmp(trim((string) $v), 'Booking Add-on Deposit') === 0) {
+                        $prefix = 'Booking Deposit - ';
+                        if (stripos((string) $name, $prefix) !== 0) {
+                            $name = $prefix . $name;
+                        }
+                    }
+                }
+
+                return $name;
+            })(),
             'variant_name' => (function () use ($item) {
                 $lineType = (string) ($item->line_type ?: '');
                 if ($lineType === 'booking_deposit') {

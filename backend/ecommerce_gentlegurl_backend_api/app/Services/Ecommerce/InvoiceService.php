@@ -17,19 +17,26 @@ class InvoiceService
         $mixedItems = $order->items->map(function ($item) {
             $lineType = (string) ($item->line_type ?: 'product');
             $variantName = $item->variant_name_snapshot;
+            $productName = $item->display_name_snapshot ?: $item->product_name_snapshot;
             if ($lineType === 'booking_deposit') {
                 $variantName = 'Booking Deposit';
             } elseif ($lineType === 'booking_settlement') {
                 $variantName = 'Final Settlement';
             } elseif ($lineType === 'booking_addon') {
                 $variantName = $item->variant_name_snapshot ?: 'Booking Add-on Deposit';
+                if (strcasecmp(trim((string) $variantName), 'Booking Add-on Deposit') === 0) {
+                    $prefix = 'Booking Deposit - ';
+                    if (stripos((string) $productName, $prefix) !== 0) {
+                        $productName = $prefix . $productName;
+                    }
+                }
             } elseif ($lineType === 'service_package') {
                 $variantName = 'Service Package';
             }
 
             return [
                 'line_type' => $lineType,
-                'product_name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
+                'product_name' => $productName,
                 'product_sku' => $item->sku_snapshot,
                 'variant_name' => $variantName,
                 'variant_sku' => $item->variant_sku_snapshot,
