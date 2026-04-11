@@ -204,6 +204,14 @@ class BillplzCallbackController extends Controller
         ]);
     }
 
+    /**
+     * Verify Billplz x_signature for both callback (POST) and redirect (GET).
+     *
+     * Callback format:  keyvalue pairs sorted by key, joined with "|", NO "billplz" prefix.
+     * Redirect format:  "billplz" + key + value pairs sorted, joined with "|".
+     *
+     * @see https://www.billplz.com/api#x-signature
+     */
     protected function verifySignature(array $payload, string $type = WorkspaceType::ECOMMERCE): bool
     {
         $resolvedConfig = $this->configResolver->resolve($type);
@@ -213,140 +221,84 @@ class BillplzCallbackController extends Controller
         $signature = $billplzPayload['x_signature'] ?? null;
 
         if (!$xSignatureKey || !$signature) {
-            Log::debug('Billplz signature verification skipped - missing key or signature', [
+            Log::debug('Billplz signature verification skipped', [
                 'has_key' => !empty($xSignatureKey),
                 'has_signature' => !empty($signature),
             ]);
             return false;
         }
 
-        // Method 1: Standard Billplz signature format with pipe separator
-        // Order: billplzid|billplzpaid_at|billplzpaid|billplztransaction_id|billplzamount|billplzcollection_id|billplzreference_1
-        // Try with all fields in order (including empty ones)
-        $allComponents = [
-            'billplzid' . ($billplzPayload['id'] ?? ''),
-            'billplzpaid_at' . ($billplzPayload['paid_at'] ?? ''),
-            'billplzpaid' . ($billplzPayload['paid'] ?? ''),
-            'billplztransaction_id' . ($billplzPayload['transaction_id'] ?? ''),
-            'billplzamount' . ($billplzPayload['amount'] ?? ''),
-            'billplzcollection_id' . ($billplzPayload['collection_id'] ?? ''),
-            'billplzreference_1' . ($billplzPayload['reference_1'] ?? ''),
-        ];
-        
-        $withPipesAll = implode('|', $allComponents);
-        $expected = hash_hmac('sha256', $withPipesAll, $xSignatureKey);
-        if (hash_equals($expected, $signature)) {
+        $data = $billplzPayload;
+        unset($data['x_signature']);
+
+        $maskedKey = substr($xSignatureKey, 0, 6) . '...' . substr($xSignatureKey, -6);
+
+        if ($this->verifyCallbackSignature($data, $signature, $xSignatureKey)) {
             return true;
         }
 
-        // Method 2: Only include fields that are present and non-empty
-        $components = [];
-        
-        if (isset($billplzPayload['id']) && $billplzPayload['id'] !== '') {
-            $components[] = 'billplzid' . $billplzPayload['id'];
-        }
-        if (isset($billplzPayload['paid_at']) && $billplzPayload['paid_at'] !== '') {
-            $components[] = 'billplzpaid_at' . $billplzPayload['paid_at'];
-        }
-        if (isset($billplzPayload['paid']) && $billplzPayload['paid'] !== '') {
-            $components[] = 'billplzpaid' . $billplzPayload['paid'];
-        }
-        if (isset($billplzPayload['transaction_id']) && $billplzPayload['transaction_id'] !== '') {
-            $components[] = 'billplztransaction_id' . $billplzPayload['transaction_id'];
-        }
-        if (isset($billplzPayload['amount']) && $billplzPayload['amount'] !== '') {
-            $components[] = 'billplzamount' . $billplzPayload['amount'];
-        }
-        if (isset($billplzPayload['collection_id']) && $billplzPayload['collection_id'] !== '') {
-            $components[] = 'billplzcollection_id' . $billplzPayload['collection_id'];
-        }
-        if (isset($billplzPayload['reference_1']) && $billplzPayload['reference_1'] !== '') {
-            $components[] = 'billplzreference_1' . $billplzPayload['reference_1'];
+        if ($this->verifyRedirectSignature($data, $signature, $xSignatureKey)) {
+            return true;
         }
 
-        // Try with pipe separator (standard Billplz format)
-        if (!empty($components)) {
-            $withPipes = implode('|', $components);
-            $expected = hash_hmac('sha256', $withPipes, $xSignatureKey);
-            if (hash_equals($expected, $signature)) {
-                return true;
-            }
-        }
+        $callbackSource = $this->buildCallbackSourceString($data);
+        $redirectSource = $this->buildRedirectSourceString($data);
 
-        // Method 3: Try without separator (concatenated) - some implementations use this
-        if (!empty($components)) {
-            $concatenated = implode('', $components);
-            $expected = hash_hmac('sha256', $concatenated, $xSignatureKey);
-            if (hash_equals($expected, $signature)) {
-                return true;
-            }
-        }
-
-        // Method 3: Try with only value (without field name prefix) - some Billplz versions
-        $valueComponents = [];
-        if (isset($billplzPayload['id']) && $billplzPayload['id'] !== '') {
-            $valueComponents[] = $billplzPayload['id'];
-        }
-        if (isset($billplzPayload['paid_at']) && $billplzPayload['paid_at'] !== '') {
-            $valueComponents[] = $billplzPayload['paid_at'];
-        }
-        if (isset($billplzPayload['paid']) && $billplzPayload['paid'] !== '') {
-            $valueComponents[] = $billplzPayload['paid'];
-        }
-        if (isset($billplzPayload['transaction_id']) && $billplzPayload['transaction_id'] !== '') {
-            $valueComponents[] = $billplzPayload['transaction_id'];
-        }
-        if (isset($billplzPayload['amount']) && $billplzPayload['amount'] !== '') {
-            $valueComponents[] = $billplzPayload['amount'];
-        }
-        if (isset($billplzPayload['collection_id']) && $billplzPayload['collection_id'] !== '') {
-            $valueComponents[] = $billplzPayload['collection_id'];
-        }
-        if (isset($billplzPayload['reference_1']) && $billplzPayload['reference_1'] !== '') {
-            $valueComponents[] = $billplzPayload['reference_1'];
-        }
-
-        if (!empty($valueComponents)) {
-            $valueString = implode('|', $valueComponents);
-            $expected = hash_hmac('sha256', $valueString, $xSignatureKey);
-            if (hash_equals($expected, $signature)) {
-                return true;
-            }
-        }
-
-        // Method 4: Try with all fields sorted alphabetically (fallback)
-        $flat = $billplzPayload;
-        unset($flat['x_signature']);
-        ksort($flat);
-
-        $fallbackString = collect($flat)
-            ->filter(fn($value) => $value !== null && $value !== '')
-            ->map(fn($value, $key) => $key . $value)
-            ->implode('|');
-
-        if ($fallbackString) {
-            $fallbackExpected = hash_hmac('sha256', $fallbackString, $xSignatureKey);
-            if (hash_equals($fallbackExpected, $signature)) {
-                return true;
-            }
-        }
-
-        // Log failed verification details for debugging
-        Log::debug('Billplz signature verification failed', [
-            'bill_id' => $billplzPayload['id'] ?? null,
-            'all_components_string' => $withPipesAll,
-            'all_components_expected' => hash_hmac('sha256', $withPipesAll, $xSignatureKey),
-            'components_with_prefix' => $components,
-            'components_values_only' => $valueComponents,
-            'with_pipes' => !empty($components) ? implode('|', $components) : null,
-            'values_only_string' => !empty($valueComponents) ? implode('|', $valueComponents) : null,
-            'fallback_string' => $fallbackString,
+        Log::warning('Billplz x_signature verification failed', [
+            'bill_id' => $data['id'] ?? null,
+            'x_signature_key_used' => $maskedKey,
+            'x_signature_key_source' => $resolvedConfig['base_url_source'] ?? 'config',
             'received_signature' => $signature,
-            'expected_with_pipes' => !empty($components) ? hash_hmac('sha256', implode('|', $components), $xSignatureKey) : null,
-            'expected_values_only' => !empty($valueComponents) ? hash_hmac('sha256', implode('|', $valueComponents), $xSignatureKey) : null,
+            'callback_source_string' => $callbackSource,
+            'callback_expected' => hash_hmac('sha256', $callbackSource, $xSignatureKey),
+            'redirect_source_string' => $redirectSource,
+            'redirect_expected' => hash_hmac('sha256', $redirectSource, $xSignatureKey),
+            'payload_keys' => array_keys($data),
         ]);
 
         return false;
+    }
+
+    /**
+     * Callback (POST): all fields sorted by key, format keyvalue, joined with "|".
+     * Empty/null values are included (just the key name).
+     */
+    private function verifyCallbackSignature(array $data, string $signature, string $key): bool
+    {
+        $expected = hash_hmac('sha256', $this->buildCallbackSourceString($data), $key);
+        return hash_equals($expected, $signature);
+    }
+
+    /**
+     * Redirect (GET): all fields prefixed with "billplz", sorted, joined with "|".
+     */
+    private function verifyRedirectSignature(array $data, string $signature, string $key): bool
+    {
+        $expected = hash_hmac('sha256', $this->buildRedirectSourceString($data), $key);
+        return hash_equals($expected, $signature);
+    }
+
+    private function buildCallbackSourceString(array $data): string
+    {
+        uksort($data, 'strcasecmp');
+
+        $sources = [];
+        foreach ($data as $k => $v) {
+            $sources[] = $k . ($v ?? '');
+        }
+
+        return implode('|', $sources);
+    }
+
+    private function buildRedirectSourceString(array $data): string
+    {
+        $sources = [];
+        foreach ($data as $k => $v) {
+            $sources[] = 'billplz' . $k . ($v ?? '');
+        }
+        usort($sources, 'strcasecmp');
+
+        return implode('|', $sources);
     }
 
     protected function clearOrderCart(Order $order): void
