@@ -1,5 +1,12 @@
 export type { PosAppointmentListItem as PosAppointmentRow } from './posAppointmentTypes'
 
+/** Display payment history `line_type` without underscores (e.g. booking_deposit → booking deposit). */
+export function formatPosPaymentHistoryLineType(raw: string | null | undefined): string {
+  const s = String(raw ?? '').trim()
+  if (!s) return '—'
+  return s.replace(/_/g, ' ')
+}
+
 export type PageResponse<T> = {
   data: T[]
   current_page: number

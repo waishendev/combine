@@ -5,7 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHand
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
-import { extractPaged, formatDateTimeRange, formatDurationFromRange, formatTimeRange } from './posAppointmentHelpers'
+import {
+  extractPaged,
+  formatDateTimeRange,
+  formatDurationFromRange,
+  formatPosPaymentHistoryLineType,
+  formatTimeRange,
+} from './posAppointmentHelpers'
 import type { PosAppointmentCurrentUser, PosAppointmentDetail, PosAppointmentListItem } from './posAppointmentTypes'
 
 type StaffOption = {
@@ -72,6 +78,8 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('')
   const [appointments, setAppointments] = useState<PosAppointmentListItem[]>([])
   const [appointmentsLoading, setAppointmentsLoading] = useState(false)
+  const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
+  const [appointmentListRefreshCountdown, setAppointmentListRefreshCountdown] = useState(5)
   const [appointmentDetail, setAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
@@ -526,6 +534,32 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
   ])
 
   useEffect(() => {
+    setAppointmentListRefreshCountdown(5)
+  }, [
+    appointmentCustomerFilter,
+    appointmentDateFilter,
+    appointmentQuery,
+    appointmentStaffFilter,
+    appointmentStatusFilter,
+    posApptCalendarMonth,
+    posApptViewMode,
+  ])
+
+  useEffect(() => {
+    if (!appointmentListAutoRefresh) return
+    const id = window.setInterval(() => {
+      setAppointmentListRefreshCountdown((c) => {
+        if (c <= 1) {
+          void fetchAppointments()
+          return 5
+        }
+        return c - 1
+      })
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [appointmentListAutoRefresh, fetchAppointments])
+
+  useEffect(() => {
     void fetchAppointmentCustomers('')
     void fetchAppointmentStaffs('')
   }, [fetchAppointmentCustomers, fetchAppointmentStaffs])
@@ -703,11 +737,68 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-5 xl:min-h-0">
         <div className="space-y-5 xl:col-span-3 xl:min-h-0">
           <div className="flex flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
-            <h3 className="mb-3 text-xl font-bold text-gray-900 flex items-center gap-2">
-              <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-              Appointments
+            <h3 className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xl font-bold text-gray-900">
+              <span className="flex items-center gap-2">
+                <svg className="h-6 w-6 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                Appointments
+              </span>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={appointmentListAutoRefresh}
+                    onChange={(e) => {
+                      const on = e.target.checked
+                      setAppointmentListAutoRefresh(on)
+                      if (on) setAppointmentListRefreshCountdown(5)
+                    }}
+                    className="h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                  />
+                  Auto refresh
+                </label>
+                {appointmentListAutoRefresh ? (
+                  <span
+                    className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-lg bg-slate-800 px-2 font-mono text-base font-bold tabular-nums text-white shadow-inner ring-1 ring-slate-600"
+                    title="Seconds until the list refreshes"
+                  >
+                    {appointmentListRefreshCountdown}
+                  </span>
+                ) : (
+                  <span className="text-xs font-medium text-slate-500">Manual refresh only</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppointmentListRefreshCountdown(5)
+                    void fetchAppointments()
+                  }}
+                  disabled={appointmentsLoading}
+                  title={
+                    appointmentListAutoRefresh
+                      ? 'Refresh now (countdown resets to 5)'
+                      : 'Refresh list'
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-blue-500 hover:bg-blue-50 hover:text-blue-900 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <svg
+                    className={`h-4 w-4 shrink-0 ${appointmentsLoading ? 'animate-spin text-blue-600' : 'text-gray-600'}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                  Refresh
+                </button>
+              </div>
             </h3>
             <PosAppointmentsSchedule
               viewMode={posApptViewMode}
@@ -1058,7 +1149,7 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                           <li key={`${item.order_number ?? 'pay'}-${idx}`} className="px-3 py-2 text-slate-700">
                             <span className="font-mono text-[11px] text-slate-500">{item.order_number}</span>
                             <span className="mx-1 text-slate-300">·</span>
-                            {item.line_type}
+                            {formatPosPaymentHistoryLineType(item.line_type)}
                             <span className="float-right font-semibold tabular-nums text-slate-900">
                               RM {Number(item.amount ?? 0).toFixed(2)}
                             </span>

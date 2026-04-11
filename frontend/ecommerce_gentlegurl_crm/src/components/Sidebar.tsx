@@ -490,12 +490,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
         label: 'Booking',
         icon: 'fa-solid fa-calendar-check',
         children: [
-          {
-            key: 'booking-appointments',
-            label: 'Appointments',
-            href: '/booking/appointments',
-            requiredPermission: 'booking.appointments.view',
-          },
+          // {
+          //   key: 'booking-appointments',
+          //   label: 'Appointments',
+          //   href: '/booking/appointments',
+          //   requiredPermission: 'booking.appointments.view',
+          // },
           {
             key: 'booking-cancellation-requests',
             label: 'Cancellation Requests',
