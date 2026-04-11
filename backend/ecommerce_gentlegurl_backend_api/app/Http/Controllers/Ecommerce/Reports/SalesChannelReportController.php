@@ -4,13 +4,43 @@ namespace App\Http\Controllers\Ecommerce\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Services\Reports\SalesChannelReportService;
+use App\Services\Reports\SalesVisualDailyReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class SalesChannelReportController extends Controller
 {
-    public function __construct(private SalesChannelReportService $service)
+    public function __construct(
+        private SalesChannelReportService $service,
+        private SalesVisualDailyReportService $visualDaily,
+    ) {
+    }
+
+    public function visualDailyEcommerce(Request $request)
     {
+        $day = $request->filled('date')
+            ? Carbon::parse((string) $request->query('date'))->startOfDay()
+            : Carbon::today();
+
+        return response()->json($this->visualDaily->ecommerceDay($day));
+    }
+
+    public function visualDailyBooking(Request $request)
+    {
+        $day = $request->filled('date')
+            ? Carbon::parse((string) $request->query('date'))->startOfDay()
+            : Carbon::today();
+
+        return response()->json($this->visualDaily->bookingDay($day));
+    }
+
+    public function visualDailyAll(Request $request)
+    {
+        $day = $request->filled('date')
+            ? Carbon::parse((string) $request->query('date'))->startOfDay()
+            : Carbon::today();
+
+        return response()->json($this->visualDaily->allDay($day));
     }
 
     public function ecommerce(Request $request)
