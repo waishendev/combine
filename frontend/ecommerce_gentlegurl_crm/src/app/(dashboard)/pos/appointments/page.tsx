@@ -26,6 +26,7 @@ export default async function PosAppointmentsPage() {
           staff_id: user.staff_id ?? null,
           staff_name: user.staff_name ?? null,
         }}
+        permissions={user.permissions}
       />
     </div>
   )

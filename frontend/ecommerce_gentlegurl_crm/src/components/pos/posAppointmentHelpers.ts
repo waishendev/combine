@@ -13,6 +13,15 @@ export type PageResponse<T> = {
   last_page: number
   per_page: number
   total: number
+  /** Present on POS appointments list when backend includes global pending count. */
+  pending_cancellation_requests_count: number
+}
+
+function parsePendingCancellationRequestsCount(obj: unknown): number {
+  if (!obj || typeof obj !== 'object') return 0
+  const raw = (obj as { pending_cancellation_requests_count?: unknown }).pending_cancellation_requests_count
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : 0
 }
 
 export function extractPaged<T>(json: unknown): PageResponse<T> {
@@ -33,6 +42,7 @@ export function extractPaged<T>(json: unknown): PageResponse<T> {
       last_page: Number(p.last_page ?? 1),
       per_page: Number(p.per_page ?? p.data.length ?? 0),
       total: Number(p.total ?? p.data.length ?? 0),
+      pending_cancellation_requests_count: parsePendingCancellationRequestsCount(p),
     }
   }
 
@@ -44,6 +54,7 @@ export function extractPaged<T>(json: unknown): PageResponse<T> {
       last_page: 1,
       per_page: arr.length,
       total: arr.length,
+      pending_cancellation_requests_count: parsePendingCancellationRequestsCount(payloadAny),
     }
   }
 
@@ -53,6 +64,7 @@ export function extractPaged<T>(json: unknown): PageResponse<T> {
     last_page: 1,
     per_page: 0,
     total: 0,
+    pending_cancellation_requests_count: 0,
   }
 }
 
@@ -122,6 +134,19 @@ export function posAppointmentMonthPreviewChipClass(tone: PosAppointmentVisualTo
 }
 
 /** Human-readable duration between two ISO timestamps (for booking length). */
+/** Comma-separated add-on names from `booking.addon_items_json`; em dash if none. */
+export function formatBookingAddonSummary(addonItemsJson: unknown): string {
+  const raw = Array.isArray(addonItemsJson) ? addonItemsJson : []
+  const labels = raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return ''
+      const o = item as Record<string, unknown>
+      return String(o.name ?? o.label ?? '').trim()
+    })
+    .filter(Boolean)
+  return labels.length > 0 ? labels.join(', ') : '—'
+}
+
 export function formatDurationFromRange(startAt?: string | null, endAt?: string | null): string {
   if (!startAt || !endAt) return '—'
   const ms = new Date(endAt).getTime() - new Date(startAt).getTime()

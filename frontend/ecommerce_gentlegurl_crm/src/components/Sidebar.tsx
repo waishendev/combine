@@ -496,12 +496,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           //   href: '/booking/appointments',
           //   requiredPermission: 'booking.appointments.view',
           // },
-          {
-            key: 'booking-cancellation-requests',
-            label: 'Cancellation Requests',
-            href: '/booking/cancellation-requests',
-            requiredPermission: 'booking.appointments.view',
-          },
+          // {
+          //   key: 'booking-cancellation-requests',
+          //   label: 'Cancellation Requests',
+          //   href: '/booking/cancellation-requests',
+          //   requiredPermission: 'booking.appointments.view',
+          // },
           {
             key: 'booking-services',
             label: 'Services',

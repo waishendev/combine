@@ -7,6 +7,7 @@ import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
+  formatBookingAddonSummary,
   formatDateTimeRange,
   formatDurationFromRange,
   formatPosPaymentHistoryLineType,
@@ -24,6 +25,57 @@ type StaffOption = {
   is_active?: boolean | number | string | null
 }
 
+type PosCancellationRequestRow = {
+  id: number
+  booking_id: number
+  status: string
+  reason?: string | null
+  requested_at?: string | null
+  booking?: {
+    id: number
+    booking_code?: string | null
+    status?: string
+    start_at?: string
+    end_at?: string | null
+    addon_items_json?: unknown
+    customer?: { id: number; name: string } | null
+    service?: { id: number; name: string } | null
+    staff?: { id: number; name: string } | null
+  }
+}
+
+function PosCancellationRequestSummary({ row }: { row: PosCancellationRequestRow }) {
+  const b = row.booking
+  const addonLine = formatBookingAddonSummary(b?.addon_items_json)
+
+  return (
+    <div className="min-w-0 space-y-1 text-xs text-gray-800">
+      <p className="text-sm font-semibold text-gray-900">Booking #{b?.booking_code ?? row.booking_id}</p>
+      <p className="text-gray-900">{b?.customer?.name ?? '—'}</p>
+      <p>
+        <span className="font-semibold text-gray-600">Service:</span> {b?.service?.name ?? '—'}
+      </p>
+      <p>
+        <span className="font-semibold text-gray-600">Add on:</span> {addonLine}
+      </p>
+      <p>
+        <span className="font-semibold text-gray-600">Staff:</span> {b?.staff?.name ?? '—'}
+      </p>
+      <p>
+        <span className="font-semibold text-gray-600">Time:</span> {formatDateTimeRange(b?.start_at, b?.end_at)}
+      </p>
+      {row.requested_at ? (
+        <p>
+          <span className="font-semibold text-gray-600">Requested at:</span> {new Date(row.requested_at).toLocaleString()}
+        </p>
+      ) : null}
+      <p>
+        <span className="font-semibold text-gray-600">Reason:</span> {row.reason?.trim() ? row.reason : '—'}
+      </p>
+    </div>
+  )
+}
+
 type ToastKind = 'success' | 'error' | 'info' | 'warning'
 type ToastItem = { id: string; kind: ToastKind; text: string }
 
@@ -36,7 +88,13 @@ function ymdInInclusiveRange(needle: string, start: string, end: string): boolea
   return n >= s && n <= e
 }
 
-export default function PosAppointmentsWorkspace({ currentUser }: { currentUser: PosAppointmentCurrentUser }) {
+export default function PosAppointmentsWorkspace({
+  currentUser,
+  permissions = [],
+}: {
+  currentUser: PosAppointmentCurrentUser
+  permissions?: string[]
+}) {
   const appointmentQrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const appointmentQrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const appointmentQrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
@@ -80,6 +138,21 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
   const [appointmentsLoading, setAppointmentsLoading] = useState(false)
   const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
   const [appointmentListRefreshCountdown, setAppointmentListRefreshCountdown] = useState(5)
+  const [pendingCancellationRequestsCount, setPendingCancellationRequestsCount] = useState(0)
+  const [cancellationRequestsModalOpen, setCancellationRequestsModalOpen] = useState(false)
+  const [cancellationRequestsLoading, setCancellationRequestsLoading] = useState(false)
+  const [cancellationRequestsRows, setCancellationRequestsRows] = useState<PosCancellationRequestRow[]>([])
+  const [cancellationRequestsError, setCancellationRequestsError] = useState<string | null>(null)
+  const [cancellationConfirmOpen, setCancellationConfirmOpen] = useState(false)
+  const [cancellationConfirmRow, setCancellationConfirmRow] = useState<PosCancellationRequestRow | null>(null)
+  const [cancellationConfirmAction, setCancellationConfirmAction] = useState<'approve' | 'reject' | null>(null)
+  const [cancellationConfirmNote, setCancellationConfirmNote] = useState('')
+  const [cancellationReviewSubmitting, setCancellationReviewSubmitting] = useState(false)
+
+  const canReviewCancellationRequests = useMemo(
+    () => permissions.includes('booking.appointments.update_status'),
+    [permissions],
+  )
   const [appointmentDetail, setAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
@@ -223,13 +296,16 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         setAppointments([])
+        setPendingCancellationRequestsCount(0)
         return
       }
 
       const paged = extractPaged<PosAppointmentListItem>(json)
       setAppointments(paged.data)
+      setPendingCancellationRequestsCount(paged.pending_cancellation_requests_count)
     } catch {
       setAppointments([])
+      setPendingCancellationRequestsCount(0)
     } finally {
       setAppointmentsLoading(false)
     }
@@ -280,6 +356,64 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
       setAppointmentDetail((json?.data ?? null) as PosAppointmentDetail | null)
     }
   }, [appointmentDetail?.id])
+
+  const loadCancellationRequestsModal = useCallback(async () => {
+    setCancellationRequestsLoading(true)
+    setCancellationRequestsError(null)
+    try {
+      const res = await fetch('/api/proxy/pos/cancellation-requests?status=pending&per_page=50', { cache: 'no-store' })
+      const payload = (await res.json().catch(() => null)) as { data?: { data?: unknown }; message?: string } | null
+      if (!res.ok) {
+        setCancellationRequestsRows([])
+        setCancellationRequestsError(
+          typeof payload?.message === 'string' ? payload.message : 'Failed to load cancellation requests.',
+        )
+        return
+      }
+      const rows = payload?.data?.data ?? payload?.data ?? []
+      setCancellationRequestsRows(Array.isArray(rows) ? (rows as PosCancellationRequestRow[]) : [])
+    } catch {
+      setCancellationRequestsRows([])
+      setCancellationRequestsError('Failed to load cancellation requests.')
+    } finally {
+      setCancellationRequestsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!cancellationRequestsModalOpen) return
+    void loadCancellationRequestsModal()
+  }, [cancellationRequestsModalOpen, loadCancellationRequestsModal])
+
+  const submitPosCancellationReview = useCallback(
+    async (id: number, action: 'approve' | 'reject', adminNote: string | null) => {
+      if (!canReviewCancellationRequests) return
+      setCancellationReviewSubmitting(true)
+      try {
+        const res = await fetch(`/api/proxy/pos/cancellation-requests/${id}/${action}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ admin_note: adminNote }),
+        })
+        const json = await res.json().catch(() => null)
+        if (!res.ok) {
+          showMsg(String((json as { message?: string } | null)?.message ?? `Unable to ${action} request.`), 'error')
+          return
+        }
+        showMsg(action === 'approve' ? 'Cancellation approved.' : 'Cancellation request rejected.', 'success')
+        setCancellationConfirmOpen(false)
+        setCancellationConfirmRow(null)
+        setCancellationConfirmAction(null)
+        setCancellationConfirmNote('')
+        await loadCancellationRequestsModal()
+        await fetchAppointments()
+        await refreshOpenedAppointmentDetail()
+      } finally {
+        setCancellationReviewSubmitting(false)
+      }
+    },
+    [canReviewCancellationRequests, fetchAppointments, loadCancellationRequestsModal, refreshOpenedAppointmentDetail, showMsg],
+  )
 
   const settleAppointmentPayment = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -798,6 +932,26 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
                   </svg>
                   Refresh
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setCancellationRequestsModalOpen(true)}
+                  className="relative inline-flex items-center gap-1.5 rounded-lg border-2 border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-amber-500 hover:bg-amber-50 hover:text-amber-950"
+                  aria-label={
+                    pendingCancellationRequestsCount > 0
+                      ? `Cancellation requests, ${pendingCancellationRequestsCount} pending`
+                      : 'Cancellation requests'
+                  }
+                >
+                  Request
+                  {pendingCancellationRequestsCount > 0 ? (
+                    <span
+                      className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white shadow ring-2 ring-white"
+                      aria-hidden
+                    >
+                      {pendingCancellationRequestsCount > 99 ? '99+' : pendingCancellationRequestsCount}
+                    </span>
+                  ) : null}
+                </button>
               </div>
             </h3>
             <PosAppointmentsSchedule
@@ -1197,6 +1351,202 @@ export default function PosAppointmentsWorkspace({ currentUser }: { currentUser:
           </div>
         </div>
       </div>
+
+      {cancellationRequestsModalOpen ? (
+        <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div
+            className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-cancellation-requests-title"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <h3 id="pos-cancellation-requests-title" className="text-lg font-bold text-gray-900">
+                  Cancellation requests
+                </h3>
+                <p className="mt-0.5 text-xs text-gray-500">Pending customer requests (loaded when you open this panel).</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCancellationRequestsModalOpen(false)
+                  setCancellationRequestsError(null)
+                  setCancellationConfirmOpen(false)
+                  setCancellationConfirmRow(null)
+                  setCancellationConfirmAction(null)
+                  setCancellationConfirmNote('')
+                }}
+                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+              {cancellationRequestsError ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                  {cancellationRequestsError}
+                </div>
+              ) : null}
+              {!canReviewCancellationRequests ? (
+                <p className="text-xs text-amber-800">
+                  You can view requests here. Approve or reject requires permission{' '}
+                  <span className="font-mono">booking.appointments.update_status</span>.
+                </p>
+              ) : null}
+              {cancellationRequestsLoading ? (
+                <p className="text-sm text-gray-600">Loading…</p>
+              ) : cancellationRequestsRows.length === 0 ? (
+                <p className="text-sm text-gray-600">No pending cancellation requests.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {cancellationRequestsRows.map((row) => (
+                    <li
+                      key={row.id}
+                      className="rounded-xl border border-gray-200 bg-gray-50/80 p-3 text-sm text-gray-800 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <PosCancellationRequestSummary row={row} />
+                        {canReviewCancellationRequests ? (
+                          <div className="flex shrink-0 flex-wrap gap-2 self-start">
+                            <button
+                              type="button"
+                              disabled={cancellationReviewSubmitting}
+                              onClick={() => {
+                                setCancellationConfirmRow(row)
+                                setCancellationConfirmAction('approve')
+                                setCancellationConfirmNote('')
+                                setCancellationConfirmOpen(true)
+                              }}
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              disabled={cancellationReviewSubmitting}
+                              onClick={() => {
+                                setCancellationConfirmRow(row)
+                                setCancellationConfirmAction('reject')
+                                setCancellationConfirmNote('')
+                                setCancellationConfirmOpen(true)
+                              }}
+                              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 disabled:opacity-50"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {/* <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => void loadCancellationRequestsModal()}
+                disabled={cancellationRequestsLoading}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
+              >
+                Reload
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCancellationRequestsModalOpen(false)
+                  setCancellationRequestsError(null)
+                  setCancellationConfirmOpen(false)
+                  setCancellationConfirmRow(null)
+                  setCancellationConfirmAction(null)
+                  setCancellationConfirmNote('')
+                }}
+                className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white"
+              >
+                Close
+              </button>
+            </div> */}
+          </div>
+        </div>
+      ) : null}
+
+      {cancellationConfirmOpen && cancellationConfirmRow && cancellationConfirmAction ? (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div
+            className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-cancellation-confirm-title"
+          >
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h3 id="pos-cancellation-confirm-title" className="text-lg font-bold text-gray-900">
+                {cancellationConfirmAction === 'approve' ? 'Approve cancellation?' : 'Reject cancellation?'}
+              </h3>
+              <p className="mt-1 text-xs text-gray-500">Review the details and add an optional note before confirming.</p>
+            </div>
+            <div className="max-h-[50vh] space-y-4 overflow-y-auto px-5 py-4">
+              <div className="rounded-lg border border-gray-100 bg-gray-50/90 p-3">
+                <PosCancellationRequestSummary row={cancellationConfirmRow} />
+              </div>
+              <div>
+                <label htmlFor="pos-cancellation-confirm-note" className="text-xs font-semibold text-gray-600">
+                  Note to customer (optional)
+                </label>
+                <textarea
+                  id="pos-cancellation-confirm-note"
+                  rows={3}
+                  value={cancellationConfirmNote}
+                  onChange={(e) => setCancellationConfirmNote(e.target.value)}
+                  disabled={cancellationReviewSubmitting}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                  placeholder="Internal note stored on the request…"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                type="button"
+                disabled={cancellationReviewSubmitting}
+                onClick={() => {
+                  setCancellationConfirmOpen(false)
+                  setCancellationConfirmRow(null)
+                  setCancellationConfirmAction(null)
+                  setCancellationConfirmNote('')
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={cancellationReviewSubmitting}
+                onClick={() =>
+                  void submitPosCancellationReview(
+                    cancellationConfirmRow.id,
+                    cancellationConfirmAction,
+                    cancellationConfirmNote.trim() || null,
+                  )
+                }
+                className={
+                  cancellationConfirmAction === 'approve'
+                    ? 'rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'
+                    : 'rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'
+                }
+              >
+                {cancellationReviewSubmitting
+                  ? 'Submitting…'
+                  : cancellationConfirmAction === 'approve'
+                    ? 'Confirm approve'
+                    : 'Confirm reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {appointmentRescheduleOpen && appointmentDetail && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
