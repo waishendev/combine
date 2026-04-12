@@ -384,7 +384,8 @@ class PosController extends Controller
                 'discount_total' => 0,
                 'shipping_fee' => 0,
                 'grand_total' => $amount,
-                'pickup_or_shipping' => 'pickup',
+                'pickup_or_shipping' => 'in_store',
+                'pickup_store_id' => null,
                 'placed_at' => now(),
                 'paid_at' => now(),
                 'completed_at' => now(),
@@ -696,7 +697,10 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
-            'customer_id' => ['required', 'integer', 'exists:customers,id'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_phone' => ['nullable', 'string', 'max:32'],
+            'guest_email' => ['nullable', 'string', 'email', 'max:255'],
             'start_at' => ['required', 'date'],
             'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'selected_option_ids' => ['nullable', 'array'],
@@ -709,7 +713,29 @@ class PosController extends Controller
         ]);
 
         $service = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
-        $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
+
+        $customer = null;
+        $guestName = null;
+        $guestPhone = null;
+        $guestEmail = null;
+
+        if (! empty($validated['customer_id'])) {
+            $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
+        } else {
+            $guestName = trim((string) ($validated['guest_name'] ?? ''));
+            $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
+            $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
+
+            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
+                return $this->respondError(__('Guest name, phone, and email are required when no member is selected.'), 422);
+            }
+
+            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
+            }
+
+            $guestEmail = Str::lower($guestEmail);
+        }
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
@@ -811,7 +837,10 @@ class PosController extends Controller
         $item = PosCartServiceItem::query()->create([
             'pos_cart_id' => $cart->id,
             'booking_service_id' => $service->id,
-            'customer_id' => $customer->id,
+            'customer_id' => $customer?->id,
+            'guest_name' => $guestName,
+            'guest_phone' => $guestPhone,
+            'guest_email' => $guestEmail,
             'service_name_snapshot' => $service->name,
             'price_snapshot' => (float) ($service->price ?? $service->service_price ?? 0),
             'qty' => $qty,
@@ -829,10 +858,85 @@ class PosController extends Controller
 
         return $this->respond([
             'item' => $item->load(['bookingService:id,name', 'assignedStaff:id,name']),
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ], __('Booking service added to POS cart.'));
     }
 
+    /**
+     * Apply the same member or guest snapshot to every booking line (and package lines for member) in the POS cart.
+     */
+    public function syncCustomerContext(Request $request)
+    {
+        $validated = $request->validate([
+            'mode' => ['required', 'in:member,guest'],
+            'member_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_phone' => ['nullable', 'string', 'max:32'],
+            'guest_email' => ['nullable', 'string', 'email', 'max:255'],
+        ]);
+
+        $cart = $this->resolveCart((int) $request->user()->id)
+            ->load(['serviceItems', 'packageItems']);
+
+        if ($cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
+            return $this->respond([
+                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            ]);
+        }
+
+        if (($validated['mode'] ?? '') === 'guest') {
+            if ($cart->packageItems->isNotEmpty()) {
+                return $this->respondError(__('Guest checkout cannot be used when a service package is in the cart. Assign a member first.'), 422);
+            }
+
+            $guestName = trim((string) ($validated['guest_name'] ?? ''));
+            $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
+            $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
+
+            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
+                return $this->respondError(__('Guest name, phone, and email are required.'), 422);
+            }
+
+            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
+            }
+
+            $guestEmail = Str::lower($guestEmail);
+
+            foreach ($cart->serviceItems as $row) {
+                $row->update([
+                    'customer_id' => null,
+                    'guest_name' => $guestName,
+                    'guest_phone' => $guestPhone,
+                    'guest_email' => $guestEmail,
+                ]);
+            }
+        } else {
+            $memberId = (int) ($validated['member_id'] ?? 0);
+            if ($memberId <= 0) {
+                return $this->respondError(__('member_id is required for member mode.'), 422);
+            }
+
+            Customer::query()->findOrFail($memberId);
+
+            foreach ($cart->serviceItems as $row) {
+                $row->update([
+                    'customer_id' => $memberId,
+                    'guest_name' => null,
+                    'guest_phone' => null,
+                    'guest_email' => null,
+                ]);
+            }
+
+            foreach ($cart->packageItems as $row) {
+                $row->update(['customer_id' => $memberId]);
+            }
+        }
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+        ], __('Cart customer context updated.'));
+    }
 
     public function bookService(Request $request, BookingAvailabilityService $availabilityService)
     {
@@ -909,7 +1013,7 @@ class PosController extends Controller
 
         return $this->respond([
             'item' => $item->load(['servicePackage:id,name,selling_price', 'customer:id,name']),
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ], __('Package added to POS cart.'));
     }
 
@@ -925,7 +1029,7 @@ class PosController extends Controller
         $item->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
@@ -936,7 +1040,7 @@ class PosController extends Controller
         $item->delete();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
@@ -1012,7 +1116,7 @@ class PosController extends Controller
         $item->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
@@ -1123,7 +1227,7 @@ class PosController extends Controller
             }
 
             return $this->respond([
-                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
             ]);
         }
 
@@ -1139,7 +1243,7 @@ class PosController extends Controller
         $item->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
@@ -1150,7 +1254,7 @@ class PosController extends Controller
         $item->delete();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
@@ -1162,13 +1266,31 @@ class PosController extends Controller
         $item->delete();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+        ]);
+    }
+
+    /**
+     * Release a reserved package claim for a POS cart service line (before checkout / remove).
+     * Does not delete the cart line.
+     */
+    public function releaseServiceItemPackageClaim(Request $request, int $itemId)
+    {
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->serviceItems()->findOrFail($itemId);
+        $released = $this->customerServicePackageService->releaseReservedClaimsBySource('POS', (int) $item->id);
+        if ($released === 0) {
+            return $this->respondError(__('No reserved package claim found for this line. It may already be released or consumed.'), 422);
+        }
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
     public function cart(Request $request)
     {
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
+        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
 
         return $this->respond([
             'cart' => $this->serializeCart($cart),
@@ -1248,7 +1370,7 @@ class PosController extends Controller
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
+        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
         if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
         }
@@ -1302,7 +1424,7 @@ class PosController extends Controller
         $cart->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
@@ -1312,7 +1434,7 @@ class PosController extends Controller
         $this->clearVoucherFromCart($cart);
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
@@ -1336,7 +1458,7 @@ class PosController extends Controller
             $item->discount_value = 0;
             $item->save();
 
-            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
+            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
         }
 
         $isStaffUser = !empty($request->user()?->staff_id);
@@ -1355,7 +1477,7 @@ class PosController extends Controller
         $item->discount_value = $discountValue;
         $item->save();
 
-        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
     }
 
     public function checkout(Request $request, OrderPaymentService $orderPaymentService)
@@ -1363,6 +1485,9 @@ class PosController extends Controller
         $validated = $request->validate([
             'payment_method' => ['required', 'in:cash,qrpay'],
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_phone' => ['nullable', 'string', 'max:32'],
+            'guest_email' => ['nullable', 'string', 'email', 'max:255'],
             'items' => ['nullable', 'array'],
             'items.*.cart_item_id' => ['nullable', 'integer'],
             'items.*.staff_splits' => ['nullable', 'array'],
@@ -1390,7 +1515,7 @@ class PosController extends Controller
             'package_items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
+        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
         if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
         }
@@ -1532,6 +1657,55 @@ class PosController extends Controller
 
             $grandTotal = max(0, $subtotal - $discountTotal);
 
+            $guestName = trim((string) ($validated['guest_name'] ?? ''));
+            $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
+            $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
+            $hasGuestPayload = $guestName !== '' || $guestPhone !== '' || $guestEmail !== '';
+            if ($hasGuestPayload) {
+                if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
+                    abort(422, __('Guest name, phone, and email are all required when providing guest details.'));
+                }
+                if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                    abort(422, __('Invalid guest phone.'));
+                }
+            }
+
+            if (empty($customerId) && ! $hasGuestPayload) {
+                $guestLine = $cart->serviceItems->first(function (PosCartServiceItem $item) {
+                    return empty($item->customer_id) && trim((string) ($item->guest_email ?? '')) !== '';
+                });
+                if ($guestLine) {
+                    $guestName = trim((string) ($guestLine->guest_name ?? ''));
+                    $guestPhone = trim((string) ($guestLine->guest_phone ?? ''));
+                    $guestEmail = trim((string) ($guestLine->guest_email ?? ''));
+                    if ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                        $hasGuestPayload = true;
+                    }
+                }
+            }
+
+            $invoiceProfile = SettingService::get('ecommerce.invoice_profile', []);
+            $walkInBillTo = data_get($invoiceProfile, 'pos_walk_in_bill_to', [
+                'name' => 'Loyalty Tester',
+                'phone' => '0123456789',
+                'email' => 'loyalty.tester@example.com',
+            ]);
+
+            $posBillingName = null;
+            $posBillingPhone = null;
+            $posPaymentMeta = null;
+            if (! empty($customerId)) {
+                // Invoice "Bill To" uses customer relation when member is assigned.
+            } elseif ($hasGuestPayload) {
+                $posBillingName = $guestName;
+                $posBillingPhone = $guestPhone;
+                $posPaymentMeta = ['pos_billing_email' => $guestEmail];
+            } else {
+                $posBillingName = (string) (data_get($walkInBillTo, 'name') ?: 'Loyalty Tester');
+                $posBillingPhone = (string) (data_get($walkInBillTo, 'phone') ?: '');
+                $posPaymentMeta = ['pos_billing_email' => (string) (data_get($walkInBillTo, 'email') ?: '')];
+            }
+
             $order = Order::create([
                 'order_number' => $this->generateOrderNumber(),
                 'customer_id' => $customerId,
@@ -1544,7 +1718,11 @@ class PosController extends Controller
                 'discount_total' => $discountTotal,
                 'shipping_fee' => 0,
                 'grand_total' => $grandTotal,
-                'pickup_or_shipping' => 'pickup',
+                'pickup_or_shipping' => 'in_store',
+                'pickup_store_id' => null,
+                'billing_name' => $posBillingName,
+                'billing_phone' => $posBillingPhone,
+                'payment_meta' => $posPaymentMeta,
                 'placed_at' => now(),
                 'paid_at' => now(),
                 'completed_at' => now(),
@@ -1665,8 +1843,12 @@ class PosController extends Controller
                     abort(422, __('Service is not available for checkout.'));
                 }
 
-                if (! $serviceItem->customer_id) {
-                    abort(422, __('Member is required for booking service item.'));
+                $hasGuestSnapshot = trim((string) ($serviceItem->guest_name ?? '')) !== ''
+                    && trim((string) ($serviceItem->guest_phone ?? '')) !== ''
+                    && trim((string) ($serviceItem->guest_email ?? '')) !== '';
+
+                if (! $serviceItem->customer_id && ! $hasGuestSnapshot) {
+                    abort(422, __('Each booking service line must have a member or complete guest details.'));
                 }
 
                 if (! $serviceItem->start_at) {
@@ -1688,7 +1870,10 @@ class PosController extends Controller
                 $booking = Booking::query()->create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => 'STAFF',
-                    'customer_id' => (int) $serviceItem->customer_id,
+                    'customer_id' => $serviceItem->customer_id ? (int) $serviceItem->customer_id : null,
+                    'guest_name' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_name ?? ''),
+                    'guest_phone' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_phone ?? ''),
+                    'guest_email' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_email ?? ''),
                     'staff_id' => $serviceItem->assigned_staff_id,
                     'service_id' => $serviceItem->booking_service_id,
                     'start_at' => $startAt,
@@ -1705,13 +1890,15 @@ class PosController extends Controller
                 ]);
 
 
-                $this->customerServicePackageService->attachReservedClaimsToBooking(
-                    (int) $serviceItem->customer_id,
-                    (int) $serviceItem->booking_service_id,
-                    'POS',
-                    (int) $serviceItem->id,
-                    (int) $booking->id,
-                );
+                if ($serviceItem->customer_id) {
+                    $this->customerServicePackageService->attachReservedClaimsToBooking(
+                        (int) $serviceItem->customer_id,
+                        (int) $serviceItem->booking_service_id,
+                        'POS',
+                        (int) $serviceItem->id,
+                        (int) $booking->id,
+                    );
+                }
 
                 $lineTotal = round(((float) $serviceItem->price_snapshot) * (int) $serviceItem->qty, 2);
                 $splits = collect($serviceItem->staff_splits ?? []);
@@ -1737,7 +1924,7 @@ class PosController extends Controller
                     'order_id' => $order->id,
                     'booking_id' => $booking->id,
                     'booking_service_id' => $serviceItem->booking_service_id,
-                    'customer_id' => (int) $serviceItem->customer_id,
+                    'customer_id' => $serviceItem->customer_id ? (int) $serviceItem->customer_id : null,
                     'service_name_snapshot' => $serviceItem->service_name_snapshot,
                     'price_snapshot' => (float) $serviceItem->price_snapshot,
                     'qty' => (int) $serviceItem->qty,
@@ -2163,13 +2350,26 @@ class PosController extends Controller
         $depositByServiceItemId = collect($depositBreakdown['deposit_by_service_item'] ?? [])
             ->mapWithKeys(fn ($amount, $id) => [(int) $id => (float) $amount])
             ->all();
+        $depositAddonByServiceItemId = (array) ($depositBreakdown['deposit_by_service_item_addons'] ?? []);
 
-        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($depositByServiceItemId, $serviceClaimStatuses) {
+        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($depositByServiceItemId, $depositAddonByServiceItemId, $serviceClaimStatuses) {
             $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
             $serviceType = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
             $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
             $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
             $depositContribution = $claimedByPackage ? 0.0 : (float) ($depositByServiceItemId[(int) $item->id] ?? 0);
+
+            $addonDepositLines = collect($depositAddonByServiceItemId[(int) $item->id] ?? [])
+                ->map(fn ($row) => [
+                    'id' => isset($row['id']) ? (int) $row['id'] : null,
+                    'name' => (string) ($row['name'] ?? 'Add-on'),
+                    'deposit' => round((float) ($row['deposit_contribution'] ?? 0), 2),
+                ])
+                ->filter(fn (array $row) => ((float) ($row['deposit'] ?? 0)) > 0.0001)
+                ->values()
+                ->all();
+            $depositAddonTotal = round(collect($addonDepositLines)->sum(fn (array $r) => (float) ($r['deposit'] ?? 0)), 2);
+            $depositPayableTotal = round($depositContribution + $depositAddonTotal, 2);
 
             return [
                 'id' => $item->id,
@@ -2187,11 +2387,22 @@ class PosController extends Controller
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
                     'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                     'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                    'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
                 ])->values()->all(),
                 'deposit_contribution' => (float) $depositContribution,
+                'deposit_main_reference' => $claimedByPackage
+                    ? max(0.0, (float) ($item->bookingService?->deposit_amount ?? 0))
+                    : null,
+                'deposit_addon_lines' => $addonDepositLines,
+                'deposit_addon_total' => (float) $depositAddonTotal,
+                'deposit_payable_total' => (float) $depositPayableTotal,
                 'package_claim_status' => $claimStatus,
                 'claimed_by_package' => $claimedByPackage,
                 'customer_id' => $item->customer_id ? (int) $item->customer_id : null,
+                'customer_name' => $item->customer_id ? (string) ($item->customer?->name ?? '') : null,
+                'guest_name' => $item->guest_name ? (string) $item->guest_name : null,
+                'guest_phone' => $item->guest_phone ? (string) $item->guest_phone : null,
+                'guest_email' => $item->guest_email ? (string) $item->guest_email : null,
                 'assigned_staff_id' => $item->assigned_staff_id ? (int) $item->assigned_staff_id : null,
                 'assigned_staff_name' => $item->assignedStaff?->name,
                 'start_at' => $item->start_at?->toIso8601String(),
@@ -2214,6 +2425,7 @@ class PosController extends Controller
                 'unit_price' => (float) $item->price_snapshot,
                 'line_total' => (float) $lineTotal,
                 'customer_id' => $item->customer_id ? (int) $item->customer_id : null,
+                'customer_name' => $item->customer_id ? (string) ($item->customer?->name ?? '') : null,
             ];
         })->values();
 
@@ -2284,13 +2496,13 @@ class PosController extends Controller
                 ->values()
                 ->all();
             $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
-            if (in_array($claimStatus, ['reserved', 'consumed'], true)) {
-                continue;
+            $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
+            // Package claim waives the main service deposit only; add-on deposits still apply.
+            if (! $claimedByPackage) {
+                $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
+                $mainDeposit = max(0, (float) ($item->bookingService?->deposit_amount ?? 0));
+                $candidates[] = ['service_item_id' => $itemId, 'type' => $type, 'deposit_amount' => $mainDeposit];
             }
-
-            $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
-            $mainDeposit = max(0, (float) ($item->bookingService?->deposit_amount ?? 0));
-            $candidates[] = ['service_item_id' => $itemId, 'type' => $type, 'deposit_amount' => $mainDeposit];
 
             foreach ((array) ($item->addon_items_json ?? []) as $addon) {
                 $addonType = strtoupper((string) ($addon['linked_service_type'] ?? ''));
@@ -2308,6 +2520,9 @@ class PosController extends Controller
             }
         }
 
+        $standardBaseAmount = 0.0;
+        $standardBaseAppliedItemId = null;
+
         $premiumCandidates = collect($candidates)->filter(fn (array $row) => ($row['type'] ?? '') === 'PREMIUM')->values();
         if ($premiumCandidates->isNotEmpty()) {
             $premiumCount = (int) $premiumCandidates->count();
@@ -2318,8 +2533,8 @@ class PosController extends Controller
                     continue;
                 }
                 $depositAmount = (float) ($row['deposit_amount'] ?? 0);
-                $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + $depositAmount, 2);
-                if (($row['scope'] ?? 'main') === 'addon') {
+                $isAddon = ($row['scope'] ?? 'main') === 'addon';
+                if ($isAddon) {
                     foreach ($depositByServiceItemAddons[$itemId] as &$addonRow) {
                         if ((int) ($addonRow['id'] ?? 0) === (int) ($row['addon_id'] ?? 0)) {
                             $addonRow['deposit_contribution'] = round($depositAmount, 2);
@@ -2327,31 +2542,47 @@ class PosController extends Controller
                         }
                     }
                     unset($addonRow);
+                } else {
+                    $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + $depositAmount, 2);
                 }
             }
         } else {
             $standardCandidates = collect($candidates)->filter(fn (array $row) => ($row['type'] ?? '') !== 'PREMIUM')->values();
             $standardCount = (int) $standardCandidates->count();
-            if ($standardCandidates->isNotEmpty()) {
-                $selectedStandard = $standardCandidates->first();
-                $standardBaseAmount = max(0, (float) ($selectedStandard['deposit_amount'] ?? 0));
-                $standardBaseAppliedItemId = (int) ($selectedStandard['service_item_id'] ?? 0) ?: null;
-                if ($standardBaseAppliedItemId) {
-                    $depositByServiceItem[$standardBaseAppliedItemId] = round($standardBaseAmount, 2);
-                    if (($selectedStandard['scope'] ?? 'main') === 'addon') {
-                        foreach ($depositByServiceItemAddons[$standardBaseAppliedItemId] as &$addonRow) {
-                            if ((int) ($addonRow['id'] ?? 0) === (int) ($selectedStandard['addon_id'] ?? 0)) {
-                                $addonRow['deposit_contribution'] = round($standardBaseAmount, 2);
-                                break;
-                            }
+            foreach ($standardCandidates as $row) {
+                $itemId = (int) ($row['service_item_id'] ?? 0);
+                if ($itemId <= 0) {
+                    continue;
+                }
+                $depositAmount = (float) ($row['deposit_amount'] ?? 0);
+                $isAddon = ($row['scope'] ?? 'main') === 'addon';
+                if ($isAddon) {
+                    foreach ($depositByServiceItemAddons[$itemId] as &$addonRow) {
+                        if ((int) ($addonRow['id'] ?? 0) === (int) ($row['addon_id'] ?? 0)) {
+                            $addonRow['deposit_contribution'] = round($depositAmount, 2);
+                            break;
                         }
-                        unset($addonRow);
+                    }
+                    unset($addonRow);
+                } else {
+                    $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + $depositAmount, 2);
+                    if ($standardBaseAppliedItemId === null) {
+                        $standardBaseAmount = round($depositAmount, 2);
+                        $standardBaseAppliedItemId = $itemId;
                     }
                 }
             }
         }
 
-        $depositTotal = round((float) collect($depositByServiceItem)->sum(), 2);
+        $addonDepositSum = 0.0;
+        foreach ($depositByServiceItemAddons as $rows) {
+            foreach ((array) $rows as $ar) {
+                $addonDepositSum += (float) ($ar['deposit_contribution'] ?? 0);
+            }
+        }
+        $addonDepositSum = round($addonDepositSum, 2);
+
+        $depositTotal = round((float) collect($depositByServiceItem)->sum() + $addonDepositSum, 2);
 
         return [
             'premium_count' => $premiumCount,

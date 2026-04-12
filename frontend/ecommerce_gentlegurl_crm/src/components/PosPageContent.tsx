@@ -77,19 +77,52 @@ type ServiceCartItem = {
   line_total: number
   addon_duration_min?: number
   addon_price?: number
-  addon_items?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  addon_items?: Array<{
+    id?: number | null
+    name: string
+    extra_duration_min: number
+    extra_price: number
+    linked_deposit_amount?: number
+  }>
   service_type?: string | null
+  /** Main service deposit only (excludes add-on deposits) */
   deposit_contribution?: number
+  /** When package covers main service: booking service deposit_amount for strikethrough UI */
+  deposit_main_reference?: number | null
+  deposit_addon_lines?: Array<{ id?: number | null; name: string; deposit: number }>
+  deposit_addon_total?: number
+  /** Main + add-on deposits due at checkout for this line */
+  deposit_payable_total?: number
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null
   claimed_by_package?: boolean
   assigned_staff_id?: number | null
   assigned_staff_name?: string | null
   customer_id?: number | null
+  customer_name?: string | null
+  guest_name?: string | null
+  guest_phone?: string | null
+  guest_email?: string | null
   start_at?: string | null
   end_at?: string | null
   notes?: string | null
   staff_splits?: Array<{ staff_id: number; share_percent: number; service_commission_rate_snapshot?: number }>
   commission_rate_used?: number
+}
+
+function formatPosServiceCartIdentity(
+  item: ServiceCartItem,
+  selectedMember: { id: number; name: string } | null,
+): string | null {
+  if (item.customer_id) {
+    const name =
+      (item.customer_name && item.customer_name.trim()) ||
+      (selectedMember?.id === item.customer_id ? selectedMember.name.trim() : '') ||
+      ''
+    return name ? `Member: ${name}` : `Member: (#${item.customer_id})`
+  }
+  const g = item.guest_name?.trim()
+  if (g) return `Guest: ${g}`
+  return null
 }
 
 type PackageCartItem = {
@@ -109,6 +142,18 @@ type PackageCartItem = {
     service_commission_rate_snapshot?: number
     commission_amount_snapshot?: number
   }>
+}
+
+function formatPosPackageMemberLabel(
+  packageItem: PackageCartItem,
+  selectedMember: { id: number; name: string } | null,
+): string {
+  if (!packageItem.customer_id) return 'Member: Not assigned'
+  const name =
+    (packageItem.customer_name && packageItem.customer_name.trim()) ||
+    (selectedMember?.id === packageItem.customer_id ? selectedMember.name.trim() : '') ||
+    ''
+  return name ? `Member: ${name}` : `Member: (#${packageItem.customer_id})`
 }
 
 type BookingServiceOption = {
@@ -420,8 +465,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
   const [bookingModalError, setBookingModalError] = useState<string | null>(null)
+  const [bookingIdentityMode, setBookingIdentityMode] = useState<'member' | 'guest'>('member')
+  const [bookingGuestName, setBookingGuestName] = useState('')
+  const [bookingGuestPhone, setBookingGuestPhone] = useState('')
+  const [bookingGuestEmail, setBookingGuestEmail] = useState('')
+  /** Last guest contact used for Book Services — reused for the next service add & checkout guest mode */
+  const [guestContactCache, setGuestContactCache] = useState({ name: '', phone: '', email: '' })
+  /** Checkout confirmation: member vs guest when book services exist without packages */
+  const [checkoutIdentityMode, setCheckoutIdentityMode] = useState<'member' | 'guest'>('member')
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
   const [serviceRedeemingIds, setServiceRedeemingIds] = useState<Record<number, boolean>>({})
+  const [serviceUnclaimingIds, setServiceUnclaimingIds] = useState<Record<number, boolean>>({})
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -549,6 +603,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const cartItems = useMemo(() => cart?.items ?? [], [cart?.items])
   const cartServiceItems = useMemo(() => cart?.service_items ?? [], [cart?.service_items])
   const cartPackageItems = useMemo(() => cart?.package_items ?? [], [cart?.package_items])
+
+  const hasCartProducts = cartItems.length > 0
+  const hasCartBookServices = cartServiceItems.length > 0
+  const hasCartPackages = cartPackageItems.length > 0
+  /** Member/guest validation before pay (product-only carts skip) */
+  const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages
+  /** Rules C,E,F,G: any package ⇒ member only, no guest */
+  const checkoutRequiresMemberOnly = hasCartPackages
+  /** Rules B,D: book services without packages ⇒ member or guest */
+  const checkoutAllowsGuestToggle = hasCartBookServices && !hasCartPackages
+  /** Same Member / Guest UI as booking flow; product-only adds optional context + Clear */
+  const showMemberGuestToggleInCheckout = checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation
+
+  const guestContactIsComplete = useMemo(() => {
+    const name = guestContactCache.name.trim()
+    const phone = guestContactCache.phone.trim()
+    const email = guestContactCache.email.trim()
+    const phoneOk = /^\+?[0-9]{8,15}$/.test(phone)
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    return Boolean(name && phoneOk && emailOk)
+  }, [guestContactCache.email, guestContactCache.name, guestContactCache.phone])
 
   const totalItems = useMemo(() => {
     const productQty = cartItems.reduce((sum, item) => sum + item.qty, 0)
@@ -1342,6 +1417,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingQuestions([])
     setBookingSelectedOptionIds([])
     setBookingModalError(null)
+    if (selectedMember?.id) {
+      setBookingIdentityMode('member')
+      setBookingGuestName('')
+      setBookingGuestPhone('')
+      setBookingGuestEmail('')
+    } else if (guestContactCache.name.trim() && guestContactCache.email.trim()) {
+      setBookingIdentityMode('guest')
+      setBookingGuestName(guestContactCache.name)
+      setBookingGuestPhone(guestContactCache.phone)
+      setBookingGuestEmail(guestContactCache.email)
+    } else {
+      setBookingIdentityMode('member')
+      setBookingGuestName('')
+      setBookingGuestPhone('')
+      setBookingGuestEmail('')
+    }
     setBookingModalOpen(true)
 
     try {
@@ -1378,7 +1469,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     } catch {
       setBookingQuestions([])
     }
-  }, [currentUser.staff_id])
+  }, [currentUser.staff_id, guestContactCache.email, guestContactCache.name, guestContactCache.phone, selectedMember?.id])
 
   const bookingSelectedOptions = useMemo(() => {
     const selected = new Set(bookingSelectedOptionIds)
@@ -1396,9 +1487,35 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
     setBookingModalError(null)
-    if (!selectedMember?.id) {
-      setBookingModalError('Please assign member.')
-      return
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const phonePattern = /^\+?[0-9]{8,15}$/
+
+    if (bookingIdentityMode === 'member') {
+      if (!selectedMember?.id) {
+        setBookingModalError('Please assign member.')
+        return
+      }
+    } else {
+      if (!bookingGuestName.trim()) {
+        setBookingModalError('Guest name is required.')
+        return
+      }
+      if (!bookingGuestPhone.trim()) {
+        setBookingModalError('Guest phone is required.')
+        return
+      }
+      if (!phonePattern.test(bookingGuestPhone.trim())) {
+        setBookingModalError('Please enter a valid phone number (8-15 digits, optional + prefix).')
+        return
+      }
+      if (!bookingGuestEmail.trim()) {
+        setBookingModalError('Guest email is required.')
+        return
+      }
+      if (!emailPattern.test(bookingGuestEmail.trim())) {
+        setBookingModalError('Please enter a valid email address.')
+        return
+      }
     }
     if (!bookingAssignedStaffId) {
       setBookingModalError('Please select assigned staff.')
@@ -1422,19 +1539,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     setBookingSubmitting(true)
+    const payload: Record<string, unknown> = {
+      booking_service_id: bookingServiceDraft.id,
+      assigned_staff_id: bookingAssignedStaffId,
+      selected_option_ids: bookingSelectedOptionIds,
+      start_at: bookingSlotValue,
+      notes: bookingNotes || null,
+      staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
+      qty: 1,
+    }
+    if (bookingIdentityMode === 'member' && selectedMember?.id) {
+      payload.customer_id = selectedMember.id
+    } else {
+      payload.guest_name = bookingGuestName.trim()
+      payload.guest_phone = bookingGuestPhone.trim()
+      payload.guest_email = bookingGuestEmail.trim()
+    }
     const res = await fetch('/api/proxy/pos/cart/add-service', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        booking_service_id: bookingServiceDraft.id,
-        customer_id: selectedMember.id,
-        assigned_staff_id: bookingAssignedStaffId,
-        selected_option_ids: bookingSelectedOptionIds,
-        start_at: bookingSlotValue,
-        notes: bookingNotes || null,
-        staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
-        qty: 1,
-      }),
+      body: JSON.stringify(payload),
     })
     const json = await res.json().catch(() => null)
 
@@ -1445,11 +1569,32 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     setCart((json?.data?.cart ?? null) as Cart | null)
+    if (bookingIdentityMode === 'guest') {
+      setGuestContactCache({
+        name: bookingGuestName.trim(),
+        phone: bookingGuestPhone.trim(),
+        email: bookingGuestEmail.trim(),
+      })
+    }
     showMsg('Service added to cart. Continue with checkout to collect payment.', 'success')
     setBookingModalOpen(false)
     setBookingModalError(null)
     setBookingSubmitting(false)
-  }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingQuestions, bookingSelectedOptionIds, bookingServiceDraft, bookingSlotValue, selectedMember?.id, showMsg])
+  }, [
+    bookingAssignedStaffId,
+    bookingDate,
+    bookingGuestEmail,
+    bookingGuestName,
+    bookingGuestPhone,
+    bookingIdentityMode,
+    bookingNotes,
+    bookingQuestions,
+    bookingSelectedOptionIds,
+    bookingServiceDraft,
+    bookingSlotValue,
+    selectedMember?.id,
+    showMsg,
+  ])
 
 
   useEffect(() => {
@@ -1579,6 +1724,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCart((json?.data?.cart ?? null) as Cart | null)
   }, [showMsg])
 
+  const updatePackageCartQty = useCallback(
+    async (itemId: number, qty: number) => {
+      const next = Math.max(1, Math.min(10, Math.floor(qty)))
+      const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qty: next }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to update package quantity.', 'error')
+        return
+      }
+      setCart((json?.data?.cart ?? null) as Cart | null)
+    },
+    [showMsg],
+  )
+
 
 
   const redeemServiceItem = useCallback(async (serviceItem: ServiceCartItem) => {
@@ -1614,6 +1777,37 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setServiceRedeemingIds((prev) => ({ ...prev, [serviceItem.id]: false }))
     }
   }, [selectedMember?.id, showMsg])
+
+  const unclaimServicePackage = useCallback(
+    async (serviceItem: ServiceCartItem) => {
+      if (serviceItem.package_claim_status !== 'reserved') {
+        showMsg('Only a reserved package claim can be released here.', 'error')
+        return
+      }
+      setServiceUnclaimingIds((prev) => ({ ...prev, [serviceItem.id]: true }))
+      try {
+        const res = await fetch(`/api/proxy/pos/cart/service-items/${serviceItem.id}/release-package-claim`, {
+          method: 'POST',
+        })
+        const json = await res.json().catch(() => null)
+        if (!res.ok) {
+          showMsg(String(json?.message ?? 'Unable to unclaim package.'), 'error')
+          return
+        }
+        setServiceAvailabilityMap((prev) => ({
+          ...prev,
+          [serviceItem.id]: (prev[serviceItem.id] ?? 0) + 1,
+        }))
+        if (json?.data?.cart) {
+          setCart(json.data.cart as Cart)
+        }
+        showMsg('Package claim released. You can claim again or remove the line.', 'success')
+      } finally {
+        setServiceUnclaimingIds((prev) => ({ ...prev, [serviceItem.id]: false }))
+      }
+    },
+    [showMsg],
+  )
 
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return
@@ -1752,6 +1946,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       item.name.toLowerCase().includes(keyword),
     )
   }, [packageQuery, servicePackages])
+
+  /** After refresh, cart still has customer_id on lines but UI member picker is empty — restore selection for checkout & labels. */
+  useEffect(() => {
+    if (!cart) return
+    if (selectedMember?.id) return
+    const pkg = cart.package_items?.find((p) => p.customer_id)
+    if (pkg?.customer_id) {
+      const raw = pkg.customer_name?.trim()
+      const name = raw && raw.length > 0 ? raw : `Member (#${pkg.customer_id})`
+      setSelectedMember({ id: pkg.customer_id, name, phone: null, email: null })
+      return
+    }
+    const svc = cart.service_items?.find((s) => s.customer_id)
+    if (svc?.customer_id) {
+      const raw = svc.customer_name?.trim()
+      const name = raw && raw.length > 0 ? raw : `Member (#${svc.customer_id})`
+      setSelectedMember({ id: svc.customer_id, name, phone: null, email: null })
+    }
+  }, [cart, selectedMember?.id])
 
   useEffect(() => {
     const memberId = selectedMember?.id
@@ -2225,6 +2438,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
     }
+    if (hasCartBookServices && !hasCartPackages) {
+      if (checkoutIdentityMode === 'member' && !selectedMember?.id) {
+        setCheckoutError('Please assign a member, or switch to guest details for checkout.')
+        return
+      }
+      if (checkoutIdentityMode === 'guest' && !guestContactIsComplete) {
+        setCheckoutError('Please complete guest name, phone, and email before checkout.')
+        return
+      }
+    }
 
     setCheckingOut(true)
     setCheckoutError(null)
@@ -2259,12 +2482,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
     }
 
+    const guestCheckoutPayload =
+      !selectedMember?.id && checkoutIdentityMode === 'guest' && guestContactIsComplete
+        ? {
+            guest_name: guestContactCache.name.trim(),
+            guest_phone: guestContactCache.phone.trim(),
+            guest_email: guestContactCache.email.trim(),
+          }
+        : {}
+
     const res = await fetch('/api/proxy/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         payment_method: paymentMethod,
         member_id: selectedMember?.id ?? null,
+        ...guestCheckoutPayload,
         items: cartItems.map((item) => ({
           cart_item_id: item.id,
           product_id: item.product_id,
@@ -2318,10 +2551,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       paid_amount: meta.paid_amount,
       change_amount: meta.change_amount,
     })
-    setReceiptEmail(selectedMember?.email?.trim() ?? '')
+    setReceiptEmail((selectedMember?.email?.trim() || guestContactCache.email.trim()) ?? '')
     setReceiptEmailError(null)
     setReceiptCooldownUntil(0)
     setSelectedMember(null)
+    setGuestContactCache({ name: '', phone: '', email: '' })
+    setCheckoutIdentityMode('member')
     setMemberQuery('')
     setMembers([])
     setCart({ id: cart.id, items: [], service_items: [], package_items: [], subtotal: 0, grand_total: 0 })
@@ -2380,9 +2615,32 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const confirmCheckout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
+    setCheckoutError(null)
     if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
+    }
+    if (hasCartBookServices && !hasCartPackages) {
+      if (checkoutIdentityMode === 'member' && !selectedMember?.id) {
+        setCheckoutError('Please assign a member, or switch to guest details.')
+        return
+      }
+      if (checkoutIdentityMode === 'guest' && !guestContactIsComplete) {
+        setCheckoutError('Please complete guest name, phone, and email.')
+        return
+      }
+    }
+
+    if (hasCartBookServices || hasCartPackages) {
+      if (checkoutRequiresMemberOnly || checkoutIdentityMode === 'member') {
+        if (selectedMember?.id) {
+          const synced = await syncPosCartCustomerContext({ mode: 'member', memberId: selectedMember.id })
+          if (!synced) return
+        }
+      } else if (checkoutIdentityMode === 'guest' && guestContactIsComplete) {
+        const synced = await syncPosCartCustomerContext({ mode: 'guest' })
+        if (!synced) return
+      }
     }
 
     if (paymentMethod === 'qrpay') {
@@ -2424,6 +2682,40 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     await openCheckoutConfirmation()
   }
 
+  const syncPosCartCustomerContext = useCallback(
+    async (opts: { mode: 'member'; memberId: number } | { mode: 'guest' }): Promise<boolean> => {
+      try {
+        const body =
+          opts.mode === 'member'
+            ? { mode: 'member', member_id: opts.memberId }
+            : {
+                mode: 'guest',
+                guest_name: guestContactCache.name.trim(),
+                guest_phone: guestContactCache.phone.trim(),
+                guest_email: guestContactCache.email.trim(),
+              }
+        const res = await fetch('/api/proxy/pos/cart/sync-customer-context', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const json = await res.json().catch(() => null)
+        if (!res.ok) {
+          showMsg(String(json?.message ?? 'Unable to update cart lines.'), 'error')
+          return false
+        }
+        if (json?.data?.cart) {
+          setCart(json.data.cart as Cart)
+        }
+        return true
+      } catch {
+        showMsg('Unable to update cart lines.', 'error')
+        return false
+      }
+    },
+    [guestContactCache.email, guestContactCache.name, guestContactCache.phone, showMsg],
+  )
+
   const toggleMemberDropdown = async () => {
     if (memberOpen) {
       setMemberOpen(false)
@@ -2444,10 +2736,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       await removeVoucher(true)
     }
     setSelectedMember(member)
+    if (checkoutConfirmationOpen) {
+      setCheckoutIdentityMode('member')
+    }
     setVoucherModalOpen(false)
     setSelectedVoucherKey('')
     showMsg('Member assigned.', 'success')
+    await syncPosCartCustomerContext({ mode: 'member', memberId: member.id })
   }
+
+  /** Product-only: clear optional member + guest fields (same layout as booking services + Clear) */
+  const clearOptionalProductSaleContext = useCallback(async () => {
+    const shouldRemoveCurrentVoucher = Boolean(appliedVoucher && !appliedVoucher.customer_voucher_id)
+    if (shouldRemoveCurrentVoucher) {
+      await removeVoucher(true)
+    }
+    setSelectedMember(null)
+    setGuestContactCache({ name: '', phone: '', email: '' })
+    setCheckoutIdentityMode('member')
+    setCheckoutError(null)
+    showMsg('Customer details cleared.', 'info')
+  }, [appliedVoucher, removeVoucher, showMsg])
 
   useEffect(() => {
     if (!voucherModalOpen) return
@@ -2696,7 +3005,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const openCheckoutConfirmation = async () => {
+    setCheckoutError(null)
     await syncCheckoutAssignments()
+
+    const guestLine = cartServiceItems.find(
+      (row) => !row.customer_id && (row.guest_email?.trim() || row.guest_name?.trim()),
+    )
+    if (guestLine) {
+      setGuestContactCache({
+        name: String(guestLine.guest_name ?? '').trim(),
+        phone: String(guestLine.guest_phone ?? '').trim(),
+        email: String(guestLine.guest_email ?? '').trim(),
+      })
+    }
+
+    if (checkoutRequiresMemberOnly) {
+      setCheckoutIdentityMode('member')
+    } else if (checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation) {
+      if (selectedMember?.id) {
+        setCheckoutIdentityMode('member')
+      } else if (guestLine || (guestContactCache.email.trim() && guestContactCache.name.trim())) {
+        setCheckoutIdentityMode('guest')
+      } else {
+        setCheckoutIdentityMode('member')
+      }
+    }
 
     setPackageCheckoutSplits((prev) => {
       const next: Record<number, CheckoutItemStaffSplit[]> = {}
@@ -2717,9 +3050,35 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const canConfirmCheckoutInModal = useMemo(() => {
     if (checkingOut) return false
-    if (paymentMethod === 'qrpay') return Boolean(qrProofFileName)
-    return Number.isFinite(cashReceivedAmount) && cashReceivedAmount >= cartTotal
-  }, [cashReceivedAmount, cartTotal, checkingOut, paymentMethod, qrProofFileName])
+    if (paymentMethod === 'qrpay' && !qrProofFileName) return false
+    if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < cartTotal) return false
+
+    if (checkoutRequiresCustomerValidation) {
+      if (checkoutRequiresMemberOnly) {
+        if (!selectedMember?.id) return false
+      } else if (checkoutAllowsGuestToggle) {
+        if (checkoutIdentityMode === 'member') {
+          if (!selectedMember?.id) return false
+        } else if (!guestContactIsComplete) {
+          return false
+        }
+      }
+    }
+
+    return true
+  }, [
+    cashReceivedAmount,
+    cartTotal,
+    checkingOut,
+    checkoutAllowsGuestToggle,
+    checkoutIdentityMode,
+    checkoutRequiresMemberOnly,
+    checkoutRequiresCustomerValidation,
+    guestContactIsComplete,
+    paymentMethod,
+    qrProofFileName,
+    selectedMember?.id,
+  ])
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -3128,7 +3487,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-green-600">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (item.discount_amount ?? 0) > 0 ? (
                               <>
@@ -3137,7 +3496,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p className="text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
                               </>
                             ) : (
-                              <p className="text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
+                              <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                             )}
                           </div>
                           {/* <button type="button" onClick={() => void applyItemDiscount(item)} disabled={item.promotion_applied || item.manual_discount_allowed === false} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50">Discount</button> */}
@@ -3191,98 +3550,206 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   )
                 })}
 
-                {cartServiceItems.map((serviceItem) => (
-                  <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Service</p>
-                        <h4 className="font-bold text-gray-900 text-sm mt-0.5">{serviceItem.service_name}</h4>
-                        <p className="text-xs text-gray-600 mt-1">Qty: {serviceItem.qty}</p>
-                        <p className="text-xs text-emerald-700">Type: {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
-                        {(serviceItem.addon_items?.length ?? 0) > 0 ? (
-                          <div className="mt-1 rounded border border-emerald-200 bg-white/70 px-2 py-1.5">
-                            <p className="text-[11px] font-semibold text-emerald-800">Add-ons</p>
-                            {serviceItem.addon_items?.map((addon, idx) => (
-                              <p key={`${addon.id ?? addon.name}-${idx}`} className="text-[11px] text-emerald-700">
-                                {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +RM {Number(addon.extra_price ?? 0).toFixed(2)})
-                              </p>
-                            ))}
-                            <p className="mt-1 text-[11px] font-semibold text-emerald-800">
-                              Add-on total: +RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}
-                            </p>
-                          </div>
-                        ) : null}
-                        {serviceItem.start_at ? (
-                          <p className="text-xs text-gray-700">Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
-                        ) : null}
-                        {serviceItem.customer_id ? (
-                          <p className="text-xs text-gray-600">Member ID: {serviceItem.customer_id}</p>
-                        ) : null}
-                        {serviceItem.assigned_staff_name ? (
-                          <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
-                        ) : null}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-gray-500">Service Price (ref)</div>
-                        <div className="font-semibold text-gray-700 text-sm">RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</div>
-                        <div className="mt-1 text-xs text-gray-500">Deposit Contribution</div>
-                        <div className="font-bold text-emerald-700">RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</div>
-                        {(serviceItem.addon_items?.length ?? 0) > 0 ? (
-                          <>
-                            <div className="mt-1 text-xs text-gray-500">Add-on Charge</div>
-                            <div className="font-semibold text-emerald-800">RM {Number(serviceItem.addon_price ?? 0).toFixed(2)}</div>
-                          </>
-                        ) : null}
-                        {serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed' ? (
-                          <div className="mt-1 text-[11px] font-semibold text-emerald-700">Reserved from Package</div>
-                        ) : null}
-                        <div className="mt-2 text-[11px] text-emerald-700">Package balance: {serviceAvailabilityMap[serviceItem.id] ?? 0}</div>
-                        <button
-                          type="button"
-                          disabled={!selectedMember?.id || (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0 || serviceRedeemingIds[serviceItem.id] || serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed'}
-                          onClick={() => void redeemServiceItem(serviceItem)}
-                          className="mt-1 rounded border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {serviceRedeemingIds[serviceItem.id]
-                            ? 'Reserving...'
-                            : (serviceItem.claimed_by_package || serviceItem.package_claim_status === 'reserved' || serviceItem.package_claim_status === 'consumed')
-                              ? 'Package Applied'
-                              : 'Claim Package (Reserve)'}
-                        </button>
+                {cartServiceItems.map((serviceItem) => {
+                  const depMain = Number(serviceItem.deposit_contribution ?? 0)
+                  const depAddonTotal = Number(serviceItem.deposit_addon_total ?? 0)
+                  const depPayable = Number(
+                    serviceItem.deposit_payable_total ?? depMain + depAddonTotal,
+                  )
+                  const svcType = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
+                  const identityLine = formatPosServiceCartIdentity(serviceItem, selectedMember)
+                  const isPkgClaimed =
+                    !!serviceItem.claimed_by_package ||
+                    serviceItem.package_claim_status === 'reserved' ||
+                    serviceItem.package_claim_status === 'consumed'
+                  const mainDepositRef = Number(serviceItem.deposit_main_reference ?? 0)
 
-                        <button
-                          type="button"
-                          onClick={() => void removeServiceItem(serviceItem.id)}
-                          className="mt-1 ml-1 rounded border border-red-300 bg-white px-2 py-1 text-[11px] font-semibold text-red-700"
-                        >
-                          Remove
-                        </button>
+                  return (
+                  <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-3 shadow-sm sm:p-4">
+                    <div className="border-b border-emerald-200/50 pb-2">
+                      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
+                        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
+                          <span className="text-[10px] text-gray-500 tabular-nums">
+                            Pkg bal. {serviceAvailabilityMap[serviceItem.id] ?? 0}
+                          </span>
+                          {serviceItem.package_claim_status === 'reserved' ? (
+                            <button
+                              type="button"
+                              disabled={serviceUnclaimingIds[serviceItem.id] || serviceRedeemingIds[serviceItem.id]}
+                              onClick={() => void unclaimServicePackage(serviceItem)}
+                              className="rounded-lg border border-amber-400/90 bg-amber-50/90 px-3 py-1.5 text-[11px] font-semibold text-amber-950 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {serviceUnclaimingIds[serviceItem.id] ? 'Releasing…' : 'Unclaim Package'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={
+                                !selectedMember?.id ||
+                                (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0 ||
+                                serviceRedeemingIds[serviceItem.id] ||
+                                serviceUnclaimingIds[serviceItem.id] ||
+                                serviceItem.claimed_by_package ||
+                                serviceItem.package_claim_status === 'consumed'
+                              }
+                              onClick={() => void redeemServiceItem(serviceItem)}
+                              className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                isPkgClaimed
+                                  ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200'
+                                  : 'border-emerald-400/80 bg-white text-emerald-800'
+                              }`}
+                            >
+                              {serviceRedeemingIds[serviceItem.id]
+                                ? 'Reserving…'
+                                : isPkgClaimed
+                                  ? 'Package applied'
+                                  : 'Claim package'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void removeServiceItem(serviceItem.id)}
+                            className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-700 shadow-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
+                      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <h4 className="text-sm font-bold text-gray-900">{serviceItem.service_name}</h4>
+                        <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
+                          {svcType}
+                        </span>
+                        <span className="text-xs text-gray-500">×{serviceItem.qty}</span>
+                      </div>
+                      {serviceItem.start_at ? (
+                        <p className="mt-2 text-xs text-gray-600">
+                          Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}
+                        </p>
+                      ) : null}
+                      {serviceItem.assigned_staff_name ? (
+                        <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
+                      ) : null}
+                      {identityLine ? (
+                        <p className="text-xs text-gray-600">{identityLine}</p>
+                      ) : null}
                     </div>
+
+                    <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-emerald-200/80">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits</p>
+                      <dl className="mt-1 space-y-1">
+                        <div className="flex justify-between gap-3 text-sm tabular-nums">
+                          <dt className="min-w-0 truncate text-gray-700" title={serviceItem.service_name}>
+                            <span>{serviceItem.service_name}</span>
+                            {isPkgClaimed && depMain < 0.0001 ? (
+                              <span className="ml-1.5 align-middle text-[10px] font-bold uppercase tracking-wide text-emerald-800">
+                                · Covered
+                              </span>
+                            ) : null}
+                          </dt>
+                          <dd className="shrink-0 text-right font-semibold">
+                            {isPkgClaimed && depMain < 0.0001 && mainDepositRef > 0.0001 ? (
+                              <span>
+                                <span className="text-gray-400 line-through">RM {mainDepositRef.toFixed(2)}</span>{' '}
+                                <span className="text-emerald-800">RM {depMain.toFixed(2)}</span>
+                              </span>
+                            ) : isPkgClaimed && depMain < 0.0001 ? (
+                              <span className="text-emerald-800">RM {depMain.toFixed(2)}</span>
+                            ) : (
+                              <span className="text-gray-900">RM {depMain.toFixed(2)}</span>
+                            )}
+                          </dd>
+                        </div>
+                        {(serviceItem.addon_items?.length ?? 0) > 0
+                          ? serviceItem.addon_items?.map((addon, idx) => {
+                              const dep = Number(addon.linked_deposit_amount ?? 0)
+                              return (
+                                <div
+                                  key={`dep-addon-${addon.id ?? addon.name}-${idx}`}
+                                  className="flex justify-between gap-3 text-sm tabular-nums text-gray-700"
+                                >
+                                  <dt className="min-w-0 truncate pl-2" title={addon.name}>
+                                    + {addon.name}
+                                  </dt>
+                                  <dd className="shrink-0 font-semibold text-gray-900">RM {dep.toFixed(2)}</dd>
+                                </div>
+                              )
+                            })
+                          : null}
+                        <div className="flex justify-between gap-3 border-t border-gray-200 pt-1.5">
+                          <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total</dt>
+                          <dd className="text-sm font-bold text-orange-700">RM {depPayable.toFixed(2)}</dd>
+                        </div>
+                      </dl>
+                    </div>
+
+                    {isPkgClaimed ? (
+                      <div className="mt-2 rounded-lg border border-emerald-300/80 bg-emerald-100/70 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-900 shadow-sm">
+                        Main service reserved from package — add-on deposits below still apply.
+                      </div>
+                    ) : null}
                   </div>
-                ))}
+                  )
+                })}
 
                 {cartPackageItems.map((packageItem) => (
-                  <div key={`package-${packageItem.id}`} className="rounded-xl border border-purple-200 bg-purple-50 p-4 shadow-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
+                  <div
+                    key={`package-${packageItem.id}`}
+                    className="rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                  >
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                      <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Service Package</p>
-                        <h4 className="font-bold text-gray-900 text-sm mt-0.5">{packageItem.package_name}</h4>
-                        <p className="mt-2 text-xs text-gray-600">Qty: {packageItem.qty}</p>
-                        <p className="text-xs text-gray-600">Member: {packageItem.customer_name ?? (packageItem.customer_id ? `Member #${packageItem.customer_id}` : 'Not assigned')}</p>
-                        <p className="text-xs text-gray-600">Split: {(packageItem.staff_splits?.length ?? 0) > 0 ? `${packageItem.staff_splits?.length} staff split` : 'No split'}</p>
+                        <h4 className="mt-0.5 truncate text-sm font-bold text-gray-900" title={packageItem.package_name}>
+                          {packageItem.package_name}
+                        </h4>
+                        <p className="mt-1.5 text-xs text-gray-600">{formatPosPackageMemberLabel(packageItem, selectedMember)}</p>
                       </div>
-                      <div className="text-right">
-                        <div className="text-xs text-gray-500">Unit</div>
-                        <div className="font-semibold text-gray-900 text-sm">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</div>
-                        <div className="mt-1 text-xs text-gray-500">Total</div>
-                        <div className="font-bold text-purple-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</div>
+                      <div className="flex w-fit items-center gap-2 rounded-lg bg-purple-100/90 p-1 ring-1 ring-purple-200/80">
+                        <button
+                          type="button"
+                          title={packageItem.qty <= 1 ? 'Remove package' : 'Decrease quantity'}
+                          onClick={() => {
+                            if (packageItem.qty <= 1) {
+                              void removePackageCartItem(packageItem.id)
+                              return
+                            }
+                            void updatePackageCartQty(packageItem.id, packageItem.qty - 1)
+                          }}
+                          className="h-7 w-7 rounded-md border-2 border-purple-300 bg-white text-sm font-bold text-purple-900 transition-all hover:border-purple-400 hover:bg-purple-50 active:scale-95"
+                        >
+                          -
+                        </button>
+                        <span className="w-8 text-center text-sm font-bold text-purple-950">{packageItem.qty}</span>
+                        <button
+                          type="button"
+                          title="Increase quantity"
+                          onClick={() => void updatePackageCartQty(packageItem.id, packageItem.qty + 1)}
+                          disabled={packageItem.qty >= 10}
+                          className="h-7 w-7 rounded-md border-2 border-purple-300 bg-white text-sm font-bold text-purple-900 transition-all hover:border-purple-400 hover:bg-purple-50 active:scale-95 disabled:cursor-not-allowed disabled:border-purple-200 disabled:bg-purple-50/50 disabled:text-purple-300 disabled:hover:bg-purple-50/50"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 sm:justify-end">
+                        <div className="min-w-[120px] text-left sm:text-right">
+                          <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                        </div>
                         <button
                           type="button"
                           onClick={() => void removePackageCartItem(packageItem.id)}
-                          className="mt-2 rounded border border-purple-300 bg-white px-2 py-1 text-[11px] font-semibold text-purple-700"
+                          className="rounded-md p-2 text-red-600 transition-colors hover:bg-red-50"
+                          title="Remove package"
                         >
-                          Remove
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
                         </button>
                       </div>
                     </div>
@@ -3311,24 +3778,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 {promotionDiscount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Promotion Discount</span>
-                    <span className="font-semibold text-green-600">-RM {promotionDiscount.toFixed(2)}</span>
+                    <span className="font-semibold text-gray-700">- RM {promotionDiscount.toFixed(2)}</span>
                   </div>
                 )}
                 {voucherDiscount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Voucher Discount</span>
-                    <span className="font-semibold text-green-600">-RM {voucherDiscount.toFixed(2)}</span>
+                    <span className="font-semibold text-gray-700">- RM {voucherDiscount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-gray-200 pt-2 text-base font-bold">
                   <span className="text-gray-900">Total</span>
-                  <span className="text-lg text-gray-900">RM {cartTotal.toFixed(2)}</span>
+                  <span className="text-lg text-orange-700">RM {cartTotal.toFixed(2)}</span>
                 </div>
-                {cartPackageItems.length > 0 && (
+                {/* {cartPackageItems.length > 0 && (
                   <div className="border-t border-gray-200 pt-2 text-xs text-gray-700">
                     Package assignment: {selectedMember ? selectedMember.name : 'No member selected'}
                   </div>
-                )}
+                )} */}
               </div>
 
             </div>
@@ -3636,25 +4103,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-8">
-              <div className="max-h-[400px] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gradient-to-r from-slate-50 to-gray-50">
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+              <div className="overflow-x-auto rounded-2xl border border-gray-200/90 bg-gradient-to-b from-slate-50/80 to-white shadow-inner ring-1 ring-gray-100">
+                <table className="min-w-[720px] w-full text-sm">
+                  <thead className="sticky top-0 z-10 bg-gradient-to-r from-slate-100 via-gray-50 to-slate-100 shadow-sm">
                     <tr>
-                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Item</th>
-                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Details</th>
-                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Unit Price</th>
-                      <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase tracking-wider text-xs">Total Price</th>
+                      <th className="px-4 py-3.5 text-left font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:px-5">Item</th>
+                      <th className="px-4 py-3.5 text-left font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:min-w-[220px]">Details</th>
+                      <th className="px-4 py-3.5 text-left font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:min-w-[160px]">Unit / Deposit</th>
+                      <th className="px-4 py-3.5 text-right font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:px-5">Line total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y-2 divide-slate-300/90">
                     {cartItems.map((item) => {
                       const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === item.id)
                       const hasVariant = Boolean(item.variant_id || item.variant_name || item.variant_sku)
                       const variantDisplay = item.variant_name || item.variant_sku || null
                       return (
-                        <tr key={item.id} className="hover:bg-gray-50 transition-colors align-top">
-                          <td className="px-4 py-3">
+                        <tr key={item.id} className="bg-white hover:bg-slate-50/90 transition-colors align-top">
+                          <td className="px-4 py-3.5 sm:px-5">
                             <p className="font-semibold text-gray-900">{item.product_name}</p>
                             {hasVariant && variantDisplay && (
                               <p className="text-xs text-blue-600 font-medium mt-0.5">Variant: {variantDisplay}</p>
@@ -3677,9 +4144,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </p>
                             ) : null}
                           </td>
-                          <td className="px-4 py-3 min-w-[280px]">
+                          <td className="px-4 py-3.5 min-w-[260px] align-top">
                             <div className="space-y-2">
-                              <p className="text-xs text-gray-600 font-medium">{getSplitSummary(assignment)}</p>
+                              <p className="text-xs text-gray-600 font-medium leading-relaxed">{getSplitSummary(assignment)}</p>
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
@@ -3721,24 +4188,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5 text-left align-top tabular-nums">
                             {item.promotion_applied && item.unit_price_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot).toFixed(2)}</p>
-                                <p className="text-gray-700 font-semibold text-green-600">RM {Number(item.unit_price).toFixed(2)}</p>
+                                <p className="text-gray-700 font-semibold text-gray-800">RM {Number(item.unit_price).toFixed(2)}</p>
                               </div>
                             ) : (
                               <p className="text-gray-700">RM {Number(item.unit_price).toFixed(2)}</p>
                             )}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
-                                <p className="font-bold text-green-600">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (
-                              <p className="font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
+                              <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                             )}
                           </td>
                         </tr>
@@ -3748,38 +4215,137 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
                         ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
                         : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
-                      const chargeNow = Number(serviceItem.deposit_contribution ?? 0)
+                      const chargeNow = Number(
+                        serviceItem.deposit_payable_total ??
+                          Number(serviceItem.deposit_contribution ?? 0) + Number(serviceItem.deposit_addon_total ?? 0),
+                      )
+                      const chkIdentity = formatPosServiceCartIdentity(serviceItem, selectedMember)
+                      const depMainChk = Number(serviceItem.deposit_contribution ?? 0)
+                      const chkPkgClaimed =
+                        !!serviceItem.claimed_by_package ||
+                        serviceItem.package_claim_status === 'reserved' ||
+                        serviceItem.package_claim_status === 'consumed'
+                      const chkMainRef = Number(serviceItem.deposit_main_reference ?? 0)
+                      const svcTypeChk = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
+
+                      const checkoutServiceItemHeader = (
+                        <>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
+                          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="text-base font-bold leading-snug text-gray-900">{serviceItem.service_name}</span>
+                            <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
+                              {svcTypeChk}
+                            </span>
+                            <span className="text-xs text-gray-500">×{serviceItem.qty}</span>
+                          </div>
+                          {serviceItem.start_at ? (
+                            <p className="mt-2 text-xs text-gray-600">
+                              Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}
+                            </p>
+                          ) : null}
+                          {serviceItem.assigned_staff_name ? (
+                            <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
+                          ) : null}
+                          {chkIdentity ? <p className="text-xs font-medium text-gray-700 mt-1">{chkIdentity}</p> : null}
+                        </>
+                      )
 
                       return (
-                        <tr key={`checkout-service-${serviceItem.id}`} className="bg-emerald-50/60 hover:bg-emerald-50 transition-colors align-top">
-                          <td className="px-4 py-3">
-                            <p className="font-semibold text-gray-900">{serviceItem.service_name}</p>
-                            <p className="text-[11px] text-emerald-700 font-semibold">BOOKING SERVICE · {String(serviceItem.service_type ?? 'STANDARD').toUpperCase()}</p>
-                            {(serviceItem.addon_items?.length ?? 0) > 0 ? (
-                              <div className="mt-1 space-y-0.5 rounded border border-emerald-200 bg-white/70 px-2 py-1.5">
-                                <p className="text-[11px] font-semibold text-emerald-800">Add-ons</p>
-                                {serviceItem.addon_items?.map((addon, idx) => (
-                                  <p key={`${addon.id ?? addon.name}-${idx}`} className="text-[11px] text-emerald-700">
-                                    {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +RM {Number(addon.extra_price ?? 0).toFixed(2)})
-                                  </p>
-                                ))}
+                        <tr
+                          key={`checkout-service-${serviceItem.id}`}
+                          className="bg-emerald-50/50 hover:bg-emerald-50/80 transition-colors align-middle"
+                        >
+                          <td className="px-4 py-3.5 align-top sm:px-5">
+                            {checkoutServiceItemHeader}
+
+                            <div className="mt-3 border-t border-emerald-200/50 pt-2.5">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposit</p>
+                              <div className="mt-1.5 space-y-1.5 text-xs leading-snug text-gray-700">
+                                <p className="flex min-h-[1.375rem] items-center">
+                                  {serviceItem.service_name}
+                                  {chkPkgClaimed && depMainChk < 0.0001 ? (
+                                    <span className="font-medium text-emerald-800"> · Covered</span>
+                                  ) : null}
+                                </p>
+                                {(serviceItem.addon_items?.length ?? 0) > 0
+                                  ? serviceItem.addon_items?.map((addon, idx) => (
+                                      <p
+                                        key={`chk-dep-label-${addon.id ?? addon.name}-${idx}`}
+                                        className="flex min-h-[1.375rem] items-center pl-0.5"
+                                      >
+                                        + {addon.name}
+                                      </p>
+                                    ))
+                                  : null}
                               </div>
-                            ) : null}
-                            {serviceItem.start_at ? <p className="text-xs text-gray-600 mt-0.5">{formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p> : null}
-                            <p className="text-xs text-gray-500 mt-0.5">Qty: {serviceItem.qty}</p>
-                            <p className="text-[11px] text-gray-500 mt-0.5">Service price ref: RM {Number(serviceItem.line_total ?? 0).toFixed(2)}</p>
-                          </td>
-                          <td className="px-4 py-3 min-w-[280px]">
-                            <p className="text-xs text-gray-700">{splitSummary}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="space-y-0.5">
-                              <p className="text-gray-700">Deposit: RM {Number(serviceItem.deposit_contribution ?? 0).toFixed(2)}</p>
-                              <p className="text-gray-700">Add-ons (immediate): RM 0.00</p>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
-                            <p className="font-bold text-emerald-700">RM {chargeNow.toFixed(2)}</p>
+                          <td className="px-4 py-3.5 min-w-[260px] align-top">
+                            <p className="text-xs leading-relaxed text-gray-700">{splitSummary}</p>
+                          </td>
+                          <td className="px-4 py-3.5 align-top">
+                            <div className="invisible select-none" aria-hidden>
+                              {checkoutServiceItemHeader}
+                            </div>
+                            <div className="mt-3 border-t border-emerald-200/50 pt-2.5">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-transparent">Deposit</p>
+                              <div className="mt-1.5 flex flex-col items-start gap-y-1.5 text-left text-xs tabular-nums text-gray-700">
+                                <div className="flex min-h-[1.375rem] items-center justify-start">
+                                  {chkPkgClaimed && depMainChk < 0.0001 && chkMainRef > 0.0001 ? (
+                                    <span>
+                                      <span className="text-gray-400 line-through">RM {chkMainRef.toFixed(2)}</span>
+                                      {/* <span className="mx-1.5 text-gray-300">·</span> */}
+                                      {/* <span className="font-semibold text-emerald-900">RM {depMainChk.toFixed(2)}</span> */}
+                                    </span>
+                                  ) : (
+                                    <span className="font-medium">RM {depMainChk.toFixed(2)}</span>
+                                  )}
+                                </div>
+                                {(serviceItem.addon_items?.length ?? 0) > 0
+                                  ? serviceItem.addon_items?.map((addon, idx) => (
+                                      <div
+                                        key={`chk-dep-amt-${addon.id ?? addon.name}-${idx}`}
+                                        className="flex min-h-[1.375rem] items-center justify-start"
+                                      >
+                                        RM {Number(addon.linked_deposit_amount ?? 0).toFixed(2)}
+                                      </div>
+                                    ))
+                                  : null}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 text-right align-middle sm:px-5">
+                            <div className="invisible select-none" aria-hidden>
+                              {checkoutServiceItemHeader}
+                            </div>
+                            <div className="mt-3 border-t border-emerald-200/50 pt-2.5">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-transparent">Deposit</p>
+                              <div className="mt-1.5 flex flex-col items-end justify-center gap-y-1.5">
+                                {(serviceItem.addon_items?.length ?? 0) > 0 ? (
+                                  <>
+                                    <div className="flex min-h-[1.375rem] w-full items-center justify-end" aria-hidden />
+                                    <div className="flex min-h-[1.375rem] flex-col items-end justify-center">
+                                      <p className="text-lg font-bold leading-tight tabular-nums text-orange-700">
+                                        RM {chargeNow.toFixed(2)}
+                                      </p>
+                                    </div>
+                                    {(serviceItem.addon_items ?? []).map((_, idx) => (
+                                      <div
+                                        key={`chk-lt-addon-align-${idx}`}
+                                        className="flex min-h-[1.375rem] w-full items-center justify-end"
+                                        aria-hidden
+                                      />
+                                    ))}
+                                  </>
+                                ) : (
+                                  <div className="flex min-h-[1.375rem] flex-col items-end justify-center">
+                                    <p className="text-lg font-bold leading-tight tabular-nums text-orange-700">
+                                      RM {chargeNow.toFixed(2)}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -3789,17 +4355,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const splitRows = packageCheckoutSplits[packageItem.id] ?? []
 
                       return (
-                        <tr key={`checkout-package-${packageItem.id}`} className="bg-purple-50/60 hover:bg-purple-50 transition-colors align-top">
-                          <td className="px-4 py-3">
-                            <p className="font-semibold text-gray-900">{packageItem.package_name}</p>
-                            <p className="text-[11px] text-purple-700 font-semibold">SERVICE PACKAGE</p>
-                            <p className="text-xs text-gray-600 mt-0.5">Member: {packageItem.customer_name ?? (packageItem.customer_id ? `Member #${packageItem.customer_id}` : 'Not assigned')}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">Qty: {packageItem.qty}</p>
+                        <tr key={`checkout-package-${packageItem.id}`} className="bg-purple-50/50 hover:bg-purple-50/80 transition-colors align-middle">
+                          <td className="px-4 py-3.5 sm:px-5">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Service Package</p>
+                            <p className="mt-1 text-base font-bold leading-snug text-gray-900">{packageItem.package_name}</p>
+                            <p className="text-xs font-medium text-gray-600 mt-1.5">{formatPosPackageMemberLabel(packageItem, selectedMember)}</p>
+                            <p className="text-xs text-gray-500 mt-0.5 tabular-nums">Qty: {packageItem.qty}</p>
                           </td>
-                          <td className="px-4 py-3 min-w-[320px]">
+                          <td className="px-4 py-3.5 min-w-[260px] align-top">
                             <div className="space-y-2">
-                              <p className="text-xs text-gray-700">
-                                {splitRows.length > 0 ? `${splitRows.length} staff (${splitRows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)}%)` : 'No staff assigned'}
+                              <p className="text-xs leading-relaxed text-gray-700">
+                                {splitRows.length > 0
+                                  ? `${splitRows.length} staff (${splitRows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)}%)`
+                                  : 'No staff assigned'}
                               </p>
                               <button
                                 type="button"
@@ -3810,11 +4378,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </button>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5 align-top tabular-nums">
                             <p className="text-gray-700">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</p>
                           </td>
-                          <td className="px-4 py-3">
-                            <p className="font-bold text-purple-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                          <td className="px-4 py-3.5 text-right align-top sm:px-5">
+                            <p className="text-lg font-bold tabular-nums text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
                           </td>
                         </tr>
                       )
@@ -3824,7 +4392,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
 
 
-              {(cart?.service_items?.length ?? 0) > 0 && (
+              {/* {(cart?.service_items?.length ?? 0) > 0 && (
                 <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                   <h5 className="text-sm font-bold text-emerald-900">Booking Deposit Summary</h5>
                   <div className="mt-2 space-y-1 text-xs text-emerald-900">
@@ -3837,32 +4405,153 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     Booking deposit total: RM {bookingDepositTotal.toFixed(2)}
                   </div>
                 </div>
-              )}
+              )} */}
 
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 shadow-sm">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-gray-600">Subtotal</p>
-                    <p className="text-sm font-semibold text-gray-900">RM {cartSubtotal.toFixed(2)}</p>
+                    <p className="text-sm font-semibold text-gray-700">RM {cartSubtotal.toFixed(2)}</p>
                   </div>
                   {promotionDiscount > 0 && (
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-gray-600">Promotion Discount</p>
-                      <p className="text-sm font-semibold text-green-600">-RM {promotionDiscount.toFixed(2)}</p>
+                      <p className="text-sm font-semibold text-gray-700">- RM {promotionDiscount.toFixed(2)}</p>
                     </div>
                   )}
                   {voucherDiscount > 0 && (
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-gray-600">Voucher Discount</p>
-                      <p className="text-sm font-semibold text-green-600">-RM {voucherDiscount.toFixed(2)}</p>
+                      <p className="text-sm font-semibold text-gray-700">- RM {voucherDiscount.toFixed(2)}</p>
                     </div>
                   )}
                   <div className="flex items-center justify-between border-t border-gray-300 pt-2 mt-2">
                     <p className="text-base font-semibold text-gray-700">Net Amount</p>
-                    <p className="text-2xl font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-orange-700">RM {cartTotal.toFixed(2)}</p>
                   </div>
                 </div>
               </div>
+
+              <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="text-sm font-bold text-gray-800">Customer</p>
+                    {!checkoutRequiresCustomerValidation ? (
+                      <button
+                        type="button"
+                        onClick={() => void clearOptionalProductSaleContext()}
+                        className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  {!checkoutRequiresCustomerValidation ? (
+                    <p className="mt-1 text-xs font-bold text-amber-800">
+                     IMPORTANT : Product sale — optional member or guest details (voucher / receipt). Checkout does not require a customer.
+                    </p>
+                  ) : checkoutRequiresMemberOnly ? (
+                    <p className="mt-1 text-xs font-bold text-amber-800">
+                      IMPORTANT :
+                      A service package is in the cart — checkout must use a <span className="font-semibold">member</span>. Guest checkout is not available.
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs font-bold text-amber-800">
+                     IMPORTANT : This cart includes booking services — choose a member or guest details. You can switch here before paying; all booking lines will update to match.
+                    </p>
+                  )}
+
+                  {showMemberGuestToggleInCheckout ? (
+                    <div className="mt-3 inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCheckoutIdentityMode('member')
+                          setCheckoutError(null)
+                        }}
+                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${checkoutIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                      >
+                        Member
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCheckoutIdentityMode('guest')
+                          setSelectedMember(null)
+                          setCheckoutError(null)
+                        }}
+                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${checkoutIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                      >
+                        Guest details
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {(checkoutRequiresMemberOnly || checkoutIdentityMode === 'member') && (
+                    <div className="mt-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-gray-600">Member</label>
+                        <button
+                          type="button"
+                          onClick={() => void toggleMemberDropdown()}
+                          className="shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all hover:bg-blue-50"
+                        >
+                          {selectedMember ? 'Change Member' : 'Assign Member'}
+                        </button>
+                      </div>
+                      <div className="mt-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800">
+                        {selectedMember
+                          ? `${selectedMember.name}${selectedMember.phone ? ` · ${selectedMember.phone}` : ''}${selectedMember.email ? ` · ${selectedMember.email}` : ''}`
+                          : 'No member selected yet'}
+                      </div>
+                    </div>
+                  )}
+
+                  {showMemberGuestToggleInCheckout && checkoutIdentityMode === 'guest' ? (
+                    <div className="mt-4 space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+                      <p className="text-xs font-semibold text-gray-700">Guest details</p>
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-600">Name *</label>
+                        <input
+                          value={guestContactCache.name}
+                          onChange={(e) => {
+                            setGuestContactCache((prev) => ({ ...prev, name: e.target.value }))
+                            setCheckoutError(null)
+                          }}
+                          className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          placeholder="Name *"
+                          autoComplete="name"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-600">Phone *</label>
+                        <input
+                          value={guestContactCache.phone}
+                          onChange={(e) => {
+                            setGuestContactCache((prev) => ({ ...prev, phone: e.target.value }))
+                            setCheckoutError(null)
+                          }}
+                          className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          placeholder="Phone *"
+                          autoComplete="tel"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-600">Email *</label>
+                        <input
+                          type="email"
+                          value={guestContactCache.email}
+                          onChange={(e) => {
+                            setGuestContactCache((prev) => ({ ...prev, email: e.target.value }))
+                            setCheckoutError(null)
+                          }}
+                          className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          placeholder="Email *"
+                          autoComplete="email"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
 
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                 <p className="mb-4 text-sm font-bold text-gray-800">Payment Method</p>
@@ -3949,11 +4638,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               )}
 
+              {checkoutError ? (
+                <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{checkoutError}</div>
+              ) : null}
+
               <div className="mt-8 flex gap-4 pt-2 flex-shrink-0">
                 <button
                   type="button"
                   className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-6 py-3.5 text-base font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50 active:scale-95 shadow-sm"
-                  onClick={() => setCheckoutConfirmationOpen(false)}
+                  onClick={() => {
+                    setCheckoutError(null)
+                    setCheckoutConfirmationOpen(false)
+                  }}
                 >
                   Cancel
                 </button>
@@ -4096,6 +4792,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-bold text-gray-900">Add Package to Cart</h3>
             <p className="mt-1 text-sm text-gray-600">{packageDraft.name}</p>
+            {selectedMember ? (
+              <p className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                Using member from your cart: <span className="font-semibold">{selectedMember.name}</span> — pre-filled below. Change here if needed.
+              </p>
+            ) : (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Service packages must be linked to a <span className="font-semibold">member</span>. Search and select one (guest checkout cannot be used for packages).
+              </p>
+            )}
 
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
@@ -4194,22 +4899,85 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             ) : null}
             <div className="space-y-3">
               <div>
-                <div className="flex items-center justify-between gap-2">
-                  <label className="text-xs font-semibold text-gray-600">Member</label>
+                <p className="text-xs font-semibold text-gray-600">Customer</p>
+                <div className="mt-1 inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5">
                   <button
                     type="button"
-                    onClick={() => void toggleMemberDropdown()}
-                    className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
+                    onClick={() => {
+                      setBookingIdentityMode('member')
+                      setBookingModalError(null)
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${bookingIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                   >
-                    {selectedMember ? 'Change Member' : 'Assign Member'}
+                    Member
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBookingIdentityMode('guest')
+                      setBookingModalError(null)
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${bookingIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
+                    Guest details
                   </button>
                 </div>
-                <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                  {selectedMember
-                    ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
-                    : 'No member selected'}
-                </div>
               </div>
+
+              {bookingIdentityMode === 'member' ? (
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-semibold text-gray-600">Member</label>
+                    <button
+                      type="button"
+                      onClick={() => void toggleMemberDropdown()}
+                      className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
+                    >
+                      {selectedMember ? 'Change Member' : 'Assign Member'}
+                    </button>
+                  </div>
+                  <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    {selectedMember
+                      ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
+                      : 'No member selected'}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-xs font-semibold text-gray-700">Guest details</p>
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-600">Name *</label>
+                    <input
+                      value={bookingGuestName}
+                      onChange={(e) => setBookingGuestName(e.target.value)}
+                      className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      placeholder="Name *"
+                      autoComplete="name"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-600">Phone *</label>
+                    <input
+                      value={bookingGuestPhone}
+                      onChange={(e) => setBookingGuestPhone(e.target.value)}
+                      className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      placeholder="Phone *"
+                      autoComplete="tel"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-600">Email *</label>
+                    <input
+                      type="email"
+                      value={bookingGuestEmail}
+                      onChange={(e) => setBookingGuestEmail(e.target.value)}
+                      className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      placeholder="Email *"
+                      autoComplete="email"
+                    />
+                  </div>
+                </div>
+              )}
               {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   This service is temporarily unavailable because no eligible staff is assigned.
@@ -4339,7 +5107,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {memberOpen && (
-        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
+        <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
               <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>

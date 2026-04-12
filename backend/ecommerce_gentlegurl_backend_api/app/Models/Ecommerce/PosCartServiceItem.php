@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 class PosCartServiceItem extends Model
 {
     protected $fillable = [
-        'pos_cart_id', 'booking_service_id', 'customer_id', 'service_name_snapshot', 'price_snapshot',
+        'pos_cart_id', 'booking_service_id', 'customer_id', 'guest_name', 'guest_phone', 'guest_email',
+        'service_name_snapshot', 'price_snapshot',
         'qty', 'assigned_staff_id', 'start_at', 'end_at', 'notes', 'staff_splits', 'commission_rate_used',
         'addon_duration_min', 'addon_price', 'selected_option_ids', 'addon_items_json',
     ];
@@ -43,5 +44,10 @@ class PosCartServiceItem extends Model
     public function assignedStaff()
     {
         return $this->belongsTo(Staff::class, 'assigned_staff_id');
+    }
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class, 'customer_id');
     }
 }

@@ -298,7 +298,13 @@
   $useShippingForBilling = !collect($billingFields)->filter()->count();
   $billingName = $useShippingForBilling ? $order->shipping_name : $order->billing_name;
   $billingPhone = $useShippingForBilling ? $order->shipping_phone : $order->billing_phone;
-  $billingEmail = $order->customer?->email;
+  $billingEmail = $order->customer?->email ?? data_get($order->payment_meta, 'pos_billing_email');
+
+  $walkInBillTo = data_get($profile, 'pos_walk_in_bill_to', [
+    'name' => 'Loyalty Tester',
+    'phone' => '0123456789',
+    'email' => 'loyalty.tester@example.com',
+  ]);
   $billingLine1 = $useShippingForBilling ? $order->shipping_address_line1 : $order->billing_address_line1;
   $billingLine2 = $useShippingForBilling ? $order->shipping_address_line2 : $order->billing_address_line2;
   $billingCity = $useShippingForBilling ? $order->shipping_city : $order->billing_city;
@@ -313,6 +319,19 @@
   }
   if (!$billingPhone && $customerPhone) {
     $billingPhone = $customerPhone;
+  }
+
+  /** POS in-store sale without a linked member: use configured walk-in bill-to if order row predates snapshot fields */
+  if ($order->pickup_or_shipping === 'in_store' && !$order->customer_id) {
+    if (!trim((string) ($billingName ?? '')) || $billingName === '-') {
+      $billingName = (string) (data_get($walkInBillTo, 'name') ?: 'Loyalty Tester');
+    }
+    if (!trim((string) ($billingPhone ?? ''))) {
+      $billingPhone = data_get($walkInBillTo, 'phone');
+    }
+    if (!trim((string) ($billingEmail ?? ''))) {
+      $billingEmail = data_get($walkInBillTo, 'email');
+    }
   }
 
   $paymentMethodRaw = $order->payment_method ?? '';
@@ -393,9 +412,6 @@
 
           <td style="width:40%; text-align:right;">
             <div class="doc-title">{{ $docTitle }}</div>
-            @if($receiptStageLabel)
-              <div class="doc-subtitle" style="color:#4338ca; font-weight:700;">{{ $receiptStageLabel }}</div>
-            @endif
             <!-- <div class="status-badge {{ $isPaid ? 'status-paid' : 'status-unpaid' }}">
               {{ $isPaid ? 'PAID' : 'UNPAID' }}
             </div> -->
@@ -425,77 +441,108 @@
 
     <!-- Addresses -->
     <div class="section">
-      <table class="info-table">
-        <tr>
-          <th>Bill To</th>
-          <th>{{ $order->pickup_or_shipping === 'pickup' ? 'Pickup' : 'Ship To' }}</th>
-        </tr>
-
-        <tr>
-          <td>
-            <div class="addr-title">{{ $billingName ?? '-' }}</div>
-            @if($billingPhone)
-              <div class="addr-line muted">Phone: {{ $billingPhone }}</div>
-            @endif
-            @if($billingEmail)
-              <div class="addr-line muted">Email: {{ $billingEmail }}</div>
-            @endif
-            @if($billingLine1)
-              <div class="addr-line">{{ $billingLine1 }}</div>
-            @endif
-            @if($billingLine2)
-              <div class="addr-line">{{ $billingLine2 }}</div>
-            @endif
-            <div class="addr-line">
-              {{ trim(collect([$billingPostcode, $billingCity, $billingState])->filter()->implode(' ')) }}
-            </div>
-            <div class="addr-line">{{ $billingCountry ?? '-' }}</div>
-          </td>
-
-          <td>
-            @if($order->pickup_or_shipping === 'pickup')
-              @if($order->pickupStore)
-                <div class="addr-title">{{ $order->pickupStore->name }}</div>
-                @if($order->pickupStore->address_line1)
-                  <div class="addr-line">{{ $order->pickupStore->address_line1 }}</div>
-                @endif
-                @if($order->pickupStore->address_line2)
-                  <div class="addr-line">{{ $order->pickupStore->address_line2 }}</div>
-                @endif
-                <div class="addr-line">
-                  {{ trim(collect([$order->pickupStore->postcode, $order->pickupStore->city, $order->pickupStore->state])->filter()->implode(' ')) }}
-                </div>
-                @if($order->pickupStore->country)
-                  <div class="addr-line">{{ $order->pickupStore->country }}</div>
-                @endif
+      @if($order->pickup_or_shipping === 'in_store')
+        <table class="info-table">
+          <tr>
+            <th>Bill To</th>
+          </tr>
+          <tr>
+            <td style="width:100%;">
+              <div class="addr-title">{{ $billingName ?? '-' }}</div>
+              @if($billingPhone)
+                <div class="addr-line muted">Phone: {{ $billingPhone }}</div>
               @endif
-
-              <div style="margin-top:8px;" class="muted small">
-                <strong style="color:#111827;">{{ $order->shipping_name ?: ($customerName ?? '-') }}</strong>
-              </div>
-              @if($order->shipping_phone || $customerPhone)
-                <div class="muted small">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
+              @if($billingEmail)
+                <div class="addr-line muted">Email: {{ $billingEmail }}</div>
               @endif
-
-            @else
-              <div class="addr-title">{{ $order->shipping_name ?: ($customerName ?? '-') }}</div>
-              @if($order->shipping_phone || $customerPhone)
-                <div class="addr-line muted">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
+              @if($billingLine1)
+                <div class="addr-line">{{ $billingLine1 }}</div>
               @endif
-              @if($order->shipping_address_line1)
-                <div class="addr-line">{{ $order->shipping_address_line1 }}</div>
-              @endif
-              @if($order->shipping_address_line2)
-                <div class="addr-line">{{ $order->shipping_address_line2 }}</div>
+              @if($billingLine2)
+                <div class="addr-line">{{ $billingLine2 }}</div>
               @endif
               <div class="addr-line">
-                {{ trim(collect([$order->shipping_postcode, $order->shipping_city, $order->shipping_state])->filter()->implode(' ')) }}
+                {{ trim(collect([$billingPostcode, $billingCity, $billingState])->filter()->implode(' ')) }}
               </div>
-              <div class="addr-line">{{ $order->shipping_country ?? '-' }}</div>
-            @endif
-          </td>
-        </tr>
-      </table>
+              @if(trim((string) ($billingCountry ?? '')) && $billingCountry !== '-')
+                <div class="addr-line">{{ $billingCountry }}</div>
+              @endif
+            </td>
+          </tr>
+        </table>
+      @else
+        <table class="info-table">
+          <tr>
+            <th>Bill To</th>
+            <th>{{ $order->pickup_or_shipping === 'pickup' ? 'Pickup' : 'Ship To' }}</th>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="addr-title">{{ $billingName ?? '-' }}</div>
+              @if($billingPhone)
+                <div class="addr-line muted">Phone: {{ $billingPhone }}</div>
+              @endif
+              @if($billingEmail)
+                <div class="addr-line muted">Email: {{ $billingEmail }}</div>
+              @endif
+              @if($billingLine1)
+                <div class="addr-line">{{ $billingLine1 }}</div>
+              @endif
+              @if($billingLine2)
+                <div class="addr-line">{{ $billingLine2 }}</div>
+              @endif
+              <div class="addr-line">
+                {{ trim(collect([$billingPostcode, $billingCity, $billingState])->filter()->implode(' ')) }}
+              </div>
+              <div class="addr-line">{{ $billingCountry ?? '-' }}</div>
+            </td>
+
+            <td>
+              @if($order->pickup_or_shipping === 'pickup')
+                @if($order->pickupStore)
+                  <div class="addr-title">{{ $order->pickupStore->name }}</div>
+                  @if($order->pickupStore->address_line1)
+                    <div class="addr-line">{{ $order->pickupStore->address_line1 }}</div>
+                  @endif
+                  @if($order->pickupStore->address_line2)
+                    <div class="addr-line">{{ $order->pickupStore->address_line2 }}</div>
+                  @endif
+                  <div class="addr-line">
+                    {{ trim(collect([$order->pickupStore->postcode, $order->pickupStore->city, $order->pickupStore->state])->filter()->implode(' ')) }}
+                  </div>
+                  @if($order->pickupStore->country)
+                    <div class="addr-line">{{ $order->pickupStore->country }}</div>
+                  @endif
+                @endif
+
+                <div style="margin-top:8px;" class="muted small">
+                  <strong style="color:#111827;">{{ $order->shipping_name ?: ($customerName ?? '-') }}</strong>
+                </div>
+                @if($order->shipping_phone || $customerPhone)
+                  <div class="muted small">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
+                @endif
+
+              @else
+                <div class="addr-title">{{ $order->shipping_name ?: ($customerName ?? '-') }}</div>
+                @if($order->shipping_phone || $customerPhone)
+                  <div class="addr-line muted">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
+                @endif
+                @if($order->shipping_address_line1)
+                  <div class="addr-line">{{ $order->shipping_address_line1 }}</div>
+                @endif
+                @if($order->shipping_address_line2)
+                  <div class="addr-line">{{ $order->shipping_address_line2 }}</div>
+                @endif
+                <div class="addr-line">
+                  {{ trim(collect([$order->shipping_postcode, $order->shipping_city, $order->shipping_state])->filter()->implode(' ')) }}
+                </div>
+                <div class="addr-line">{{ $order->shipping_country ?? '-' }}</div>
+              @endif
+            </td>
+          </tr>
+        </table>
+      @endif
     </div>
 
     <!-- Items -->

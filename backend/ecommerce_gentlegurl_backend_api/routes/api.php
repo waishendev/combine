@@ -411,6 +411,7 @@ $protectedRoutes = function () {
         Route::patch('/cart/package-items/{itemId}', [PosController::class, 'updatePackageCartItem']);
         Route::delete('/cart/package-items/{itemId}', [PosController::class, 'removePackageCartItem']);
         Route::post('/cart/add-service', [PosController::class, 'addService']);
+        Route::post('/cart/sync-customer-context', [PosController::class, 'syncCustomerContext']);
         Route::post('/packages/purchase', [PosController::class, 'purchasePackage']);
         Route::post('/cart/voucher/apply', [PosController::class, 'applyVoucher']);
         Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
@@ -418,6 +419,7 @@ $protectedRoutes = function () {
         Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
         Route::delete('/cart/service-items/{itemId}', [PosController::class, 'removeServiceCartItem']);
+        Route::post('/cart/service-items/{itemId}/release-package-claim', [PosController::class, 'releaseServiceItemPackageClaim']);
         Route::post('/checkout', [PosController::class, 'checkout']);
     });
 

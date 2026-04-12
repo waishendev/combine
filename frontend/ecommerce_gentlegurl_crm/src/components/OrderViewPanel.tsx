@@ -724,7 +724,17 @@ export default function OrderViewPanel({
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">Shipping Method</p>
-                      <p className="font-medium text-slate-900 capitalize">{order.shipping_method || '-'}</p>
+                      <p className="font-medium text-slate-900">
+                        {order.shipping_method === 'in_store'
+                          ? 'In-store'
+                          : order.shipping_method === 'pickup'
+                            ? 'Pickup'
+                            : order.shipping_method === 'shipping'
+                              ? 'Shipping'
+                              : order.shipping_method
+                                ? order.shipping_method.replace(/_/g, ' ')
+                                : '-'}
+                      </p>
                     </div>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

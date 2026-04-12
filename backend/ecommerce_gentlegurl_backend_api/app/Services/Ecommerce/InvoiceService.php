@@ -277,6 +277,12 @@ class InvoiceService
             'company_website' => null,
             'footer_note' => 'This is a computer-generated invoice.',
             'currency' => 'MYR',
+            /** Shown on POS invoices when checkout has no member and no guest details (override via ecommerce.invoice_profile) */
+            'pos_walk_in_bill_to' => [
+                'name' => 'Loyalty Tester',
+                'phone' => '0123456789',
+                'email' => 'loyalty.tester@example.com',
+            ],
         ];
     }
 }
