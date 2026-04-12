@@ -579,6 +579,17 @@
                 @if(!empty($item['promotion_summary']))
                   <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>
                 @endif
+                @if(!empty($item['is_staff_free_applied']))
+                  <div class="sku" style="color:#047857;margin-top:2px;font-weight:600;">
+                    Staff free
+                  </div>
+                @endif
+                <!--  @if(!empty($item['is_staff_free_applied']))
+                  <div class="sku" style="color:#047857;font-weight:600;">
+                    Staff free
+                    : - {{ $currency }} {{ number_format((float) ($item['staff_free_list_line_total'] ?? 0), 2) }}
+                  </div>
+                @endif -->
                 @if(!empty($item['covered_by_package']))
               
                   @if(!empty($item['package_applied_name']))

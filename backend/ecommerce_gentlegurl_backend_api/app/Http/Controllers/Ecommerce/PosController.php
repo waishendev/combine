@@ -2692,9 +2692,15 @@ class PosController extends Controller
             $eligible = [];
             foreach ($cart->items as $item) {
                 $product = $item->variant?->product ?? $item->product;
-                if ($product && in_array((int) $product->id, $productIds, true)) {
-                    $eligible[] = $item;
+                if (! $product || ! in_array((int) $product->id, $productIds, true)) {
+                    continue;
                 }
+                // Staff checkout: consumable / staff-free lines are priced at RM 0 and must not count
+                // toward bundle promos (e.g. "2 items => RM 23") or receive promo discount portions.
+                if ($isStaffUser && ! empty($base[(int) $item->id]['is_staff_free_applied'])) {
+                    continue;
+                }
+                $eligible[] = $item;
             }
             if (empty($eligible)) {
                 continue;

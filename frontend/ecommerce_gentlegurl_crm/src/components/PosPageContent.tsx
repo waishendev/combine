@@ -3450,12 +3450,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </div>
                           ) : null} */}
                           {item.is_staff_free_applied ? (
-                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            <div className="mt-1.5">
                               <span className="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
                                 Staff Free Applied
-                              </span>
-                              <span className="text-[10px] text-gray-500 line-through">
-                                RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
                               </span>
                             </div>
                           ) : null}
@@ -3487,6 +3484,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                              </div>
+                            ) : item.is_staff_free_applied ? (
+                              <div className="space-y-0.5">
+                                <p className="text-[11px] text-gray-500 line-through">
+                                   RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
+                                </p>
                                 <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (item.discount_amount ?? 0) > 0 ? (
@@ -4194,6 +4198,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot).toFixed(2)}</p>
                                 <p className="text-gray-700 font-semibold text-gray-800">RM {Number(item.unit_price).toFixed(2)}</p>
                               </div>
+                            ) : item.is_staff_free_applied ? (
+                              <div className="space-y-0.5">
+                                <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot ?? 0).toFixed(2)}</p>
+                                <p className="font-semibold text-emerald-800">RM {Number(item.unit_price).toFixed(2)}</p>
+                              </div>
                             ) : (
                               <p className="text-gray-700">RM {Number(item.unit_price).toFixed(2)}</p>
                             )}
@@ -4202,6 +4211,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
+                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                              </div>
+                            ) : item.is_staff_free_applied ? (
+                              <div className="space-y-0.5 text-right">
+                                <p className="text-[11px] font-semibold tabular-nums text-emerald-700">
+                                  - RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
+                                </p>
                                 <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (

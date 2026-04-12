@@ -22,7 +22,9 @@ class InvoiceService
      *     quantity: int,
      *     unit_price: float,
      *     line_total: float,
-     *     promotion_summary: mixed
+     *     promotion_summary: mixed,
+     *     is_staff_free_applied: bool,
+     *     staff_free_list_line_total: float
      * }
      */
     public function mapOrderItemToInvoiceRow(OrderItem $item): array
@@ -55,6 +57,8 @@ class InvoiceService
             $variantName = 'Service Package';
         }
 
+        $isStaffFree = (bool) ($item->is_staff_free_applied ?? false);
+
         return [
             'line_type' => $lineType,
             'product_name' => $productName,
@@ -65,6 +69,8 @@ class InvoiceService
             'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
             'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
             'promotion_summary' => data_get($item->promotion_snapshot, 'summary'),
+            'is_staff_free_applied' => $isStaffFree,
+            'staff_free_list_line_total' => $isStaffFree ? (float) ($item->line_total_snapshot ?? 0) : 0.0,
         ];
     }
 
@@ -143,6 +149,8 @@ class InvoiceService
                     'unit_price' => (float) $item->price_snapshot,
                     'line_total' => (float) $item->line_total,
                     'promotion_summary' => null,
+                    'is_staff_free_applied' => false,
+                    'staff_free_list_line_total' => 0.0,
                     'booking_id' => $bookingId,
                     'covered_by_package' => $packageName !== '',
                     'package_applied_name' => $packageName !== '' ? $packageName : null,
@@ -181,6 +189,8 @@ class InvoiceService
                     'unit_price' => (float) ($first?->servicePackage?->selling_price ?? 0),
                     'line_total' => round((float) $rows->count() * (float) ($first?->servicePackage?->selling_price ?? 0), 2),
                     'promotion_summary' => null,
+                    'is_staff_free_applied' => false,
+                    'staff_free_list_line_total' => 0.0,
                 ];
             })
             ->values();
