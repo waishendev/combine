@@ -29,6 +29,7 @@ use App\Models\Ecommerce\PosCartServiceItem;
 use App\Models\Ecommerce\ServicePackageStaffSplit;
 use App\Models\Staff;
 use App\Services\Booking\BookingAvailabilityService;
+use App\Services\Booking\BookingConfirmationEmailService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\SettingService;
 use App\Models\Promotion;
@@ -54,6 +55,7 @@ class PosController extends Controller
         protected InvoiceService $invoiceService,
         protected CustomerServicePackageService $customerServicePackageService,
         protected BookingAvailabilityService $availabilityService,
+        protected BookingConfirmationEmailService $bookingConfirmationEmailService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -1461,7 +1463,7 @@ class PosController extends Controller
             }
         }
 
-        [$order, $receiptUrl, $purchasedPackageLines] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
+        [$order, $receiptUrl, $purchasedPackageLines, $createdBookingIds] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
             $packageCustomerIds = $cart->packageItems
                 ->pluck('customer_id')
                 ->filter(fn ($id) => !empty($id))
@@ -1551,6 +1553,7 @@ class PosController extends Controller
             ]);
 
             $purchasedPackageLines = [];
+            $createdBookingIds = [];
 
             $packagePayloadByCartId = collect($validated['package_items'] ?? [])
                 ->filter(fn (array $item) => !empty($item['cart_package_item_id']))
@@ -1701,6 +1704,7 @@ class PosController extends Controller
                     'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
                     'notes' => $serviceItem->notes,
                 ]);
+                $createdBookingIds[] = (int) $booking->id;
 
 
                 $this->customerServicePackageService->attachReservedClaimsToBooking(
@@ -1904,8 +1908,21 @@ class PosController extends Controller
             $cart->packageItems()->delete();
             $this->clearVoucherFromCart($cart);
 
-            return [$order, $receiptUrl, $purchasedPackageLines];
+            return [$order, $receiptUrl, $purchasedPackageLines, $createdBookingIds];
         });
+
+        if (! empty($createdBookingIds)) {
+            Booking::query()
+                ->whereIn('id', $createdBookingIds)
+                ->with(['customer', 'service', 'staff'])
+                ->get()
+                ->each(function (Booking $booking) use ($validated) {
+                    $this->bookingConfirmationEmailService->sendForBooking(
+                        $booking,
+                        (string) ($validated['payment_method'] ?? 'cash')
+                    );
+                });
+        }
 
         return $this->respond([
             'order' => [
