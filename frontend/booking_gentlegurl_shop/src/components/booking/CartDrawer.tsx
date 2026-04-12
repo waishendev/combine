@@ -204,7 +204,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
       const nextErrors: Record<string, string> = {};
       const normalizedGuestPhone = guestPhone.trim();
+      const normalizedGuestEmail = guestEmail.trim();
       const normalizedBillingPhone = billingPhone.trim();
+      const normalizedBillingEmail = billingEmail.trim();
       const phonePattern = /^\+?[0-9]{8,15}$/;
 
       if (!guestName.trim()) {
@@ -250,11 +252,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         {
           guest_name: guestName.trim(),
           guest_phone: guestPhone.trim(),
-          guest_email: guestEmail.trim() || undefined,
+          guest_email: normalizedGuestEmail || undefined,
           billing_same_as_contact: billingSameAsContact,
           billing_name: billingSameAsContact ? guestName.trim() : billingName.trim(),
           billing_phone: billingSameAsContact ? guestPhone.trim() : billingPhone.trim(),
-          billing_email: billingSameAsContact ? guestEmail.trim() || undefined : billingEmail.trim() || undefined,
+          billing_email: billingSameAsContact ? normalizedGuestEmail || undefined : normalizedBillingEmail || undefined,
           payment_method: selectedPaymentMethod,
           bank_account_id: selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
           billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,

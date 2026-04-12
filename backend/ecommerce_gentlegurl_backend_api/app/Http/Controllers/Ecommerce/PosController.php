@@ -696,7 +696,10 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
-            'customer_id' => ['required', 'integer', 'exists:customers,id'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
+            'guest_email' => ['nullable', 'email', 'max:255'],
             'start_at' => ['required', 'date'],
             'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'selected_option_ids' => ['nullable', 'array'],
@@ -709,7 +712,6 @@ class PosController extends Controller
         ]);
 
         $service = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
-        $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
@@ -811,7 +813,7 @@ class PosController extends Controller
         $item = PosCartServiceItem::query()->create([
             'pos_cart_id' => $cart->id,
             'booking_service_id' => $service->id,
-            'customer_id' => $customer->id,
+            'customer_id' => !empty($validated['customer_id']) ? (int) $validated['customer_id'] : null,
             'service_name_snapshot' => $service->name,
             'price_snapshot' => (float) ($service->price ?? $service->service_price ?? 0),
             'qty' => $qty,
@@ -1363,6 +1365,9 @@ class PosController extends Controller
         $validated = $request->validate([
             'payment_method' => ['required', 'in:cash,qrpay'],
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
+            'guest_email' => ['nullable', 'email', 'max:255'],
             'items' => ['nullable', 'array'],
             'items.*.cart_item_id' => ['nullable', 'integer'],
             'items.*.staff_splits' => ['nullable', 'array'],
@@ -1393,6 +1398,9 @@ class PosController extends Controller
         $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
         if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
+        }
+        if (empty($validated['member_id']) && (empty($validated['guest_name']) || empty($validated['guest_phone']))) {
+            return $this->respondError(__('Please assign member or provide guest name and phone.'), 422);
         }
 
         $serviceItemsPayload = collect($validated['service_items'] ?? []);
@@ -1477,6 +1485,9 @@ class PosController extends Controller
 
             $packageCustomerId = $packageCustomerIds->first();
             $customerId = !empty($validated['member_id']) ? (int) $validated['member_id'] : ($packageCustomerId ?: null);
+            $guestName = trim((string) ($validated['guest_name'] ?? ''));
+            $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
+            $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
             if ($cart->packageItems->isNotEmpty() && empty($customerId)) {
                 abort(422, __('Please assign member before purchasing service package.'));
@@ -1545,10 +1556,14 @@ class PosController extends Controller
                 'shipping_fee' => 0,
                 'grand_total' => $grandTotal,
                 'pickup_or_shipping' => 'pickup',
+                'shipping_name' => $customerId ? null : ($guestName ?: null),
+                'shipping_phone' => $customerId ? null : ($guestPhone ?: null),
+                'billing_name' => $customerId ? null : ($guestName ?: null),
+                'billing_phone' => $customerId ? null : ($guestPhone ?: null),
                 'placed_at' => now(),
                 'paid_at' => now(),
                 'completed_at' => now(),
-                'notes' => 'POS checkout by staff #' . $request->user()->id . ' | booking_deposit=' . number_format((float) $depositTotal, 2, '.', ''),
+                'notes' => 'POS checkout by staff #' . $request->user()->id . ' | booking_deposit=' . number_format((float) $depositTotal, 2, '.', '') . ($customerId ? '' : (' | guest_email=' . ($guestEmail ?: '-'))),
                 'promotion_snapshot' => $cartPricing['promotions'] ?? [],
             ]);
 
@@ -1665,9 +1680,7 @@ class PosController extends Controller
                     abort(422, __('Service is not available for checkout.'));
                 }
 
-                if (! $serviceItem->customer_id) {
-                    abort(422, __('Member is required for booking service item.'));
-                }
+                $serviceCustomerId = (int) ($serviceItem->customer_id ?? $customerId ?? 0);
 
                 if (! $serviceItem->start_at) {
                     abort(422, __('Appointment time is required for booking service item.'));
@@ -1687,8 +1700,11 @@ class PosController extends Controller
 
                 $booking = Booking::query()->create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-                    'source' => 'STAFF',
-                    'customer_id' => (int) $serviceItem->customer_id,
+                    'source' => $serviceCustomerId > 0 ? 'STAFF' : 'GUEST',
+                    'customer_id' => $serviceCustomerId > 0 ? $serviceCustomerId : null,
+                    'guest_name' => $serviceCustomerId > 0 ? null : ($guestName ?: null),
+                    'guest_phone' => $serviceCustomerId > 0 ? null : ($guestPhone ?: null),
+                    'guest_email' => $serviceCustomerId > 0 ? null : ($guestEmail ?: null),
                     'staff_id' => $serviceItem->assigned_staff_id,
                     'service_id' => $serviceItem->booking_service_id,
                     'start_at' => $startAt,
@@ -1705,13 +1721,15 @@ class PosController extends Controller
                 ]);
 
 
-                $this->customerServicePackageService->attachReservedClaimsToBooking(
-                    (int) $serviceItem->customer_id,
-                    (int) $serviceItem->booking_service_id,
-                    'POS',
-                    (int) $serviceItem->id,
-                    (int) $booking->id,
-                );
+                if ($serviceCustomerId > 0) {
+                    $this->customerServicePackageService->attachReservedClaimsToBooking(
+                        $serviceCustomerId,
+                        (int) $serviceItem->booking_service_id,
+                        'POS',
+                        (int) $serviceItem->id,
+                        (int) $booking->id,
+                    );
+                }
 
                 $lineTotal = round(((float) $serviceItem->price_snapshot) * (int) $serviceItem->qty, 2);
                 $splits = collect($serviceItem->staff_splits ?? []);
@@ -1737,7 +1755,7 @@ class PosController extends Controller
                     'order_id' => $order->id,
                     'booking_id' => $booking->id,
                     'booking_service_id' => $serviceItem->booking_service_id,
-                    'customer_id' => (int) $serviceItem->customer_id,
+                    'customer_id' => $serviceCustomerId > 0 ? $serviceCustomerId : null,
                     'service_name_snapshot' => $serviceItem->service_name_snapshot,
                     'price_snapshot' => (float) $serviceItem->price_snapshot,
                     'qty' => (int) $serviceItem->qty,
