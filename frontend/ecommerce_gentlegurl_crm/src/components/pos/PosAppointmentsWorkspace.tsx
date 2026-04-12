@@ -902,14 +902,21 @@ export default function PosAppointmentsWorkspace({
     [appointmentDetail?.package_offset],
   )
 
-  const appointmentLinkedDepositAmount = useMemo(
-    () => Number(appointmentDetail?.linked_booking_deposit_total ?? appointmentDetail?.linked_booking_deposit ?? 0),
-    [appointmentDetail?.linked_booking_deposit, appointmentDetail?.linked_booking_deposit_total],
-  )
+  /** Add-on amount still due at settlement (list total minus add-on deposits already paid on orders). */
+  const appointmentAddonDueForBreakdown = useMemo(() => {
+    if (!appointmentDetail) return 0
+    const bal = appointmentDetail.addon_balance_due
+    if (bal != null && Number.isFinite(Number(bal))) return Number(bal)
+    return appointmentAddonTotal
+  }, [appointmentDetail, appointmentAddonTotal])
 
+  /**
+   * Deposit credited against this visit’s service balance only.
+   * Do not add linked_booking_deposit: that is the same pool of money; the API already splits it into deposit_contribution per booking.
+   */
   const appointmentDepositTotalForBreakdown = useMemo(
-    () => Number(appointmentDepositContributionForSettlement) + appointmentLinkedDepositAmount,
-    [appointmentDepositContributionForSettlement, appointmentLinkedDepositAmount],
+    () => Number(appointmentDepositContributionForSettlement),
+    [appointmentDepositContributionForSettlement],
   )
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
@@ -1249,11 +1256,22 @@ export default function PosAppointmentsWorkspace({
                         <span className="text-slate-600">Service</span>
                         <span className="font-medium tabular-nums text-slate-900">RM {appointmentServiceAmount.toFixed(2)}</span>
                       </div>
-                      <div className="flex items-center justify-between gap-3 py-3.5">
-                        <span className="text-slate-600">Add-ons</span>
-                        <span className="font-medium tabular-nums text-slate-900">
-                          {appointmentAddonTotal > 0 ? `RM ${appointmentAddonTotal.toFixed(2)}` : '—'}
-                        </span>
+                      <div className="flex flex-col gap-1 py-3.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-600">Add-ons</span>
+                          <span className="font-medium tabular-nums text-slate-900">
+                            {(appointmentDetail?.add_ons?.length ?? 0) > 0 || appointmentAddonTotal > 0
+                              ? `RM ${appointmentAddonDueForBreakdown.toFixed(2)}`
+                              : '—'}
+                          </span>
+                        </div>
+                        {appointmentAddonTotal > appointmentAddonDueForBreakdown + 0.005 &&
+                        Number(appointmentDetail?.addon_paid_online ?? 0) > 0.005 ? (
+                          <p className="text-[11px] leading-snug text-slate-500">
+                            List total RM {appointmentAddonTotal.toFixed(2)} · RM{' '}
+                            {Number(appointmentDetail.addon_paid_online).toFixed(2)} already paid toward add-ons
+                          </p>
+                        ) : null}
                       </div>
                       {/* <div className="flex items-center justify-between gap-3 border-t border-dashed border-slate-200 py-3.5">
                         <span className="font-semibold text-slate-800">Subtotal</span>

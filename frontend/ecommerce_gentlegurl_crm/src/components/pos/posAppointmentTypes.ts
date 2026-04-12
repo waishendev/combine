@@ -57,6 +57,8 @@ export type PosAppointmentDetail = {
   deposit_previously_collected_amount?: number
   package_offset?: number
   settlement_paid: number
+  /** Service subtotal after deposit credit, package offset, and service settlement (matches balance math). */
+  service_balance_due?: number
   balance_due: number
   amount_due_now?: number
   package_status?: { status?: string; used_qty?: number } | null

@@ -5,11 +5,7 @@ import Image from "next/image";
 import { Service } from "@/lib/types";
 import { SectionTitle } from "./SectionTitle";
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
-import { addPackageCartItem, getServicePackages } from "@/lib/apiClient";
-import { SERVICE_PACKAGES_SECTION_ID } from "@/lib/landingAnchors";
-import type { ServicePackage, LandingSections, LandingGalleryItem } from "@/lib/types";
+import type { LandingSections, LandingGalleryItem } from "@/lib/types";
 
 type HeroProps = {
   hero: LandingSections["hero"];
@@ -49,21 +45,12 @@ export function ServicesPreview({ services }: { services: Service[] }) {
 }
 
 export function DynamicSections({ sections }: { sections: LandingSections }) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const { user } = useAuth();
-
   const galleryItems = sections.gallery?.items ?? [];
   const menuItems = sections.service_menu?.items ?? [];
-  const allImages = [...galleryItems, ...menuItems];
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxSource, setLightboxSource] = useState<"gallery" | "menu">("gallery");
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
-  const [packages, setPackages] = useState<ServicePackage[]>([]);
-  const [packagesLoading, setPackagesLoading] = useState(true);
-  const [packagesError, setPackagesError] = useState<string | null>(null);
-  const [packagesMessage, setPackagesMessage] = useState<string | null>(null);
 
   const openLightbox = (idx: number, source: "gallery" | "menu") => {
     setLightboxSource(source);
@@ -151,53 +138,6 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [lightboxIndex]);
-
-  useEffect(() => {
-    const run = async () => {
-      setPackagesLoading(true);
-      setPackagesError(null);
-      try {
-        const rows = await getServicePackages();
-        const list = Array.isArray(rows) ? rows : [];
-        setPackages(list.filter((pkg) => pkg.is_active !== false));
-      } catch (err) {
-        setPackagesError(err instanceof Error ? err.message : "Unable to load service packages");
-      } finally {
-        setPackagesLoading(false);
-      }
-    };
-
-    void run();
-  }, []);
-
-  useEffect(() => {
-    if (pathname !== "/") return;
-    if (packagesLoading) return;
-    if (packages.length === 0) return;
-    if (typeof window === "undefined" || window.location.hash !== `#${SERVICE_PACKAGES_SECTION_ID}`) return;
-    const el = document.getElementById(SERVICE_PACKAGES_SECTION_ID);
-    if (!el) return;
-    const id = requestAnimationFrame(() => {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [pathname, packagesLoading, packages.length]);
-
-  const onAddPackageToCart = async (pkg: ServicePackage) => {
-    if (!user) {
-      router.push(`/login?redirect=${encodeURIComponent(pathname || "/")}`);
-      return;
-    }
-
-    try {
-      const updatedCart = await addPackageCartItem({ service_package_id: pkg.id, qty: 1 });
-      const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
-      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
-      setPackagesMessage(`Added ${pkg.name} to cart. Open the cart icon when you're ready to pay.`);
-    } catch (err) {
-      setPackagesMessage(err instanceof Error ? err.message : "Unable to add package into cart.");
-    }
-  };
 
   const faqItems = sections.faqs?.items ?? [];
   const noteItems = sections.notes?.items ?? [];
@@ -300,52 +240,6 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
           </div>
         </div>
       )}
-
-      {/* Service Packages (still dynamic from API) */}
-      {!packagesLoading && packages.length > 0 ? (
-        <section id={SERVICE_PACKAGES_SECTION_ID} className="scroll-mt-24 space-y-6">
-          {renderSectionHeading({ label: "Packages", title: "Service Packages", align: "left" }, "accent")}
-          {packagesMessage ? <p className="text-sm text-[var(--accent)]">{packagesMessage}</p> : null}
-          {packagesError ? <p className="text-sm text-[var(--status-error)]">{packagesError}</p> : null}
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {packages.slice(0, 4).map((pkg) => (
-              <article
-                key={pkg.id}
-                className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-base font-semibold text-[var(--foreground)]">{pkg.name}</h3>
-                    <p className="mt-1 line-clamp-2 text-sm text-[var(--foreground)]/70">
-                      {pkg.description || "Service package"}
-                    </p>
-                  </div>
-                  <div className="shrink-0 rounded-full bg-[var(--badge-background)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
-                    RM {pkg.selling_price}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--foreground)]/70">
-                  <span className="rounded-full border border-[var(--card-border)] bg-[var(--card)]/60 px-3 py-1">
-                    Valid: {pkg.valid_days ?? "-"} days
-                  </span>
-                </div>
-
-                <div className="mt-4 flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void onAddPackageToCart(pkg)}
-                    className="inline-flex rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
-                  >
-                    Add to Cart
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       {/* FAQ Section */}
       {sections.faqs?.is_active && faqItems.length > 0 && (

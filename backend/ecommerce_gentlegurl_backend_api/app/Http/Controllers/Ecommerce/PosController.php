@@ -307,6 +307,7 @@ class PosController extends Controller
             'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
             'package_offset' => (float) $summary['package_offset'],
             'settlement_paid' => (float) $summary['settlement_paid'],
+            'service_balance_due' => (float) ($summary['service_balance_due'] ?? 0),
             'balance_due' => (float) $summary['balance_due'],
             'amount_due_now' => (float) $summary['amount_due_now'],
             'add_ons' => $summary['add_ons'],

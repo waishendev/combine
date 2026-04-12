@@ -6,8 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getBookingCart, getServicePackages } from "@/lib/apiClient";
-import { SERVICE_PACKAGES_SECTION_ID } from "@/lib/landingAnchors";
 import { CartDrawer } from "@/components/booking/CartDrawer";
+
+const PACKAGES_PATH = "/services-packages";
 
 export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const pathname = usePathname();
@@ -20,9 +21,13 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const [hasPackages, setHasPackages] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const packagesHref = `/#${SERVICE_PACKAGES_SECTION_ID}`;
+  const packagesHref = PACKAGES_PATH;
 
   const isActive = (path: string) => (pathname === path || pathname?.startsWith(`${path}/`) ? "text-[var(--foreground)]" : "text-[var(--text-muted)]");
+  const packagesNavClass =
+    pathname === PACKAGES_PATH || pathname?.startsWith(`${PACKAGES_PATH}/`)
+      ? "text-[var(--foreground)]"
+      : "text-[var(--text-muted)]";
   const fallbackLogo = "/images/logo.png";
   const resolvedLogoUrl = logoUrl || fallbackLogo;
   
@@ -106,18 +111,6 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
     };
   }, []);
 
-  const scrollToServicePackages = () => {
-    document.getElementById(SERVICE_PACKAGES_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  const onPackagesNavClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (pathname === "/" && hasPackages) {
-      e.preventDefault();
-      scrollToServicePackages();
-    }
-    setMobileMenuOpen(false);
-  };
-
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-[var(--muted)]/50 bg-[var(--background)]/80 backdrop-blur">
@@ -142,8 +135,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
               {hasPackages ? (
                 <Link
                   href={packagesHref}
-                  onClick={onPackagesNavClick}
-                  className="text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+                  className={`${packagesNavClass} transition-colors hover:text-[var(--foreground)]`}
                 >
                   Packages
                 </Link>
@@ -358,7 +350,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                   <Link
                     href={packagesHref}
                     className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
-                    onClick={onPackagesNavClick}
+                    onClick={() => setMobileMenuOpen(false)}
                   >
                     Packages
                   </Link>
