@@ -1,18 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getBookingServiceCategories, getBookingServices } from "@/lib/apiClient";
 import { BookingServiceCategory, Service } from "@/lib/types";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 
 export default function BookingPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const categoryIdParam = searchParams.get("category_id");
   const [categories, setCategories] = useState<BookingServiceCategory[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<BookingServiceCategory | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedCategory = useMemo((): BookingServiceCategory | null => {
+    if (!categoryIdParam || categories.length === 0) return null;
+    const cid = Number.parseInt(categoryIdParam, 10);
+    if (!Number.isFinite(cid)) return null;
+    return categories.find((c) => c.id === cid) ?? null;
+  }, [categoryIdParam, categories]);
 
   useEffect(() => {
     const run = async () => {
@@ -55,7 +65,7 @@ export default function BookingPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <BookingProgress step={1} />
+      <BookingProgress step={selectedCategory ? 2 : 1} loading={loading && categories.length === 0} />
       <div className="text-center space-y-2">
         <h1 className="font-[var(--font-heading)] text-3xl font-medium sm:text-4xl">{title}</h1>
         <p className="text-sm text-[var(--text-muted)]">
@@ -79,9 +89,9 @@ export default function BookingPage() {
         <button
           type="button"
           onClick={() => {
-            setSelectedCategory(null);
             setSearch("");
             setServices([]);
+            router.replace("/booking");
           }}
           className="mt-6 inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] px-4 py-2 text-sm"
         >
@@ -98,7 +108,9 @@ export default function BookingPage() {
             <button
               key={category.id}
               type="button"
-              onClick={() => setSelectedCategory(category)}
+              onClick={() => {
+                router.replace(`/booking?category_id=${category.id}`);
+              }}
               className="text-left group relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
               <div className="aspect-[4/3] bg-gray-100">
@@ -122,7 +134,7 @@ export default function BookingPage() {
           {services.map((service) => (
             <Link
               key={service.id}
-              href={`/booking/service/${service.id}`}
+              href={`/booking/service/${service.id}?category_id=${selectedCategory.id}`}
               className="group relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
               <div className="aspect-[4/3] bg-gray-100">
@@ -142,6 +154,16 @@ export default function BookingPage() {
                 <p className="mt-1 line-clamp-2 text-sm text-[var(--text-muted)]">
                   {service.description || "Professional treatment service."}
                 </p>
+                <div className="mt-3 space-y-1 border-t border-[var(--card-border)] pt-3 text-sm">
+                  <p className="flex justify-between gap-2">
+                    <span className="text-[var(--text-muted)]">Duration</span>
+                    <span className="font-medium tabular-nums">{service.duration_minutes} min</span>
+                  </p>
+                  <p className="flex justify-between gap-2">
+                    <span className="text-[var(--text-muted)]">Price</span>
+                    <span className="font-medium tabular-nums">RM {Number(service.price).toFixed(2)}</span>
+                  </p>
+                </div>
               </div>
             </Link>
           ))}

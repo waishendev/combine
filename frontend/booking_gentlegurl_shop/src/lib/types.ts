@@ -42,6 +42,11 @@ export type BookingServiceQuestionOption = {
   extra_price: number;
   sort_order: number;
   is_active: boolean;
+  /** Present when the option is linked to another booking service (same as SERVICES list images). */
+  image_path?: string | null;
+  image_url?: string | null;
+  linked_description?: string | null;
+  linked_service_type?: "premium" | "standard" | null;
 };
 
 export type Staff = {

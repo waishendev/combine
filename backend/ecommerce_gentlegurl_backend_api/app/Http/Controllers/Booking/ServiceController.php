@@ -64,7 +64,7 @@ class ServiceController extends Controller
 
     public function show(int $id)
     {
-        $service = BookingService::query()->with(['primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])->findOrFail($id);
+        $service = BookingService::query()->with(['primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price,image_path,description,service_type'])->findOrFail($id);
 
         return $this->respond($this->mapService($service, true));
     }
@@ -129,7 +129,7 @@ class ServiceController extends Controller
             'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
             'questions' => $service->questions()
                 ->where('is_active', true)
-                ->with(['options' => fn ($q) => $q->where('is_active', true)->with('linkedBookingService:id,name,duration_min,service_price')->orderBy('sort_order')->orderBy('id')])
+                ->with(['options' => fn ($q) => $q->where('is_active', true)->with('linkedBookingService:id,name,duration_min,service_price,image_path,description,service_type')->orderBy('sort_order')->orderBy('id')])
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get()
@@ -150,6 +150,10 @@ class ServiceController extends Controller
                             'extra_price' => $linkedService ? (float) $linkedService->service_price : (float) $option->extra_price,
                             'sort_order' => (int) $option->sort_order,
                             'is_active' => (bool) $option->is_active,
+                            'image_path' => $linkedService?->image_path,
+                            'image_url' => $linkedService?->image_url,
+                            'linked_description' => $linkedService?->description,
+                            'linked_service_type' => $linkedService?->service_type,
                         ];
                     })->values()->all(),
                 ])->values()->all(),

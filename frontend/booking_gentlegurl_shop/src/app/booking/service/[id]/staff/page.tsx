@@ -14,6 +14,10 @@ export default function ServiceStaffPage() {
   const searchParams = useSearchParams();
   const id = params.id;
   const selectedOptionIds = searchParams.get("selected_option_ids") || "";
+  const categoryId = searchParams.get("category_id");
+  const addonsBackHref = categoryId
+    ? `/booking/service/${id}?category_id=${encodeURIComponent(categoryId)}`
+    : `/booking/service/${id}`;
   const [service, setService] = useState<ServiceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +39,7 @@ export default function ServiceStaffPage() {
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 pb-24">
       <BookingProgress step={4} />
       <div className="space-y-6">
-        <Link href={`/booking/service/${id}`} className="inline-flex rounded-full border border-[var(--card-border)] px-4 py-2 text-sm">Back to add-ons</Link>
+        <Link href={addonsBackHref} className="inline-flex rounded-full border border-[var(--card-border)] px-4 py-2 text-sm">Back to add-ons</Link>
         {error ? <p className="text-[var(--status-error)]">{error}</p> : null}
         {!service ? <p>Loading service...</p> : (
           <section className="space-y-4">
@@ -45,10 +49,15 @@ export default function ServiceStaffPage() {
               <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 text-sm text-[var(--text-muted)]">This service is temporarily unavailable because no eligible staff is assigned.</div>
             ) : (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {staffs.map((staff) => (
+                {staffs.map((staff) => {
+                  const slotQs = new URLSearchParams();
+                  slotQs.set("staff_id", String(staff.id));
+                  if (selectedOptionIds) slotQs.set("selected_option_ids", selectedOptionIds);
+                  if (categoryId) slotQs.set("category_id", categoryId);
+                  return (
                   <Link
                     key={staff.id}
-                    href={`/booking/service/${id}/slots?staff_id=${staff.id}&selected_option_ids=${selectedOptionIds}`}
+                    href={`/booking/service/${id}/slots?${slotQs.toString()}`}
                     className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow"
                   >
                     <p className="font-semibold text-[var(--foreground)]">{staff.name}</p>
@@ -56,7 +65,8 @@ export default function ServiceStaffPage() {
                     <p className="mt-1 text-xs text-[var(--text-muted)]">{staff.description || 'Available stylist'}</p>
                     <span className="mt-5 inline-flex rounded-full bg-[var(--accent-strong)] px-4 py-2 text-xs font-semibold text-white">Select</span>
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
