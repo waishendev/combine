@@ -4,7 +4,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import { addCartItem, getAvailability, getBookingServiceDetail } from "@/lib/apiClient";
+import { getAvailability, getBookingServiceDetail } from "@/lib/apiClient";
 import { BookingSlot, Service, Staff } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
@@ -42,12 +42,12 @@ type AvailabilityPayload = {
 };
 
 type ServiceDetail = Service & { staffs?: Staff[] };
+type SlotWithAvailability = BookingSlot & { availableStaffIds?: number[] };
 
 function SlotPageContent() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const serviceId = params.id;
-  const staffId = searchParams.get("staff_id") || "";
   const selectedOptionIdsParam = searchParams.get("selected_option_ids") || "";
   const selectedOptionIds = useMemo(
     () => selectedOptionIdsParam.split(",").map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0),
@@ -55,23 +55,18 @@ function SlotPageContent() {
   );
 
   const [date, setDate] = useState(todayInTimezone());
-  const [slots, setSlots] = useState<BookingSlot[]>([]);
+  const [slots, setSlots] = useState<SlotWithAvailability[]>([]);
   const [service, setService] = useState<ServiceDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<"all" | "morning" | "afternoon">("all");
   const [confirmModal, setConfirmModal] = useState<BookingSlot | null>(null);
-  const [adding, setAdding] = useState(false);
-
-  const selectedStaff = useMemo(
-    () => service?.staffs?.find((s) => String(s.id) === staffId),
-    [service, staffId]
-  );
+  const [availableStylistCount, setAvailableStylistCount] = useState(0);
   const extraDuration = useMemo(
     () => (service?.questions ?? []).flatMap((q) => q.options ?? []).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0),
     [service?.questions, selectedOptionIds]
   );
-  const canLoad = Boolean(serviceId && staffId && date && selectedStaff);
+  const canLoad = Boolean(serviceId && date && (service?.staffs?.length ?? 0) > 0);
 
   const loadSlots = useCallback(async () => {
     if (!canLoad) return;
@@ -80,28 +75,51 @@ function SlotPageContent() {
     setError(null);
 
     try {
-      const res = await getAvailability(serviceId, staffId, date, extraDuration);
-      const payload = (res as AvailabilityPayload)?.data ?? (res as AvailabilityPayload);
-      const visibleSlots = Array.isArray(payload?.visible_slots)
-        ? payload.visible_slots
-        : Array.isArray(payload?.slots)
-          ? payload.slots
-          : [];
+      const staffs = service?.staffs ?? [];
+      const slotMap = new Map<string, SlotWithAvailability>();
 
-      if ((res as AvailabilityPayload).success === false) {
-        setError((res as AvailabilityPayload).message || "Unable to load available slots.");
-        setSlots([]);
-        return;
-      }
+      await Promise.all(
+        staffs.map(async (staff) => {
+          const res = await getAvailability(serviceId, String(staff.id), date, extraDuration);
+          if ((res as AvailabilityPayload).success === false) return;
 
-      setSlots(visibleSlots);
+          const payload = (res as AvailabilityPayload)?.data ?? (res as AvailabilityPayload);
+          const visibleSlots = Array.isArray(payload?.visible_slots)
+            ? payload.visible_slots
+            : Array.isArray(payload?.slots)
+              ? payload.slots
+              : [];
+
+          visibleSlots.forEach((slot) => {
+            const startAt = slot.start_at ?? slot.start_time;
+            const endAt = slot.end_at ?? slot.end_time;
+            if (!startAt || !endAt) return;
+            const key = `${startAt}|${endAt}`;
+            const existing = slotMap.get(key);
+            if (existing) {
+              const list = new Set(existing.availableStaffIds ?? []);
+              list.add(staff.id);
+              existing.availableStaffIds = Array.from(list);
+              return;
+            }
+            slotMap.set(key, { ...slot, availableStaffIds: [staff.id] });
+          });
+        })
+      );
+
+      const mergedSlots = Array.from(slotMap.values()).sort((a, b) =>
+        String(a.start_at ?? a.start_time ?? "").localeCompare(String(b.start_at ?? b.start_time ?? ""))
+      );
+
+      setAvailableStylistCount(staffs.length);
+      setSlots(mergedSlots);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load available slots.");
       setSlots([]);
     } finally {
       setLoading(false);
     }
-  }, [canLoad, serviceId, staffId, date, extraDuration]);
+  }, [canLoad, service?.staffs, serviceId, date, extraDuration]);
 
   useEffect(() => {
     const run = async () => {
@@ -124,10 +142,7 @@ function SlotPageContent() {
       return
     }
 
-    if (staffId && !staffs.some((staff) => String(staff.id) === staffId)) {
-      setError('Selected staff is not available for this service.')
-    }
-  }, [service, staffId])
+  }, [service])
 
   useEffect(() => {
     if (canLoad) loadSlots();
@@ -162,8 +177,8 @@ function SlotPageContent() {
   }, [slots, timeFilter]);
 
   const { morning, afternoon } = useMemo(() => {
-    const m: BookingSlot[] = [];
-    const a: BookingSlot[] = [];
+    const m: SlotWithAvailability[] = [];
+    const a: SlotWithAvailability[] = [];
     filteredSlots.forEach((slot) => {
       const startAt = slot.start_at ?? slot.start_time;
       if (!startAt) return;
@@ -244,45 +259,20 @@ function SlotPageContent() {
     setConfirmModal(slot);
   };
 
-  const handleConfirmAdd = async () => {
-    if (!confirmModal) return;
-
-    const slotStartAt = confirmModal.start_at ?? confirmModal.start_time;
-    if (!slotStartAt) return;
-
-    setAdding(true);
-    try {
-      const updatedCart = await addCartItem({
-        service_id: Number(serviceId),
-        staff_id: Number(staffId),
-        start_at: slotStartAt,
-        selected_option_ids: selectedOptionIds,
-      });
-      setConfirmModal(null);
-      const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
-      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
-      window.dispatchEvent(new CustomEvent("openCart"));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add to cart");
-    } finally {
-      setAdding(false);
-    }
-  };
-
   const extraDurationMin = extraDuration;
   const durationMin = (service?.duration_minutes ?? 60) + extraDurationMin;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 pb-28 sm:py-10 sm:pb-32">
-      <BookingProgress step={5} />
+      <BookingProgress step={4} />
 
       <div className="mb-6 sm:mb-8">
         <Link
-          href={`/booking/service/${serviceId}/staff?selected_option_ids=${selectedOptionIdsParam}`}
+          href={`/booking/service/${serviceId}?selected_option_ids=${selectedOptionIdsParam}`}
           className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-medium shadow-[var(--shadow)] transition-all hover:border-[var(--accent)] hover:shadow-md sm:px-5 sm:py-2.5"
         >
           <i className="fa-solid fa-arrow-left text-xs" />
-          Back to stylist
+          Back to add-ons
         </Link>
       </div>
 
@@ -292,7 +282,7 @@ function SlotPageContent() {
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
           {service?.name ?? "Service"} · {durationMin} min
-          {selectedStaff ? ` · ${selectedStaff.name}` : ""}
+          {availableStylistCount > 0 ? ` · ${availableStylistCount} stylists` : ""}
         </p>
       </div>
 
@@ -506,7 +496,7 @@ function SlotPageContent() {
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--foreground)]/25 p-0 backdrop-blur-[6px] sm:items-center sm:p-4"
           role="presentation"
-          onClick={() => !adding && setConfirmModal(null)}
+          onClick={() => setConfirmModal(null)}
         >
           <div
             className="relative w-full max-w-md overflow-hidden rounded-t-[1.75rem] border border-[var(--card-border)] bg-[var(--card)] shadow-[0_-8px_40px_-12px_rgba(60,36,50,0.2)] ring-1 ring-black/[0.04] sm:rounded-3xl sm:shadow-2xl"
@@ -518,8 +508,7 @@ function SlotPageContent() {
             <div className="h-1 bg-gradient-to-r from-[var(--accent)] via-[var(--accent-strong)] to-[var(--accent-stronger)]" />
             <button
               type="button"
-              onClick={() => !adding && setConfirmModal(null)}
-              disabled={adding}
+              onClick={() => setConfirmModal(null)}
               className="absolute right-3 top-4 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-40 sm:right-4 sm:top-5"
               aria-label="Close"
             >
@@ -537,7 +526,7 @@ function SlotPageContent() {
                 Confirm your slot
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
-                Review the details below, then add this appointment to your cart.
+                Review the details below, then continue to choose your stylist.
               </p>
 
               <div className="mt-6 rounded-2xl bg-gradient-to-br from-[var(--muted)]/90 to-[var(--background-soft)]/50 p-5 ring-1 ring-[var(--card-border)]/80">
@@ -579,9 +568,9 @@ function SlotPageContent() {
                     <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
                       <i className="fa-solid fa-user text-xs" />
                     </span>
-                    Stylist
+                    Next step
                   </span>
-                  <span className="text-right font-medium text-[var(--foreground)]">{selectedStaff?.name ?? "—"}</span>
+                  <span className="text-right font-medium text-[var(--foreground)]">Choose stylist</span>
                 </li>
                 {service && (
                   <li className="flex items-center justify-between gap-4 px-4 py-3.5 text-sm">
@@ -599,30 +588,20 @@ function SlotPageContent() {
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => !adding && setConfirmModal(null)}
-                  disabled={adding}
+                  onClick={() => setConfirmModal(null)}
                   className="w-full rounded-full border-2 border-[var(--card-border)] bg-transparent py-3.5 text-sm font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)] hover:bg-[var(--muted)]/40 disabled:opacity-50"
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmAdd}
-                  disabled={adding}
-                  className="w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg disabled:opacity-70"
+                <Link
+                  href={`/booking/service/${serviceId}/staff?selected_option_ids=${selectedOptionIdsParam}&date=${encodeURIComponent(date)}&start_at=${encodeURIComponent(confirmModal.start_at ?? confirmModal.start_time ?? "")}&end_at=${encodeURIComponent(confirmModal.end_at ?? confirmModal.end_time ?? "")}`}
+                  className="inline-flex w-full items-center justify-center rounded-full bg-[var(--accent-strong)] py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg"
                 >
-                  {adding ? (
-                    <span className="inline-flex items-center justify-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      Adding…
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center justify-center gap-2">
-                      <i className="fa-solid fa-cart-plus" />
-                      Add to cart
-                    </span>
-                  )}
-                </button>
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <i className="fa-solid fa-user" />
+                    Continue to stylist
+                  </span>
+                </Link>
               </div>
             </div>
           </div>

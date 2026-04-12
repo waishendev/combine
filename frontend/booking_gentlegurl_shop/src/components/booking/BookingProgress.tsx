@@ -1,5 +1,5 @@
 export function BookingProgress({ step }: { step: number }) {
-  const steps = ["CATEGORY", "SERVICE", "ADD-ONS", "STYLIST", "DATE & TIME", "CHECKOUT"];
+  const steps = ["CATEGORY", "SERVICE", "ADD-ONS", "DATE & TIME", "STYLIST", "CHECKOUT"];
   const activeStep = Math.min(Math.max(step, 1), steps.length);
 
   return (
@@ -8,7 +8,6 @@ export function BookingProgress({ step }: { step: number }) {
         const num = index + 1;
         const isDone = num < activeStep;
         const isActive = num === activeStep;
-        const isUpcoming = num > activeStep;
         return (
           <div key={label} className="flex items-center gap-2 sm:gap-2.5">
             <div className="flex flex-col items-center">

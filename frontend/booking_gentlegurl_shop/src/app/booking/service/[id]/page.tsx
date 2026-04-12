@@ -45,10 +45,10 @@ export default function ServiceAddonsPage() {
           <Link href="/booking" className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm">Back</Link>
           <button
             type="button"
-            onClick={() => router.push(`/booking/service/${id}/staff?selected_option_ids=${selectedOptionIds.join(",")}`)}
+            onClick={() => router.push(`/booking/service/${id}/slots?selected_option_ids=${selectedOptionIds.join(",")}`)}
             className="rounded-full bg-[var(--accent-strong)] px-5 py-2 text-sm font-semibold text-white"
           >
-            Continue to Stylist
+            Continue to Date & Time
           </button>
         </div>
 

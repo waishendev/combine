@@ -76,6 +76,7 @@ class AvailabilityController extends Controller
         $validator = Validator::make($request->all(), [
             'service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'date' => ['required', 'date_format:Y-m-d'],
+            'extra_duration_min' => ['nullable', 'integer', 'min:0'],
         ]);
 
         if ($validator->fails()) {
@@ -89,6 +90,7 @@ class AvailabilityController extends Controller
 
         $validated = $validator->validated();
         $service = BookingService::findOrFail($validated['service_id']);
+        $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
 
         // Get all staff for this service
         $serviceStaff = \App\Models\Booking\BookingServiceStaff::query()
@@ -114,7 +116,7 @@ class AvailabilityController extends Controller
         // Collect all unique time slots from all staff schedules
         $allSlotKeys = [];
         $day = Carbon::parse($validated['date']);
-        $durationMin = (int) $service->duration_min;
+        $durationMin = (int) $service->duration_min + $extraDurationMin;
         $stepMin = 15;
 
         foreach ($staffs as $staff) {
