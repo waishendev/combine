@@ -170,6 +170,12 @@ export default function PosAppointmentsWorkspace({
     cash_received: number
     change_amount: number
   }>(null)
+  const [appointmentReceiptEmail, setAppointmentReceiptEmail] = useState('')
+  const [appointmentReceiptEmailError, setAppointmentReceiptEmailError] = useState<string | null>(null)
+  const [appointmentSendingReceiptEmail, setAppointmentSendingReceiptEmail] = useState(false)
+  const [appointmentReceiptCooldownUntil, setAppointmentReceiptCooldownUntil] = useState(0)
+  const [appointmentQrCodeFullscreen, setAppointmentQrCodeFullscreen] = useState(false)
+  const [appointmentReceiptQrLoaded, setAppointmentReceiptQrLoaded] = useState(false)
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
   const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
@@ -182,6 +188,50 @@ export default function PosAppointmentsWorkspace({
   const [appointmentReschedulePolicyWarnings, setAppointmentReschedulePolicyWarnings] = useState<string[]>([])
   /** Staff IDs with approved leave covering the selected day (DAY view). */
   const [staffOffTodayIds, setStaffOffTodayIds] = useState<number[]>([])
+
+  const appointmentReceiptQrImageUrl = useMemo(() => {
+    if (!appointmentSettlementResult?.receipt_public_url) return null
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(appointmentSettlementResult.receipt_public_url)}`
+  }, [appointmentSettlementResult?.receipt_public_url])
+
+  const appointmentReceiptQrFullscreenImageUrl = useMemo(() => {
+    if (!appointmentSettlementResult?.receipt_public_url) return null
+    return `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(appointmentSettlementResult.receipt_public_url)}`
+  }, [appointmentSettlementResult?.receipt_public_url])
+
+  const appointmentReceiptCooldownActive = appointmentReceiptCooldownUntil > Date.now()
+
+  useEffect(() => {
+    if (!appointmentReceiptQrImageUrl && !appointmentReceiptQrFullscreenImageUrl) {
+      setAppointmentReceiptQrLoaded(false)
+      return
+    }
+
+    setAppointmentReceiptQrLoaded(false)
+    const smallImage = new Image()
+    smallImage.src = appointmentReceiptQrImageUrl ?? ''
+    smallImage.onload = () => setAppointmentReceiptQrLoaded(true)
+    smallImage.onerror = () => setAppointmentReceiptQrLoaded(true)
+
+    if (appointmentReceiptQrFullscreenImageUrl) {
+      const fullImage = new Image()
+      fullImage.src = appointmentReceiptQrFullscreenImageUrl
+    }
+  }, [appointmentReceiptQrImageUrl, appointmentReceiptQrFullscreenImageUrl])
+
+  useEffect(() => {
+    if (!appointmentReceiptCooldownUntil) return
+
+    const remaining = appointmentReceiptCooldownUntil - Date.now()
+    if (remaining <= 0) {
+      setAppointmentReceiptCooldownUntil(0)
+      return
+    }
+
+    const timer = window.setTimeout(() => setAppointmentReceiptCooldownUntil(0), remaining)
+
+    return () => window.clearTimeout(timer)
+  }, [appointmentReceiptCooldownUntil])
 
   const mapStaffOptions = useCallback((json: unknown): StaffOption[] => {
     const maybe = json as { data?: { data?: StaffOption[] } | StaffOption[] } | null
@@ -415,6 +465,45 @@ export default function PosAppointmentsWorkspace({
     [canReviewCancellationRequests, fetchAppointments, loadCancellationRequestsModal, refreshOpenedAppointmentDetail, showMsg],
   )
 
+  const sendAppointmentReceiptToEmail = useCallback(async () => {
+    if (!appointmentSettlementResult?.order_id) return
+
+    const normalizedEmail = appointmentReceiptEmail.trim()
+    if (!normalizedEmail) {
+      setAppointmentReceiptEmailError('Email is required.')
+      return
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setAppointmentReceiptEmailError('Please enter a valid email.')
+      return
+    }
+
+    setAppointmentSendingReceiptEmail(true)
+    setAppointmentReceiptEmailError(null)
+
+    try {
+      const res = await fetch(`/api/proxy/orders/${appointmentSettlementResult.order_id}/send-receipt-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
+      })
+      const json = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        setAppointmentReceiptEmailError(String((json as { message?: string } | null)?.message ?? 'Unable to send receipt email.'))
+        return
+      }
+
+      setAppointmentReceiptCooldownUntil(Date.now() + 10_000)
+      showMsg('Receipt sent', 'success')
+    } catch {
+      setAppointmentReceiptEmailError('Unable to send receipt email.')
+    } finally {
+      setAppointmentSendingReceiptEmail(false)
+    }
+  }, [appointmentSettlementResult, appointmentReceiptEmail, showMsg])
+
   const settleAppointmentPayment = useCallback(async () => {
     if (!appointmentDetail?.id) return
     const dueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
@@ -466,6 +555,11 @@ export default function PosAppointmentsWorkspace({
         cash_received: appointmentPaymentMethod === 'cash' ? cashReceivedAmount : dueAmount,
         change_amount: appointmentPaymentMethod === 'cash' ? Math.max(0, cashReceivedAmount - dueAmount) : 0,
       })
+      setAppointmentReceiptEmail(appointmentDetail?.customer?.email?.trim() ?? '')
+      setAppointmentReceiptEmailError(null)
+      setAppointmentReceiptCooldownUntil(0)
+      setAppointmentQrCodeFullscreen(false)
+      setAppointmentReceiptQrLoaded(false)
       setAppointmentCashReceived('')
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
@@ -1836,44 +1930,133 @@ export default function PosAppointmentsWorkspace({
       )}
 
       {appointmentSettlementResult && (
-        <div className="fixed inset-0 z-[56] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4">
-              <h4 className="text-xl font-bold text-white">Settlement Completed</h4>
+        <div className="fixed inset-0 z-[56] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
+              <h4 className="flex items-center gap-2 text-xl font-bold text-white">
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Settlement Completed
+              </h4>
+              <button
+                type="button"
+                onClick={() => {
+                  setAppointmentSettlementResult(null)
+                  setAppointmentQrCodeFullscreen(false)
+                  setAppointmentReceiptEmail('')
+                  setAppointmentReceiptEmailError(null)
+                  setAppointmentSendingReceiptEmail(false)
+                  setAppointmentReceiptCooldownUntil(0)
+                }}
+                className="rounded-lg p-1.5 text-white/90 transition-all hover:bg-white/20 hover:text-white"
+                title="Close"
+              >
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <div className="space-y-3 px-6 py-5 text-sm">
-              <p className="text-gray-700">Order Number</p>
-              <p className="text-2xl font-bold text-gray-900">{appointmentSettlementResult.order_number}</p>
-              <p className="text-lg font-semibold text-gray-800">RM {appointmentSettlementResult.paid_amount.toFixed(2)}</p>
-              <p className="text-xs text-gray-600">Payment Method: {appointmentSettlementResult.payment_method.toUpperCase()}</p>
-              {appointmentSettlementResult.payment_method === 'cash' ? (
-                <p className="text-xs text-gray-600">
-                  Cash Received: RM {appointmentSettlementResult.cash_received.toFixed(2)} • Change: RM{' '}
-                  {appointmentSettlementResult.change_amount.toFixed(2)}
-                </p>
-              ) : null}
-              <div className="flex justify-end gap-2 pt-2">
-                {appointmentSettlementResult.receipt_public_url ? (
-                  <button
-                    type="button"
-                    onClick={() => window.open(appointmentSettlementResult.receipt_public_url!, '_blank')}
-                    className="rounded-md border border-blue-500 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                  >
-                    Open Receipt
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setAppointmentSettlementResult(null)}
-                  className="rounded-md bg-gray-800 px-3 py-2 text-xs font-semibold text-white hover:bg-black"
-                >
-                  Close
-                </button>
+            <div className="space-y-5 p-6">
+              <div className="space-y-2 text-center">
+                <p className="text-sm font-medium text-gray-600">Order Number</p>
+                <p className="text-2xl font-bold text-gray-900">{appointmentSettlementResult.order_number}</p>
+                {/* <p className="text-lg font-semibold text-gray-700">RM {appointmentSettlementResult.paid_amount.toFixed(2)}</p>
+                {appointmentSettlementResult.payment_method === 'cash' ? (
+                  <p className="text-xs text-gray-500">
+                    Cash received: RM {appointmentSettlementResult.cash_received.toFixed(2)} · Change: RM{' '}
+                    {appointmentSettlementResult.change_amount.toFixed(2)}
+                  </p>
+                ) : null} */}
               </div>
+
+              {appointmentSettlementResult.receipt_public_url ? (
+                <div className="space-y-3">
+                  <div className="text-center">
+                    <p className="mb-3 text-sm font-semibold text-gray-700">Scan QR Code to View Receipt</p>
+                    <div
+                      className="relative flex cursor-pointer justify-center rounded-xl border-2 border-gray-200 bg-white p-4 transition-all hover:border-blue-400 hover:shadow-lg"
+                      onClick={() => setAppointmentQrCodeFullscreen(true)}
+                      title="Click to enlarge QR code"
+                    >
+                      {!appointmentReceiptQrLoaded && <div className="h-48 w-48 animate-pulse rounded-lg bg-gray-100" />}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={appointmentReceiptQrImageUrl ?? ''}
+                        onLoad={() => setAppointmentReceiptQrLoaded(true)}
+                        onError={() => setAppointmentReceiptQrLoaded(true)}
+                        alt="Receipt QR Code"
+                        className={`h-48 w-48 ${appointmentReceiptQrLoaded ? 'block' : 'hidden'}`}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">Tap QR code to enlarge for customer scanning</p>
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+                    <p className="text-sm font-semibold text-gray-700">Send receipt to email</p>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="email"
+                        value={appointmentReceiptEmail}
+                        onChange={(event) => {
+                          setAppointmentReceiptEmail(event.target.value)
+                          if (appointmentReceiptEmailError) setAppointmentReceiptEmailError(null)
+                        }}
+                        placeholder="customer@email.com"
+                        className="h-10 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void sendAppointmentReceiptToEmail()}
+                        disabled={appointmentSendingReceiptEmail || appointmentReceiptCooldownActive}
+                        className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {appointmentSendingReceiptEmail
+                          ? 'Sending...'
+                          : appointmentReceiptCooldownActive
+                            ? 'Send (wait...)'
+                            : 'Send'}
+                      </button>
+                    </div>
+                    {appointmentReceiptEmailError ? (
+                      <p className="text-xs font-medium text-red-600">{appointmentReceiptEmailError}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => window.open(appointmentSettlementResult.receipt_public_url!, '_blank')}
+                      className="flex-1 rounded-xl border-2 border-blue-500 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-100 active:scale-95"
+                    >
+                      Open Receipt
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       )}
+
+      {appointmentQrCodeFullscreen && appointmentSettlementResult?.receipt_public_url ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+          onClick={() => setAppointmentQrCodeFullscreen(false)}
+        >
+          <div className="relative">
+            <div className="rounded-2xl bg-white p-8 shadow-2xl">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={appointmentReceiptQrFullscreenImageUrl ?? ''}
+                alt="Receipt QR Code - Fullscreen"
+                className="h-80 w-80"
+              />
+            </div>
+            <p className="mt-4 text-center text-sm text-white">Tap anywhere to close</p>
+          </div>
+        </div>
+      ) : null}
 
       {toasts.length > 0 && (
         <div className="fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3">

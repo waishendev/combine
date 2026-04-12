@@ -7,18 +7,19 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-class PosOrderReceiptMail extends Mailable implements ShouldQueue
+class BookingSettlementReceiptMail extends Mailable implements ShouldQueue
 {
     use Queueable;
     use SerializesModels;
 
-    /** Base64 of raw PDF bytes — binary PDF cannot be JSON-encoded for the database queue. */
     private string $pdfBytesBase64;
 
     /**
      * @param array<int, array{name:string,qty:int,line_total:float}> $items
      */
     public function __construct(
+        private string $bookingReference,
+        private string $appointmentAt,
         private string $orderNumber,
         private string $placedAt,
         private float $totalAmount,
@@ -30,6 +31,8 @@ class PosOrderReceiptMail extends Mailable implements ShouldQueue
         private array $items = [],
     ) {
         $this->pdfBytesBase64 = base64_encode($pdfBytes);
+        $this->bookingReference = mb_scrub($this->bookingReference, 'UTF-8');
+        $this->appointmentAt = mb_scrub($this->appointmentAt, 'UTF-8');
         $this->orderNumber = mb_scrub($this->orderNumber, 'UTF-8');
         $this->placedAt = mb_scrub($this->placedAt, 'UTF-8');
         $this->paymentMethodDisplay = mb_scrub($this->paymentMethodDisplay, 'UTF-8');
@@ -50,8 +53,10 @@ class PosOrderReceiptMail extends Mailable implements ShouldQueue
     {
         $pdfBinary = base64_decode($this->pdfBytesBase64, true) ?: '';
 
-        return $this->subject('Your receipt for Order ' . $this->orderNumber)
-            ->view('emails.pos-order-receipt', [
+        return $this->subject('Booking · Final Settlement — ' . $this->bookingReference)
+            ->view('emails.booking-settlement-receipt', [
+                'bookingReference' => $this->bookingReference,
+                'appointmentAt' => $this->appointmentAt,
                 'orderNumber' => $this->orderNumber,
                 'placedAt' => $this->placedAt,
                 'totalAmount' => $this->totalAmount,

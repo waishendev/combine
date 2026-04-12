@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Admin\Booking\CancellationRequestController;
 use App\Http\Controllers\Controller;
+use App\Mail\BookingSettlementReceiptMail;
 use App\Mail\PosOrderReceiptMail;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
@@ -38,6 +39,7 @@ use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
+use App\Support\OrderReceiptEmailLabels;
 use App\Support\Pricing\ProductPricing;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -2033,30 +2035,82 @@ class PosController extends Controller
         ]);
 
         $order = Order::query()
-            ->with(['items'])
+            ->with(['items.booking', 'serviceItems', 'bankAccount'])
             ->findOrFail($orderId);
 
         $receiptUrl = $this->buildReceiptUrl($order, $request);
 
         $pdf = $this->invoiceService->buildPdf($order);
 
-        Mail::to($validated['email'])->queue(new PosOrderReceiptMail(
-            orderNumber: (string) ($order->order_number ?? $order->id),
-            placedAt: $order->placed_at?->toDateTimeString() ?? $order->created_at?->toDateTimeString() ?? now()->toDateTimeString(),
-            totalAmount: (float) ($order->grand_total ?? 0),
-            receiptUrl: $receiptUrl,
-            pdfBytes: $pdf->output(),
-            pdfFilename: 'Invoice-' . (string) ($order->order_number ?? $order->id) . '.pdf',
-            items: $order->items->map(fn (OrderItem $item) => [
-                'name' => $item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Item #' . $item->id,
-                'qty' => (int) $item->quantity,
-                'line_total' => (float) ($item->effective_line_total ?? $item->line_total),
-            ])->values()->all(),
-        ));
+        $itemsPayload = $order->items->map(function (OrderItem $item) {
+            $row = $this->invoiceService->mapOrderItemToInvoiceRow($item);
+
+            return [
+                'name' => $this->invoiceService->formatEmailLineLabelFromInvoiceRow($row),
+                'qty' => (int) $row['quantity'],
+                'line_total' => (float) $row['line_total'],
+            ];
+        })->values()->all();
+
+        $orderNumber = (string) ($order->order_number ?? $order->id);
+        $placedAt = $order->placed_at?->toDateTimeString() ?? $order->created_at?->toDateTimeString() ?? now()->toDateTimeString();
+        $pdfFilename = 'Invoice-' . $orderNumber . '.pdf';
+
+        $booking = $this->resolveBookingForReceiptEmail($order);
+
+        if ($booking) {
+            Mail::to($validated['email'])->queue(new BookingSettlementReceiptMail(
+                bookingReference: (string) ($booking->booking_code ?? ''),
+                appointmentAt: $booking->start_at?->format('Y-m-d H:i') ?? '—',
+                orderNumber: $orderNumber,
+                placedAt: $placedAt,
+                totalAmount: (float) ($order->grand_total ?? 0),
+                paymentMethodDisplay: OrderReceiptEmailLabels::paymentMethod($order),
+                paymentStatusDisplay: OrderReceiptEmailLabels::paymentStatus($order),
+                receiptUrl: $receiptUrl,
+                pdfBytes: $pdf->output(),
+                pdfFilename: $pdfFilename,
+                items: $itemsPayload,
+            ));
+        } else {
+            Mail::to($validated['email'])->queue(new PosOrderReceiptMail(
+                orderNumber: $orderNumber,
+                placedAt: $placedAt,
+                totalAmount: (float) ($order->grand_total ?? 0),
+                paymentMethodDisplay: OrderReceiptEmailLabels::paymentMethod($order),
+                paymentStatusDisplay: OrderReceiptEmailLabels::paymentStatus($order),
+                receiptUrl: $receiptUrl,
+                pdfBytes: $pdf->output(),
+                pdfFilename: $pdfFilename,
+                items: $itemsPayload,
+            ));
+        }
 
         return $this->respond([
             'ok' => true,
         ]);
+    }
+
+    protected function resolveBookingForReceiptEmail(Order $order): ?Booking
+    {
+        $order->loadMissing(['items.booking', 'serviceItems']);
+
+        foreach ($order->items as $item) {
+            if ($item->booking_id && $item->booking) {
+                return $item->booking;
+            }
+        }
+
+        foreach ($order->serviceItems as $serviceItem) {
+            if ($serviceItem->booking_id) {
+                $found = Booking::query()->find($serviceItem->booking_id);
+                if ($found) {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
     }
 
 

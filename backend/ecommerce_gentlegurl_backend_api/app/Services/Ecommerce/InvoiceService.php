@@ -5,47 +5,116 @@ namespace App\Services\Ecommerce;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\OrderItem;
 use App\Services\SettingService;
 
 class InvoiceService
 {
+    /**
+     * Same product/variant naming as PDF receipt (booking deposit, addon prefixes, etc.).
+     *
+     * @return array{
+     *     line_type: string,
+     *     product_name: string,
+     *     product_sku: mixed,
+     *     variant_name: mixed,
+     *     variant_sku: mixed,
+     *     quantity: int,
+     *     unit_price: float,
+     *     line_total: float,
+     *     promotion_summary: mixed
+     * }
+     */
+    public function mapOrderItemToInvoiceRow(OrderItem $item): array
+    {
+        $lineType = (string) ($item->line_type ?: 'product');
+        $variantName = $item->variant_name_snapshot;
+        $productName = $item->display_name_snapshot ?: $item->product_name_snapshot;
+        if ($productName === null || trim((string) $productName) === '') {
+            $productName = 'Item #' . $item->id;
+        }
+        if ($lineType === 'booking_deposit') {
+            $variantName = 'Booking Deposit';
+        } elseif ($lineType === 'booking_settlement') {
+            $variantName = 'Final Settlement';
+        } elseif ($lineType === 'booking_addon') {
+            $variantName = $item->variant_name_snapshot ?: 'Booking Add-on Deposit';
+            $resolvedAddon = trim((string) $variantName);
+            if (strcasecmp($resolvedAddon, 'Booking Add-on Deposit') === 0) {
+                $prefix = 'Booking Deposit - ';
+                if (stripos((string) $productName, $prefix) !== 0) {
+                    $productName = $prefix . $productName;
+                }
+            } elseif (strcasecmp($resolvedAddon, 'Booking Add-on Settlement') === 0) {
+                $prefix = 'Final Settlement - ';
+                if (stripos((string) $productName, $prefix) !== 0) {
+                    $productName = $prefix . $productName;
+                }
+            }
+        } elseif ($lineType === 'service_package') {
+            $variantName = 'Service Package';
+        }
+
+        return [
+            'line_type' => $lineType,
+            'product_name' => $productName,
+            'product_sku' => $item->sku_snapshot,
+            'variant_name' => $variantName,
+            'variant_sku' => $item->variant_sku_snapshot,
+            'quantity' => (int) $item->quantity,
+            'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
+            'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
+            'promotion_summary' => data_get($item->promotion_snapshot, 'summary'),
+        ];
+    }
+
+    /**
+     * One line of text for email tables — aligned with PDF primary + variant context.
+     */
+    public function formatEmailLineLabelFromInvoiceRow(array $row): string
+    {
+        $lineType = (string) ($row['line_type'] ?? 'product');
+        $productName = trim((string) ($row['product_name'] ?? ''));
+        $variantName = trim((string) ($row['variant_name'] ?? ''));
+
+        return match ($lineType) {
+            'booking_addon' => $productName,
+            'booking_deposit', 'booking_settlement' => $this->formatEmailLineLabelForBookingDepositOrSettlement(
+                $productName,
+                $variantName
+            ),
+            'service_package' => $variantName !== ''
+                ? "{$productName} · {$variantName}"
+                : $productName,
+            default => $variantName !== '' && strcasecmp($variantName, $productName) !== 0
+                ? "{$productName} · {$variantName}"
+                : $productName,
+        };
+    }
+
+    /**
+     * Avoid "Final Settlement — Final Settlement - Coloring" when snapshot already uses the same prefix as the PDF line.
+     */
+    protected function formatEmailLineLabelForBookingDepositOrSettlement(string $productName, string $variantName): string
+    {
+        if ($variantName === '') {
+            return $productName;
+        }
+
+        $prefix = $variantName . ' - ';
+        if (stripos($productName, $prefix) === 0) {
+            return $productName;
+        }
+
+        return "{$variantName} — {$productName}";
+    }
+
     public function buildPdf(Order $order)
     {
         $order->loadMissing(['items', 'serviceItems', 'pickupStore', 'customer']);
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
-        $mixedItems = $order->items->map(function ($item) {
-            $lineType = (string) ($item->line_type ?: 'product');
-            $variantName = $item->variant_name_snapshot;
-            $productName = $item->display_name_snapshot ?: $item->product_name_snapshot;
-            if ($lineType === 'booking_deposit') {
-                $variantName = 'Booking Deposit';
-            } elseif ($lineType === 'booking_settlement') {
-                $variantName = 'Final Settlement';
-            } elseif ($lineType === 'booking_addon') {
-                $variantName = $item->variant_name_snapshot ?: 'Booking Add-on Deposit';
-                if (strcasecmp(trim((string) $variantName), 'Booking Add-on Deposit') === 0) {
-                    $prefix = 'Booking Deposit - ';
-                    if (stripos((string) $productName, $prefix) !== 0) {
-                        $productName = $prefix . $productName;
-                    }
-                }
-            } elseif ($lineType === 'service_package') {
-                $variantName = 'Service Package';
-            }
-
-            return [
-                'line_type' => $lineType,
-                'product_name' => $productName,
-                'product_sku' => $item->sku_snapshot,
-                'variant_name' => $variantName,
-                'variant_sku' => $item->variant_sku_snapshot,
-                'quantity' => (int) $item->quantity,
-                'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
-                'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
-                'promotion_summary' => data_get($item->promotion_snapshot, 'summary'),
-            ];
-        })->values();
+        $mixedItems = $order->items->map(fn (OrderItem $item) => $this->mapOrderItemToInvoiceRow($item))->values();
 
         $packageNameByBooking = CustomerServicePackageUsage::query()
             ->with('customerServicePackage.servicePackage:id,name')

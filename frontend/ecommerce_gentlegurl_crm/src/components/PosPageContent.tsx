@@ -4563,7 +4563,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <div className="text-center space-y-2">
                 <p className="text-sm font-medium text-gray-600">Order Number</p>
                 <p className="text-2xl font-bold text-gray-900">{checkoutResult.order_number}</p>
-                <p className="text-lg font-semibold text-gray-700">RM {checkoutResult.total.toFixed(2)}</p>
+                {/* <p className="text-lg font-semibold text-gray-700">RM {checkoutResult.total.toFixed(2)}</p> */}
               </div>
 
               {checkoutResult.receipt_public_url && (

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Services\Ecommerce\InvoiceService;
@@ -104,40 +105,17 @@ class PublicReceiptController extends Controller
             ];
         })->values();
 
-        $displayItemsForResponse = $displayItems->map(fn ($item) => [
-            'type' => (string) ($item->line_type ?: 'product'),
-            'name' => (function () use ($item) {
-                $lineType = (string) ($item->line_type ?: '');
-                $name = $item->display_name_snapshot ?: $item->product_name_snapshot;
-                if ($lineType === 'booking_addon') {
-                    $v = $item->variant_name_snapshot ?: 'Booking Add-on Deposit';
-                    if (strcasecmp(trim((string) $v), 'Booking Add-on Deposit') === 0) {
-                        $prefix = 'Booking Deposit - ';
-                        if (stripos((string) $name, $prefix) !== 0) {
-                            $name = $prefix . $name;
-                        }
-                    }
-                }
+        $displayItemsForResponse = $displayItems->map(function (OrderItem $item) {
+            $row = $this->invoiceService->mapOrderItemToInvoiceRow($item);
 
-                return $name;
-            })(),
-            'variant_name' => (function () use ($item) {
-                $lineType = (string) ($item->line_type ?: '');
-                if ($lineType === 'booking_deposit') {
-                    return 'Booking Deposit';
-                }
-                if ($lineType === 'booking_settlement') {
-                    return 'Final Settlement';
-                }
-                if ($lineType === 'booking_addon') {
-                    return $item->variant_name_snapshot ?: 'Booking Add-on Deposit';
-                }
-                return $item->variant_name_snapshot;
-            })(),
+            return [
+            'type' => (string) ($item->line_type ?: 'product'),
+            'name' => $row['product_name'],
+            'variant_name' => $row['variant_name'],
             'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
-            'qty' => $item->quantity,
-            'unit_price' => $item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot,
-            'line_total' => $item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total,
+            'qty' => $row['quantity'],
+            'unit_price' => $row['unit_price'],
+            'line_total' => $row['line_total'],
             'booking_id' => $item->booking_id,
             'service_package_id' => $item->service_package_id,
             'customer_service_package_id' => $item->customer_service_package_id,
@@ -147,7 +125,8 @@ class PublicReceiptController extends Controller
             'promotion_snapshot' => $item->promotion_snapshot,
             'covered_by_package' => false,
             'package_applied_name' => null,
-        ])->values()->concat($serviceCoverageLines)->values();
+            ];
+        })->values()->concat($serviceCoverageLines)->values();
 
         $summarySubtotal = (float) $order->subtotal;
         if ($canRenderServiceCoverageLines) {
