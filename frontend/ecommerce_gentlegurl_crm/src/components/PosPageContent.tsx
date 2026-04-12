@@ -440,6 +440,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [checkoutCustomerType, setCheckoutCustomerType] = useState<'member' | 'guest'>('member')
   const [guestDetails, setGuestDetails] = useState<GuestDetails>({ name: '', phone: '', email: '' })
   const [guestDetailsError, setGuestDetailsError] = useState<Partial<Record<keyof GuestDetails, string>>>({})
+  const isGuestCheckout = checkoutCustomerType === 'guest'
+  const checkoutContactDisplay = isGuestCheckout
+    ? (guestDetails.name.trim() ? `${guestDetails.name}${guestDetails.phone.trim() ? ` (${guestDetails.phone.trim()})` : ''}` : 'Guest not filled')
+    : (selectedMember ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}` : 'No member selected')
+  const validateGuestDetails = useCallback(() => {
+    const errors: Partial<Record<keyof GuestDetails, string>> = {}
+    const phone = guestDetails.phone.trim()
+    if (!guestDetails.name.trim()) errors.name = 'Guest name is required.'
+    if (!phone) errors.phone = 'Guest phone is required.'
+    else if (!/^\+?[0-9]{8,15}$/.test(phone)) errors.phone = 'Please enter a valid phone number (8-15 digits).'
+    setGuestDetailsError(errors)
+    return Object.keys(errors).length === 0
+  }, [guestDetails.name, guestDetails.phone])
   const [voucherModalOpen, setVoucherModalOpen] = useState(false)
   const [voucherLoading, setVoucherLoading] = useState(false)
   const [voucherApplying, setVoucherApplying] = useState(false)
@@ -2234,20 +2247,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
 
   const canCheckout = hasCartItems && !checkingOut
-  const isGuestCheckout = checkoutCustomerType === 'guest'
-  const checkoutContactDisplay = isGuestCheckout
-    ? (guestDetails.name.trim() ? `${guestDetails.name}${guestDetails.phone.trim() ? ` (${guestDetails.phone.trim()})` : ''}` : 'Guest not filled')
-    : (selectedMember ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}` : 'No member selected')
-
-  const validateGuestDetails = useCallback(() => {
-    const errors: Partial<Record<keyof GuestDetails, string>> = {}
-    const phone = guestDetails.phone.trim()
-    if (!guestDetails.name.trim()) errors.name = 'Guest name is required.'
-    if (!phone) errors.phone = 'Guest phone is required.'
-    else if (!/^\+?[0-9]{8,15}$/.test(phone)) errors.phone = 'Please enter a valid phone number (8-15 digits).'
-    setGuestDetailsError(errors)
-    return Object.keys(errors).length === 0
-  }, [guestDetails.name, guestDetails.phone])
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || !hasCartItems || checkingOut) return
