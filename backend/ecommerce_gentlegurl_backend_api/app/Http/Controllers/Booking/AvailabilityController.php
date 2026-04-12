@@ -71,6 +71,94 @@ class AvailabilityController extends Controller
         ]);
     }
 
+    /**
+     * Same slot rules as {@see index()} (primary slots, conflicts, breaks) but merged across
+     * all staff allowed for the service—no staff_id required. Each slot lists which staff can take it.
+     */
+    public function pooled(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'date' => ['required', 'date_format:Y-m-d'],
+            'extra_duration_min' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        if ($validator->fails()) {
+            return $this->respondError('Invalid availability request.', 422, [
+                'date' => (string) $request->input('date', ''),
+                'service_id' => (int) $request->input('service_id', 0),
+                'duration_min' => null,
+                'buffer_min' => null,
+                'slot_step_min' => 15,
+                'visible_slots' => [],
+                'errors' => $validator->errors(),
+            ]);
+        }
+
+        $validated = $validator->validated();
+        $service = BookingService::query()->with(['allowedStaffs:id', 'primarySlots'])->findOrFail($validated['service_id']);
+        $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
+
+        $staffIds = $service->allowedStaffs->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+
+        $configuredPrimarySlots = $service->primarySlots
+            ->where('is_active', true)
+            ->sortBy('sort_order')
+            ->values()
+            ->map(fn ($slot) => substr((string) $slot->start_time, 0, 5))
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($staffIds === []) {
+            return $this->respond([
+                'date' => $validated['date'],
+                'service_id' => (int) $validated['service_id'],
+                'duration_min' => (int) $service->duration_min + $extraDurationMin,
+                'buffer_min' => (int) $service->buffer_min,
+                'slot_step_min' => 15,
+                'has_primary_slot_policy' => ! empty($configuredPrimarySlots),
+                'configured_primary_slots' => $configuredPrimarySlots,
+                'visible_slots' => [],
+                'slots' => [],
+            ]);
+        }
+
+        $mergedByStart = [];
+        foreach ($staffIds as $staffId) {
+            $slots = $this->availabilityService->getAvailableSlots($service, $staffId, $validated['date'], 15, $extraDurationMin);
+            foreach ($slots as $slot) {
+                $key = $slot['start_at'];
+                if (! isset($mergedByStart[$key])) {
+                    $mergedByStart[$key] = $slot;
+                    $mergedByStart[$key]['available_staff_ids'] = [];
+                }
+                $mergedByStart[$key]['available_staff_ids'][] = $staffId;
+            }
+        }
+
+        $visible = array_values($mergedByStart);
+        foreach ($visible as &$row) {
+            $row['available_staff_ids'] = array_values(array_unique($row['available_staff_ids'] ?? []));
+        }
+        unset($row);
+
+        usort($visible, fn ($a, $b) => strcmp($a['start_at'], $b['start_at']));
+
+        return $this->respond([
+            'date' => $validated['date'],
+            'service_id' => (int) $validated['service_id'],
+            'staff_id' => null,
+            'duration_min' => (int) $service->duration_min + $extraDurationMin,
+            'buffer_min' => (int) $service->buffer_min,
+            'slot_step_min' => 15,
+            'has_primary_slot_policy' => ! empty($configuredPrimarySlots),
+            'configured_primary_slots' => $configuredPrimarySlots,
+            'visible_slots' => $visible,
+            'slots' => $visible,
+        ]);
+    }
+
     public function bulk(Request $request)
     {
         $validator = Validator::make($request->all(), [

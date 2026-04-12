@@ -1,23 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { CartDrawer } from "@/components/booking/CartDrawer";
 
+/** Legacy route: cart is opened from the header when the guest is ready to pay. */
 export default function BookingCartPage() {
   const router = useRouter();
-  const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => {
-    // Automatically open the cart drawer when this page loads
-    setCartOpen(true);
-  }, []);
+    router.replace("/booking");
+  }, [router]);
 
-  const handleClose = () => {
-    setCartOpen(false);
-    // Redirect to booking page when drawer is closed
-    router.push("/booking");
-  };
-
-  return <CartDrawer isOpen={cartOpen} onClose={handleClose} />;
+  return (
+    <main className="mx-auto flex min-h-[40vh] max-w-3xl items-center justify-center px-4 py-16">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+    </main>
+  );
 }

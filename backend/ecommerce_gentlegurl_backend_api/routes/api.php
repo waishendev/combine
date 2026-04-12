@@ -1015,18 +1015,21 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::get('/services/{id}', [\App\Http\Controllers\Booking\ServiceController::class, 'show']);
     Route::get('/service-packages', [\App\Http\Controllers\ServicePackageController::class, 'index']);
     Route::get('/customers/{id}/service-package-available-for/{serviceId}', [CustomerServicePackageController::class, 'availableFor']);
+    Route::get('/availability/pooled', [\App\Http\Controllers\Booking\AvailabilityController::class, 'pooled']);
     Route::get('/availability', [\App\Http\Controllers\Booking\AvailabilityController::class, 'index']);
     Route::get('/availability/bulk', [\App\Http\Controllers\Booking\AvailabilityController::class, 'bulk']);
     Route::post('/hold', [\App\Http\Controllers\Booking\HoldController::class, 'store']);
     Route::get('/cart', [\App\Http\Controllers\Booking\CartController::class, 'show']);
     Route::post('/cart/add', [\App\Http\Controllers\Booking\CartController::class, 'add']);
     Route::delete('/cart/item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removeItem']);
+    Route::post('/cart/item/{itemId}/release-package-claim', [\App\Http\Controllers\Booking\CartController::class, 'releasePackageClaim']);
     Route::post('/cart/checkout', [\App\Http\Controllers\Booking\CartController::class, 'checkout']);
     Route::post('/{id}/pay', [\App\Http\Controllers\Booking\PaymentController::class, 'pay']);
     Route::post('/payment/callback', [\App\Http\Controllers\Booking\PaymentController::class, 'callback']);
 
     Route::middleware('auth:customer,sanctum')->group(function () {
         Route::post('/cart/add-package', [\App\Http\Controllers\Booking\CartController::class, 'addPackage']);
+        Route::patch('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'updatePackageItem']);
         Route::delete('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removePackageItem']);
         Route::get('/my', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
         Route::get('/{id}/payment-detail', [\App\Http\Controllers\Booking\PaymentController::class, 'detail']);

@@ -14,8 +14,10 @@ import {
   payBooking,
   payPublicOrder,
   redeemServicePackage,
+  releaseBookingCartPackageClaim,
   removeCartItem,
   removePackageCartItem,
+  updateBookingPackageCartItemQty,
   type PublicBookingBankAccount,
   type PublicBookingPaymentGateway,
   type BillplzPaymentGatewayOption,
@@ -79,6 +81,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
   const [onlineBankingOptions, setOnlineBankingOptions] = useState<BillplzPaymentGatewayOption[]>([]);
   const [selectedBillplzGatewayOptionId, setSelectedBillplzGatewayOptionId] = useState<number | null>(null);
+  const [packageActionItemId, setPackageActionItemId] = useState<number | null>(null);
+  const [packageQtyBusyId, setPackageQtyBusyId] = useState<number | null>(null);
 
   const loadCart = useCallback(async () => {
     try {
@@ -357,6 +361,16 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     };
   }, [isOpen]);
 
+  /** Closing the drawer (X, backdrop, or parent) should drop validation + top banners so reopening is clean. */
+  useEffect(() => {
+    if (!isOpen) {
+      setMessage(null);
+      setFieldErrors({});
+      setPackageActionItemId(null);
+      setPackageQtyBusyId(null);
+    }
+  }, [isOpen]);
+
   const paymentOptions = gateways
     .filter((gateway) => ["manual_transfer", "billplz_online_banking", "billplz_credit_card"].includes(gateway.key))
     .map((gateway) => ({ key: gateway.key as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card", name: gateway.name }));
@@ -373,9 +387,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       };
     }
 
-    const payableItems = bookingItems.filter((item) => !["reserved", "consumed"].includes(item.package_claim_status ?? ""));
     const backendTotal = Number(cart?.deposit_total ?? 0);
-    const calculatedTotal = payableItems.reduce((sum, item) => sum + Number(item.deposit_amount ?? 0), 0);
+    const calculatedTotal = bookingItems.reduce((sum, item) => sum + Number(item.deposit_amount ?? 0), 0);
     const total =
       Number.isFinite(backendTotal) && Math.abs(backendTotal - calculatedTotal) < 0.01
         ? backendTotal
@@ -383,11 +396,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
     const perItem: Record<number, number> = {};
     bookingItems.forEach((item) => {
-      if (["reserved", "consumed"].includes(item.package_claim_status ?? "")) {
-        perItem[item.id] = 0;
-      } else {
-        perItem[item.id] = Number(item.deposit_amount ?? 0);
-      }
+      perItem[item.id] = Number(item.deposit_amount ?? 0);
     });
 
     return { total, perItem };
@@ -398,6 +407,17 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const addonDepositTotal = Number.isFinite(Number(cart?.addon_deposit_total))
     ? Number(cart?.addon_deposit_total ?? 0)
     : (cart?.items ?? []).reduce((sum, item) => sum + Number(item.addon_deposit_amount ?? 0), 0);
+
+  const estimatedPayLaterTotal = useMemo(() => {
+    return (cart?.items ?? []).reduce((sum, item) => {
+      const listed = Number(item.listed_service_price ?? 0);
+      const addonMenu = Number(item.addon_price ?? 0);
+      const menuTotal = listed + addonMenu;
+      if (menuTotal <= 0) return sum;
+      const lineDep = Number(depositDisplay.perItem[item.id] ?? item.deposit_amount ?? 0);
+      return sum + Math.max(0, menuTotal - lineDep);
+    }, 0);
+  }, [cart?.items, depositDisplay]);
 
   return (
     <>
@@ -410,7 +430,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       ) : null}
 
       <div
-        className={`fixed right-0 top-0 z-[51] flex h-full w-full max-w-md flex-col border-l border-[var(--card-border)] bg-[var(--card)] shadow-[-16px_0_48px_-20px_rgba(60,36,50,0.22)] ring-1 ring-black/[0.04] transition-transform duration-300 ease-out sm:rounded-l-3xl ${
+        className={`fixed right-0 top-0 z-[51] flex h-full w-full max-w-xl flex-col border-l border-[var(--card-border)] bg-[var(--card)] shadow-[-16px_0_48px_-20px_rgba(60,36,50,0.22)] ring-1 ring-black/[0.04] transition-transform duration-300 ease-out sm:rounded-l-3xl ${
           isOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
         }`}
         aria-hidden={!isOpen}
@@ -466,6 +486,19 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               const sec = secondsLeft(item.expires_at);
               const urgent = sec > 0 && sec < 120;
               const premium = isPremiumService(item.service_type);
+              const pkgBal = availableMap[item.id] ?? 0;
+              const claimStatus = item.package_claim_status ?? null;
+              const packageApplied =
+                item.package_covers_main_service === true || claimStatus === "reserved" || claimStatus === "consumed";
+              const canUnclaimPackage = claimStatus === "reserved";
+              const refMain = Number(item.reference_main_deposit ?? 0);
+              const mainDep = Number(item.main_deposit_amount ?? 0);
+              const addonDep = Number(item.addon_deposit_amount ?? 0);
+              const hasAddons = (item.selected_options?.length || 0) > 0;
+              const lineDeposit = Number(depositDisplay.perItem[item.id] ?? item.deposit_amount ?? 0);
+              const menuListedTotal = Number(item.listed_service_price ?? 0) + Number(item.addon_price ?? 0);
+              const payLaterLine = menuListedTotal > 0 ? Math.max(0, menuListedTotal - lineDeposit) : null;
+
               return (
                 <article
                   key={item.id}
@@ -487,11 +520,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                           }`}
                           title={premium ? "Premium tier" : "Standard tier"}
                         >
-                          {premium ? (
-                            <i className="fa-solid fa-crown text-[8px]" aria-hidden />
-                          ) : null}
+                          {premium ? <i className="fa-solid fa-crown text-[8px]" aria-hidden /> : null}
                           {premium ? "Premium" : "Std"}
                         </span>
+                        {/* {isLoggedIn && pkgBal > 0 ? (
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]" title="Uses left on your packages for this service">
+                            Pkg bal. {pkgBal}
+                          </span>
+                        ) : null} */}
                       </div>
                       <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{item.staff_name}</p>
                       <p className="mt-1 text-[11px] leading-snug text-[var(--foreground)]">
@@ -499,86 +535,147 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         <span className="text-[var(--text-muted)]"> · {dateShort}</span>
                       </p>
                     </div>
-                    {typeof item.deposit_amount === "number" ? (
-                      <div className="shrink-0 text-right">
-                        <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--text-muted)]">Deposit</p>
-                        <p className="text-sm font-semibold tabular-nums text-[var(--accent-strong)]">
-                          RM {Number(depositDisplay.perItem[item.id] ?? item.deposit_amount ?? 0).toFixed(2)}
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-2 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/40 p-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Deposit breakdown</p>
-                    <div className="mt-1 space-y-0.5 text-[11px]">
-                      <p className="flex items-center justify-between">
-                        <span className="text-[var(--text-muted)]">Main service deposit</span>
-                        <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {Number(item.main_deposit_amount ?? 0).toFixed(2)}</span>
-                      </p>
-                      <p className="flex items-center justify-between">
-                        <span className="text-[var(--text-muted)]">Add-on deposit</span>
-                        <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {Number(item.addon_deposit_amount ?? 0).toFixed(2)}</span>
-                      </p>
+                    <div className="shrink-0 pt-0.5">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold tabular-nums ${
+                          urgent ? "bg-[var(--status-error-bg)] text-[var(--status-error)]" : "bg-[var(--muted)]/80 text-[var(--foreground)]"
+                        }`}
+                      >
+                        <i className={`fa-regular fa-clock text-[9px] ${urgent ? "" : "text-[var(--accent-strong)]"}`} aria-hidden />
+                        {formatDuration(sec)} left
+                      </span>
                     </div>
                   </div>
 
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold tabular-nums ${
-                        urgent
-                          ? "bg-[var(--status-error-bg)] text-[var(--status-error)]"
-                          : "bg-[var(--muted)]/80 text-[var(--foreground)]"
-                      }`}
-                    >
-                      <i className={`fa-regular fa-clock text-[9px] ${urgent ? "" : "text-[var(--accent-strong)]"}`} aria-hidden />
-                      {formatDuration(sec)} left
-                    </span>
-                  </div>
-                  {(item.selected_options?.length || 0) > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add-ons</p>
-                      {item.selected_options?.map((opt) => {
-                        const matchedAddon = (item.addon_deposit_items ?? []).find((addon) => Number(addon.id) === Number(opt.id));
-                        const addonDeposit = Number(matchedAddon?.deposit_contribution ?? 0);
-                        return (
-                          <div key={opt.id} className="rounded-md border border-[var(--card-border)] bg-[var(--background)] px-2 py-1.5">
-                            <p className="text-[11px] font-medium text-[var(--foreground)]">{opt.label} <span className="text-[var(--text-muted)]">(Add-on)</span></p>
-                            <p className="text-[10px] text-[var(--text-muted)]">Deposit contribution: <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {addonDeposit.toFixed(2)}</span></p>
+                  <div className="mt-2 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/35 p-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Deposits</p>
+                    <div className="mt-2 space-y-2 text-[11px]">
+                      {packageApplied ? (
+                        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--card-border)]/80 pb-2">
+                          <div className="min-w-0">
+                            <p className="font-medium text-[var(--foreground)]">{item.service_name}</p>
+                            <p className="text-[10px] text-[var(--status-success)]">Included in your package (main service)</p>
                           </div>
-                        );
-                      })}
+                          <div className="shrink-0 text-right">
+                            {refMain > 0 ? (
+                              <span className="mr-1 tabular-nums text-[var(--text-muted)] line-through decoration-[var(--text-muted)]/80">
+                                RM {refMain.toFixed(2)}
+                              </span>
+                            ) : null}
+                            {/* <span className="font-semibold tabular-nums text-[var(--status-success)]">RM {mainDep.toFixed(2)}</span> */}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between gap-2 border-b border-[var(--card-border)]/80 pb-2">
+                          <span className="text-[var(--text-muted)]">Main service</span>
+                          <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {mainDep.toFixed(2)}</span>
+                        </div>
+                      )}
+
+                      {hasAddons ? (
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add-ons</p>
+                          {item.selected_options?.map((opt) => {
+                            const matchedAddon = (item.addon_deposit_items ?? []).find((addon) => Number(addon.id) === Number(opt.id));
+                            const addonPart = Number(matchedAddon?.deposit_contribution ?? 0);
+                            return (
+                              <div key={opt.id} className="flex justify-between gap-2 pl-1">
+                                <span className="text-[var(--foreground)]">
+                                  <span className="text-[var(--text-muted)]">+</span> {opt.label}
+                                  {/* <span className="ml-1 text-[10px] text-[var(--text-muted)]">(not included in package)</span> */}
+                                </span>
+                                <span className="shrink-0 font-semibold tabular-nums text-[var(--foreground)]">RM {addonPart.toFixed(2)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+
+                      {packageApplied && hasAddons && addonDep > 0 ? (
+                        <p className="text-[10px] leading-snug text-[var(--text-muted)]">
+                          Your package covers the <strong className="font-medium text-[var(--foreground)]">main service</strong> only. Add-on deposits above are still due at checkout.
+                        </p>
+                      ) : null}
+
+                      <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-[var(--card-border)] pt-2">
+                        <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Total deposit</span>
+                        <span className="text-sm font-semibold tabular-nums text-[var(--accent-strong)]">RM {lineDeposit.toFixed(2)}</span>
+                      </div>
+
+                      {payLaterLine !== null ? (
+                        <div
+                          className="mt-2 space-y-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-2.5 py-2 ring-1 ring-[var(--status-success)]/10"
+                          role="note"
+                        >
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--status-success)]">
+                              Total (Pay later)
+                            </span>
+                            <span className="text-sm font-semibold tabular-nums text-[var(--status-success)]">RM {payLaterLine.toFixed(2)}</span>
+                          </div>
+                          <p className="text-[9px] leading-snug text-[var(--status-success)]/90">
+                              Pay after your service at the salon
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
 
                   {isLoggedIn ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        className="rounded-full border border-[var(--card-border)] bg-[var(--background)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground)] active:bg-[var(--muted)]"
-                        onClick={async () => {
-                          try {
-                            const customerPackages = availableMap[item.id] || 0;
-                            if (customerPackages <= 0) {
-                              setMessage("No available package balance for this service.");
-                              return;
+                      {canUnclaimPackage ? (
+                        <button
+                          type="button"
+                          disabled={packageActionItemId === item.id}
+                          className="rounded-full border-2 border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-2.5 py-1 text-[10px] font-semibold  tracking-wide text-[var(--status-warning-text)] disabled:opacity-50"
+                          onClick={async () => {
+                            setPackageActionItemId(item.id);
+                            setMessage(null);
+                            try {
+                              const updated = await releaseBookingCartPackageClaim(item.id);
+                              setCart(updated);
+                              const count = (updated?.items?.length || 0) + (updated?.package_items?.length || 0);
+                              window.dispatchEvent(new CustomEvent("cartUpdated", { detail: count }));
+                              // setMessage("Package use removed for this slot. Deposit is calculated as usual.");
+                            } catch (error) {
+                              setMessage(error instanceof Error ? error.message : "Unable to remove package from this slot.");
+                            } finally {
+                              setPackageActionItemId(null);
                             }
-                            await redeemServicePackage({
-                              customer_id: customerId || 0,
-                              booking_service_id: item.service_id,
-                              source: "BOOKING",
-                              source_ref_id: item.id,
-                              used_qty: 1,
-                            });
-                            await loadCart();
-                            setMessage("Package redeemed. This booking slot no longer requires deposit.");
-                          } catch (error) {
-                            setMessage(error instanceof Error ? error.message : "Unable to redeem package for this slot.");
-                          }
-                        }}
-                      >
-                        Package ({availableMap[item.id] || 0})
-                      </button>
+                          }}
+                        >
+                          {packageActionItemId === item.id ? "…" : "Unclaim Package"}
+                        </button>
+                      ) : null}
+
+                      {!packageApplied && pkgBal > 0 ? (
+                        <button
+                          type="button"
+                          disabled={packageActionItemId === item.id}
+                          className="rounded-full border-2 border-[var(--accent-strong)] bg-[var(--accent-strong)] px-2.5 py-1 text-[10px] font-semibold  tracking-wide text-white disabled:opacity-50"
+                          onClick={async () => {
+                            setPackageActionItemId(item.id);
+                            setMessage(null);
+                            try {
+                              await redeemServicePackage({
+                                customer_id: customerId || 0,
+                                booking_service_id: item.service_id,
+                                source: "BOOKING",
+                                source_ref_id: item.id,
+                                used_qty: 1,
+                              });
+                              await loadCart();
+                              // setMessage("Main service covered by your package. Add-on deposits (if any) still apply at checkout.");
+                            } catch (error) {
+                              setMessage(error instanceof Error ? error.message : "Unable to apply package to this slot.");
+                            } finally {
+                              setPackageActionItemId(null);
+                            }
+                          }}
+                        >
+                          {packageActionItemId === item.id ? "…" : `Claim package (${pkgBal})`}
+                        </button>
+                      ) : null}
 
                       <button
                         type="button"
@@ -613,39 +710,111 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               );
             })}
 
-            {cart?.package_items?.map((pkg) => (
-              <article
-                key={`pkg-${pkg.id}`}
-                className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-2.5 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <i className="fa-solid fa-gift shrink-0 text-[10px] text-[var(--accent-strong)]" aria-hidden />
-                      <h3 className="text-sm font-semibold leading-tight text-[var(--foreground)]">{pkg.package_name}</h3>
+            {cart?.package_items?.map((pkg) => {
+              const qtyBusy = packageQtyBusyId === pkg.id;
+              const syncCartCount = (updated: BookingCart) => {
+                setCart(updated);
+                const count = (updated?.items?.length || 0) + (updated?.package_items?.length || 0);
+                window.dispatchEvent(new CustomEvent("cartUpdated", { detail: count }));
+              };
+              return (
+                <article
+                  key={`pkg-${pkg.id}`}
+                  className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-2.5 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-sm font-semibold leading-tight text-[var(--foreground)]" title={pkg.package_name}>
+                        {pkg.package_name}
+                      </h3>
+                      {/* <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">RM {pkg.unit_price.toFixed(2)} each</p> */}
                     </div>
-                    <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                      ×{pkg.qty} @ RM {pkg.unit_price.toFixed(2)}
+                    <p className="shrink-0 text-right text-sm font-semibold tabular-nums text-[var(--accent-strong)]">
+                      RM {pkg.line_total.toFixed(2)}
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <p className="text-sm font-semibold tabular-nums text-[var(--accent-strong)]">RM {pkg.line_total.toFixed(2)}</p>
+                  <div className="mt-2.5 flex items-center justify-between gap-2">
+                    <div className="flex w-fit items-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/50 p-1">
+                      <button
+                        type="button"
+                        title={pkg.qty <= 1 ? "Remove package" : "Decrease quantity"}
+                        disabled={qtyBusy}
+                        onClick={async () => {
+                          if (pkg.qty <= 1) {
+                            setPackageQtyBusyId(pkg.id);
+                            setMessage(null);
+                            try {
+                              const updatedCart = await removePackageCartItem(pkg.id);
+                              syncCartCount(updatedCart);
+                            } catch (err) {
+                              setMessage(err instanceof Error ? err.message : "Unable to remove package.");
+                            } finally {
+                              setPackageQtyBusyId(null);
+                            }
+                            return;
+                          }
+                          setPackageQtyBusyId(pkg.id);
+                          setMessage(null);
+                          try {
+                            const updatedCart = await updateBookingPackageCartItemQty(pkg.id, pkg.qty - 1);
+                            syncCartCount(updatedCart);
+                          } catch (err) {
+                            setMessage(err instanceof Error ? err.message : "Unable to update quantity.");
+                          } finally {
+                            setPackageQtyBusyId(null);
+                          }
+                        }}
+                        className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--card-border)] bg-[var(--card)] text-sm font-bold text-[var(--foreground)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--muted)]/60 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-[2rem] text-center text-sm font-semibold tabular-nums text-[var(--foreground)]">
+                        {qtyBusy ? "…" : pkg.qty}
+                      </span>
+                      <button
+                        type="button"
+                        title="Increase quantity"
+                        disabled={qtyBusy || pkg.qty >= 10}
+                        onClick={async () => {
+                          setPackageQtyBusyId(pkg.id);
+                          setMessage(null);
+                          try {
+                            const updatedCart = await updateBookingPackageCartItemQty(pkg.id, pkg.qty + 1);
+                            syncCartCount(updatedCart);
+                          } catch (err) {
+                            setMessage(err instanceof Error ? err.message : "Unable to update quantity.");
+                          } finally {
+                            setPackageQtyBusyId(null);
+                          }
+                        }}
+                        className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--card-border)] bg-[var(--card)] text-sm font-bold text-[var(--foreground)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--muted)]/60 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      className="rounded-full border border-[var(--card-border)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)] active:bg-[var(--status-error-bg)]"
+                      disabled={qtyBusy}
+                      className="shrink-0 rounded-full border border-[var(--card-border)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)] active:bg-[var(--status-error-bg)] disabled:opacity-50"
                       onClick={async () => {
-                        const updatedCart = await removePackageCartItem(pkg.id);
-                        setCart(updatedCart);
-                        const count = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
-                        window.dispatchEvent(new CustomEvent("cartUpdated", { detail: count }));
+                        setPackageQtyBusyId(pkg.id);
+                        setMessage(null);
+                        try {
+                          const updatedCart = await removePackageCartItem(pkg.id);
+                          syncCartCount(updatedCart);
+                        } catch (err) {
+                          setMessage(err instanceof Error ? err.message : "Unable to remove package.");
+                        } finally {
+                          setPackageQtyBusyId(null);
+                        }
                       }}
                     >
                       Remove
                     </button>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
 
             {!hasItems ? (
               <div className="rounded-2xl border-2 border-dashed border-[var(--card-border)] bg-[var(--background)]/40 px-6 py-10 text-center">
@@ -892,6 +1061,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               ) : null}
 
               <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Payment summary</p>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-muted)]">Main service deposit</span>
                   <span className="font-medium tabular-nums text-[var(--foreground)]">RM {mainDepositTotal.toFixed(2)}</span>
@@ -902,17 +1072,31 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-muted)]">Packages</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {cart?.package_total ?? 0}</span>
+                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.package_total ?? 0).toFixed(2)}</span>
                 </div>
+                {estimatedPayLaterTotal > 0 ? (
+                  <div
+                    className="flex justify-between gap-3 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2.5 text-sm ring-1 ring-[var(--status-success)]/10"
+                    role="note"
+                  >
+                    <span className="font-medium text-[var(--status-success)]">Total (Pay later)</span>
+                    <span className="shrink-0 font-semibold tabular-nums text-[var(--status-success)]">
+                      RM {estimatedPayLaterTotal.toFixed(2)}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="border-t border-[var(--card-border)] pt-3">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
-                    <span className="font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
+                    <div className="min-w-0">
+                      <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
+                      <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">Due now — deposits + packages</p>
+                    </div>
+                    <span className="shrink-0 font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
                       RM {(Number(cart?.package_total ?? 0) + depositDisplay.total).toFixed(2)}
                     </span>
                   </div>
                   {nextExpiryIn ? (
-                    <p className="mt-2 text-xs text-[var(--text-muted)]">
+                    <p className="mt-3 border-t border-[var(--card-border)] pt-3 text-xs text-[var(--text-muted)]">
                       Next hold expires in <span className="font-semibold tabular-nums text-[var(--status-warning)]">{nextExpiryIn}</span>
                     </p>
                   ) : null}

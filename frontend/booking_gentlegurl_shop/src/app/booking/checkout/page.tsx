@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { BookingProgress } from "@/components/booking/BookingProgress";
 import { payBooking } from "@/lib/apiClient";
 
 function CheckoutContent() {
@@ -49,7 +48,6 @@ function CheckoutContent() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <BookingProgress step={6} />
       <h1 className="text-3xl font-semibold">Checkout deposit</h1>
       <p className="mt-2 text-[var(--text-muted)]">Your slot is reserved for 15 minutes.</p>
       <p className="mt-2 inline-block rounded-full bg-[var(--muted)] px-3 py-1 text-sm">Time left: {countdown}</p>

@@ -161,6 +161,22 @@ export async function getAvailability(serviceId: string, staffId: string, date: 
   );
 }
 
+/** All staff merged — pick time first, then choose stylist. Same slot rules as getAvailability (primary slots, etc.). */
+export async function getAvailabilityPooled(serviceId: string, date: string, extraDurationMin?: number) {
+  const qs = new URLSearchParams();
+  qs.set("service_id", serviceId);
+  qs.set("date", date);
+  if (typeof extraDurationMin === "number" && extraDurationMin > 0) {
+    qs.set("extra_duration_min", String(extraDurationMin));
+  }
+  const response = await request<{
+    success?: boolean;
+    message?: string;
+    data?: { visible_slots?: BookingSlot[]; slots?: BookingSlot[] };
+  }>(`/booking/availability/pooled?${qs.toString()}`);
+  return unwrapData<{ visible_slots?: BookingSlot[]; slots?: BookingSlot[] }>(response);
+}
+
 export async function addCartItem(payload: {
   service_id: number;
   staff_id: number;
@@ -201,12 +217,30 @@ export async function removeCartItem(itemId: number) {
   return unwrapData<BookingCart>(response);
 }
 
+/** Undo package reservation for this line; slot stays in cart and full deposit rules apply again. */
+export async function releaseBookingCartPackageClaim(itemId: number) {
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/release-package-claim`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return unwrapData<BookingCart>(response);
+}
+
 export async function removePackageCartItem(itemId: number) {
   const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/package-item/${itemId}`, {
     method: "DELETE",
     body: JSON.stringify({}),
   });
 
+  return unwrapData<BookingCart>(response);
+}
+
+export async function updateBookingPackageCartItemQty(itemId: number, qty: number) {
+  const next = Math.max(1, Math.min(10, Math.floor(qty)));
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/package-item/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ qty: next }),
+  });
   return unwrapData<BookingCart>(response);
 }
 

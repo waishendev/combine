@@ -64,7 +64,7 @@ class ServiceController extends Controller
 
     public function show(int $id)
     {
-        $service = BookingService::query()->with(['primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price,image_path,description,service_type'])->findOrFail($id);
+        $service = BookingService::query()->with(['primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price,image_path,description,service_type,deposit_amount'])->findOrFail($id);
 
         return $this->respond($this->mapService($service, true));
     }
@@ -129,7 +129,7 @@ class ServiceController extends Controller
             'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
             'questions' => $service->questions()
                 ->where('is_active', true)
-                ->with(['options' => fn ($q) => $q->where('is_active', true)->with('linkedBookingService:id,name,duration_min,service_price,image_path,description,service_type')->orderBy('sort_order')->orderBy('id')])
+                ->with(['options' => fn ($q) => $q->where('is_active', true)->with('linkedBookingService:id,name,duration_min,service_price,image_path,description,service_type,deposit_amount')->orderBy('sort_order')->orderBy('id')])
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get()
@@ -154,6 +154,7 @@ class ServiceController extends Controller
                             'image_url' => $linkedService?->image_url,
                             'linked_description' => $linkedService?->description,
                             'linked_service_type' => $linkedService?->service_type,
+                            'linked_deposit_amount' => $linkedService ? (float) ($linkedService->deposit_amount ?? 0) : null,
                         ];
                     })->values()->all(),
                 ])->values()->all(),

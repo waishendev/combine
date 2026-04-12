@@ -44,8 +44,8 @@ export default function BookingPackagesPage() {
       const updatedCart = await addPackageCartItem({ service_package_id: pkg.id, qty: 1 });
       const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
-      setMessage(`Added ${pkg.name} to cart.`);
-      router.push("/booking/cart");
+      setMessage(`Added ${pkg.name} to cart. Open the cart icon when you're ready to pay.`);
+      router.push("/booking");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to add package into cart.");
     }
@@ -74,8 +74,8 @@ export default function BookingPackagesPage() {
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[var(--status-success)]">
-          Logged in as <span className="font-semibold">{user.name}</span>. Added packages continue in
-          <Link href="/booking/cart" className="ml-1 font-semibold underline">Booking Cart</Link>.
+          Logged in as <span className="font-semibold">{user.name}</span>. Use the{" "}
+          <Link href="/booking" className="font-semibold underline">cart icon</Link> when you&apos;re ready to checkout.
         </div>
       )}
 

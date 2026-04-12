@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
+import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
 import { getBookingServiceDetail } from "@/lib/apiClient";
+import { depositPreviewForService } from "@/lib/bookingDepositPreview";
 import { BookingServiceQuestion, BookingServiceQuestionOption, Service } from "@/lib/types";
 
 export default function ServiceAddonsPage() {
@@ -58,17 +60,17 @@ export default function ServiceAddonsPage() {
   const estimatedTotalMinutes = baseDurationMin + totalAddonDuration;
   const listedServicePrice = service ? Number(service.price ?? 0) : 0;
   const estimatedTotalCost = listedServicePrice + totalAddonPrice;
-  const depositAmount = service ? Number(service.deposit_amount ?? 0) : 0;
+  const depositPreview = useMemo(() => depositPreviewForService(service, selectedOptionIds), [service, selectedOptionIds]);
   /** Typical salon model: deposit is credited toward the appointment; balance due after service. */
-  const estimatedBalanceAtSalon = Math.max(0, estimatedTotalCost - depositAmount);
-  const depositCoversFullMenu = depositAmount >= estimatedTotalCost && estimatedTotalCost > 0;
+  const estimatedBalanceAtSalon = Math.max(0, estimatedTotalCost - depositPreview.depositTotal);
+  const depositCoversFullMenu = depositPreview.depositTotal >= estimatedTotalCost && estimatedTotalCost > 0;
 
   const goToStylist = useCallback(() => {
     const qs = new URLSearchParams();
     if (selectedOptionIds.length) qs.set("selected_option_ids", selectedOptionIds.join(","));
     if (categoryId) qs.set("category_id", categoryId);
     const q = qs.toString();
-    router.push(`/booking/service/${id}/staff${q ? `?${q}` : ""}`);
+    router.push(`/booking/service/${id}/slots${q ? `?${q}` : ""}`);
   }, [categoryId, id, router, selectedOptionIds]);
 
   const toggleOption = useCallback((q: BookingServiceQuestion, opt: BookingServiceQuestionOption) => {
@@ -88,8 +90,12 @@ export default function ServiceAddonsPage() {
 
       <div className="mt-6 space-y-6">
         <div className="flex items-center justify-start">
-          <Link href={backHref} className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm">
-            Back
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] px-4 py-2 text-sm leading-none"
+          >
+            <i className="fa-solid fa-arrow-left shrink-0 text-[0.95em]" aria-hidden />
+            <span>Back</span>
           </Link>
         </div>
 
@@ -99,7 +105,7 @@ export default function ServiceAddonsPage() {
           <p>Loading service...</p>
         ) : (
           <>
-            <section className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm">
+            {/* <section className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm">
               {(service.image_url || service.image_path) ? (
                 <div className="aspect-[4/3] max-h-56 w-full bg-gray-100">
                   <img
@@ -126,7 +132,7 @@ export default function ServiceAddonsPage() {
                   <li>• Listed service price: RM {listedServicePrice.toFixed(2)}</li>
                 </ul>
               </div>
-            </section>
+            </section> */}
 
             <section className="space-y-4">
               {(service.questions ?? []).length === 0 ? (
@@ -207,7 +213,10 @@ export default function ServiceAddonsPage() {
               <div className="mt-5 space-y-5 border-t border-[var(--card-border)] pt-5">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Main service</p>
-                  <p className="mt-2 font-[var(--font-heading)] text-base font-semibold">{service.name}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <p className="font-[var(--font-heading)] text-base font-semibold">{service.name}</p>
+                    <ServiceTierBadge serviceType={service.service_type} />
+                  </div>
                   <ul className="mt-3 space-y-2 text-sm">
                     <li className="flex flex-wrap justify-between gap-2 border-b border-[var(--card-border)] border-dotted pb-2">
                       <span className="text-[var(--text-muted)]">Base duration</span>
@@ -235,7 +244,10 @@ export default function ServiceAddonsPage() {
                           className="rounded-xl border border-[var(--card-border)] bg-[var(--muted)]/30 px-4 py-3 text-sm"
                         >
                           <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">{questionTitle}</p>
-                          <p className="mt-1 font-[var(--font-heading)] font-semibold">{opt.label}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <p className="font-[var(--font-heading)] font-semibold">{opt.label}</p>
+                            {opt.linked_service_type ? <ServiceTierBadge serviceType={opt.linked_service_type} /> : null}
+                          </div>
                           <div className="mt-3 space-y-0 text-sm">
                             <div className="flex justify-between gap-3 border-b border-dotted border-[var(--card-border)] pb-2">
                               <span className="text-[var(--text-muted)]">Extra duration</span>
@@ -289,23 +301,27 @@ export default function ServiceAddonsPage() {
                         <span className="block font-semibold tabular-nums">{estimatedTotalMinutes} min</span>
                       </div>
                     </li>
-                    <li className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--card-border)] border-dotted pb-3">
-                      <div>
-                        <span className="font-medium text-[var(--foreground)]">Deposit required: </span>
-                        <p className="mt-0.5 text-xs text-[var(--text-muted)]">Charged at checkout to secure this booking</p>
+                    <li className="flex flex-col gap-3 border-b border-[var(--card-border)] border-dotted pb-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <span className="font-medium text-[var(--foreground)]">Deposit required</span>
+                          <p className="mt-0.5 text-xs text-[var(--text-muted)]">Charged at checkout to secure this booking (same rules as cart)</p>
+                        </div>
+                        <span className="shrink-0 font-semibold tabular-nums">RM {depositPreview.depositTotal.toFixed(2)}</span>
                       </div>
-                      <div className="text-right">
-                        <span className="block font-semibold tabular-nums">RM {depositAmount.toFixed(2)}</span>
-                        {/* {depositAmount > 0 ? (
-                          <span className="mt-1 inline-block rounded-full bg-[var(--accent-strong)]/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--accent-strong)]">
-                            Due at checkout
-                          </span>
-                        ) : (
-                          <span className="mt-1 inline-block rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
-                            No deposit online
-                          </span>
-                        )} */}
-                      </div>
+                      {/* <div className="rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/40 p-3 text-sm">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Deposit breakdown</p>
+                        <div className="mt-2 space-y-1 text-[13px]">
+                          <p className="flex justify-between gap-2">
+                            <span className="text-[var(--text-muted)]">Main service deposit</span>
+                            <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {depositPreview.mainDepositApplied.toFixed(2)}</span>
+                          </p>
+                          <p className="flex justify-between gap-2">
+                            <span className="text-[var(--text-muted)]">Add-on deposit</span>
+                            <span className="font-semibold tabular-nums text-[var(--foreground)]">RM {depositPreview.addonDepositApplied.toFixed(2)}</span>
+                          </p>
+                        </div>
+                      </div> */}
                     </li>
                     <li className="flex flex-wrap items-start justify-between gap-2">
                       <div>
@@ -341,7 +357,7 @@ export default function ServiceAddonsPage() {
                   onClick={goToStylist}
                   className="w-full rounded-full bg-[var(--accent-strong)] px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 sm:text-base"
                 >
-                  Continue to Stylist
+                  Choose date & time
                 </button>
               </div>
             </section>

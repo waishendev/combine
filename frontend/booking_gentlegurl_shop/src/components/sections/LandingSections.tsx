@@ -193,8 +193,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
       const updatedCart = await addPackageCartItem({ service_package_id: pkg.id, qty: 1 });
       const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
-      setPackagesMessage(`Added ${pkg.name} to cart.`);
-      window.dispatchEvent(new CustomEvent("openCart"));
+      setPackagesMessage(`Added ${pkg.name} to cart. Open the cart icon when you're ready to pay.`);
     } catch (err) {
       setPackagesMessage(err instanceof Error ? err.message : "Unable to add package into cart.");
     }

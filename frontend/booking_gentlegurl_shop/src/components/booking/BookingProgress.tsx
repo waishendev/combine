@@ -1,4 +1,5 @@
-const STEP_LABELS = ["CATEGORY", "SERVICE", "ADD-ONS", "STYLIST", "DATE & TIME", "CHECKOUT"];
+/** Date & time before stylist: pick a slot first, then an available staff member. Checkout is via cart icon, not a wizard step. */
+const STEP_LABELS = ["CATEGORY", "SERVICE", "ADD-ONS", "DATE & TIME", "STYLIST"];
 
 type BookingProgressProps = {
   step: number;

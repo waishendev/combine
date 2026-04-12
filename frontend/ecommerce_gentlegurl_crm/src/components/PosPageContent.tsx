@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 type CartItem = {
   id: number
   qty: number
@@ -3567,6 +3567,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     serviceItem.package_claim_status === 'reserved' ||
                     serviceItem.package_claim_status === 'consumed'
                   const mainDepositRef = Number(serviceItem.deposit_main_reference ?? 0)
+                  const hasAddons = (serviceItem.addon_items?.length ?? 0) > 0
+                  const mainCoveredByPkg = isPkgClaimed && depMain < 0.0001
 
                   return (
                   <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-3 shadow-sm sm:p-4">
@@ -3642,57 +3644,65 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                     <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-emerald-200/80">
                       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits</p>
-                      <dl className="mt-1 space-y-1">
-                        <div className="flex justify-between gap-3 text-sm tabular-nums">
-                          <dt className="min-w-0 truncate text-gray-700" title={serviceItem.service_name}>
-                            <span>{serviceItem.service_name}</span>
-                            {isPkgClaimed && depMain < 0.0001 ? (
-                              <span className="ml-1.5 align-middle text-[10px] font-bold uppercase tracking-wide text-emerald-800">
-                                · Covered
-                              </span>
-                            ) : null}
-                          </dt>
-                          <dd className="shrink-0 text-right font-semibold">
-                            {isPkgClaimed && depMain < 0.0001 && mainDepositRef > 0.0001 ? (
-                              <span>
-                                <span className="text-gray-400 line-through">RM {mainDepositRef.toFixed(2)}</span>{' '}
-                                <span className="text-emerald-800">RM {depMain.toFixed(2)}</span>
-                              </span>
-                            ) : isPkgClaimed && depMain < 0.0001 ? (
-                              <span className="text-emerald-800">RM {depMain.toFixed(2)}</span>
-                            ) : (
-                              <span className="text-gray-900">RM {depMain.toFixed(2)}</span>
-                            )}
-                          </dd>
-                        </div>
-                        {(serviceItem.addon_items?.length ?? 0) > 0
-                          ? serviceItem.addon_items?.map((addon, idx) => {
+                      <div className="mt-2 space-y-2 text-[11px]">
+                        {mainCoveredByPkg ? (
+                          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-200 pb-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900">{serviceItem.service_name}</p>
+                              <p className="mt-0.5 text-[10px] leading-snug text-emerald-700">
+                                Included in your package (main service)
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right tabular-nums">
+                              {mainDepositRef > 0.0001 ? (
+                                <span className="text-gray-400 line-through">RM {mainDepositRef.toFixed(2)}</span>
+                              ) : null}
+                              {mainDepositRef > 0.0001 ? ' ' : null}
+                              <span className="text-sm font-semibold text-gray-900">RM {depMain.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
+                            <span className="text-gray-700">Main service</span>
+                            <span className="font-semibold tabular-nums text-gray-900">RM {depMain.toFixed(2)}</span>
+                          </div>
+                        )}
+
+                        {hasAddons ? (
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Add-ons</p>
+                            {serviceItem.addon_items?.map((addon, idx) => {
                               const dep = Number(addon.linked_deposit_amount ?? 0)
                               return (
                                 <div
                                   key={`dep-addon-${addon.id ?? addon.name}-${idx}`}
-                                  className="flex justify-between gap-3 text-sm tabular-nums text-gray-700"
+                                  className="flex justify-between gap-2 pl-1 tabular-nums text-gray-700"
                                 >
-                                  <dt className="min-w-0 truncate pl-2" title={addon.name}>
-                                    + {addon.name}
-                                  </dt>
-                                  <dd className="shrink-0 font-semibold text-gray-900">RM {dep.toFixed(2)}</dd>
+                                  <span className="min-w-0">
+                                    <span className="text-gray-500">+</span> {addon.name}
+                                  </span>
+                                  <span className="shrink-0 font-semibold text-gray-900">RM {dep.toFixed(2)}</span>
                                 </div>
                               )
-                            })
-                          : null}
-                        <div className="flex justify-between gap-3 border-t border-gray-200 pt-1.5">
-                          <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total</dt>
-                          <dd className="text-sm font-bold text-orange-700">RM {depPayable.toFixed(2)}</dd>
-                        </div>
-                      </dl>
-                    </div>
+                            })}
+                          </div>
+                        ) : null}
 
-                    {isPkgClaimed ? (
-                      <div className="mt-2 rounded-lg border border-emerald-300/80 bg-emerald-100/70 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-900 shadow-sm">
-                        Main service reserved from package — add-on deposits below still apply.
+                        {mainCoveredByPkg && hasAddons && depAddonTotal > 0.0001 ? (
+                          <p className="text-[10px] leading-snug text-gray-600">
+                            Your package covers the <strong className="font-medium text-gray-900">main service</strong>{' '}
+                            only. Add-on deposits above are still due at checkout.
+                          </p>
+                        ) : null}
+
+                        <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-gray-200 pt-2">
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                            Total deposit
+                          </span>
+                          <span className="text-sm font-bold tabular-nums text-orange-700">RM {depPayable.toFixed(2)}</span>
+                        </div>
                       </div>
-                    ) : null}
+                    </div>
                   </div>
                   )
                 })}
@@ -4231,10 +4241,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
                         ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
                         : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
-                      const chargeNow = Number(
-                        serviceItem.deposit_payable_total ??
-                          Number(serviceItem.deposit_contribution ?? 0) + Number(serviceItem.deposit_addon_total ?? 0),
-                      )
                       const chkIdentity = formatPosServiceCartIdentity(serviceItem, selectedMember)
                       const depMainChk = Number(serviceItem.deposit_contribution ?? 0)
                       const chkPkgClaimed =
@@ -4243,6 +4249,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         serviceItem.package_claim_status === 'consumed'
                       const chkMainRef = Number(serviceItem.deposit_main_reference ?? 0)
                       const svcTypeChk = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
+                      const checkoutAddons = serviceItem.addon_items ?? []
+                      const checkoutAddonCount = checkoutAddons.length
+                      const checkoutAddonSum = checkoutAddons.reduce(
+                        (s, a) => s + Number(a.linked_deposit_amount ?? 0),
+                        0,
+                      )
+                      const svcQty = Math.max(1, Number(serviceItem.qty) || 1)
+                      const mainLineDeposit = depMainChk
+                      const mainUnitDeposit = svcQty > 1 ? mainLineDeposit / svcQty : mainLineDeposit
+                      const mainCoveredByPkg = chkPkgClaimed && depMainChk < 0.0001
 
                       const checkoutServiceItemHeader = (
                         <>
@@ -4266,104 +4282,96 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </>
                       )
 
-                      return (
-                        <tr
-                          key={`checkout-service-${serviceItem.id}`}
-                          className="bg-emerald-50/50 hover:bg-emerald-50/80 transition-colors align-middle"
-                        >
-                          <td className="px-4 py-3.5 align-top sm:px-5">
-                            {checkoutServiceItemHeader}
+                      const svcRowClass =
+                        'bg-emerald-50/50 hover:bg-emerald-50/80 transition-colors border-t border-emerald-200/50'
 
-                            <div className="mt-3 border-t border-emerald-200/50 pt-2.5">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposit</p>
-                              <div className="mt-1.5 space-y-1.5 text-xs leading-snug text-gray-700">
-                                <p className="flex min-h-[1.375rem] items-center">
-                                  {serviceItem.service_name}
-                                  {chkPkgClaimed && depMainChk < 0.0001 ? (
-                                    <span className="font-medium text-emerald-800"> · Covered</span>
-                                  ) : null}
-                                </p>
-                                {(serviceItem.addon_items?.length ?? 0) > 0
-                                  ? serviceItem.addon_items?.map((addon, idx) => (
-                                      <p
-                                        key={`chk-dep-label-${addon.id ?? addon.name}-${idx}`}
-                                        className="flex min-h-[1.375rem] items-center pl-0.5"
-                                      >
-                                        + {addon.name}
-                                      </p>
-                                    ))
-                                  : null}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3.5 min-w-[260px] align-top">
-                            <p className="text-xs leading-relaxed text-gray-700">{splitSummary}</p>
-                          </td>
-                          <td className="px-4 py-3.5 align-top">
-                            <div className="invisible select-none" aria-hidden>
-                              {checkoutServiceItemHeader}
-                            </div>
-                            <div className="mt-3 border-t border-emerald-200/50 pt-2.5">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-transparent">Deposit</p>
-                              <div className="mt-1.5 flex flex-col items-start gap-y-1.5 text-left text-xs tabular-nums text-gray-700">
-                                <div className="flex min-h-[1.375rem] items-center justify-start">
-                                  {chkPkgClaimed && depMainChk < 0.0001 && chkMainRef > 0.0001 ? (
-                                    <span>
-                                      <span className="text-gray-400 line-through">RM {chkMainRef.toFixed(2)}</span>
-                                      {/* <span className="mx-1.5 text-gray-300">·</span> */}
-                                      {/* <span className="font-semibold text-emerald-900">RM {depMainChk.toFixed(2)}</span> */}
-                                    </span>
-                                  ) : (
-                                    <span className="font-medium">RM {depMainChk.toFixed(2)}</span>
-                                  )}
+                      return (
+                        <Fragment key={`checkout-service-${serviceItem.id}`}>
+                          <tr className={`${svcRowClass} align-top`}>
+                            <td className="px-4 py-3.5 sm:px-5">{checkoutServiceItemHeader}</td>
+                            <td className="min-w-[260px] px-4 py-3.5 align-top">
+                              <p className="text-xs leading-relaxed text-gray-700">{splitSummary}</p>
+                            </td>
+                            <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
+                            <td className="px-4 py-3.5 text-right align-top tabular-nums text-xs text-gray-400 sm:px-5">
+                              —
+                            </td>
+                          </tr>
+                          <tr className={`${svcRowClass} align-top`}>
+                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposits</p>
+                              {mainCoveredByPkg ? (
+                                <div className="mt-1">
+                                  <p className="text-sm font-medium text-gray-900">{serviceItem.service_name}</p>
+                                  <p className="mt-0.5 text-[10px] leading-snug text-emerald-700">
+                                    Included in your package (main service)
+                                  </p>
                                 </div>
-                                {(serviceItem.addon_items?.length ?? 0) > 0
-                                  ? serviceItem.addon_items?.map((addon, idx) => (
-                                      <div
-                                        key={`chk-dep-amt-${addon.id ?? addon.name}-${idx}`}
-                                        className="flex min-h-[1.375rem] items-center justify-start"
+                              ) : (
+                                <p className="mt-1 text-xs text-gray-700">Main service</p>
+                              )}
+                            </td>
+                            <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
+                            <td className="px-4 py-2.5 align-top text-xs tabular-nums text-gray-700">
+                              {mainCoveredByPkg && chkMainRef > 0.0001 ? (
+                                <span>
+                                  <span className="text-gray-400 line-through">RM {chkMainRef.toFixed(2)}</span>{' '}
+                                  <span className="font-medium">RM {mainUnitDeposit.toFixed(2)}</span>
+                                </span>
+                              ) : (
+                                <span className="font-medium">RM {mainUnitDeposit.toFixed(2)}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
+                              <p className="text-lg font-bold leading-tight text-orange-700">
+                                RM {mainLineDeposit.toFixed(2)}
+                              </p>
+                            </td>
+                          </tr>
+                          {checkoutAddonCount > 0 ? (
+                            <>
+                              <tr className={`${svcRowClass} align-top`}>
+                                <td className="px-4 py-1.5 pl-7 sm:px-5 sm:pl-8">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-ons</p>
+                                </td>
+                                <td className="min-w-[260px] px-4 py-1.5" aria-hidden />
+                                <td className="px-4 py-1.5" colSpan={2} aria-hidden />
+                              </tr>
+                              {checkoutAddons.map((addon, idx) => {
+                                const dep = Number(addon.linked_deposit_amount ?? 0)
+                                return (
+                                  <tr key={`chk-dep-addon-${serviceItem.id}-${addon.id ?? addon.name}-${idx}`} className={`${svcRowClass} align-top`}>
+                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
+                                      <span className="text-gray-500">+</span> {addon.name}
+                                    </td>
+                                    <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                                    <td className="px-4 py-2 text-xs tabular-nums text-gray-700">
+                                      <span className="font-medium">RM {dep.toFixed(2)}</span>
+                                    </td>
+                                    {idx === 0 ? (
+                                      <td
+                                        rowSpan={checkoutAddonCount}
+                                        className="px-4 py-2 text-right align-middle tabular-nums sm:px-5"
                                       >
-                                        RM {Number(addon.linked_deposit_amount ?? 0).toFixed(2)}
-                                      </div>
-                                    ))
-                                  : null}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3.5 text-right align-middle sm:px-5">
-                            <div className="invisible select-none" aria-hidden>
-                              {checkoutServiceItemHeader}
-                            </div>
-                            <div className="mt-3 border-t border-emerald-200/50 pt-2.5">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-transparent">Deposit</p>
-                              <div className="mt-1.5 flex flex-col items-end justify-center gap-y-1.5">
-                                {(serviceItem.addon_items?.length ?? 0) > 0 ? (
-                                  <>
-                                    <div className="flex min-h-[1.375rem] w-full items-center justify-end" aria-hidden />
-                                    <div className="flex min-h-[1.375rem] flex-col items-end justify-center">
-                                      <p className="text-lg font-bold leading-tight tabular-nums text-orange-700">
-                                        RM {chargeNow.toFixed(2)}
-                                      </p>
-                                    </div>
-                                    {(serviceItem.addon_items ?? []).map((_, idx) => (
-                                      <div
-                                        key={`chk-lt-addon-align-${idx}`}
-                                        className="flex min-h-[1.375rem] w-full items-center justify-end"
-                                        aria-hidden
-                                      />
-                                    ))}
-                                  </>
-                                ) : (
-                                  <div className="flex min-h-[1.375rem] flex-col items-end justify-center">
-                                    <p className="text-lg font-bold leading-tight tabular-nums text-orange-700">
-                                      RM {chargeNow.toFixed(2)}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
+                                        <p className="text-lg font-bold leading-tight text-orange-700">
+                                          RM {checkoutAddonSum.toFixed(2)}
+                                        </p>
+                                      </td>
+                                    ) : null}
+                                  </tr>
+                                )
+                              })}
+                              {mainCoveredByPkg && checkoutAddonSum > 0.0001 ? (
+                                <tr className={`${svcRowClass} align-top`}>
+                                  <td className="px-4 py-2 pl-7 text-[10px] leading-snug text-gray-600 sm:px-5 sm:pl-8" colSpan={4}>
+                                    Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
+                                    only. Add-on deposits above are still due at checkout.
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </Fragment>
                       )
                     })}
 

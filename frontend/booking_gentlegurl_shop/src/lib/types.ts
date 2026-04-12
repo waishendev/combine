@@ -47,6 +47,8 @@ export type BookingServiceQuestionOption = {
   image_url?: string | null;
   linked_description?: string | null;
   linked_service_type?: "premium" | "standard" | null;
+  /** Linked booking service deposit — used with tier rules (same as cart). */
+  linked_deposit_amount?: number | null;
 };
 
 export type Staff = {
@@ -72,6 +74,8 @@ export type BookingSlot = {
   matched_primary_time?: string | null;
   is_primary?: boolean;
   is_fallback?: boolean;
+  /** Set by GET /booking/availability/pooled — staff who can take this slot. */
+  available_staff_ids?: number[];
 };
 
 export type BookingCartItem = {
@@ -85,6 +89,8 @@ export type BookingCartItem = {
   end_at: string;
   addon_duration_min?: number;
   addon_price?: number;
+  /** Main service menu price (before add-ons). */
+  listed_service_price?: number;
   selected_options?: BookingServiceQuestionOption[];
   expires_at: string;
   status: string;
@@ -97,6 +103,10 @@ export type BookingCartItem = {
     deposit_contribution: number;
   }>;
   package_claim_status?: "reserved" | "consumed" | "released" | null;
+  /** True when a package balance is reserved/consumed for the main service (add-ons billed separately). */
+  package_covers_main_service?: boolean;
+  /** Listed main-service deposit on the service (for “was RM X” copy when package covers main). */
+  reference_main_deposit?: number;
 };
 
 export type BookingCart = {
