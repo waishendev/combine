@@ -248,6 +248,12 @@ type Member = {
   avatar_url?: string | null
 }
 
+type GuestDetails = {
+  name: string
+  phone: string
+  email: string
+}
+
 type PosVoucherOption = {
   id: number
   customer_voucher_id?: number
@@ -431,6 +437,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [memberLoading, setMemberLoading] = useState(false)
   const [memberInitialLoaded, setMemberInitialLoaded] = useState(false)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
+  const [checkoutCustomerType, setCheckoutCustomerType] = useState<'member' | 'guest'>('member')
+  const [guestDetails, setGuestDetails] = useState<GuestDetails>({ name: '', phone: '', email: '' })
+  const [guestDetailsError, setGuestDetailsError] = useState<Partial<Record<keyof GuestDetails, string>>>({})
+  const isGuestCheckout = checkoutCustomerType === 'guest'
+  const checkoutContactDisplay = isGuestCheckout
+    ? (guestDetails.name.trim() ? `${guestDetails.name}${guestDetails.phone.trim() ? ` (${guestDetails.phone.trim()})` : ''}` : 'Guest not filled')
+    : (selectedMember ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}` : 'No member selected')
+  const validateGuestDetails = useCallback(() => {
+    const errors: Partial<Record<keyof GuestDetails, string>> = {}
+    const phone = guestDetails.phone.trim()
+    if (!guestDetails.name.trim()) errors.name = 'Guest name is required.'
+    if (!phone) errors.phone = 'Guest phone is required.'
+    else if (!/^\+?[0-9]{8,15}$/.test(phone)) errors.phone = 'Please enter a valid phone number (8-15 digits).'
+    setGuestDetailsError(errors)
+    return Object.keys(errors).length === 0
+  }, [guestDetails.name, guestDetails.phone])
   const [voucherModalOpen, setVoucherModalOpen] = useState(false)
   const [voucherLoading, setVoucherLoading] = useState(false)
   const [voucherApplying, setVoucherApplying] = useState(false)
@@ -1396,8 +1418,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
     setBookingModalError(null)
-    if (!selectedMember?.id) {
-      setBookingModalError('Please assign member.')
+    if (!isGuestCheckout && !selectedMember?.id) {
+      setBookingModalError('Please assign member or switch to guest checkout.')
+      return
+    }
+    if (isGuestCheckout && !validateGuestDetails()) {
+      setBookingModalError('Please complete guest name and phone.')
       return
     }
     if (!bookingAssignedStaffId) {
@@ -1427,7 +1453,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         booking_service_id: bookingServiceDraft.id,
-        customer_id: selectedMember.id,
+        customer_id: isGuestCheckout ? null : selectedMember?.id,
+        guest_name: isGuestCheckout ? guestDetails.name.trim() : undefined,
+        guest_phone: isGuestCheckout ? guestDetails.phone.trim() : undefined,
+        guest_email: isGuestCheckout ? (guestDetails.email.trim() || null) : undefined,
         assigned_staff_id: bookingAssignedStaffId,
         selected_option_ids: bookingSelectedOptionIds,
         start_at: bookingSlotValue,
@@ -1449,7 +1478,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingModalOpen(false)
     setBookingModalError(null)
     setBookingSubmitting(false)
-  }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingQuestions, bookingSelectedOptionIds, bookingServiceDraft, bookingSlotValue, selectedMember?.id, showMsg])
+  }, [bookingAssignedStaffId, bookingDate, bookingNotes, bookingQuestions, bookingSelectedOptionIds, bookingServiceDraft, bookingSlotValue, guestDetails.email, guestDetails.name, guestDetails.phone, isGuestCheckout, selectedMember?.id, showMsg, validateGuestDetails])
 
 
   useEffect(() => {
@@ -2264,7 +2293,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         payment_method: paymentMethod,
-        member_id: selectedMember?.id ?? null,
+        member_id: isGuestCheckout ? null : (selectedMember?.id ?? null),
+        guest_name: isGuestCheckout ? guestDetails.name.trim() : undefined,
+        guest_phone: isGuestCheckout ? guestDetails.phone.trim() : undefined,
+        guest_email: isGuestCheckout ? (guestDetails.email.trim() || null) : undefined,
         items: cartItems.map((item) => ({
           cart_item_id: item.id,
           product_id: item.product_id,
@@ -2322,6 +2354,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setReceiptEmailError(null)
     setReceiptCooldownUntil(0)
     setSelectedMember(null)
+    setCheckoutCustomerType('member')
+    setGuestDetails({ name: '', phone: '', email: '' })
+    setGuestDetailsError({})
     setMemberQuery('')
     setMembers([])
     setCart({ id: cart.id, items: [], service_items: [], package_items: [], subtotal: 0, grand_total: 0 })
@@ -2380,6 +2415,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const confirmCheckout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
+    if (isGuestCheckout && !validateGuestDetails()) {
+      setCheckoutError('Please complete guest details before checkout.')
+      return
+    }
     if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
@@ -2417,6 +2456,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const checkout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
+    if (isGuestCheckout && !validateGuestDetails()) {
+      setCheckoutError('Please complete guest details before checkout.')
+      return
+    }
     if (cartPackageItems.length > 0 && !selectedMember?.id) {
       setCheckoutError('Please assign member before purchasing service package.')
       return
@@ -2444,9 +2487,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       await removeVoucher(true)
     }
     setSelectedMember(member)
+    setCheckoutCustomerType('member')
+    setGuestDetailsError({})
     setVoucherModalOpen(false)
     setSelectedVoucherKey('')
     showMsg('Member assigned.', 'success')
+  }
+
+  const onSelectGuestCheckout = async () => {
+    if (appliedVoucher?.customer_voucher_id) {
+      await removeVoucher(true)
+    }
+    setSelectedMember(null)
+    setCheckoutCustomerType('guest')
+    setMemberOpen(false)
+    setMemberQuery('')
+    setMembers([])
   }
 
   useEffect(() => {
@@ -3864,6 +3920,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               </div>
 
+              <div className="mt-6 rounded-xl border-2 border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-gray-800">Checkout Customer</p>
+                  {!isGuestCheckout ? (
+                    <button type="button" onClick={() => void toggleMemberDropdown()} className="rounded-md border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700">
+                      {selectedMember ? 'Change Member' : 'Assign Member'}
+                    </button>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-sm text-gray-700">{checkoutContactDisplay}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setCheckoutCustomerType('member')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${!isGuestCheckout ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700'}`}>Assign Member</button>
+                  <button type="button" onClick={() => { setCheckoutCustomerType('guest'); setSelectedMember(null) }} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${isGuestCheckout ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700'}`}>Guest Checkout</button>
+                </div>
+                {isGuestCheckout ? (
+                  <div className="mt-3 grid gap-2">
+                    <input value={guestDetails.name} onChange={(e) => { setGuestDetails((prev) => ({ ...prev, name: e.target.value })); setGuestDetailsError((prev) => ({ ...prev, name: undefined })) }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Guest name *" />
+                    {guestDetailsError.name ? <p className="text-xs text-red-600">{guestDetailsError.name}</p> : null}
+                    <input value={guestDetails.phone} onChange={(e) => { setGuestDetails((prev) => ({ ...prev, phone: e.target.value })); setGuestDetailsError((prev) => ({ ...prev, phone: undefined })) }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Guest phone *" />
+                    {guestDetailsError.phone ? <p className="text-xs text-red-600">{guestDetailsError.phone}</p> : null}
+                    <input value={guestDetails.email} onChange={(e) => setGuestDetails((prev) => ({ ...prev, email: e.target.value }))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Guest email (optional)" />
+                  </div>
+                ) : null}
+              </div>
+
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                 <p className="mb-4 text-sm font-bold text-gray-800">Payment Method</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -4194,21 +4275,73 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             ) : null}
             <div className="space-y-3">
               <div>
-                <div className="flex items-center justify-between gap-2">
-                  <label className="text-xs font-semibold text-gray-600">Member</label>
+                <p className="text-xs font-semibold text-gray-600">Checkout Customer</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => void toggleMemberDropdown()}
-                    className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
+                    onClick={() => setCheckoutCustomerType('member')}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold ${!isGuestCheckout ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700'}`}
                   >
-                    {selectedMember ? 'Change Member' : 'Assign Member'}
+                    Assign Member
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCheckoutCustomerType('guest')
+                      setSelectedMember(null)
+                    }}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold ${isGuestCheckout ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700'}`}
+                  >
+                    Guest Checkout
                   </button>
                 </div>
-                <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                  {selectedMember
-                    ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
-                    : 'No member selected'}
-                </div>
+                {!isGuestCheckout ? (
+                  <>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        {selectedMember
+                          ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
+                          : 'No member selected'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void toggleMemberDropdown()}
+                        className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
+                      >
+                        {selectedMember ? 'Change Member' : 'Assign Member'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-2 grid gap-2">
+                    <input
+                      value={guestDetails.name}
+                      onChange={(e) => {
+                        setGuestDetails((prev) => ({ ...prev, name: e.target.value }))
+                        setGuestDetailsError((prev) => ({ ...prev, name: undefined }))
+                      }}
+                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Guest name *"
+                    />
+                    {guestDetailsError.name ? <p className="text-xs text-red-600">{guestDetailsError.name}</p> : null}
+                    <input
+                      value={guestDetails.phone}
+                      onChange={(e) => {
+                        setGuestDetails((prev) => ({ ...prev, phone: e.target.value }))
+                        setGuestDetailsError((prev) => ({ ...prev, phone: undefined }))
+                      }}
+                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Guest phone *"
+                    />
+                    {guestDetailsError.phone ? <p className="text-xs text-red-600">{guestDetailsError.phone}</p> : null}
+                    <input
+                      value={guestDetails.email}
+                      onChange={(e) => setGuestDetails((prev) => ({ ...prev, email: e.target.value }))}
+                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Guest email (optional)"
+                    />
+                  </div>
+                )}
               </div>
               {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -4353,6 +4486,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             <div className="border-b-2 border-gray-200 bg-white p-5">
+              <button
+                type="button"
+                onClick={() => void onSelectGuestCheckout()}
+                className="mb-3 w-full rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700"
+              >
+                Continue as Guest Checkout
+              </button>
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
