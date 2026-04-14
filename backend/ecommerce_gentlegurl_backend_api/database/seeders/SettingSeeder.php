@@ -56,5 +56,10 @@ class SettingSeeder extends Seeder
             ['type' => 'booking', 'key' => 'BOOKING_HOLD_MINUTES'],
             ['value' => 10]
         );
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking_service_deposit_note'],
+            ['value' => 'Note: The deposit is typically credited toward your final bill. The balance above is an estimate (menu price + add-ons − deposit). Packages, vouchers, tips, or changes at the chair may adjust the final amount—confirmed at checkout and at the salon.']
+        );
     }
 }
