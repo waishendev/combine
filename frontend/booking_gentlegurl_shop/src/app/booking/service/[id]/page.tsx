@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
-import { getBookingServiceDetail } from "@/lib/apiClient";
+import { getBookingServiceDepositNote, getBookingServiceDetail } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
 import { BookingServiceQuestion, BookingServiceQuestionOption, Service } from "@/lib/types";
 
@@ -18,13 +18,15 @@ export default function ServiceAddonsPage() {
   const backHref = categoryId ? `/booking?category_id=${encodeURIComponent(categoryId)}` : "/booking";
   const [service, setService] = useState<Service | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [depositNote, setDepositNote] = useState<string | null>(null);
   const [selectedOptionIds, setSelectedOptionIds] = useState<number[]>([]);
 
   useEffect(() => {
     const run = async () => {
       try {
-        const detail = await getBookingServiceDetail(id);
+        const [detail, note] = await Promise.all([getBookingServiceDetail(id), getBookingServiceDepositNote()]);
         setService(detail as Service);
+        setDepositNote(note);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load service");
       }
@@ -63,7 +65,6 @@ export default function ServiceAddonsPage() {
   const depositPreview = useMemo(() => depositPreviewForService(service, selectedOptionIds), [service, selectedOptionIds]);
   /** Typical salon model: deposit is credited toward the appointment; balance due after service. */
   const estimatedBalanceAtSalon = Math.max(0, estimatedTotalCost - depositPreview.depositTotal);
-  const depositCoversFullMenu = depositPreview.depositTotal >= estimatedTotalCost && estimatedTotalCost > 0;
 
   const goToStylist = useCallback(() => {
     const qs = new URLSearchParams();
@@ -345,9 +346,9 @@ export default function ServiceAddonsPage() {
                       </div>
                     </li>
                   </ul>
-                  <p className="mt-4 border-t border-[var(--card-border)] pt-3 text-xs leading-relaxed text-[var(--text-muted)]">
-                    <strong className="font-medium text-[var(--foreground)]">Note:</strong> The deposit is typically credited toward your final bill. The balance above is an estimate (menu price + add-ons − deposit). Packages, vouchers, tips, or changes at the chair may adjust the final amount—confirmed at checkout and at the salon.
-                  </p>
+                  {depositNote ? (
+                    <p className="mt-4 border-t border-[var(--card-border)] pt-3 text-xs leading-relaxed text-[var(--text-muted)]">{depositNote}</p>
+                  ) : null}
                 </div>
               </div>
 

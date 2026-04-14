@@ -32,6 +32,7 @@ class ShopSettingController extends Controller
                 'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting(), $type),
                 'booking_policy' => SettingService::get('booking_policy', $this->defaultBookingPolicySetting(), $type),
                 'booking_hold_minutes' => (int) SettingService::get('BOOKING_HOLD_MINUTES', 10, $type),
+                'booking_service_deposit_note' => SettingService::get('booking_service_deposit_note', null, $type),
             ];
 
             return response()->json([
@@ -121,6 +122,7 @@ class ShopSettingController extends Controller
             'ecommerce.return_tracking_submit_days' => 7,
             'booking_policy' => $this->defaultBookingPolicySetting(),
             'BOOKING_HOLD_MINUTES' => 10,
+            'booking_service_deposit_note' => null,
         ];
 
         $settingKey = $this->resolveSettingKey($key);
@@ -196,6 +198,9 @@ class ShopSettingController extends Controller
 
             case 'BOOKING_HOLD_MINUTES':
                 $data = $this->validateBookingHoldMinutes($request);
+                break;
+            case 'booking_service_deposit_note':
+                $data = $this->validateBookingServiceDepositNote($request);
                 break;
 
             default:
@@ -474,6 +479,22 @@ class ShopSettingController extends Controller
         return (int) $validated['value'];
     }
 
+    protected function validateBookingServiceDepositNote(Request $request): ?string
+    {
+        $validated = $request->validate([
+            'value' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $value = $validated['value'] ?? null;
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
     protected function defaultBookingPolicySetting(): array
     {
         return [
@@ -598,6 +619,7 @@ class ShopSettingController extends Controller
                 'invoice_profile',
                 'booking_policy',
                 'BOOKING_HOLD_MINUTES',
+                'booking_service_deposit_note',
             ];
         }
 

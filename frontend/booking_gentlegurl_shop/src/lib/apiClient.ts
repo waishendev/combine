@@ -631,6 +631,16 @@ export async function getBookingPolicySettings() {
   };
 }
 
+export async function getBookingServiceDepositNote(): Promise<string | null> {
+  const response = await request<{ data?: { settings?: { booking_service_deposit_note?: string | null } } }>(
+    "/public/shop/homepage?type=booking",
+  );
+  const note = response?.data?.settings?.booking_service_deposit_note;
+  if (typeof note !== "string") return null;
+  const trimmed = note.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export async function rescheduleBooking(id: number, startAt: string, reason?: string) {
   return request<{ success: boolean; message?: string }>(`/booking/${id}/reschedule`, {
     method: "POST",

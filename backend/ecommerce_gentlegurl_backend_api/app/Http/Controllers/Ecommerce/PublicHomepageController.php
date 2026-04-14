@@ -186,6 +186,7 @@ class PublicHomepageController extends Controller
                         'deposit_refundable' => false,
                     ],
                 ], $type);
+                $settings['booking_service_deposit_note'] = SettingService::get('booking_service_deposit_note', null, $type);
             }
 
             $paymentGateways = PaymentGateway::query()
