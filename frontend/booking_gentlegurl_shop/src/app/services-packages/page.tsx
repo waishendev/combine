@@ -69,7 +69,7 @@ export default function ServicePackagesPage() {
       </div>
 
 
-      {!user ? (
+      {/* {!user ? (
         <div className="rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[var(--status-warning)]">
           Log in to add packages to your cart.{" "}
           <Link
@@ -79,7 +79,7 @@ export default function ServicePackagesPage() {
             Login
           </Link>
         </div>
-      ) : null}
+      ) : null} */}
 
       {message ? <p className="text-sm text-[var(--accent)]">{message}</p> : null}
       {error ? <p className="text-sm text-[var(--status-error)]">{error}</p> : null}

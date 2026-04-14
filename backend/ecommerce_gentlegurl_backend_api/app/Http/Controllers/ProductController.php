@@ -78,6 +78,7 @@ class ProductController extends Controller
                 'max:100',
                 'unique:products,sku',
             ],
+            'barcode' => ['nullable', 'string', 'max:100', 'unique:products,barcode'],
             'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
             'description' => ['nullable', 'string'],
             'price' => ['required', 'numeric', 'gt:0'],
@@ -105,6 +106,7 @@ class ProductController extends Controller
             'main_image_index' => ['nullable', 'integer', 'min:0'],
             'variants' => ['nullable', 'array'],
             'variants.*.sku' => ['required_with:variants.*.title', 'string', 'max:100'],
+            'variants.*.barcode' => ['nullable', 'string', 'max:100'],
             'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
             'variants.*.price' => ['nullable', 'numeric', 'gt:0'],
             'variants.*.sale_price' => ['nullable', 'numeric', 'gte:0'],
@@ -181,6 +183,7 @@ class ProductController extends Controller
                 'max:100',
                 Rule::unique('products', 'sku')->ignore($product->id),
             ],
+            'barcode' => ['nullable', 'string', 'max:100', Rule::unique('products', 'barcode')->ignore($product->id)],
             'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
             'description' => ['nullable', 'string'],
             'price' => ['sometimes', 'numeric', 'gt:0'],
@@ -211,6 +214,7 @@ class ProductController extends Controller
             'variants' => ['sometimes', 'array'],
             'variants.*.id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'variants.*.sku' => ['required_with:variants.*.title', 'string', 'max:100'],
+            'variants.*.barcode' => ['nullable', 'string', 'max:100'],
             'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
             'variants.*.price' => ['nullable', 'numeric', 'gt:0'],
             'variants.*.sale_price' => ['nullable', 'numeric', 'gte:0'],
@@ -727,6 +731,7 @@ class ProductController extends Controller
                     'max:100',
                     'unique:products,sku',
                 ],
+                'barcode' => ['nullable', 'string', 'max:100', 'unique:products,barcode'],
                 'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
                 'description' => ['nullable', 'string'],
                 'price' => ['required', 'numeric', 'gt:0'],
@@ -785,6 +790,7 @@ class ProductController extends Controller
                             }
                             $product->variants()->create([
                                 'sku' => $variantData['sku'] ?? null,
+                                'barcode' => $variantData['barcode'] ?? null,
                                 'title' => $variantData['title'] ?? ($variantData['name'] ?? null),
                                 'price' => isset($variantData['price']) ? (float) $variantData['price'] : null,
                                 'sale_price' => isset($variantData['sale_price']) ? (float) $variantData['sale_price'] : null,
@@ -985,6 +991,7 @@ class ProductController extends Controller
 
             $payload = [
                 'sku' => $variantData['sku'] ?? $variant->sku,
+                'barcode' => $variantData['barcode'] ?? $variant->barcode,
                 'title' => $variantData['title'] ?? $variant->title,
                 'price' => $variantData['price'] ?? null,
                 'sale_price' => $variantData['sale_price'] ?? null,

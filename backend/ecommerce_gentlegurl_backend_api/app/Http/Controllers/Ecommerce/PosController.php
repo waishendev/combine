@@ -645,14 +645,18 @@ class PosController extends Controller
 
         $variant = ProductVariant::query()
             ->with('product')
-            ->where('sku', $barcode)
+            ->where(function ($query) use ($barcode) {
+                $query->where('barcode', $barcode)->orWhere('sku', $barcode);
+            })
             ->where('is_active', true)
             ->first();
 
         $product = null;
         if (! $variant) {
             $product = Product::query()
-                ->where('sku', $barcode)
+                ->where(function ($query) use ($barcode) {
+                    $query->where('barcode', $barcode)->orWhere('sku', $barcode);
+                })
                 ->where('is_active', true)
                 ->where('is_reward_only', false)
                 ->first();
@@ -1443,15 +1447,23 @@ class PosController extends Controller
             ->where('is_active', true)
             ->whereHas('product', fn ($builder) => $builder->where('is_active', true)->where('is_reward_only', false))
             ->where(function ($builder) use ($query) {
-                $builder->whereRaw('LOWER(sku) = ?', [mb_strtolower($query)])
+                $builder
+                    ->whereRaw('LOWER(COALESCE(barcode, "")) = ?', [mb_strtolower($query)])
+                    ->orWhere('barcode', 'like', "%{$query}%")
+                    ->orWhereRaw('LOWER(sku) = ?', [mb_strtolower($query)])
                     ->orWhere('sku', 'like', "%{$query}%")
                     ->orWhereHas('product', function ($productQuery) use ($query) {
-                        $productQuery->whereRaw('LOWER(sku) = ?', [mb_strtolower($query)])
+                        $productQuery
+                            ->whereRaw('LOWER(COALESCE(barcode, "")) = ?', [mb_strtolower($query)])
+                            ->orWhere('barcode', 'like', "%{$query}%")
+                            ->orWhereRaw('LOWER(sku) = ?', [mb_strtolower($query)])
                             ->orWhere('sku', 'like', "%{$query}%")
                             ->orWhere('name', 'like', "%{$query}%");
                     });
             })
+            ->orderByRaw('CASE WHEN LOWER(COALESCE(barcode, "")) = ? THEN 0 ELSE 1 END', [$exact])
             ->orderByRaw('CASE WHEN LOWER(sku) = ? THEN 0 ELSE 1 END', [$exact])
+            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND LOWER(COALESCE(p.barcode, "")) = ?) THEN 0 ELSE 1 END', [$exact])
             ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND LOWER(p.sku) = ?) THEN 0 ELSE 1 END', [$exact])
             ->orderBy('sort_order')
             ->orderBy('id')
@@ -1466,7 +1478,7 @@ class PosController extends Controller
                     'id' => $variant->id,
                     'name' => $product?->name,
                     'sku' => $variant->sku,
-                    'barcode' => $variant->sku,
+                    'barcode' => $variant->barcode ?? $variant->sku,
                     'price' => (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
                     'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
                 ];

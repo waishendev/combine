@@ -35,6 +35,7 @@ type VariantFormValue = {
   id?: number
   name: string
   sku: string
+  barcode: string
   price: string
   salePrice: string
   salePriceStartAt: string
@@ -67,6 +68,7 @@ type ProductFormValues = {
   name: string
   slug: string
   sku: string
+  barcode: string
   type: string
   description: string
   price: string
@@ -93,6 +95,7 @@ const emptyForm: ProductFormValues = {
   name: '',
   slug: '',
   sku: '',
+  barcode: '',
   type: 'single',
   description: '',
   price: '',
@@ -118,6 +121,7 @@ const emptyForm: ProductFormValues = {
 const emptyVariant = (sortOrder = 0): VariantFormValue => ({
   name: '',
   sku: '',
+  barcode: '',
   price: '',
   salePrice: '',
   salePriceStartAt: '',
@@ -300,6 +304,7 @@ export default function ProductForm({
         name: product.name,
         slug: product.slug,
         sku: product.sku,
+        barcode: product.barcode ?? '',
         type: product.type || 'single',
         description: product.description,
         price: product.price ? String(product.price) : '',
@@ -356,6 +361,7 @@ export default function ProductForm({
           id: variant.id,
           name: variant.name ?? '',
           sku: variant.sku ?? '',
+          barcode: variant.barcode ?? '',
           price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
           salePrice:
             variant.salePrice !== null && variant.salePrice !== undefined
@@ -406,6 +412,7 @@ export default function ProductForm({
           id: variant.id,
           name: variant.name ?? '',
           sku: variant.sku ?? '',
+          barcode: variant.barcode ?? '',
           price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
           salePrice:
             variant.salePrice !== null && variant.salePrice !== undefined
@@ -2115,6 +2122,7 @@ export default function ProductForm({
     formData.append('name', form.name.trim())
     formData.append('slug', form.slug.trim())
     formData.append('sku', form.sku.trim())
+    formData.append('barcode', form.barcode.trim())
     formData.append('type', resolvedType)
     formData.append('description', form.description.trim())
     formData.append('price', resolvedPrice)
@@ -2159,6 +2167,7 @@ export default function ProductForm({
         }
         formData.append(`variants[${index}][title]`, variant.name.trim())
         formData.append(`variants[${index}][sku]`, variant.sku.trim())
+        formData.append(`variants[${index}][barcode]`, variant.barcode.trim())
         formData.append(`variants[${index}][price]`, variant.price || '0')
         formData.append(
           `variants[${index}][sale_price]`,
@@ -3018,6 +3027,19 @@ export default function ProductForm({
                   placeholder={t('product.skuPlaceholder')}
                 />
               </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="barcode">
+                  Barcode
+                </label>
+                <input
+                  id="barcode"
+                  name="barcode"
+                  value={form.barcode}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="BARCODE-123456"
+                />
+              </div>
               {!rewardOnly && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700" htmlFor="type">
@@ -3734,6 +3756,15 @@ export default function ProductForm({
                       onChange={(event) => handleVariantChange(index, 'sku', event.target.value)}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                       placeholder="SKU-200ML"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Barcode</label>
+                    <input
+                      value={variant.barcode}
+                      onChange={(event) => handleVariantChange(index, 'barcode', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="BARCODE-200ML"
                     />
                   </div>
                   <div className="space-y-2">

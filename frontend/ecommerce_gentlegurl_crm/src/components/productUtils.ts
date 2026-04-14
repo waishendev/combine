@@ -35,6 +35,7 @@ export type ProductApiItem = {
   name?: string | null
   slug?: string | null
   sku?: string | null
+  barcode?: string | null
   type?: string | null
   description?: string | null
   price?: string | number | null
@@ -68,6 +69,7 @@ export type ProductApiItem = {
     name?: string | null
     title?: string | null
     sku?: string | null
+    barcode?: string | null
     price?: string | number | null
     sale_price?: string | number | null
     sale_price_start_at?: string | null
@@ -167,6 +169,7 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
           : Number(variant.id) || 0,
       name: variant.title ?? variant.name ?? '',
       sku: variant.sku ?? '',
+      barcode: variant.barcode ?? null,
       price:
         typeof variant.price === 'number'
           ? variant.price
@@ -264,6 +267,7 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     name: item.name ?? '-',
     slug: item.slug ?? '-',
     sku: item.sku ?? '-',
+    barcode: item.barcode ?? null,
     type: item.type ?? '-',
     description: item.description ?? '-',
     price: Number.isFinite(priceValue) ? priceValue : 0,

@@ -247,7 +247,7 @@ type ProductSearchHit = {
   matchedVariantName?: string
 }
 
-type ProductSearchMode = 'name' | 'sku'
+type ProductSearchMode = 'name' | 'barcode'
 
 type CategoryOption = {
   id: number
@@ -370,6 +370,7 @@ type VariantPayload = {
   title?: string | null
   name?: string | null
   sku?: string | null
+  barcode?: string | null
   price?: number | string | null
   sale_price?: number | string | null
   image_url?: string | null
@@ -382,6 +383,7 @@ type ProductApiItem = {
   id: number
   name?: string
   sku?: string
+  barcode?: string | null
   price?: number | string
   is_staff_free?: boolean | number | string | null
   variants_count?: number | string | null
@@ -390,6 +392,7 @@ type ProductApiItem = {
     id?: number
     name?: string | null
     sku?: string | null
+    barcode?: string | null
     price?: number | string | null
     sale_price?: number | string | null
     image_url?: string | null
@@ -602,21 +605,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [])
 
   const normalizedProductQuery = useMemo(() => {
-    const source = productSearchMode === 'sku' ? debouncedSkuQuery : productQuery
+    const source = productSearchMode === 'barcode' ? debouncedSkuQuery : productQuery
     return source.trim().toLowerCase()
   }, [debouncedSkuQuery, productQuery, productSearchMode])
   const normalizeSkuSearchValue = useCallback((value: string | null | undefined) => value?.trim().toLowerCase() ?? '', [])
   const effectiveServerProductQuery = useMemo(
-    () => (productSearchMode === 'sku' ? debouncedSkuQuery.trim() : ''),
+    () => (productSearchMode === 'barcode' ? debouncedSkuQuery.trim() : ''),
     [debouncedSkuQuery, productSearchMode],
   )
-  const findMatchedVariantSku = useCallback((item: ProductOption, keyword: string) => {
+  const findMatchedVariantBarcode = useCallback((item: ProductOption, keyword: string) => {
     if (!keyword) return null
 
     const activeVariants = (item.variants ?? []).filter((variant) => variant.is_active !== false)
     for (const variant of activeVariants) {
-      const variantSku = normalizeSkuSearchValue(variant.sku)
-      if (variantSku && variantSku.startsWith(keyword)) {
+      const variantBarcode = normalizeSkuSearchValue(variant.barcode || variant.sku)
+      if (variantBarcode && variantBarcode.startsWith(keyword)) {
         return variant
       }
     }
@@ -635,12 +638,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     return products.flatMap((product) => {
-      const productSku = normalizeSkuSearchValue(product.sku)
-      if (productSku && productSku.startsWith(normalizedProductQuery)) {
+      const productBarcode = normalizeSkuSearchValue(product.barcode || product.sku)
+      if (productBarcode && productBarcode.startsWith(normalizedProductQuery)) {
         return [{ product }]
       }
 
-      const matchedVariant = findMatchedVariantSku(product, normalizedProductQuery)
+      const matchedVariant = findMatchedVariantBarcode(product, normalizedProductQuery)
       if (!matchedVariant) return []
 
       return [{
@@ -650,7 +653,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         matchedVariantName: matchedVariant.name,
       }]
     })
-  }, [findMatchedVariantSku, normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
+  }, [findMatchedVariantBarcode, normalizeSkuSearchValue, normalizedProductQuery, productSearchMode, products])
   const firstActiveVariantSku = useCallback((item: ProductOption) => {
     const firstActive = (item.variants ?? []).find((variant) => variant.is_active !== false && Boolean(variant.sku?.trim()))
     return firstActive?.sku?.trim() ?? ''
@@ -1126,11 +1129,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             const parsedPrice = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
 
             const variantAny = variant as VariantPayload
+            const barcode = typeof variantAny?.barcode === 'string' ? variantAny.barcode.trim() : ''
             return {
               id: variantId,
               name: variant?.name?.trim() || `Variant #${variantId}`,
               sku,
-              barcode: sku,
+              barcode: barcode || sku,
               price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
               thumbnail_url: variant?.image_url ?? item.cover_image_url ?? null,
               is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
@@ -1146,6 +1150,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const sku = activeVariant?.sku || baseSku
     if (!sku) return null
 
+    const itemBarcode = typeof (item as any)?.barcode === 'string' ? String((item as any).barcode).trim() : ''
+    const activeBarcode = typeof (activeVariant as any)?.barcode === 'string' ? String((activeVariant as any).barcode).trim() : ''
+
     const priceRaw = activeVariant?.price ?? item.price ?? 0
     const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
 
@@ -1156,7 +1163,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       product_id: productId,
       name: item.name ?? '-',
       sku,
-      barcode: sku,
+      barcode: activeBarcode || itemBarcode || sku,
       price: Number.isFinite(price) ? price : 0,
       is_staff_free: item.is_staff_free === true || item.is_staff_free === 1 || item.is_staff_free === '1' || item.is_staff_free === 'true',
       thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? null,
@@ -2247,7 +2254,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     cartAppointmentSettlementItems.length > 0
 
   useEffect(() => {
-    if (productSearchMode !== 'sku') {
+    if (productSearchMode !== 'barcode') {
       setDebouncedSkuQuery('')
       return
     }
@@ -2606,7 +2613,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 id,
                 name: variant?.title?.trim() || variant?.name?.trim() || sku,
                 sku,
-                barcode: sku,
+                barcode: (typeof (variant as any)?.barcode === 'string' && String((variant as any).barcode).trim())
+                  ? String((variant as any).barcode).trim()
+                  : sku,
                 price: Number.isFinite(price) ? price : 0,
                 thumbnail_url: variant?.image_url ?? payload?.cover_image_url ?? null,
                 is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
@@ -3412,10 +3421,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setProductSearchMode('sku')}
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'sku' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    onClick={() => setProductSearchMode('barcode')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${productSearchMode === 'barcode' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                   >
-                    Search SKU
+                    Search Barcode
                   </button>
                 </div>
 
@@ -3427,7 +3436,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     value={productQuery}
                     onChange={(e) => setProductQuery(e.target.value)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder={productSearchMode === 'name' ? 'Search by product name' : 'Search by product SKU'}
+                    placeholder={productSearchMode === 'name' ? 'Search by product name' : 'Search by product barcode'}
                   />
                 </div>
               </div>

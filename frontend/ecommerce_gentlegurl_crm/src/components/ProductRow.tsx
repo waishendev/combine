@@ -27,6 +27,7 @@ export interface ProductVariant {
   id: number
   name: string
   sku: string
+  barcode?: string | null
   price?: number | null
   salePrice?: number | null
   salePriceStartAt?: string | null
@@ -55,6 +56,7 @@ export interface ProductRowData {
   name: string
   slug: string
   sku: string
+  barcode?: string | null
   type: string
   description: string
   price: number
